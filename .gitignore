@@ -39,6 +39,7 @@ env/
 *.swo
 *~
 .cursor/
+.github/
 
 # ============================================================================
 # Environment Variables
@@ -158,6 +159,7 @@ dmypy.json
 .playwright-mcp/
 .spec-workflow/
 .impeccable.md
+backups/
 
 # ============================================================================
 # Generated Semantic Test Fixtures
