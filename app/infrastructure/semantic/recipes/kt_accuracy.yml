@@ -1,0 +1,18 @@
+name: kt_accuracy
+title: KT推题正确率分析
+tags: [kt, recommend, accuracy]
+examples:
+  - question: "最近7天各学科KT推题正确率"
+    dsl:
+      measures:
+        - kt_recommend.total_count
+        - kt_recommend.correct_count
+        - kt_recommend.accuracy
+      dimensions:
+        - kt_recommend.subject_name
+      time_dimensions:
+        - dimension: kt_recommend.ds
+          date_range: ["2026-02-21", "2026-02-27"]
+      order: [["kt_recommend.accuracy", "desc"]]
+      limit: 100
+    notes: "KT推题的分区字段是 ds，不是 answer_date"

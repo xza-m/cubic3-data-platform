@@ -1,0 +1,59 @@
+name: question
+title: 题目
+description: 题库维度表，母子题以母题粒度组合。
+table: dwd_question_snapshot
+
+partition:
+  field: ds
+  type: date
+  format: "yyyyMMdd"
+  latest_expr: "MAX_PT('dwd_question_snapshot')"
+
+dimensions:
+  question_id:
+    title: 题目ID
+    type: string
+    sql: "{CUBE}.question_id"
+    primary_key: true
+  content:
+    title: 题干内容
+    type: string
+    sql: "{CUBE}.content"
+  difficulty_level:
+    title: 难度等级
+    type: number
+    sql: "{CUBE}.difficulty_level"
+    enum:
+      1: 较简单
+      2: 简单
+      3: 中等
+      4: 较难
+      5: 困难
+  subject_enum:
+    title: 学科
+    type: string
+    sql: "{CUBE}.subject_enum"
+  phase:
+    title: 学段
+    type: string
+    sql: "{CUBE}.phase"
+  question_type:
+    title: 题目类型
+    type: string
+    sql: "{CUBE}.question_type"
+  answer_mode:
+    title: 作答方式
+    type: string
+    sql: "{CUBE}.answer_mode"
+
+measures:
+  question_total:
+    title: 题目总数
+    type: count
+    sql: "{CUBE}.question_id"
+    description: 题库中的题目记录数量。
+  question_distinct:
+    title: 去重题目数
+    type: count_distinct
+    sql: "{CUBE}.question_id"
+    description: 按题目 ID 去重后的题目数量。

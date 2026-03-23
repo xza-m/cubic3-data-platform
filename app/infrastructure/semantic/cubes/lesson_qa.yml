@@ -1,0 +1,114 @@
+name: lesson_qa
+title: 问一问记录
+description: AI课学习中学生通过问一问模块进行的AI问答记录。
+table: dwd_study_tbl_study_lesson_qa
+
+partition:
+  field: ds
+  type: date
+  format: "yyyyMMdd"
+  max_range_days: 90
+
+default_filters:
+  - sql: "is_deleted = 0"
+    description: "排除已删除记录"
+
+dimensions:
+  study_lesson_qa_id:
+    title: 答疑记录ID
+    type: string
+    sql: "{CUBE}.study_lesson_qa_id"
+    primary_key: true
+  session_id:
+    title: 学习会话ID
+    type: string
+    sql: "{CUBE}.session_id"
+    foreign_key:
+      cube: study_sessions
+      field: study_session_id
+  student_id:
+    title: 学生ID
+    type: string
+    sql: "{CUBE}.student_id"
+    foreign_key:
+      cube: student
+      field: user_id
+  lesson_id:
+    title: 课程ID
+    type: string
+    sql: "{CUBE}.lesson_id"
+    foreign_key:
+      cube: course
+      field: lesson_id
+  knowledge_id:
+    title: 知识点ID
+    type: string
+    sql: "{CUBE}.knowledge_id"
+  subject_id:
+    title: 学科ID
+    type: string
+    sql: "{CUBE}.subject_id"
+  user_question:
+    title: 用户问题
+    type: string
+    sql: "{CUBE}.user_question"
+  tokens_num:
+    title: Tokens数量
+    type: number
+    sql: "{CUBE}.tokens_num"
+  query_source:
+    title: 输入方式
+    type: string
+    sql: "{CUBE}.query_source"
+    enum:
+      input_text: 键盘输入
+      input_voice: 语音输入
+      preset_general: 预设问题
+  is_thinking:
+    title: 是否思考模式
+    type: number
+    sql: "{CUBE}.is_thinking"
+    enum:
+      0: 否
+      1: 是
+  send_time:
+    title: 发送时间
+    type: time
+    sql: "{CUBE}.send_time"
+
+measures:
+  qa_count:
+    title: 问答数
+    type: count
+    sql: "{CUBE}.study_lesson_qa_id"
+    description: 学生在问一问模块发起的问答记录数量。
+    certified: true
+  student_count:
+    title: 去重学生数
+    type: count_distinct
+    sql: "{CUBE}.student_id"
+    description: 使用问一问模块的去重学生数量。
+  total_tokens:
+    title: 总Token数
+    type: sum
+    sql: "{CUBE}.tokens_num"
+    description: 问一问请求消耗的 Token 总量。
+  avg_tokens:
+    title: 平均Token数
+    type: avg
+    sql: "{CUBE}.tokens_num"
+    description: 平均每次问答消耗的 Token 数量。
+
+joins:
+  study_sessions:
+    cube: study_sessions
+    type: left
+    sql: "{CUBE}.session_id = {study_sessions}.study_session_id"
+  student:
+    cube: student
+    type: left
+    sql: "{CUBE}.student_id = {student}.user_id"
+  course:
+    cube: course
+    type: left
+    sql: "{CUBE}.lesson_id = {course}.lesson_id"

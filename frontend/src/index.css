@@ -1,0 +1,292 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo+SemiCondensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 223 63% 45%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 223 63% 45%;
+    --radius: 0.5rem;
+
+    /* 语义中心：Cube 类型色 */
+    --semantic-fact: 231 73% 61%;
+    --semantic-fact-bg: 230 92% 96%;
+    --semantic-dim: 162 54% 40%;
+    --semantic-dim-bg: 158 44% 95%;
+    /* 语义中心：状态色 */
+    --semantic-ok: 149 55% 36%;
+    --semantic-warn: 35 86% 48%;
+    --semantic-error: 4 72% 57%;
+    /* 等宽字体 */
+    --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+    --font-workbench-display: 'Archivo SemiCondensed', 'IBM Plex Sans', sans-serif;
+    --font-workbench-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    --font-workbench-mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+    --workbench-bg: 220 29% 97%;
+    --workbench-surface: 0 0% 100%;
+    --workbench-surface-2: 220 23% 98%;
+    --workbench-panel: 220 23% 96%;
+    --workbench-outline: 220 16% 88%;
+    --workbench-ink: 223 28% 15%;
+    --workbench-muted: 220 20% 93%;
+    --workbench-muted-foreground: 220 10% 43%;
+    --workbench-accent: 202 92% 46%;
+    --workbench-accent-soft: 201 100% 96%;
+    --workbench-radius: 1rem;
+    --workbench-radius-sm: 0.875rem;
+    --workbench-radius-lg: 1.25rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+
+    --semantic-fact: 224 76% 48%;
+    --semantic-fact-bg: 224 47% 11%;
+    --semantic-dim: 166 72% 40%;
+    --semantic-dim-bg: 166 40% 10%;
+    --workbench-bg: 220 18% 10%;
+    --workbench-surface: 220 20% 12%;
+    --workbench-surface-2: 220 18% 15%;
+    --workbench-panel: 220 18% 14%;
+    --workbench-outline: 220 12% 24%;
+    --workbench-ink: 210 22% 96%;
+    --workbench-muted: 220 18% 18%;
+    --workbench-muted-foreground: 214 13% 68%;
+    --workbench-accent: 205 79% 56%;
+    --workbench-accent-soft: 210 30% 20%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* 全局样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'IBM Plex Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  color: #111827;
+  background: #f5f7fb;
+}
+
+.semantic-workbench {
+  --radius: var(--workbench-radius-sm);
+  color: hsl(var(--workbench-ink));
+  background: transparent;
+}
+
+.semantic-workbench * {
+  font-family: var(--font-workbench-body);
+}
+
+.semantic-workbench code,
+.semantic-workbench pre,
+.semantic-workbench .font-mono {
+  font-family: var(--font-workbench-mono) !important;
+}
+
+.semantic-workbench h1,
+.semantic-workbench h2,
+.semantic-workbench h3,
+.semantic-workbench [data-semantic-display='true'] {
+  font-family: var(--font-workbench-display);
+  text-wrap: balance;
+}
+
+.semantic-workbench [data-testid='semantic-page-header'] {
+  position: relative;
+  background: transparent;
+  box-shadow: none;
+}
+
+.semantic-workbench [data-testid='semantic-page-header']::before {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--workbench-outline)), transparent);
+}
+
+.semantic-dashboard-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.semantic-toolbar-card {
+  border: 1px solid hsl(var(--workbench-outline));
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.03);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ============================================
+   滚动条样式 - 优化为亮色主题
+   ============================================ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ============================================
+   动画
+   ============================================ */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.fill-mode-forwards {
+  animation-fill-mode: forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   响应式字体
+   ============================================ */
+@media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* ============================================
+   打印样式
+   ============================================ */
+@media print {
+  body {
+    background: white;
+  }
+  
+  header,
+  aside {
+    display: none;
+  }
+}
+
+/* ============================================
+   shadcn/ui自定义样式扩展
+   ============================================ */
+
+/* ============================================
+   OverlayScrollbars - 主内容区滚动条样式
+   ============================================ */
+.app-scroll-area .os-scrollbar {
+  --os-size: 6px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 8px; /* 让滚动条上下留白，视觉更短 */
+  --os-handle-bg: #cbd5f5;
+  --os-handle-bg-hover: #a5b4fc;
+  --os-handle-bg-active: #818cf8;
+}
+
+.app-scroll-area .os-scrollbar-horizontal {
+  --os-padding-axis: 8px;
+}
+
+/* ============================================
+   Dashboard 自定义样式
+   ============================================ */
+
+/* Hero 卡片渐变背景 */
+.hero-gradient {
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 40%, #7c3aed 100%);
+}
+
+/* 统计数字 */
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #111827;
+}
+
+/* 统计标签 */
+.stat-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}

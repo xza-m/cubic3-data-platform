@@ -1,0 +1,70 @@
+name: knowledge
+title: 知识点
+description: 基础树与业务树结构关系。使用 node_id 关联知识点ID。
+table: dim_question_all_tree_info_df
+
+partition:
+  field: ds
+  type: date
+  format: "yyyyMMdd"
+  latest_expr: "MAX_PT('dim_question_all_tree_info_df')"
+
+dimensions:
+  node_id:
+    title: 节点ID
+    type: string
+    sql: "{CUBE}.node_id"
+    primary_key: true
+  node_name:
+    title: 节点名称
+    type: string
+    sql: "{CUBE}.node_name"
+  tree_type:
+    title: 树类型
+    type: string
+    sql: "{CUBE}.tree_type"
+    enum:
+      base: 基础树
+      biz: 业务树
+  tree_id:
+    title: 树ID
+    type: string
+    sql: "{CUBE}.tree_id"
+  node_level:
+    title: 节点层级
+    type: number
+    sql: "{CUBE}.node_level"
+  node_path:
+    title: 节点路径
+    type: string
+    sql: "{CUBE}.node_path"
+  is_leaf:
+    title: 是否叶子节点
+    type: boolean
+    sql: "{CUBE}.is_leaf"
+  subject_name:
+    title: 学科名称
+    type: string
+    sql: "{CUBE}.subject_name"
+  phase_name:
+    title: 学段名称
+    type: string
+    sql: "{CUBE}.phase_name"
+
+measures:
+  node_count:
+    title: 节点数
+    type: count
+    sql: "{CUBE}.node_id"
+  leaf_count:
+    title: 叶子节点数
+    type: sum
+    sql: "CASE WHEN {CUBE}.is_leaf = true THEN 1 ELSE 0 END"
+
+segments:
+  base_tree_only:
+    title: 仅基础树
+    sql: "{CUBE}.tree_type = 'base'"
+  leaf_only:
+    title: 仅叶子节点
+    sql: "{CUBE}.is_leaf = true"

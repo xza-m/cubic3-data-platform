@@ -1,0 +1,122 @@
+name: energy_detail
+title: 能量发放记录
+description: |
+  能量发放流水表。结算发放时如触发检测上限或风控策略会扣除相应能量。
+table: dwd_study_energy_detail_di
+
+partition:
+  field: energy_date
+  type: date
+  format: "yyyyMMdd"
+  max_range_days: 90
+
+dimensions:
+  id:
+    title: 主键ID
+    type: string
+    sql: "{CUBE}.id"
+    primary_key: true
+  user_id:
+    title: 用户ID
+    type: string
+    sql: "{CUBE}.user_id"
+    foreign_key:
+      cube: student
+      field: user_id
+  user_name:
+    title: 用户名称
+    type: string
+    sql: "{CUBE}.user_name"
+  school_id:
+    title: 学校ID
+    type: string
+    sql: "{CUBE}.school_id"
+    foreign_key:
+      cube: school
+      field: school_id
+  school_name:
+    title: 学校名称
+    type: string
+    sql: "{CUBE}.school_name"
+  subject_name:
+    title: 学科名称
+    type: string
+    sql: "{CUBE}.subject_name"
+  event_type:
+    title: 事件类型
+    type: string
+    sql: "{CUBE}.event_type"
+  study_session_id:
+    title: 学习会话ID
+    type: string
+    sql: "{CUBE}.study_session_id"
+    foreign_key:
+      cube: study_sessions
+      field: study_session_id
+  reject_reason:
+    title: 拒绝原因
+    type: string
+    sql: "{CUBE}.reject_reason"
+  exit_type:
+    title: 退出类型
+    type: string
+    sql: "{CUBE}.exit_type"
+    enum:
+      manual: 中途退出
+      completed: 完成退出
+      answer: 答题
+  energy_date:
+    title: 能量发放日期
+    type: time
+    sql: "{CUBE}.energy_date"
+
+measures:
+  record_count:
+    title: 记录数
+    type: count
+    sql: "{CUBE}.id"
+    description: 能量发放流水记录数量。
+  total_theoretical:
+    title: 理论应得能量
+    type: sum
+    sql: "{CUBE}.theoretical_energy"
+    description: 按业务规则计算的理论应发放能量总和。
+    certified: true
+  total_granted:
+    title: 实际发放能量
+    type: sum
+    sql: "{CUBE}.actual_granted_energy"
+    description: 实际发放到用户账户的能量总和。
+    certified: true
+  total_blocked:
+    title: 拦截能量
+    type: number
+    sql: "{total_theoretical} - {total_granted}"
+    description: 理论应得能量与实际发放能量的差值。
+    certified: true
+  block_rate:
+    title: 能量拦截率
+    type: number
+    sql: "ROUND(({total_theoretical} - {total_granted}) * 100.0 / NULLIF({total_theoretical}, 0), 2)"
+    description: 拦截能量占理论应得能量的比例。
+    format: percent
+    certified: true
+  student_count:
+    title: 去重学生数
+    type: count_distinct
+    sql: "{CUBE}.user_id"
+    description: 产生能量流水的去重学生数量。
+
+joins:
+  student:
+    cube: student
+    type: left
+    sql: "{CUBE}.user_id = {student}.user_id"
+  school:
+    cube: school
+    type: left
+    sql: "{CUBE}.school_id = {school}.school_id"
+  study_sessions:
+    cube: study_sessions
+    type: left
+    sql: "{CUBE}.study_session_id = {study_sessions}.study_session_id"

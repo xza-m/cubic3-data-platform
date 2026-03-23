@@ -1,0 +1,31 @@
+name: energy_block_analysis
+title: 能量拦截原因分析
+tags: [energy, block, reject]
+examples:
+  - question: "最近一周能量拦截的主要原因是什么"
+    dsl:
+      measures:
+        - energy_detail.record_count
+        - energy_detail.total_blocked
+      dimensions:
+        - energy_detail.reject_reason
+      time_dimensions:
+        - dimension: energy_detail.energy_date
+          date_range: ["2026-02-21", "2026-02-27"]
+      order: [["energy_detail.record_count", "desc"]]
+      limit: 50
+    notes: "reject_reason 可能为空字符串，需注意过滤"
+
+  - question: "本月各事件类型的能量发放和拦截对比"
+    dsl:
+      measures:
+        - energy_detail.total_theoretical
+        - energy_detail.total_granted
+        - energy_detail.total_blocked
+      dimensions:
+        - energy_detail.event_type
+      time_dimensions:
+        - dimension: energy_detail.energy_date
+          date_range: ["2026-02-01", "2026-02-28"]
+      order: [["energy_detail.total_granted", "desc"]]
+      limit: 100

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CUBIC3 - Bauhaus Digital</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Space+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- 侧边栏（hover 自动展开） -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-inner">
+            <!-- Logo 区域 -->
+            <div class="sidebar-header">
+                <div class="logo-icon"></div>
+                <span class="logo-text">CUBIC3</span>
+            </div>
+            
+            <!-- 导航菜单 -->
+            <nav class="sidebar-nav">
+                <!-- 控制台 -->
+                <button class="nav-item active" data-page="dashboard">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <rect x="1" y="1" width="7" height="7" fill="currentColor"/>
+                        <rect x="12" y="1" width="7" height="7" fill="currentColor"/>
+                        <rect x="1" y="12" width="7" height="7" fill="currentColor"/>
+                        <rect x="12" y="12" width="7" height="7" fill="currentColor"/>
+                    </svg>
+                    <span class="nav-text">控制台</span>
+                </button>
+                
+                <!-- 查询中心 -->
+                <button class="nav-item" data-page="query">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2.5"/>
+                        <line x1="13" y1="13" x2="18" y2="18" stroke="currentColor" stroke-width="2.5"/>
+                    </svg>
+                    <span class="nav-text">查询中心</span>
+                </button>
+                
+                <!-- 数据中心 -->
+                <div class="nav-group" data-group="data">
+                    <button class="nav-item nav-parent" data-page="data">
+                        <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <rect x="1" y="10" width="4" height="9" fill="currentColor"/>
+                            <rect x="8" y="5" width="4" height="14" fill="currentColor"/>
+                            <rect x="15" y="1" width="4" height="18" fill="currentColor"/>
+                        </svg>
+                        <span class="nav-text">数据中心</span>
+                        <svg class="nav-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <div class="sub-nav">
+                        <button class="sub-nav-item" data-page="data-source">数据源管理</button>
+                        <button class="sub-nav-item" data-page="data-set">数据集管理</button>
+                    </div>
+                </div>
+                
+                <!-- 应用中心 -->
+                <div class="nav-group" data-group="app">
+                    <button class="nav-item nav-parent" data-page="app">
+                        <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <circle cx="5" cy="5" r="3.5" fill="currentColor"/>
+                            <circle cx="15" cy="5" r="3.5" fill="currentColor"/>
+                            <circle cx="5" cy="15" r="3.5" fill="currentColor"/>
+                            <circle cx="15" cy="15" r="3.5" fill="currentColor"/>
+                        </svg>
+                        <span class="nav-text">应用中心</span>
+                        <svg class="nav-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <div class="sub-nav">
+                        <button class="sub-nav-item" data-page="app-market">应用市场</button>
+                        <button class="sub-nav-item" data-page="app-monitor">执行监控</button>
+                    </div>
+                </div>
+                
+                <!-- 配置中心 -->
+                <div class="nav-group" data-group="config">
+                    <button class="nav-item nav-parent" data-page="config">
+                        <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <line x1="1" y1="4" x2="19" y2="4" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="6" cy="4" r="2.5" fill="currentColor" stroke="black" stroke-width="1"/>
+                            <line x1="1" y1="10" x2="19" y2="10" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="14" cy="10" r="2.5" fill="currentColor" stroke="black" stroke-width="1"/>
+                            <line x1="1" y1="16" x2="19" y2="16" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="10" cy="16" r="2.5" fill="currentColor" stroke="black" stroke-width="1"/>
+                        </svg>
+                        <span class="nav-text">配置中心</span>
+                        <svg class="nav-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <div class="sub-nav">
+                        <button class="sub-nav-item" data-page="config-channel">渠道管理</button>
+                        <button class="sub-nav-item" data-page="config-sub">订阅管理</button>
+                    </div>
+                </div>
+                
+                <!-- 智能问数 -->
+                <button class="nav-item" data-page="ai">
+                    <svg class="nav-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <rect x="1" y="1" width="18" height="13" rx="2" stroke="currentColor" stroke-width="2"/>
+                        <polygon points="5,14 5,19 10,14" fill="currentColor"/>
+                        <circle cx="6" cy="7.5" r="1.5" fill="currentColor"/>
+                        <circle cx="10" cy="7.5" r="1.5" fill="currentColor"/>
+                        <circle cx="14" cy="7.5" r="1.5" fill="currentColor"/>
+                    </svg>
+                    <span class="nav-text">智能问数</span>
+                </button>
+            </nav>
+            
+            <!-- 空白区域 (将底部推到底部) -->
+            <div class="sidebar-spacer"></div>
+            
+            <!-- 底部区域 -->
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">系统正常</span>
+                </div>
+                <div class="user-profile">
+                    <div class="user-avatar">A</div>
+                    <div class="user-info">
+                        <span class="user-name">Admin</span>
+                        <span class="user-role">管理员</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 主内容区域 -->
+    <main id="main-content" class="main-content">
+        <!-- 页面内容将由 JavaScript 动态加载 -->
+    </main>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

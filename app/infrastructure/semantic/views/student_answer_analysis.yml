@@ -1,0 +1,34 @@
+name: student_answer_analysis
+title: 学生答题分析视图
+description: |
+  面向教研团队的答题分析视图，聚合答题记录、学生、学校信息。
+  提供按学科、年级、学校维度的答题正确率和耗时分析。
+
+public: true
+
+cubes:
+  - join_path: answer_records
+    includes:
+      - answer_date
+      - subject_name
+      - question_category_name
+      - total_count
+      - correct_count
+      - accuracy
+      - avg_duration
+
+  - join_path: answer_records.student
+    prefix: true
+    includes:
+      - user_name
+      - grade_name
+      - user_role_name
+    excludes:
+      - user_is_test
+
+  - join_path: answer_records.student.school
+    prefix: true
+    includes:
+      - school_name
+      - school_area_name
+      - school_stage_name

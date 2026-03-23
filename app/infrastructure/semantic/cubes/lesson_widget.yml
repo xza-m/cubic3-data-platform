@@ -1,0 +1,101 @@
+name: lesson_widget
+title: AI课组件进度
+description: |
+  AI课会话拆分到组件粒度的学习进度。
+  未完成组件存储在 99991231 墓碑分区。
+table: dwd_study_lesson_widget_snap
+
+partition:
+  field: completed_date
+  type: date
+  format: "yyyyMMdd"
+  max_range_days: 90
+
+dimensions:
+  study_progress_id:
+    title: 学习进度ID
+    type: string
+    sql: "{CUBE}.study_progress_id"
+    foreign_key:
+      cube: lesson_progress
+      field: study_progress_id
+  widget_index:
+    title: 组件序号
+    type: number
+    sql: "{CUBE}.widget_index"
+  study_session_id:
+    title: 学习会话ID
+    type: string
+    sql: "{CUBE}.study_session_id"
+    foreign_key:
+      cube: study_sessions
+      field: study_session_id
+  lesson_id:
+    title: 课程ID
+    type: string
+    sql: "{CUBE}.lesson_id"
+  student_id:
+    title: 学生ID
+    type: string
+    sql: "{CUBE}.student_id"
+    foreign_key:
+      cube: student
+      field: user_id
+  widget_status:
+    title: 组件状态
+    type: string
+    sql: "{CUBE}.widget_status"
+    enum:
+      completed: 已完成
+      locked: 锁定
+      unlocked: 未锁定
+  widget_type:
+    title: 组件类型
+    type: string
+    sql: "{CUBE}.widget_type"
+    enum:
+      video: 视频
+      exercise: 练习
+      interactive: 互动
+      guide: 引导
+  widget_name:
+    title: 组件名称
+    type: string
+    sql: "{CUBE}.widget_name"
+  widget_duration:
+    title: 组件时长(ms)
+    type: number
+    sql: "{CUBE}.widget_duration"
+  completed_date:
+    title: 完成日期
+    type: time
+    sql: "{CUBE}.completed_date"
+
+measures:
+  widget_count:
+    title: 组件总数
+    type: count
+    sql: "{CUBE}.widget_index"
+  completed_widget_count:
+    title: 已完成组件数
+    type: sum
+    sql: "CASE WHEN {CUBE}.widget_status = 'completed' THEN 1 ELSE 0 END"
+  avg_widget_duration:
+    title: 平均组件时长(ms)
+    type: avg
+    sql: "{CUBE}.widget_duration"
+
+segments:
+  completed_only:
+    title: 仅已完成
+    sql: "{CUBE}.widget_status = 'completed'"
+
+joins:
+  lesson_progress:
+    cube: lesson_progress
+    type: left
+    sql: "{CUBE}.study_progress_id = {lesson_progress}.study_progress_id"
+  study_sessions:
+    cube: study_sessions
+    type: left
+    sql: "{CUBE}.study_session_id = {study_sessions}.study_session_id"

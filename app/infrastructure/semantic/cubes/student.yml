@@ -1,0 +1,101 @@
+name: student
+title: 学生
+description: 学生基础信息维度表，包含学生所属班级、年级、学校。
+table: dim_ucenter_user_student_df
+
+partition:
+  field: ds
+  type: date
+  format: "yyyyMMdd"
+  latest_expr: "MAX_PT('dim_ucenter_user_student_df')"
+
+default_filters:
+  - sql: "user_is_test = 1"
+    description: "排除测试用户（user_is_test=1 为正式用户）"
+
+dimensions:
+  user_id:
+    title: 用户ID
+    type: string
+    sql: "{CUBE}.user_id"
+    primary_key: true
+  user_name:
+    title: 用户名
+    type: string
+    sql: "{CUBE}.user_name"
+  user_account:
+    title: 用户账号
+    type: string
+    sql: "{CUBE}.user_account"
+  user_phone:
+    title: 用户电话
+    type: string
+    sql: "{CUBE}.user_phone"
+  user_grade_id:
+    title: 年级ID
+    type: number
+    sql: "{CUBE}.user_grade_id"
+  user_grade_name:
+    title: 年级名称
+    type: string
+    sql: "{CUBE}.user_grade_name"
+  user_class_id:
+    title: 班级ID
+    type: string
+    sql: "{CUBE}.user_class_id"
+  organization_id:
+    title: 学校ID
+    type: string
+    sql: "{CUBE}.organization_id"
+    foreign_key:
+      cube: school
+      field: school_id
+  user_is_test:
+    title: 是否测试用户
+    type: number
+    sql: "{CUBE}.user_is_test"
+    enum:
+      1: 正式用户
+      0: 测试用户
+  user_status:
+    title: 用户状态
+    type: number
+    sql: "{CUBE}.user_status"
+    enum:
+      1: 尚未启用
+      2: 试用
+      3: 付费
+      4: 停用
+      5: 未付费或过期
+  user_number:
+    title: 学号
+    type: string
+    sql: "{CUBE}.user_number"
+  create_time:
+    title: 创建时间
+    type: time
+    sql: "{CUBE}.create_time"
+
+measures:
+  student_total:
+    title: 学生总数
+    type: count
+    sql: "{CUBE}.user_id"
+    description: 符合默认过滤条件的学生记录数量。
+    certified: true
+  student_distinct:
+    title: 去重学生数
+    type: count_distinct
+    sql: "{CUBE}.user_id"
+    description: 按用户 ID 去重后的学生数量。
+
+segments:
+  paying_users:
+    title: 仅付费用户
+    sql: "{CUBE}.user_status = 3"
+
+joins:
+  school:
+    cube: school
+    type: left
+    sql: "{CUBE}.organization_id = {school}.school_id"

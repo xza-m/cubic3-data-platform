@@ -1,0 +1,10 @@
+id: playwright_1773922371087_2
+code: playwright_1773922371087_2
+name: Playwright 领域发布 1773922371087
+catalog_code: default
+status: active
+cubes:
+- school
+- answer_records
+- course
+joins: []

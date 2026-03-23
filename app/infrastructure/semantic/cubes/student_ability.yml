@@ -1,0 +1,83 @@
+name: student_ability
+title: 学生学科能力
+description: 基于IRT模型的学生学科能力分层（S+/S/A/B/C）。
+table: dim_pub_student_subject_insight_df
+
+partition:
+  field: ds
+  type: date
+  format: "yyyyMMdd"
+  latest_expr: "MAX_PT('dim_pub_student_subject_insight_df')"
+
+dimensions:
+  student_id:
+    title: 学生ID
+    type: string
+    sql: "{CUBE}.student_id"
+    foreign_key:
+      cube: student
+      field: user_id
+  subject_name:
+    title: 学科名称
+    type: string
+    sql: "{CUBE}.subject_name"
+  level_tag:
+    title: 能力分层
+    type: string
+    sql: "{CUBE}.level_tag"
+    enum:
+      S+: 顶尖水平
+      S: 优秀水平
+      A: 良好水平
+      B: 中等水平
+      C: 待提升
+  status_tag:
+    title: 学习状态
+    type: string
+    sql: "{CUBE}.status_tag"
+    enum:
+      突破期: 突破期
+      发展期: 发展期
+      动荡期: 动荡期
+      观察期: 观察期
+  diagnosis_tag:
+    title: 行为诊断
+    type: string
+    sql: "{CUBE}.diagnosis_tag"
+    enum:
+      稳步精进: 稳步精进
+      眼高手低: 眼高手低
+      浅层学习: 浅层学习
+      无效学习: 无效学习
+  ability_mean:
+    title: IRT能力值
+    type: number
+    sql: "{CUBE}.ability_mean"
+  accuracy:
+    title: 正确率
+    type: number
+    sql: "{CUBE}.accuracy"
+  answer_count:
+    title: 答题数量
+    type: number
+    sql: "{CUBE}.answer_count"
+
+measures:
+  student_count:
+    title: 学生数
+    type: count_distinct
+    sql: "{CUBE}.student_id"
+  avg_ability:
+    title: 平均能力值
+    type: avg
+    sql: "{CUBE}.ability_mean"
+  avg_accuracy:
+    title: 平均正确率
+    type: avg
+    sql: "{CUBE}.accuracy"
+
+joins:
+  student:
+    cube: student
+    type: left
+    sql: "{CUBE}.student_id = {student}.user_id"

@@ -1,0 +1,46 @@
+"""通用 DataSourceAdapter SchemaInspector。"""
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from app.domain.semantic.ports.schema_inspector import ISchemaInspector
+from app.shared.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
+class AdapterSchemaInspector(ISchemaInspector):
+    def __init__(self, adapter: Any, database: str, source_type: str):
+        self._adapter = adapter
+        self._database = database
+        self._source_type = source_type
+
+    def get_table_columns(self, table_name: str) -> List[Dict[str, str]]:
+        try:
+            schema = self._adapter.get_table_schema(self._database, table_name)
+            columns = schema.get("columns", [])
+            return [
+                {"name": c.get("name", ""), "type": c.get("type", "STRING")}
+                for c in columns
+            ]
+        except Exception as exc:
+            logger.error("adapter_schema_columns_failed", table=table_name, error=str(exc))
+            return []
+
+    def fetch_dict_enums(self, dict_type: str) -> Optional[Dict[str, str]]:
+        if self._source_type != "maxcompute":
+            return None
+
+        sql = (
+            "SELECT meta_dict_key, meta_dict_name "
+            "FROM dim_pub_meta_dict_df "
+            "WHERE ds = MAX_PT('dim_pub_meta_dict_df') "
+            f"AND meta_dict_type = '{dict_type}'"
+        )
+        try:
+            result = self._adapter.execute_query(sql, limit=1000)
+            data = result.get("data") or result.get("rows") or []
+            return {str(row[0]): str(row[1]) for row in data} if data else None
+        except Exception as exc:
+            logger.warning("adapter_schema_enum_failed", dict_type=dict_type, error=str(exc))
+            return None

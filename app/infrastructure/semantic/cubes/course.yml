@@ -1,0 +1,70 @@
+name: course
+title: AI课程
+description: AI课程最新版本的组课信息及基础信息。无分区表。
+table: dim_course_lesson_snap_f
+
+# 无分区（豁免表）
+
+default_filters:
+  - sql: "deleted = 0"
+    description: "排除已删除课程"
+
+dimensions:
+  lesson_id:
+    title: 课程ID
+    type: string
+    sql: "{CUBE}.lesson_id"
+    primary_key: true
+  lesson_name:
+    title: 课程名称
+    type: string
+    sql: "{CUBE}.lesson_name"
+  phase_name:
+    title: 学段名称
+    type: string
+    sql: "{CUBE}.phase_name"
+  subject_name:
+    title: 学科名称
+    type: string
+    sql: "{CUBE}.subject_name"
+  lesson_type:
+    title: 课程类型
+    type: string
+    sql: "{CUBE}.lesson_type"
+  lesson_status:
+    title: 课程状态
+    type: string
+    sql: "{CUBE}.lesson_status"
+    enum:
+      publish: 已上架
+      wait: 未上架
+      change: 修改待上架
+  widget_count:
+    title: 组件数量
+    type: number
+    sql: "{CUBE}.widget_count"
+  total_duration:
+    title: 课程总时长(s)
+    type: number
+    sql: "{CUBE}.total_duration"
+  publish_time:
+    title: 上架时间
+    type: time
+    sql: "{CUBE}.publish_time"
+
+measures:
+  course_total:
+    title: 课程总数
+    type: count
+    sql: "{CUBE}.lesson_id"
+    description: 课程记录数量。
+  published_count:
+    title: 已上架课程数
+    type: sum
+    sql: "CASE WHEN {CUBE}.lesson_status = 'publish' THEN 1 ELSE 0 END"
+    description: 当前状态为已上架的课程数量。
+
+segments:
+  published_only:
+    title: 仅已上架
+    sql: "{CUBE}.lesson_status = 'publish'"

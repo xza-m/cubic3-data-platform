@@ -1,0 +1,52 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8003:5000"
+    volumes:
+      - ./instance:/app/instance  # 持久化存储instance目录（包括数据库和提取结果文件）
+    depends_on:
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres_test:5432/cubic3_data_platform
+      - REDIS_URL=redis://redis:6379/0
+      - SUPERSET_BASE_URL=${SUPERSET_BASE_URL}
+      - SUPERSET_USERNAME=${SUPERSET_USERNAME}
+      - SUPERSET_PASSWORD=${SUPERSET_PASSWORD}
+      - SUPERSET_JWT=${SUPERSET_JWT}
+      - FEISHU_APP_ID=${FEISHU_APP_ID}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+      - FEISHU_CHAT_ID=${FEISHU_CHAT_ID}
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+  
+  rq_worker:
+    build: .
+    command: rq worker default --url redis://redis:6379/0 --name worker-1
+    volumes:
+      - ./instance:/app/instance
+    depends_on:
+      - redis
+      - web
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres_test:5432/cubic3_data_platform
+      - REDIS_URL=redis://redis:6379/0
+      - FEISHU_APP_ID=${FEISHU_APP_ID}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+    deploy:
+      replicas: 2  # 运行2个worker实例
+  
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes  # 开启持久化
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis_data:

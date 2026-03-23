@@ -1,0 +1,162 @@
+name: cubic3-data-platform
+
+services:
+  # ============================================
+  # Nginx 反向代理 + 静态文件服务
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: cubic3-data-platform-nginx
+    ports:
+      - "81:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    networks:
+      - cubic3_data_platform_network
+    restart: unless-stopped
+
+  # ============================================
+  # 后端：Flask API
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cubic3-data-platform-backend
+    entrypoint: ["./entrypoint.sh"]
+    expose:
+      - "5000"
+    volumes:
+      - ./instance:/app/instance
+      - ./app:/app/app
+      - ./wsgi.py:/app/wsgi.py:ro
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/cubic3_data_platform}
+      - REDIS_URL=redis://redis:6379/0
+      - FLASK_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - FEISHU_APP_ID=${FEISHU_APP_ID}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET}
+      - OSS_ENDPOINT=${OSS_ENDPOINT}
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:81}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-24}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_API_BASE=${LLM_API_BASE:-https://api.openai.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+      - GUNICORN_WORKERS=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - cubic3_data_platform_network
+    restart: unless-stopped
+
+  # ============================================
+  # RQ Worker（异步任务处理）
+  # ============================================
+  rq_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: []
+    command: ["python", "/app/run_worker.py"]
+    volumes:
+      - ./instance:/app/instance
+      - ./app:/app/app
+      - ./run_worker.py:/app/run_worker.py:ro
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/cubic3_data_platform}
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+      - FEISHU_APP_ID=${FEISHU_APP_ID}
+      - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:81}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_API_BASE=${LLM_API_BASE:-https://api.openai.com/v1}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+    depends_on:
+      - redis
+      - postgres
+      - backend
+    networks:
+      - cubic3_data_platform_network
+    deploy:
+      replicas: 2
+    restart: unless-stopped
+
+  # ============================================
+  # Redis（缓存 + 任务队列）
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: cubic3-data-platform-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - cubic3_data_platform_redis_data:/data
+    expose:
+      - "6379"
+    networks:
+      - cubic3_data_platform_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================
+  # PostgreSQL（主数据库）- 可选
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: cubic3-data-platform-postgres
+    environment:
+      - POSTGRES_DB=cubic3_data_platform
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - cubic3_data_platform_postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - cubic3_data_platform_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# ============================================
+# 网络
+# ============================================
+networks:
+  cubic3_data_platform_network:
+    name: cubic3-data-platform-network
+    driver: bridge
+
+# ============================================
+# 数据持久化
+# ============================================
+volumes:
+  cubic3_data_platform_postgres_data:
+    name: cubic3-data-platform-postgres-data
+    driver: local
+  cubic3_data_platform_redis_data:
+    name: cubic3-data-platform-redis-data
+    driver: local

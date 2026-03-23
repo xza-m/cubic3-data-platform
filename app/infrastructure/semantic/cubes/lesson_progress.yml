@@ -1,0 +1,106 @@
+name: lesson_progress
+title: AI课学习进度
+description: |
+  学生AI课学习会话的进度管理，记录各会话的组件学习进度、时长。
+table: dwd_study_lesson_progress_snap
+
+partition:
+  field: create_date
+  type: date
+  format: "yyyyMMdd"
+  max_range_days: 90
+
+dimensions:
+  study_progress_id:
+    title: 学习进度ID
+    type: string
+    sql: "{CUBE}.study_progress_id"
+    primary_key: true
+  study_session_id:
+    title: 学习会话ID
+    type: string
+    sql: "{CUBE}.study_session_id"
+    foreign_key:
+      cube: study_sessions
+      field: study_session_id
+  lesson_id:
+    title: 课程ID
+    type: string
+    sql: "{CUBE}.lesson_id"
+    foreign_key:
+      cube: course
+      field: lesson_id
+  lesson_version:
+    title: 课程版本
+    type: string
+    sql: "{CUBE}.lesson_version"
+  student_id:
+    title: 学生ID
+    type: string
+    sql: "{CUBE}.student_id"
+    foreign_key:
+      cube: student
+      field: user_id
+  knowledge_id:
+    title: 知识点ID
+    type: string
+    sql: "{CUBE}.knowledge_id"
+  completed_widget_count:
+    title: 已完成组件数
+    type: number
+    sql: "{CUBE}.completed_widget_count"
+  total_widget_count:
+    title: 总组件数
+    type: number
+    sql: "{CUBE}.total_widget_count"
+  lesson_duration:
+    title: 课程学习时长(ms)
+    type: number
+    sql: "{CUBE}.lesson_duration"
+  create_date:
+    title: 创建日期
+    type: time
+    sql: "{CUBE}.create_date"
+
+measures:
+  progress_count:
+    title: 进度记录数
+    type: count
+    sql: "{CUBE}.study_progress_id"
+    description: AI 课学习进度记录数量。
+  completed_count:
+    title: 完成课程数
+    type: sum
+    sql: "CASE WHEN {CUBE}.completed_widget_count = {CUBE}.total_widget_count THEN 1 ELSE 0 END"
+    description: 已完成全部组件的课程记录数量。
+  completion_rate:
+    title: 课程完成率
+    type: number
+    sql: "ROUND({completed_count} * 100.0 / NULLIF({progress_count}, 0), 2)"
+    description: 已完成课程数占进度记录数的比例。
+    format: percent
+    certified: true
+  avg_lesson_duration:
+    title: 平均课程时长(ms)
+    type: avg
+    sql: "{CUBE}.lesson_duration"
+    description: 平均每条课程进度记录的学习时长。
+  student_count:
+    title: 去重学生数
+    type: count_distinct
+    sql: "{CUBE}.student_id"
+    description: 参与 AI 课学习的去重学生数量。
+
+joins:
+  study_sessions:
+    cube: study_sessions
+    type: left
+    sql: "{CUBE}.study_session_id = {study_sessions}.study_session_id"
+  course:
+    cube: course
+    type: left
+    sql: "{CUBE}.lesson_id = {course}.lesson_id"
+  student:
+    cube: student
+    type: left
+    sql: "{CUBE}.student_id = {student}.user_id"

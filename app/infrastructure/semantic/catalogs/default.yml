@@ -1,0 +1,5 @@
+code: default
+name: 默认目录
+description: 未显式指定目录的领域默认归入这里。
+status: active
+sort_order: 0

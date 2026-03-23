@@ -1,0 +1,77 @@
+name: school
+title: 学校
+description: 学校基础信息维度表。
+table: dim_ucenter_organization_school_df
+
+partition:
+  field: ds
+  type: date
+  format: "yyyyMMdd"
+  latest_expr: "MAX_PT('dim_ucenter_organization_school_df')"
+
+default_filters:
+  - sql: "school_is_test = 1"
+    description: "排除测试学校（school_is_test=1 为正式学校）"
+
+dimensions:
+  school_id:
+    title: 学校ID
+    type: string
+    sql: "{CUBE}.school_id"
+    primary_key: true
+  school_name:
+    title: 学校名称
+    type: string
+    sql: "{CUBE}.school_name"
+  school_number:
+    title: 学校CODE
+    type: string
+    sql: "{CUBE}.school_number"
+  school_edu_level_name:
+    title: 学段
+    type: string
+    sql: "{CUBE}.school_edu_level_name"
+  school_edu_system_name:
+    title: 办学性质
+    type: string
+    sql: "{CUBE}.school_edu_system_name"
+  school_feature_name:
+    title: 学校特色
+    type: string
+    sql: "{CUBE}.school_feature_name"
+  school_region_name:
+    title: 学校区域
+    type: string
+    sql: "{CUBE}.school_region_name"
+  school_is_test:
+    title: 是否测试学校
+    type: number
+    sql: "{CUBE}.school_is_test"
+  school_status:
+    title: 学校状态
+    type: number
+    sql: "{CUBE}.school_status"
+    enum:
+      1: 尚未启用
+      2: 试用中
+      3: 付费使用
+      4: 停止合作
+      5: 未付费
+
+measures:
+  school_total:
+    title: 学校总数
+    type: count
+    sql: "{CUBE}.school_id"
+    description: 符合默认过滤条件的学校记录数量。
+    certified: true
+  school_distinct:
+    title: 去重学校数
+    type: count_distinct
+    sql: "{CUBE}.school_id"
+    description: 按学校 ID 去重后的学校数量。
+
+segments:
+  paying_schools:
+    title: 仅付费学校
+    sql: "{CUBE}.school_status = 3"

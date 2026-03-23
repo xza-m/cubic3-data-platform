@@ -1,0 +1,123 @@
+name: study_sessions
+title: 学习会话
+description: |
+  学生学习相关的会话管理。全量快照事务表，无分区。
+table: dwd_study_sessions_snap_f
+
+# 无分区
+
+dimensions:
+  study_session_id:
+    title: 学习会话ID
+    type: string
+    sql: "{CUBE}.study_session_id"
+    primary_key: true
+  student_id:
+    title: 学生ID
+    type: string
+    sql: "{CUBE}.student_id"
+    foreign_key:
+      cube: student
+      field: user_id
+  student_name:
+    title: 学生姓名
+    type: string
+    sql: "{CUBE}.student_name"
+  subject_id:
+    title: 学科ID
+    type: string
+    sql: "{CUBE}.subject_id"
+  subject_name:
+    title: 学科名称
+    type: string
+    sql: "{CUBE}.subject_name"
+  study_type_name:
+    title: 学习类型
+    type: string
+    sql: "{CUBE}.study_type_name"
+  session_status:
+    title: 会话状态
+    type: string
+    sql: "{CUBE}.session_status"
+  school_id:
+    title: 学校ID
+    type: string
+    sql: "{CUBE}.school_id"
+    foreign_key:
+      cube: school
+      field: school_id
+  school_name:
+    title: 学校名称
+    type: string
+    sql: "{CUBE}.school_name"
+  grade_name:
+    title: 年级名称
+    type: string
+    sql: "{CUBE}.grade_name"
+  class_name:
+    title: 班级名称
+    type: string
+    sql: "{CUBE}.class_name"
+  knowledge_id:
+    title: 知识点ID
+    type: string
+    sql: "{CUBE}.knowledge_id"
+  knowledge_name:
+    title: 知识点名称
+    type: string
+    sql: "{CUBE}.knowledge_name"
+  total_duration:
+    title: 总时长
+    type: number
+    sql: "{CUBE}.total_duration"
+  start_time:
+    title: 开始时间
+    type: time
+    sql: "{CUBE}.start_time"
+  end_time:
+    title: 结束时间
+    type: time
+    sql: "{CUBE}.end_time"
+  create_time:
+    title: 创建时间
+    type: time
+    sql: "{CUBE}.create_time"
+
+measures:
+  session_count:
+    title: 会话数
+    type: count
+    sql: "{CUBE}.study_session_id"
+    description: 学习会话记录数量。
+    certified: true
+  session_distinct:
+    title: 去重会话数
+    type: count_distinct
+    sql: "{CUBE}.study_session_id"
+    description: 按学习会话 ID 去重后的会话数量。
+  student_count:
+    title: 去重学生数
+    type: count_distinct
+    sql: "{CUBE}.student_id"
+    description: 参与学习会话的去重学生数量。
+  avg_duration:
+    title: 平均会话时长
+    type: avg
+    sql: "{CUBE}.total_duration"
+    description: 平均每个学习会话的总时长。
+  total_duration_sum:
+    title: 总学习时长
+    type: sum
+    sql: "{CUBE}.total_duration"
+    description: 学习会话总时长汇总。
+    certified: true
+
+joins:
+  student:
+    cube: student
+    type: left
+    sql: "{CUBE}.student_id = {student}.user_id"
+  school:
+    cube: school
+    type: left
+    sql: "{CUBE}.school_id = {school}.school_id"

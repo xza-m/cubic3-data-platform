@@ -1,0 +1,30 @@
+name: meta_dict
+title: 元数据字典
+description: 业务枚举值含义。关联 meta_dict_type + meta_dict_key。
+table: dim_pub_meta_dict_df
+
+partition:
+  field: ds
+  type: date
+  format: "yyyyMMdd"
+  latest_expr: "MAX_PT('dim_pub_meta_dict_df')"
+
+dimensions:
+  meta_dict_type:
+    title: 字典类型
+    type: string
+    sql: "{CUBE}.meta_dict_type"
+  meta_dict_key:
+    title: 字典键
+    type: string
+    sql: "{CUBE}.meta_dict_key"
+  meta_dict_name:
+    title: 字典值
+    type: string
+    sql: "{CUBE}.meta_dict_name"
+
+measures:
+  dict_count:
+    title: 字典记录数
+    type: count
+    sql: "{CUBE}.meta_dict_key"

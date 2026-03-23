@@ -1,0 +1,44 @@
+name: answer_accuracy_by_subject
+title: 各学科答题正确率
+tags: [answer, accuracy, subject, student]
+examples:
+  - question: "查一下倪佳俊同学最近7天各学科的答题正确率"
+    dsl:
+      domain_code: academic
+      measures:
+        - answer_records.total_count
+        - answer_records.correct_count
+        - answer_records.accuracy
+      dimensions:
+        - answer_records.subject_name
+      filters:
+        - dimension: student.user_name
+          operator: equals
+          values: ["倪佳俊"]
+      time_dimensions:
+        - dimension: answer_records.answer_date
+          date_range: ["2026-02-21", "2026-02-27"]
+      order: [["answer_records.accuracy", "desc"]]
+      limit: 1000
+    notes: "按学生姓名过滤用 student.user_name，不要用 student_id"
+
+  - question: "三年级全部学生上周数学答题正确率排名"
+    dsl:
+      domain_code: academic
+      measures:
+        - answer_records.total_count
+        - answer_records.accuracy
+      dimensions:
+        - student.user_name
+      filters:
+        - dimension: student.user_grade_name
+          operator: equals
+          values: ["三年级"]
+        - dimension: answer_records.subject_name
+          operator: equals
+          values: ["数学"]
+      time_dimensions:
+        - dimension: answer_records.answer_date
+          date_range: ["2026-02-17", "2026-02-23"]
+      order: [["answer_records.accuracy", "desc"]]
+      limit: 100

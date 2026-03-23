@@ -1,0 +1,206 @@
+import logging
+import os
+import uuid
+from flask import Flask, request, g
+from .config_schema import AppConfig
+from .extensions import configure_logging, db, migrate, scheduler
+
+# 健康检查
+from .interfaces.api.health import bp as health_bp
+
+# API 文档
+from .interfaces.api.docs import bp as api_docs_bp
+
+# 新架构 v1 API（完全迁移）
+from .interfaces.api.v1.datasources import bp as datasources_v1_bp
+from .interfaces.api.v1.datasets import create_datasets_blueprint
+from .interfaces.api.v1.extraction import bp as extraction_v1_bp
+from .interfaces.api.v1.conversations import bp as conversations_v1_bp
+from .interfaces.api.v1.files import bp as files_v1_bp
+from .interfaces.api.v1.sql_lab import bp as sql_lab_v1_bp
+from .interfaces.api.v1.queries import bp as queries_v1_bp
+from .interfaces.api.v1.auth import bp as auth_v1_bp
+from .interfaces.api.v1.feishu import bp as feishu_v1_bp
+# 注意: superset_v1_bp 已废弃，改用「应用中心 + 配置中心」
+
+# 应用中心 API v1
+from .interfaces.api.v1.apps import bp as apps_v1_bp
+from .interfaces.api.v1.app_instances import bp as app_instances_v1_bp
+from .interfaces.api.v1.app_executions import bp as app_executions_v1_bp
+
+# 配置中心 API v1
+from .interfaces.api.v1.channels import bp as channels_v1_bp
+from .interfaces.api.v1.subscriptions import bp as subscriptions_v1_bp
+from .interfaces.api.v1.subscriptions import app_instance_subscriptions_bp
+
+# 语义层 API v1
+from .interfaces.api.v1.semantic import create_semantic_blueprint
+
+from .infrastructure.scheduler import init_jobs
+
+# 依赖注入容器
+from .di.container import init_container, set_container
+
+
+def create_app(role: str = "web") -> Flask:
+    """
+    Flask App Factory
+
+    Args:
+        role: 进程角色
+              - "web"    : Gunicorn 主进程，加载全部模块（路由/调度器/飞书 WS）
+              - "worker" : RQ Worker，仅加载基础设施（DB/DI/事件总线）
+    """
+    app = Flask(__name__)
+
+    # ================================================================
+    # 公共基础设施（所有角色）
+    # ================================================================
+
+    app_config = AppConfig.from_env()
+    app.config.update(app_config.to_flask_config())
+    app.app_config = app_config
+
+    configure_logging(app.config.get("LOG_LEVEL", "INFO"))
+
+    db.init_app(app)
+    migrate.init_app(app, db)
+
+    container = init_container(app)
+    set_container(container)
+    app.container = container
+
+    # 导入所有模型（确保 SQLAlchemy 能够识别）
+    from .domain.entities.feishu_chat_ref import FeishuChatRef  # noqa
+    from .domain.entities.table_cache import DataSourceTableCache  # noqa
+    from .domain.entities.extraction_template import ExtractionTemplate  # noqa
+    from .domain.entities.data_source import DataSource  # noqa
+    from .domain.entities.dataset import Dataset  # noqa
+    from .domain.entities.dataset_field import DatasetField  # noqa
+    from .domain.entities.semantic_registry_entry import SemanticRegistryEntry  # noqa
+    from .domain.entities.extraction_task import ExtractionTask  # noqa
+    from .domain.entities.extraction_run import ExtractionRun  # noqa
+    from .domain.entities.conversation import Conversation, Message  # noqa
+    from .domain.entities.query import Query  # noqa
+    from .domain.entities.query_folder import QueryFolder  # noqa
+    from .domain.entities.query_history import QueryHistory  # noqa
+    from .domain.entities.query_template import QueryTemplate  # noqa
+    from .domain.entities.sql_query import SQLQuery  # noqa
+    from .domain.entities.app_definition import AppDefinition  # noqa
+    from .domain.entities.app_instance import AppInstance  # noqa
+    from .domain.entities.app_execution import AppExecution  # noqa
+    from .domain.entities.config.channel import Channel  # noqa
+    from .domain.entities.config.subscription import Subscription  # noqa
+
+    # 注册执行器（worker 执行任务时需要）
+    from .executors import register_all_executors
+    register_all_executors()
+
+    # ================================================================
+    # Web 角色专属（路由 / 调度器 / 请求钩子）
+    # ================================================================
+
+    _testing = app.config.get('TESTING') or os.environ.get('FLASK_TESTING', '').lower() in ('1', 'true')
+
+    if role == "web":
+        # 调度器仅在非测试环境启动，避免 SchedulerAlreadyRunningError
+        if not _testing:
+            scheduler.init_app(app)
+
+        # 路由注册（始终执行，测试环境也需要路由）
+        app.register_blueprint(health_bp, url_prefix="/health")
+        app.register_blueprint(api_docs_bp)
+        app.register_blueprint(auth_v1_bp)
+        app.register_blueprint(datasources_v1_bp)
+        app.register_blueprint(create_datasets_blueprint(container))
+        app.register_blueprint(extraction_v1_bp)
+        app.register_blueprint(conversations_v1_bp)
+        app.register_blueprint(files_v1_bp)
+        app.register_blueprint(sql_lab_v1_bp)
+        app.register_blueprint(queries_v1_bp)
+        app.register_blueprint(feishu_v1_bp)
+        app.register_blueprint(apps_v1_bp)
+        app.register_blueprint(app_instances_v1_bp)
+        app.register_blueprint(app_executions_v1_bp)
+        app.register_blueprint(channels_v1_bp)
+        app.register_blueprint(subscriptions_v1_bp)
+        app.register_blueprint(app_instance_subscriptions_bp)
+        app.register_blueprint(create_semantic_blueprint(
+            semantic_service=container.semantic_service(),
+            publish_service=container.view_publish_service(),
+            modeling_service=container.cube_modeling_service(),
+            domain_modeling_service=container.domain_modeling_service(),
+            domain_canvas_service=container.domain_canvas_service(),
+            dataset_repo=container.dataset_repository(),
+            dataset_handler=container.create_dataset_handler(),
+            registry_repo=container.semantic_registry_repository(),
+        ))
+
+        # 全局错误处理器
+        from app.interfaces.api.middleware.error_handler import register_error_handlers
+        register_error_handlers(app)
+
+        # 请求上下文钩子
+        @app.before_request
+        def setup_request_context():
+            from app.shared.utils.logger import set_request_context
+            request_id = request.headers.get('X-Request-ID') or str(uuid.uuid4())
+            g.request_id = request_id
+            user_id = getattr(g, 'user_id', None)
+            set_request_context(request_id=request_id, user_id=user_id)
+
+        @app.after_request
+        def add_request_id_header(response):
+            if hasattr(g, 'request_id'):
+                response.headers['X-Request-ID'] = g.request_id
+            return response
+
+        @app.teardown_request
+        def clear_request_context_on_teardown(exception=None):
+            from app.shared.utils.logger import clear_request_context
+            clear_request_context()
+
+        @app.teardown_appcontext
+        def cleanup_container_scoped_session(exception=None):
+            scoped_session_provider = getattr(container, "db_scoped_session", None)
+            if scoped_session_provider is None:
+                return
+            try:
+                scoped_session_provider().remove()
+            except Exception:
+                logging.getLogger(__name__).debug("cleanup_container_scoped_session_failed", exc_info=True)
+
+    # ================================================================
+    # App Context 初始化（所有角色）
+    # ================================================================
+
+    with app.app_context():
+        if role == "web" and not _testing:
+            from app.infrastructure.seed import seed_app_definitions, seed_system_instances
+            seed_app_definitions()
+            seed_system_instances()
+
+            init_jobs()
+            logging.getLogger(__name__).info("Scheduler initialized with app-center schedules")
+
+        # 事件处理器（worker 执行任务时也可能触发事件）
+        try:
+            from app.infrastructure.events.registry import register_event_handlers
+            event_bus = container.event_bus()
+            register_event_handlers(event_bus)
+            logging.getLogger(__name__).info("Event handlers registered")
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to register event handlers: {e}")
+
+    # ================================================================
+    # 飞书长连接（仅 Web 角色）
+    # ================================================================
+
+    if role == "web":
+        try:
+            from app.infrastructure.adapters.feishu.ws_event_handler import start_feishu_ws
+            start_feishu_ws(app)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"飞书长连接启动失败: {e}")
+
+    return app

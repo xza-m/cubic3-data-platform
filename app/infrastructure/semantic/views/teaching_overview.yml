@@ -1,0 +1,35 @@
+name: teaching_overview
+title: 教学总览视图
+description: |
+  面向运营管理的教学总览，汇聚课程进度、学习时长、答题情况。
+
+public: true
+
+cubes:
+  - join_path: lesson_progress
+    includes:
+      - lesson_date
+      - total_lessons
+      - completed_lessons
+      - completion_rate
+      - avg_progress_pct
+
+  - join_path: lesson_progress.student
+    prefix: true
+    includes: "*"
+    excludes:
+      - user_is_test
+      - deleted
+
+  - join_path: lesson_progress.course
+    prefix: true
+    includes:
+      - lesson_name
+      - lesson_subject_name
+      - lesson_type_name
+
+  - join_path: study_sessions
+    includes:
+      - total_duration
+      - avg_duration
+      - session_count

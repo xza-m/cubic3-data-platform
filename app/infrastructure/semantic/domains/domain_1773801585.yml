@@ -1,0 +1,9 @@
+id: '1773801585'
+code: '1773801585'
+name: 发布断言调试 1773801585
+catalog_code: default
+status: active
+cubes:
+- answer_records
+- course
+joins: []
