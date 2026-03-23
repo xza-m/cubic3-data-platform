@@ -11,12 +11,12 @@
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:visual": "playwright test tests/e2e-node/semantic.visual.spec.ts",
-    "verify:semantic-layout": "npm exec -- tsc --noEmit --pretty false && npm run test:unit -- src/pages/Semantic/CubeList.page.test.tsx src/pages/Semantic/DomainList.page.test.tsx src/pages/Semantic/domainCanvasState.test.ts src/components/Semantic/workbench.test.tsx && playwright test tests/e2e-node/cube-browse.spec.ts tests/e2e-node/domain-creation.spec.ts tests/e2e-node/domain-catalog.spec.ts tests/e2e-node/domain-publish.spec.ts && npm run test:visual",
+    "verify:semantic-layout": "npm exec -- tsc --noEmit --pretty false && npm run test:unit -- src/pages/Semantic/CubeList.page.test.tsx src/pages/Semantic/DomainList.page.test.tsx src/pages/Semantic/domainCanvasState.test.ts src/components/Semantic/workbench.test.tsx && npm run test:visual && playwright test tests/e2e-node/cube-browse.spec.ts tests/e2e-node/domain-creation.spec.ts tests/e2e-node/domain-catalog.spec.ts tests/e2e-node/domain-publish.spec.ts tests/e2e-node/devtools-browse.spec.ts",
     "verify:ui": "npm exec -- tsc --noEmit --pretty false && npm run test:unit && npm run test:e2e",
-    "e2e:domain-smoke": "python tests/e2e/domain_creation_smoke.py",
-    "e2e:domain-publish-smoke": "python tests/e2e/domain_publish_smoke.py",
-    "e2e:cube-draft-smoke": "python tests/e2e/cube_draft_smoke.py",
-    "verify:semantic": "npm exec -- tsc --noEmit --pretty false && npm run build && DOMAIN_SMOKE_BASE_URL=${DOMAIN_SMOKE_BASE_URL:-http://127.0.0.1:3000} npm run e2e:domain-smoke && DOMAIN_SMOKE_BASE_URL=${DOMAIN_SMOKE_BASE_URL:-http://127.0.0.1:3000} npm run e2e:domain-publish-smoke && DOMAIN_SMOKE_BASE_URL=${DOMAIN_SMOKE_BASE_URL:-http://127.0.0.1:3000} npm run e2e:cube-draft-smoke"
+    "e2e:domain-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/domain_creation_smoke.py",
+    "e2e:domain-publish-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/domain_publish_smoke.py",
+    "e2e:cube-draft-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/cube_draft_smoke.py",
+    "verify:semantic": "npm exec -- tsc --noEmit --pretty false && npm run build && node ./scripts/run-semantic-smoke.mjs tests/e2e/domain_creation_smoke.py tests/e2e/domain_publish_smoke.py tests/e2e/cube_draft_smoke.py"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

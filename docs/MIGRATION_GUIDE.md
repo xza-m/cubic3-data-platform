@@ -1,5 +1,9 @@
 # 架构迁移指南
 
+> [!WARNING]
+> 本文档记录的是历史迁移过程，不作为当前实现基线。
+> 当前请优先参考 `../README.md`、`TECH_STACK_AND_ARCHITECTURE.md`、`QUICK_START.md`、`STARTUP_GUIDE.md` 与 `DOC_ALIGNMENT_REPORT.md`。
+
 **更新时间**: 2026-01-25  
 **适用版本**: v2.0+
 

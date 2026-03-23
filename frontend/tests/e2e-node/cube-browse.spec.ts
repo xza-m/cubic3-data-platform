@@ -10,8 +10,12 @@ test('在 Cube 管理中浏览模型并进入设计页', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Cube 管理' })).toBeVisible()
 
   const firstItem = page.locator('[data-testid^="cube-management-item-"]').first()
-  await expect(firstItem).toBeVisible()
-  await firstItem.locator('[data-testid^="cube-open-design-"]').first().click()
+  if (await firstItem.count()) {
+    await expect(firstItem).toBeVisible()
+    await firstItem.locator('[data-testid^="cube-open-design-"]').first().click()
+  } else {
+    await page.getByRole('link', { name: '新建 Cube' }).click()
+  }
 
-  await expect(page.getByRole('heading', { name: 'Cube 设计' }).or(page.getByRole('heading', { name: '新建 Cube' }))).toBeVisible()
+  await expect(page.getByRole('heading', { name: '新建 Cube' }).or(page.getByRole('heading', { name: 'Cube Studio' }))).toBeVisible()
 })

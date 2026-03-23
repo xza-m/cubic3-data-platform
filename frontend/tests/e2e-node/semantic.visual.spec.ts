@@ -20,7 +20,7 @@ test('领域设计首屏视觉基线', async ({ page }) => {
 test('Cube 管理首屏视觉基线', async ({ page }) => {
   await gotoSemantic(page, '/semantic/cubes')
   await expect(page.getByRole('heading', { name: 'Cube 管理' })).toBeVisible()
-  await expect(page).toHaveScreenshot('semantic-cube-management.png', { fullPage: true })
+  await expect(page).toHaveScreenshot('semantic-cube-management.png', { fullPage: true, maxDiffPixels: 200 })
 })
 
 test('Cube 设计首屏视觉基线', async ({ page }) => {

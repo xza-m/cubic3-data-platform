@@ -1,5 +1,10 @@
 # 元数据同步与数据集注册完整指南
 
+> [!WARNING]
+> 本文档描述的是旧版“元数据同步”方案，不作为当前 API、页面入口和启动方式的基线说明。
+> 当前请优先参考 `../README.md`、`TECH_STACK_AND_ARCHITECTURE.md`、`QUICK_START.md` 和 `DOC_ALIGNMENT_REPORT.md`。
+> 当前主线代码中的数据中心能力集中在 `/api/v1/data-center/*`，请以现有实现为准。
+
 ## 📋 概述
 
 本文档详细说明如何使用元数据同步功能，实现从 MaxCompute 自动采集表结构并智能识别字段属性。
@@ -384,4 +389,3 @@ is_mobile = all(re.match(mobile_pattern, str(v)) for v in sample_data)
 ✅ **人工修正流程** - 支持二次调整  
 
 现在可以开始使用这个功能来自动注册数据集了！🚀
-

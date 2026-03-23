@@ -1,368 +1,243 @@
 # 技术栈与架构说明
 
-## 一、当前基础组件构成
+本文档描述 `cubic3-data-platform` 当前代码实现对应的技术栈、部署形态与模块分层，作为架构基线文档使用。
 
-### 后端技术栈
+## 1. 当前架构结论
 
-| 组件类型 | 技术选型 | 版本 | 用途 |
-|---------|---------|------|------|
-| **Web 框架** | Flask | 3.0.3 | RESTful API |
-| **ORM** | SQLAlchemy | 3.1.1 | ORM（写）+ Core（读）|
-| **主数据库** | PostgreSQL | 15+ | 元数据存储 |
-| **缓存** | Redis | 7 | 查询缓存 + 任务队列 |
-| **任务队列** | RQ | 1.15.1 | 异步任务执行 |
-| **定时调度** | APScheduler | 3.10.4 | BI 看板定时推送 |
-| **数据验证** | Pydantic | 2.5.0 | Schema 验证 |
-| **依赖注入** | dependency-injector | 4.41.0 | DI 容器 |
-| **认证** | PyJWT | 2.8.0 | JWT 认证 |
-| **SQL 解析** | sqlparse | 0.5.0 | SQL 语法校验 |
-| **WSGI 服务器** | Gunicorn | 23.0.0 | 生产环境 |
+项目当前是标准的前后端分离实现：
 
-### 数据源驱动
+- 前端是 `React SPA`
+- 后端是 `Flask REST API`
+- 前端开发期通过 `Vite` 提供页面
+- Docker 部署时由 `Nginx` 直接托管 `frontend/dist`
+- 后端不再承担页面模板渲染职责
 
-| 数据源 | Python 驱动 | 用途 |
-|-------|------------|------|
-| MaxCompute | pyodps | 阿里云大数据计算 |
-| ClickHouse | clickhouse-driver | OLAP 数据库 |
-| MySQL | pymysql | 关系型数据库 |
-| PostgreSQL | psycopg2 | 关系型数据库 |
+这意味着仓库中任何“Jinja 页面主导”或“混合 SSR/CSR 是现状”的说法，都不再是当前实现基线。
 
-### 外部集成
-
-| 服务 | 集成方式 | 用途 |
-|------|---------|------|
-| 飞书开放平台 | REST API (requests) | 消息推送、文件上传 |
-| 阿里云 OSS | oss2 SDK | 大文件存储 |
-| Superset | REST API | 看板截图 |
-
----
-
-## 二、前后端架构现状
-
-### 当前状态：**混合架构（非纯粹前后端分离）**
+## 2. 部署拓扑
 
 ```mermaid
-graph TB
-    subgraph frontend [前端层]
-        Jinja2[Jinja2 模板<br/>10个HTML页面<br/>SSR服务端渲染]
-        React[React组件<br/>QueryBuilder.tsx<br/>CSR客户端渲染]
-        StaticJS[静态JS<br/>filter-builder.js]
-    end
-    
-    subgraph backend [后端层]
-        FlaskRoutes[Flask路由]
-        APIv1[新API /api/v1/*<br/>JSON响应]
-        APIOld[旧API /api/*<br/>JSON响应]
-        PageRoutes[页面路由<br/>render_template]
-    end
-    
-    Jinja2 --> PageRoutes
-    React --> APIv1
-    StaticJS --> APIOld
-    PageRoutes --> FlaskRoutes
-    APIv1 --> FlaskRoutes
-    APIOld --> FlaskRoutes
+graph LR
+    Browser["浏览器"]
+    Vite["Vite Dev Server :3000"]
+    Nginx["Nginx :81"]
+    Flask["Flask API :5000"]
+    Redis["Redis"]
+    Postgres["PostgreSQL"]
+    Worker["RQ Worker"]
+
+    Browser --> Vite
+    Browser --> Nginx
+    Vite -->|/api 代理| Nginx
+    Nginx -->|/api 转发| Flask
+    Flask --> Postgres
+    Flask --> Redis
+    Worker --> Redis
+    Worker --> Postgres
 ```
 
-### 具体情况
+说明：
 
-**前端部分**：
-1. **Jinja2 模板**（10 个页面）
-   - `dashboard.html` - BI 看板管理
-   - `datasets_list.html` - 数据集列表
-   - `datasources.html` - 数据源管理
-   - `extraction_tasks.html` - 任务列表
-   - `extract_new.html` - 新建提取任务
-   - 等...
+- 开发模式通常走 `Browser -> Vite -> /api 代理 -> Nginx/Flask`
+- Docker 模式通常走 `Browser -> Nginx -> Flask`
+- `frontend/dist` 是 Nginx 托管前端的静态产物，需先执行 `npm run build`
 
-2. **React 组件**（1 个）
-   - `frontend/QueryBuilder.tsx` - 数据查询构造器
-   - 技术栈：React 18 + TypeScript + Tailwind CSS
+## 3. 技术栈
 
-3. **静态资源**
-   - `static/css/common.css`
-   - `static/js/filter-builder.js`
+### 3.1 前端
 
-**后端部分**：
-- Flask API（RESTful）
-- 页面路由（render_template）
-- 混合架构（API + 模板渲染）
+| 类别 | 当前实现 |
+|---|---|
+| 框架 | React 18 |
+| 语言 | TypeScript 5 |
+| 构建工具 | Vite 5 |
+| 路由 | React Router DOM 6 |
+| 服务端状态 | TanStack Query 5 |
+| HTTP | Axios |
+| UI 基础组件 | Radix UI primitives |
+| 业务组件 | `frontend/src/components/business` 自定义封装 |
+| 编辑器 | Monaco Editor |
+| 图表 | Recharts |
+| 关系建模画布 | `@xyflow/react` + ELK |
+| 图标 | Lucide React |
 
-### 是否前后端分离？
+当前代码中没有以下依赖作为主栈：
 
-**答案**：**部分分离，但不完全**
+- `antd`
+- `@ant-design/icons`
+- `zustand`
 
-- ❌ **不是纯粹的前后端分离**：
-  - 大部分页面使用服务端渲染（Jinja2）
-  - 前端资源由 Flask 管理和提供
-  - 无独立的前端构建流程
-  - 无前端路由（依赖后端路由）
+因此，任何“前端基于 Ant Design 5 / Zustand / pnpm”的文档描述，都不是现行基线。
 
-- ✅ **有前后端分离的雏形**：
-  - QueryBuilder.tsx 是独立的 React 组件
-  - API 已按 RESTful 设计
-  - 响应格式为 JSON（非 HTML）
+### 3.2 后端
 
----
+| 类别 | 当前实现 |
+|---|---|
+| Web 框架 | Flask 3.0 |
+| ORM 封装 | Flask-SQLAlchemy 3.1 |
+| 数据迁移 | Flask-Migrate |
+| 配置校验 | Pydantic 2 |
+| 依赖注入 | dependency-injector |
+| 认证 | PyJWT |
+| 异步任务 | RQ |
+| 定时任务 | APScheduler |
+| SQL 解析 | sqlparse |
+| LLM | OpenAI 兼容适配层 |
 
-## 三、推荐：完全前后端分离
+### 3.3 数据与外部集成
 
-### 方案：React SPA + Flask API
+| 类别 | 当前实现 |
+|---|---|
+| 主库 | PostgreSQL |
+| 缓存 / 队列 | Redis |
+| 数据源适配 | PostgreSQL / MySQL / ClickHouse / MaxCompute |
+| 消息协同 | 飞书 |
+| 大文件交付 | OSS |
+| BI 截图 | Superset |
 
-```mermaid
-graph TB
-    subgraph deploymentFrontend [前端部署]
-        Nginx[Nginx<br/>静态文件服务器]
-        ReactApp[React SPA<br/>打包后的静态文件]
-    end
-    
-    subgraph deploymentBackend [后端部署]
-        FlaskAPI[Flask API<br/>纯JSON响应]
-        RQWorker[RQ Worker<br/>异步任务]
-    end
-    
-    subgraph storage [存储层]
-        PostgreSQL[(PostgreSQL<br/>主数据库)]
-        Redis[(Redis<br/>缓存+队列)]
-    end
-    
-    Browser[浏览器] --> Nginx
-    Nginx --> ReactApp
-    ReactApp -->|HTTP/JSON| FlaskAPI
-    FlaskAPI --> PostgreSQL
-    FlaskAPI --> Redis
-    RQWorker --> Redis
-    RQWorker --> PostgreSQL
+## 4. 后端分层结构
+
+```text
+app/
+├── application/          # 应用层
+│   ├── datasource/
+│   ├── dataset/
+│   ├── extraction/
+│   ├── query/
+│   ├── conversation/
+│   ├── semantic/
+│   └── services/
+├── domain/               # 领域层
+│   ├── entities/
+│   ├── events/
+│   ├── ports/
+│   ├── semantic/
+│   └── services/
+├── infrastructure/       # 基础设施层
+│   ├── adapters/
+│   ├── repositories/
+│   ├── cache/
+│   ├── tasks/
+│   ├── semantic/
+│   └── events/
+├── interfaces/api/       # API 层
+└── di/                   # 依赖注入
 ```
 
-### 前端技术栈（推荐）
+对应关系：
 
-```json
-{
-  "框架": "React 18 + TypeScript",
-  "构建工具": "Vite 5",
-  "包管理": "pnpm",
-  "路由": "React Router 6",
-  "状态管理": "Zustand / TanStack Query",
-  "UI 组件": "Ant Design 5 或 shadcn/ui",
-  "样式": "Tailwind CSS",
-  "HTTP": "axios 或 fetch",
-  "表单": "React Hook Form + Zod",
-  "图标": "Lucide React"
-}
+- `interfaces/api/v1/*` 暴露 HTTP 接口
+- `application/*` 承担命令、查询、处理器与编排服务
+- `domain/*` 承担实体、端口和领域规则
+- `infrastructure/*` 对接数据库、Redis、外部服务和语义 YAML 仓库
+
+这是典型的 `Hexagonal Architecture + DDD + CQRS 风格拆分`。
+
+## 5. 前端结构
+
+```text
+frontend/src/
+├── api/                  # 按业务域划分的接口封装
+├── components/
+│   ├── ui/               # 通用 UI primitives
+│   ├── business/         # 表格、弹窗、表单等业务组件
+│   ├── Layout/           # 应用级布局
+│   ├── Semantic/         # 语义建模组件
+│   └── Chat/             # 智能问数组件
+├── pages/                # 页面级路由
+├── hooks/                # 自定义 Hook
+├── lib/                  # 前端领域工具
+├── types/                # 类型定义
+└── App.tsx               # 总路由
 ```
 
-### 后端技术栈（已实现）
+当前页面主干：
 
-```json
-{
-  "Web 框架": "Flask 3.0",
-  "ORM": "SQLAlchemy 3.1（ORM + Core）",
-  "数据库": "PostgreSQL 15",
-  "缓存": "Redis 7",
-  "任务队列": "RQ 1.15",
-  "数据验证": "Pydantic 2.5",
-  "依赖注入": "dependency-injector 4.41",
-  "认证": "JWT (PyJWT 2.8)"
-}
-```
+- `/dashboard`
+- `/data-center/*`
+- `/queries/*`
+- `/data-chat`
+- `/apps` / `/executions`
+- `/config/*`
+- `/semantic/*`
+- `/login`
 
-### 部署架构（前后端分离）
+## 6. 当前接口分区
 
-```
-用户请求
-    ↓
-Nginx (80/443)
-    ├─ /*.js, /*.css, /*.html → 静态文件（React 构建产物）
-    └─ /api/* → Flask API (5000)
-         ├─ Web (Gunicorn)
-         ├─ RQ Worker (×2)
-         └─ Redis + PostgreSQL
-```
+后端当前已注册的主 API 分组包括：
 
-### 迁移成本估算
+- `/health`
+- `/api/docs`
+- `/api/v1/auth`
+- `/api/v1/data-center/datasources`
+- `/api/v1/data-center/datasets`
+- `/api/v1/extraction`
+- `/api/v1/queries`
+- `/api/v1/sql_lab`
+- `/api/v1/conversations`
+- `/api/v1/files`
+- `/api/v1/semantic`
+- `/api/v1/apps`
+- `/api/v1/app-instances`
+- `/api/v1/app-executions`
+- `/api/v1/channels`
+- `/api/v1/subscriptions`
+- `/api/v1/feishu`
 
-| 工作项 | 工作量 | 风险 |
-|-------|--------|------|
-| 搭建 React 脚手架 | 1-2 天 | 低 |
-| 迁移核心页面（4个） | 2-3 周 | 中 |
-| 删除 Jinja2 模板 | 1 周 | 低 |
-| 前端构建流程 | 2-3 天 | 低 |
-| **总计** | **4-6 周** | **中等** |
+需要特别注意：
 
----
+- 健康检查路径是 `/health`，不是 `/api/v1/health`
+- 数据中心 API 使用 `/api/v1/data-center/*`
+- 登录页通过 `/api/v1/auth/login` 和 `/api/v1/auth/feishu/*`
 
-## 四、不前后端分离的方案
+## 7. 语义层落地方式
 
-### 优化现有混合架构
+语义层不只是一组接口，还包含仓库内的 YAML 定义与运行时服务：
 
-如果暂时不进行前后端分离，可以进行以下优化：
+- `app/infrastructure/semantic/catalogs/`
+- `app/infrastructure/semantic/cubes/`
+- `app/infrastructure/semantic/domains/`
+- `app/infrastructure/semantic/views/`
+- `app/infrastructure/semantic/recipes/`
 
-1. **统一前端技术栈**
-   - 将所有 Jinja2 页面改为 React 组件
-   - 使用 Webpack/Vite 打包静态资源
-   - 但仍由 Flask 提供静态文件服务
+当前内置语义内容偏教育/学习分析场景，例如：
 
-2. **API 与页面分离**
-   - `/api/*` 路由只返回 JSON
-   - `/pages/*` 路由负责渲染 HTML
+- `student`
+- `question`
+- `knowledge`
+- `answer_records`
+- `study_sessions`
 
-3. **引入前端构建工具**
-   - 使用 npm/pnpm 管理前端依赖
-   - 使用 TypeScript 提升类型安全
+所以它既是一个通用数据平台，也是一个带有教育分析语义资产沉淀的业务平台。
 
-**不推荐理由**：
-- 架构混乱，长期维护成本高
-- 无法享受现代前端工具链（热更新、代码分割）
-- 前端性能受限（无客户端路由）
+## 8. 启动与交付方式
 
----
+### 8.1 Docker
 
-## 五、建议
+`docker-compose.yml` 当前只构建后端镜像，前端由宿主机上的 `frontend/dist` 提供给 Nginx。
 
-### 对于当前项目
+这意味着：
 
-**推荐方案**：**渐进式前后端分离**
+- `docker compose up --build -d` 之前，若 `frontend/dist` 不存在或过期，需要先在本地执行 `cd frontend && npm run build`
+- `deploy.sh` 已包含前端构建步骤，适合部署场景
 
-**理由**：
-1. ✅ 后端架构已重构为纯 API（六边形架构）
-2. ✅ 已有 React 组件（QueryBuilder.tsx），说明团队有前端能力
-3. ✅ 项目处于重构期，是引入前后端分离的最佳时机
-4. ✅ 前后端分离是行业标准，便于未来扩展
+### 8.2 本地开发
 
-**实施建议**：
-- **第1阶段**（1-2周）：搭建 React SPA 脚手架
-- **第2阶段**（2-3周）：迁移数据提取模块（复用 QueryBuilder）
-- **第3阶段**（2-3周）：迁移其他页面
-- **第4阶段**（1周）：删除 Jinja2 模板
+典型方式：
 
-### 如果团队前端能力有限
+1. `flask --app wsgi.py run`
+2. `cd frontend && npm run dev`
+3. `python run_worker.py`
 
-**备选方案**：**保持混合架构，局部优化**
+默认 Vite 端口是 `3000`，不是 `5173`。
 
-- 保留 Jinja2 模板
-- 引入前端构建工具（Webpack）
-- 将核心交互页面改为 React 组件
-- 旧页面保持 SSR
+## 9. 架构与文档对齐结论
 
----
+本仓库已完成以下方向的演进：
 
-## 六、总结
+- 从“可能存在的混合页面模式”收敛到 React SPA
+- 从“前端 UI 方案摇摆”收敛到 Radix primitives + 自定义业务组件
+- 从“脚本和端口不统一”收敛到 `npm`、`3000`、`/health`、`/api/docs`
+- 从“概念式架构描述”收敛到与代码目录一致的分层结构
 
-### 当前架构特点
-
-**类型**：混合架构（SSR + CSR）
-
-**组成**：
-- **后端**：Flask API + 页面路由
-- **前端**：Jinja2 模板（主要）+ React 组件（少量）
-- **部署**：单体应用（Docker）
-
-**优点**：
-- ✅ 快速开发（Jinja2 模板）
-- ✅ SEO 友好（服务端渲染）
-- ✅ 部分现代化（React 组件）
-
-**缺点**：
-- ❌ 架构不统一
-- ❌ 前端技术栈割裂
-- ❌ 难以维护
-- ❌ 无法享受现代前端工具链
-
-### 推荐的演进路径
-
-```
-当前：混合架构（SSR + CSR）
-    ↓
-中期：完全前后端分离（React SPA + Flask API）
-    ↓
-长期：微服务架构（前端 + 多个后端服务）
-```
-
-### 架构重构亮点
-
-1. ✅ **六边形架构** - 清晰的分层，解耦依赖
-2. ✅ **CQRS** - 读写分离，性能优化
-3. ✅ **Entity = ORM** - 减少 42% 维护成本
-4. ✅ **RQ 队列** - 轻量化，减少 96% 包大小
-5. ✅ **依赖注入** - 提升可测试性
-6. ✅ **Redis 缓存** - 读性能提升 3-5 倍
-
----
-
----
-
-## 七、SQL 校验机制
-
-### 技术选型：sqlparse
-
-**库名称**: sqlparse  
-**版本**: 0.5.0  
-**用途**: SQL 语法解析和校验
-
-### 支持的 SQL 语法
-
-| SQL 类型 | 示例 | 支持状态 |
-|---------|------|---------|
-| **SELECT 查询** | `SELECT * FROM users` | ✅ 支持 |
-| **WITH (CTE)** | `WITH temp AS (...) SELECT * FROM temp` | ✅ 支持 |
-| **多个 CTE** | `WITH a AS (...), b AS (...) SELECT ...` | ✅ 支持 |
-| **递归 CTE** | `WITH RECURSIVE cte AS (...) SELECT ...` | ✅ 支持 |
-| **DDL 操作** | `DROP TABLE`, `CREATE TABLE` | ❌ 禁止 |
-| **DML 操作** | `INSERT`, `UPDATE`, `DELETE` | ❌ 禁止 |
-
-### 校验规则
-
-1. **允许的查询类型**
-   - SELECT 查询（包括子查询）
-   - WITH (CTE) 查询（Common Table Expression）
-
-2. **禁止的操作**
-   - DDL: `DROP`, `CREATE`, `ALTER`, `TRUNCATE`, `RENAME`
-   - DML: `INSERT`, `UPDATE`, `DELETE`, `MERGE`
-   - 权限: `GRANT`, `REVOKE`
-
-3. **安全检查**
-   - 自动移除注释后进行检查
-   - 使用 sqlparse 进行专业的 SQL 解析
-   - 避免字符串字面量中的误判
-
-### 实现位置
-
-- **校验工具**: `app/shared/utils/sql_validator.py`
-- **调用点1**: `app/interfaces/api/v1/sql_lab.py` (SQL Lab API)
-- **调用点2**: `app/application/query/handlers/execute_query_handler.py` (查询执行)
-
-### 使用示例
-
-```python
-from app.shared.utils.sql_validator import validate_sql_query
-
-# 校验 CTE 查询
-sql = """
-WITH temp AS (
-    SELECT id, name FROM users WHERE age > 18
-)
-SELECT * FROM temp
-"""
-
-is_valid, errors = validate_sql_query(sql)
-if is_valid:
-    print("✅ SQL 校验通过")
-else:
-    print(f"❌ SQL 校验失败: {'; '.join(errors)}")
-```
-
-### 为什么选择 sqlparse？
-
-| 对比项 | 自定义正则 | sqlparse |
-|-------|----------|----------|
-| **准确性** | ❌ 容易误判 | ✅ 专业解析 |
-| **维护成本** | ❌ 高 | ✅ 低 |
-| **CTE 支持** | ❌ 需手动添加 | ✅ 原生支持 |
-| **错误提示** | ❌ 模糊 | ✅ 精确 |
-| **扩展性** | ❌ 困难 | ✅ 易扩展 |
-
----
-
-**文档更新日期**: 2026-01-28
+若需要追溯历史迁移过程，请查看历史文档；若需要理解当前实现，请以本文档和代码为准。

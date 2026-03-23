@@ -1,5 +1,10 @@
 # 元数据同步功能 - 快速开始
 
+> [!WARNING]
+> 本文档基于旧版元数据同步实现，包含的部分接口和流程已不再对应当前主线代码。
+> 当前实现请优先参考 `../README.md`、`TECH_STACK_AND_ARCHITECTURE.md`、`QUICK_START.md` 和 `DOC_ALIGNMENT_REPORT.md`。
+> 当前数据中心主入口为 `/api/v1/data-center/datasources`、`/api/v1/data-center/datasets`，数据集结构刷新能力由现有数据集流程承载。
+
 ## ✅ 已完成的工作
 
 我已经按照您的需求，完成了**元数据同步和数据集注册**功能的完整实现。

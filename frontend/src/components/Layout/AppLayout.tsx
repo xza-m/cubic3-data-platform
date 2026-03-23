@@ -26,6 +26,7 @@ import {
   Box,
   GitBranch,
   Wrench,
+  LogOut,
 } from 'lucide-react'
 
 export default function AppLayout() {
@@ -118,6 +119,11 @@ export default function AppLayout() {
     return colors[color] || ''
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token')
+    navigate('/login', { replace: true })
+  }
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f8f8f6_0%,#f2f4f8_100%)] text-slate-900">
       {/* 顶部导航栏 */}
@@ -158,7 +164,25 @@ export default function AppLayout() {
                 <div className="text-sm font-semibold text-slate-900">Admin</div>
                 <div className="text-xs text-slate-500">管理员</div>
               </div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900"
+                aria-label="退出登录"
+              >
+                <LogOut className="h-4 w-4" />
+                退出
+              </button>
             </div>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 sm:hidden"
+              aria-label="退出登录"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
 
           </div>
         </div>

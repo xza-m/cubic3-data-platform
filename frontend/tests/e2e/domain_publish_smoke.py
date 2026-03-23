@@ -24,11 +24,11 @@ def main() -> int:
 
     try:
         create_domain_via_ui(page, domain_name)
-        page.get_by_role("heading", name="领域建模").wait_for(timeout=10_000)
+        page.get_by_role("heading", name="领域设计").wait_for(timeout=10_000)
         cubes = page.locator('[data-testid^="domain-library-cube-"]')
         cube_count = cubes.count()
         if cube_count == 0:
-            raise AssertionError("当前领域画布没有可用的 active Cube")
+            raise AssertionError("当前领域画布没有可用的活跃 Cube")
 
         used_indexes: set[int] = set()
         drag_index = int(time.time()) % cube_count
@@ -37,27 +37,33 @@ def main() -> int:
 
         published = False
         for _ in range(min(3, cube_count)):
-            page.get_by_test_id("publish-domain-button").click()
-            try:
-                page.get_by_text("领域 YAML 发布成功", exact=True).first.wait_for(timeout=8_000)
+            with page.expect_response(
+                lambda response: response.url.endswith("/publish") and response.request.method == "POST"
+            ) as response_info:
+                page.get_by_test_id("publish-domain-button").click()
+
+            response = response_info.value
+            payload = response.json()
+
+            if response.ok and payload.get("data", {}).get("status") == "active":
                 published = True
                 break
-            except PlaywrightTimeoutError:
-                duplicate_toast = page.get_by_text("结构完全重复", exact=False).first
-                if duplicate_toast.count() == 0:
-                    raise
 
-                next_index = next((idx for idx in range(cube_count) if idx not in used_indexes), None)
-                if next_index is None:
-                    raise AssertionError("领域发布因重复结构被拦截，且没有更多 Cube 可用于生成唯一结构")
+            message = str(payload.get("message") or payload.get("error") or "")
+            if "结构完全重复" not in message:
+                raise AssertionError(f"领域发布返回异常: {message or response.status}")
 
-                used_indexes.add(next_index)
-                drag_library_cube_to_canvas(page, next_index)
+            next_index = next((idx for idx in range(cube_count) if idx not in used_indexes), None)
+            if next_index is None:
+                raise AssertionError("领域发布因重复结构被拦截，且没有更多 Cube 可用于生成唯一结构")
+
+            used_indexes.add(next_index)
+            drag_library_cube_to_canvas(page, next_index)
 
         if not published:
             raise AssertionError("领域发布未成功完成")
 
-        page.get_by_text("active", exact=True).first.wait_for(timeout=10_000)
+        page.get_by_text("活跃", exact=True).first.wait_for(timeout=10_000)
         assert_no_error_toast(page, "发布失败")
         print(f"PASS: 已发布领域并激活 -> {domain_name}")
         return 0

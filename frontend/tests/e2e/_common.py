@@ -7,7 +7,7 @@ from pathlib import Path
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
 
-BASE_URL = os.getenv("DOMAIN_SMOKE_BASE_URL", "http://127.0.0.1:3000")
+BASE_URL = os.getenv("DOMAIN_SMOKE_BASE_URL", "http://127.0.0.1:3100")
 AUTH_TOKEN = os.getenv("DOMAIN_SMOKE_AUTH_TOKEN", "playwright-smoke-token")
 HEADLESS = os.getenv("PLAYWRIGHT_HEADLESS", "1") != "0"
 ARTIFACT_DIR = Path(__file__).resolve().parent.parent / "artifacts"
@@ -64,12 +64,30 @@ def goto_semantic(page: Page, path: str) -> None:
 
 
 def create_domain_via_ui(page: Page, domain_name: str) -> str:
-    goto_semantic(page, "/semantic/canvas")
+    goto_semantic(page, "/semantic/modeling")
     page.get_by_role("heading", name="领域建模").wait_for(timeout=10_000)
     page.get_by_test_id("domain-create-name").fill(domain_name)
     page.get_by_test_id("domain-create-submit").click()
-    page.wait_for_url("**/semantic/domains/**/canvas", timeout=15_000)
-    return page.url.rstrip("/").split("/")[-2]
+    page.wait_for_url("**/semantic/domains/**", timeout=15_000)
+    return page.url.rstrip("/").split("/")[-1]
+
+
+def select_first_schema_table(page: Page) -> None:
+    table_locator = page.locator('[data-testid^="schema-node-table-"]')
+    schema_locator = page.locator('[data-testid^="schema-node-schema-"]')
+    database_locator = page.locator('[data-testid^="schema-node-database-"]')
+
+    if table_locator.count() == 0:
+        if schema_locator.count() == 0:
+            database_locator.first.wait_for(timeout=15_000)
+            database_locator.first.click()
+
+        if table_locator.count() == 0:
+            schema_locator.first.wait_for(timeout=15_000)
+            schema_locator.first.click()
+
+    table_locator.first.wait_for(timeout=15_000)
+    table_locator.first.click()
 
 
 def first_library_cube(page: Page):
@@ -81,7 +99,11 @@ def drag_library_cube_to_canvas(page: Page, index: int = 0) -> None:
     cube = cubes.nth(index)
     cube.wait_for(timeout=10_000)
     canvas = page.get_by_test_id("domain-canvas-surface")
-    cube.drag_to(canvas)
+    canvas.wait_for(timeout=10_000)
+    data_transfer = page.evaluate_handle("() => new DataTransfer()")
+    cube.dispatch_event("dragstart", {"dataTransfer": data_transfer})
+    canvas.dispatch_event("dragover", {"dataTransfer": data_transfer})
+    canvas.dispatch_event("drop", {"dataTransfer": data_transfer})
 
 
 def assert_no_error_toast(page: Page, title: str) -> None:

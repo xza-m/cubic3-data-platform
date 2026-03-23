@@ -1,5 +1,9 @@
 # 元数据同步 - 前端界面使用指南
 
+> [!WARNING]
+> 本文档基于旧版前端流程编写，页面命名、路由入口和组件形态与当前 React SPA 已不完全一致。
+> 当前前端请优先参考 `../frontend/README.md`、`TECH_STACK_AND_ARCHITECTURE.md` 和 `DOC_ALIGNMENT_REPORT.md`。
+
 ## ✅ 已完成的前端集成
 
 我已经在"数据导出"模块中添加了"📋 数据集注册"Tab，提供完整的可视化元数据同步流程。

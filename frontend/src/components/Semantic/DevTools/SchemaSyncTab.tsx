@@ -38,7 +38,23 @@ function severityToStatus(severity: string | undefined): SyncStatus {
   return 'ok'
 }
 
-export function SchemaSyncTab() {
+function getSuggestedAction(kind: string, objectType: string, status: SyncStatus) {
+  if (status === 'error') {
+    if (objectType === 'view') return '优先检查 View 定义和发布结果'
+    if (kind.includes('join')) return '回到领域建模检查 Join 字段'
+    return '回到定义文件补字段或修正类型'
+  }
+  if (status === 'warn') {
+    return '确认当前漂移是否需要同步更新'
+  }
+  return '无需处理'
+}
+
+export function SchemaSyncTab({
+  highlightObjectName,
+}: {
+  highlightObjectName?: string | null
+}) {
   const { toast } = useToast()
   const [filter, setFilter] = useState<'all' | SyncStatus>('all')
 
@@ -190,15 +206,20 @@ export function SchemaSyncTab() {
                 <th className="px-4 py-2.5 text-left font-medium">物理表</th>
                 <th className="px-4 py-2.5 text-left font-medium">问题</th>
                 <th className="px-4 py-2.5 text-left font-medium">状态</th>
+                <th className="px-4 py-2.5 text-left font-medium">建议动作</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((item, index) => {
                 const status = severityToStatus(item.severity)
+                const isHighlighted = Boolean(highlightObjectName && item.object_name === highlightObjectName)
                 return (
                   <tr
                     key={`${item.object_name}-${item.kind}-${item.column}-${index}`}
-                    className="border-t transition-colors hover:bg-muted/30"
+                    className={cn(
+                      'border-t transition-colors hover:bg-muted/30',
+                      isHighlighted && 'bg-[hsl(var(--workbench-accent-soft))]/60',
+                    )}
                   >
                     <td className="px-4 py-2.5">
                       <div className="text-sm font-medium">{item.object_name}</div>
@@ -220,6 +241,9 @@ export function SchemaSyncTab() {
                         <StatusIcon status={status} />
                         <StatusLabel status={status} />
                       </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs leading-5 text-muted-foreground">
+                      {getSuggestedAction(item.kind, item.object_type, status)}
                     </td>
                   </tr>
                 )

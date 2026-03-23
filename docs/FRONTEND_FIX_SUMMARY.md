@@ -1,5 +1,9 @@
 # 前端修复总结
 
+> [!WARNING]
+> 本文档为历史修复纪要，不作为当前页面结构、文件命名或问题状态的权威来源。
+> 当前实现基线请优先参考 `../frontend/README.md`、`TECH_STACK_AND_ARCHITECTURE.md` 和 `DOC_ALIGNMENT_REPORT.md`。
+
 ## 修复时间
 2026-01-29
 

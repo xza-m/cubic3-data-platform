@@ -21,10 +21,10 @@ def main() -> int:
 
     try:
         create_domain_via_ui(page, domain_name)
-        page.wait_for_url("**/semantic/domains/**/canvas", timeout=15_000)
-        page.get_by_role("heading", name="领域建模").wait_for(timeout=10_000)
-        page.get_by_text(domain_name, exact=False).wait_for(timeout=10_000)
-        page.get_by_text("draft", exact=True).first.wait_for(timeout=10_000)
+        page.wait_for_url("**/semantic/domains/**", timeout=15_000)
+        page.get_by_role("heading", name="领域设计").wait_for(timeout=10_000)
+        page.get_by_test_id("domain-inspector-panel").get_by_text(domain_name, exact=False).wait_for(timeout=10_000)
+        page.get_by_text("草稿", exact=True).first.wait_for(timeout=10_000)
         assert_no_error_toast(page, "创建领域失败")
 
         print(f"PASS: 已创建领域草稿并跳转画布 -> {domain_name}")

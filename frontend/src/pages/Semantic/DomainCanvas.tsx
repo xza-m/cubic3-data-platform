@@ -14,7 +14,7 @@ import {
   useNodesState,
 } from '@xyflow/react'
 import ELK from 'elkjs/lib/elk.bundled.js'
-import { ArrowLeft, GitBranch, Layout, PlusCircle, Save, Trash2 } from 'lucide-react'
+import { GitBranch, Layout, Save } from 'lucide-react'
 import {
   getDomainCanvas,
   publishDomain,
@@ -22,21 +22,21 @@ import {
   type DomainCanvasData,
   type DomainCanvasEdge,
 } from '@/api/semantic'
+import { DomainCubeLibrary, type DomainLibraryFilter } from '@/components/Semantic/DomainCanvas/DomainCubeLibrary'
+import { DomainGraphLegend, type DomainCanvasLens } from '@/components/Semantic/DomainCanvas/DomainGraphLegend'
+import { DomainInspectorPanel } from '@/components/Semantic/DomainCanvas/DomainInspectorPanel'
 import { CubeNode } from '@/components/Semantic/CubeNode'
 import { JoinEdge } from '@/components/Semantic/JoinEdge'
-import { SyncStatusBadge } from '@/components/Semantic/SyncStatusBadge'
 import {
   SemanticPageHeader,
   SemanticPageShell,
+  SemanticStatusBanner,
   SemanticSurface,
 } from '@/components/Semantic/workbench'
 import { useToast } from '@/components/business'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import { useUnsavedChangesPrompt } from '@/hooks/useUnsavedChangesPrompt'
 import { getSemanticStatusLabel } from '@/lib/semantic-status'
 import { buildDomainValidationSummary, serializeDomainGraph } from './domainCanvasState'
@@ -143,6 +143,33 @@ function toEdgePayload(edge: Edge, index: number) {
   }
 }
 
+function isLibraryCubeAttention(cube: CubeSummary) {
+  const syncStatus = (cube.state_summary?.sync_status || cube.sync_status || '').toLowerCase()
+  return cube.status !== 'active' || syncStatus === 'warn' || syncStatus === 'error' || !cube.state_summary?.source_binding_summary?.source_id
+}
+
+function isRecentlyUpdated(cube: CubeSummary) {
+  const value = cube.state_summary?.updated_at
+  if (!value) return false
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return false
+  return Date.now() - date.getTime() <= 1000 * 60 * 60 * 24 * 14
+}
+
+function getProblemEdgeIds(edges: Edge[]) {
+  return new Set(
+    edges
+      .filter((edge) => {
+        const sourceField = String((edge.data as any)?.source_field || '')
+        const targetField = String((edge.data as any)?.target_field || '')
+        const relationship = String((edge.data as any)?.relationship || 'N:1')
+        const aggregationStrategy = String((edge.data as any)?.aggregation_strategy || 'none')
+        return !sourceField || !targetField || (relationship === '1:N' && aggregationStrategy === 'none')
+      })
+      .map((edge) => String(edge.id)),
+  )
+}
+
 export default function DomainCanvas() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
@@ -156,6 +183,8 @@ export default function DomainCanvas() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [joinForm, setJoinForm] = useState<JoinFormState | null>(null)
   const [cubeSearch, setCubeSearch] = useState('')
+  const [libraryFilter, setLibraryFilter] = useState<DomainLibraryFilter>('all')
+  const [canvasLens, setCanvasLens] = useState<DomainCanvasLens>('all')
 
   const { data, isLoading } = useQuery({
     queryKey: ['semantic', 'domain-canvas', id],
@@ -182,24 +211,27 @@ export default function DomainCanvas() {
     return result
   }, [data?.library_cubes])
 
+  const libraryCounts = useMemo(() => ({
+    all: (data?.library_cubes || []).filter((cube) => !cube.in_domain).length,
+    attention: (data?.library_cubes || []).filter((cube) => !cube.in_domain && isLibraryCubeAttention(cube)).length,
+    recent: (data?.library_cubes || []).filter((cube) => !cube.in_domain && isRecentlyUpdated(cube)).length,
+  }), [data?.library_cubes])
+
   const visibleLibrary = useMemo(() => {
     const keyword = cubeSearch.trim().toLowerCase()
     return (data?.library_cubes || []).filter((cube) => {
       if (cube.in_domain) return false
+      if (libraryFilter === 'attention' && !isLibraryCubeAttention(cube)) return false
+      if (libraryFilter === 'recent' && !isRecentlyUpdated(cube)) return false
       if (!keyword) return true
       return cube.name.toLowerCase().includes(keyword) || cube.title.toLowerCase().includes(keyword)
     })
-  }, [cubeSearch, data?.library_cubes])
+  }, [cubeSearch, data?.library_cubes, libraryFilter])
 
   const selectedCube = useMemo(() => {
     if (!selectedNodeId) return null
     return data?.library_cubes.find((cube) => cube.name === selectedNodeId) || null
   }, [data?.library_cubes, selectedNodeId])
-
-  const selectedEdge = useMemo(() => {
-    if (!selectedEdgeId) return null
-    return edges.find((edge) => edge.id === selectedEdgeId) || null
-  }, [edges, selectedEdgeId])
 
   const graphSnapshot = useMemo(() => serializeDomainGraph(nodes, edges), [nodes, edges])
   const hasDirtyChanges = Boolean(initialSnapshotRef.current && graphSnapshot !== initialSnapshotRef.current)
@@ -227,12 +259,86 @@ export default function DomainCanvas() {
   })
 
   const summary = buildDomainValidationSummary(data?.domain, nodes, edges, data?.library_cubes || [], hasDirtyChanges, publishMutation.isPending)
+  const problemEdgeIds = useMemo(() => getProblemEdgeIds(edges), [edges])
+  const problemNodeIds = useMemo(() => {
+    const ids = new Set<string>()
+    edges.forEach((edge) => {
+      if (problemEdgeIds.has(String(edge.id))) {
+        ids.add(edge.source)
+        ids.add(edge.target)
+      }
+    })
+    nodes.forEach((node) => {
+      const status = cubeIndex.get(node.id)?.status
+      if (status && status !== 'active') {
+        ids.add(node.id)
+      }
+    })
+    return ids
+  }, [cubeIndex, edges, nodes, problemEdgeIds])
+  const issueCount = problemEdgeIds.size + Math.max(problemNodeIds.size - problemEdgeIds.size, 0)
+
+  const displayNodes = useMemo(() => {
+    if (canvasLens === 'all') {
+      return nodes.map((node) => ({ ...node, hidden: false }))
+    }
+    if (canvasLens === 'issues') {
+      if (problemNodeIds.size === 0 && problemEdgeIds.size === 0) {
+        return nodes.map((node) => ({ ...node, hidden: false }))
+      }
+      return nodes.map((node) => ({ ...node, hidden: !problemNodeIds.has(node.id) }))
+    }
+    if (selectedNodeId) {
+      const relatedIds = new Set<string>([selectedNodeId])
+      edges.forEach((edge) => {
+        if (edge.source === selectedNodeId || edge.target === selectedNodeId) {
+          relatedIds.add(edge.source)
+          relatedIds.add(edge.target)
+        }
+      })
+      return nodes.map((node) => ({ ...node, hidden: !relatedIds.has(node.id) }))
+    }
+    if (selectedEdgeId) {
+      const edge = edges.find((item) => String(item.id) === selectedEdgeId)
+      if (!edge) return nodes.map((node) => ({ ...node, hidden: false }))
+      return nodes.map((node) => ({ ...node, hidden: !(node.id === edge.source || node.id === edge.target) }))
+    }
+    return nodes.map((node) => ({ ...node, hidden: false }))
+  }, [canvasLens, edges, nodes, problemEdgeIds.size, problemNodeIds, selectedEdgeId, selectedNodeId])
+
+  const displayEdges = useMemo(() => {
+    if (canvasLens === 'all') {
+      return edges.map((edge) => ({ ...edge, hidden: false }))
+    }
+    if (canvasLens === 'issues') {
+      if (problemEdgeIds.size === 0) {
+        return edges.map((edge) => ({ ...edge, hidden: false }))
+      }
+      return edges.map((edge) => ({ ...edge, hidden: !problemEdgeIds.has(String(edge.id)) }))
+    }
+    if (selectedNodeId) {
+      return edges.map((edge) => ({
+        ...edge,
+        hidden: !(edge.source === selectedNodeId || edge.target === selectedNodeId),
+      }))
+    }
+    if (selectedEdgeId) {
+      return edges.map((edge) => ({
+        ...edge,
+        hidden: String(edge.id) !== selectedEdgeId,
+      }))
+    }
+    return edges.map((edge) => ({ ...edge, hidden: false }))
+  }, [canvasLens, edges, problemEdgeIds, selectedEdgeId, selectedNodeId])
 
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNodeId(node.id)
     setSelectedEdgeId(null)
     setJoinForm(null)
-  }, [])
+    if (canvasLens === 'selection') {
+      setCanvasLens('selection')
+    }
+  }, [canvasLens])
 
   const handleEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
     setSelectedEdgeId(String(edge.id))
@@ -362,369 +468,143 @@ export default function DomainCanvas() {
         backHref="/semantic/modeling"
         backLabel="返回领域建模"
         title="领域设计"
-        description="围绕当前领域编排 Cube、配置 Join、处理阻塞项并完成发布，页面只保留建模必需的信息。"
+        description="围绕当前领域编排 Cube、配置 Join、处理阻塞项并完成发布。页面首屏只保留建模、判断和发布必需的信息。"
         status={summary.status}
-        meta={
+        meta={(
           <>
-            {data?.domain.name && <Badge variant="secondary">当前领域：{data.domain.name}</Badge>}
+            {data?.domain.name ? <Badge variant="secondary">当前领域：{data.domain.name}</Badge> : null}
             <Badge variant={data?.domain.status === 'active' ? 'default' : 'secondary'}>{getSemanticStatusLabel(data?.domain.status)}</Badge>
-            {data?.domain.state_summary?.sync_status && <SyncStatusBadge status={data.domain.state_summary.sync_status as any} />}
-            {data?.domain.state_summary?.last_published_at && (
+            {data?.domain.state_summary?.last_published_at ? (
               <Badge variant="outline">最近发布 {new Date(data.domain.state_summary.last_published_at).toLocaleString('zh-CN')}</Badge>
-            )}
+            ) : null}
           </>
-        }
+        )}
+        actions={(
+          <Button asChild variant="outline" className="h-10 rounded-full border-[hsl(var(--workbench-outline))] bg-white/86 px-4">
+            <Link to="/semantic/cubes">
+              <GitBranch className="mr-1.5 h-4 w-4" />
+              返回 Cube 管理
+            </Link>
+          </Button>
+        )}
       />
 
-      <SemanticSurface
-        bodyClassName="p-0"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[hsl(var(--workbench-outline))] px-5 py-3.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-surface-2))] text-[hsl(var(--workbench-muted-foreground))]">
-              <PlusCircle className="mr-1.5 h-3.5 w-3.5" />
-              从左侧拖入 Cube 添加实体
-            </Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-surface-2))] text-[hsl(var(--workbench-muted-foreground))]">
-              <GitBranch className="mr-1.5 h-3.5 w-3.5" />
-              连接节点添加关系
-            </Badge>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-surface-2))] text-[hsl(var(--workbench-muted-foreground))]">
-              {nodes.length} 个实体
-            </Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-surface-2))] text-[hsl(var(--workbench-muted-foreground))]">
-              {edges.length} 条关系
-            </Badge>
-            <Button variant="outline" onClick={handleAutoLayout} className="rounded-full border-[hsl(var(--workbench-outline))] bg-white px-4">
-              <Layout className="mr-1.5 h-4 w-4" />
-              自动布局
-            </Button>
-            <Button
-              data-testid="publish-domain-button"
-              onClick={() => publishMutation.mutate()}
-              disabled={publishMutation.isPending || summary.status === 'blocked'}
-              className="rounded-full px-4"
-            >
-              <Save className="mr-1.5 h-4 w-4" />
-              发布领域
-            </Button>
-          </div>
-        </div>
+      <SemanticStatusBanner
+        summary={summary}
+        primaryAction={{
+          label: '发布领域',
+          onClick: () => publishMutation.mutate(),
+          icon: <Save className="mr-1.5 h-4 w-4" />,
+          disabled: publishMutation.isPending || summary.status === 'blocked',
+          testId: 'publish-domain-button',
+        }}
+      />
 
-        <div className="grid gap-0 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
-          <aside className="border-r border-[hsl(var(--workbench-outline))] bg-[rgba(249,251,254,0.84)] p-4">
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]" style={{ fontFamily: 'var(--font-workbench-display)' }}>
-                可选 Cube
-              </div>
-              <p className="text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]">
-                只显示可纳入当前领域的活跃 Cube。拖入画布后，在右侧补充 Join 细节。
-              </p>
-            </div>
-            <Input
-              name="cube_library_search"
-              autoComplete="off"
-              placeholder="搜索 Cube…"
-              value={cubeSearch}
-              onChange={(e) => setCubeSearch(e.target.value)}
-              aria-label="搜索可加入领域的 Cube"
-              className="border-[hsl(var(--workbench-outline))] bg-white"
-            />
-            <div className="max-h-[calc(100vh-23rem)] space-y-2 overflow-auto pr-1">
-              {visibleLibrary.map((cube) => (
-                <button
-                  key={cube.name}
-                  type="button"
-                  draggable
-                  data-testid={`domain-library-cube-${cube.name}`}
-                  onDragStart={handleDragStart(cube.name)}
-                  className="w-full rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white/92 p-3 text-left transition-colors hover:border-[hsl(var(--workbench-accent))]/35"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">{cube.title}</div>
-                      <div className="font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{cube.name}</div>
-                    </div>
-                    <Badge variant="outline">{getSemanticStatusLabel(cube.status || 'draft')}</Badge>
-                  </div>
-                  <div className="mt-3 flex gap-3 text-[11px] text-[hsl(var(--workbench-muted-foreground))]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    <span>{cube.dimension_count} 维度</span>
-                    <span>{cube.measure_count} 指标</span>
-                  </div>
-                </button>
-              ))}
-              {visibleLibrary.length === 0 && (
-                <div className="rounded-xl border border-dashed border-[hsl(var(--workbench-outline))] bg-white/92 p-4 text-xs text-[hsl(var(--workbench-muted-foreground))]">
-                  当前没有可加入的 Cube，可能都已在本领域中或检索条件过窄。
-                </div>
-              )}
-            </div>
-          </div>
-        </aside>
+      <SemanticSurface bodyClassName="grid gap-0 p-0 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+        <DomainCubeLibrary
+          search={cubeSearch}
+          onSearchChange={setCubeSearch}
+          filter={libraryFilter}
+          onFilterChange={setLibraryFilter}
+          counts={libraryCounts}
+          cubes={visibleLibrary}
+          onDragStart={handleDragStart}
+        />
 
         <section
           ref={wrapperRef}
           data-testid="domain-canvas-surface"
-          className="overflow-hidden border-r border-[hsl(var(--workbench-outline))] bg-[rgba(255,255,255,0.92)]"
-          onDragOver={(e) => e.preventDefault()}
-          onDragOverCapture={(e) => e.preventDefault()}
+          className="relative flex min-h-[44rem] flex-col overflow-hidden border-r border-[hsl(var(--workbench-outline))] bg-[rgba(252,253,255,0.94)]"
+          onDragOver={(event) => event.preventDefault()}
+          onDragOverCapture={(event) => event.preventDefault()}
           onDrop={handleDrop}
         >
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-4 py-3">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-4 py-3">
+            <div className="space-y-1">
               <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]" style={{ fontFamily: 'var(--font-workbench-display)' }}>
                 领域画布
               </div>
               <p className="text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]">
-                点击节点查看 Cube 摘要，点击连线编辑 Join 规则与聚合策略。
+                中央区域只保留结构、异常和当前焦点。拖入 Cube 后，直接在右侧完成 Join 配置与发布前检查。
               </p>
             </div>
-            <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {nodes.length} 个节点 · {edges.length} 条关系
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">
+                {nodes.length} 个实体
+              </Badge>
+              <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">
+                {edges.length} 条关系
+              </Badge>
+              <Badge
+                variant="outline"
+                className={
+                  issueCount
+                    ? 'border-transparent bg-[hsl(var(--semantic-warn))]/12 text-[hsl(var(--semantic-warn))]'
+                    : 'border-transparent bg-[hsl(var(--workbench-accent-soft))] text-[hsl(var(--workbench-accent))]'
+                }
+              >
+                {issueCount ? `${issueCount} 个待处理问题` : '当前无阻塞'}
+              </Badge>
+              <Button variant="outline" onClick={handleAutoLayout} className="h-9 rounded-full border-[hsl(var(--workbench-outline))] bg-white px-4">
+                <Layout className="mr-1.5 h-4 w-4" />
+                自动布局
+              </Button>
             </div>
           </div>
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeClick={handleNodeClick}
-            onEdgeClick={handleEdgeClick}
-            onConnect={handleConnect}
-            onPaneClick={() => {
-              setSelectedNodeId(null)
-              setSelectedEdgeId(null)
-              setJoinForm(null)
-            }}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            fitView
-            minZoom={0.3}
-            maxZoom={2}
-            proOptions={{ hideAttribution: true }}
-            className="h-[calc(100vh-21rem)]"
-          >
-            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            <MiniMap nodeStrokeWidth={3} zoomable pannable className="!rounded-lg !border !bg-card" />
-            <Controls className="!rounded-lg !border !bg-card !shadow-sm" />
-          </ReactFlow>
+
+          <DomainGraphLegend lens={canvasLens} onLensChange={setCanvasLens} />
+
+          {!nodes.length ? (
+            <div className="absolute inset-x-8 top-20 z-10 rounded-[var(--workbench-radius)] border border-dashed border-[hsl(var(--workbench-outline))] bg-white/92 px-5 py-5 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
+              <div className="font-semibold text-[hsl(var(--workbench-ink))]">空画布引导</div>
+              <div className="mt-2">1. 从左侧拖入 Cube</div>
+              <div>2. 在画布上连接两个节点</div>
+              <div>3. 在右侧补全 Join 字段并保存</div>
+            </div>
+          ) : null}
+
+          <div className="flex-1">
+            <ReactFlow
+              nodes={displayNodes}
+              edges={displayEdges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={handleNodeClick}
+              onEdgeClick={handleEdgeClick}
+              onConnect={handleConnect}
+              onPaneClick={() => {
+                setSelectedNodeId(null)
+                setSelectedEdgeId(null)
+                setJoinForm(null)
+              }}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              fitView
+              minZoom={0.3}
+              maxZoom={2}
+              proOptions={{ hideAttribution: true }}
+              className="h-[calc(100vh-20rem)] min-h-[35rem]"
+            >
+              <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+              <MiniMap nodeStrokeWidth={3} zoomable pannable className="!rounded-lg !border !bg-card" />
+              <Controls className="!rounded-lg !border !bg-card !shadow-sm" />
+            </ReactFlow>
+          </div>
         </section>
 
-        <aside
-          className="space-y-4 bg-[rgba(249,251,254,0.84)] p-4"
-          data-testid="domain-inspector-panel"
-        >
-          <div className="space-y-1">
-            <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]" style={{ fontFamily: 'var(--font-workbench-display)' }}>
-              {selectedEdgeId ? 'Join 设置' : selectedCube ? 'Cube 摘要' : '领域摘要'}
-            </div>
-            <p className="text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]">
-              {selectedEdgeId
-                ? '在右侧直接编辑 Join 字段、基数和聚合策略。'
-                : selectedCube
-                  ? '这里只展示当前节点的模型摘要，不提供跨页设计跳转。'
-                  : '这里展示当前领域的规模、阻塞项和发布前摘要。'}
-            </p>
-          </div>
-          {selectedEdgeId && joinForm ? (
-            <>
-                <div data-testid="domain-inspector-join" className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div>
-                      <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">源 Cube</div>
-                    <Input value={joinForm.source_cube} disabled className="border-[hsl(var(--workbench-outline))] bg-white" />
-                  </div>
-                  <div>
-                    <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">目标 Cube</div>
-                    <Input value={joinForm.target_cube} disabled className="border-[hsl(var(--workbench-outline))] bg-white" />
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">源字段</div>
-                    <Select value={joinForm.source_field} onValueChange={(value) => setJoinForm((prev) => prev ? ({ ...prev, source_field: value }) : prev)}>
-                      <SelectTrigger data-testid="domain-inspector-source-field">
-                        <SelectValue placeholder="选择字段" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(cubeIndex.get(joinForm.source_cube)?.dimensions || []).map((field) => (
-                          <SelectItem key={field} value={field}>
-                            {field}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">目标字段</div>
-                    <Select value={joinForm.target_field} onValueChange={(value) => setJoinForm((prev) => prev ? ({ ...prev, target_field: value }) : prev)}>
-                      <SelectTrigger data-testid="domain-inspector-target-field">
-                        <SelectValue placeholder="选择字段" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(cubeIndex.get(joinForm.target_cube)?.dimensions || []).map((field) => (
-                          <SelectItem key={field} value={field}>
-                            {field}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div>
-                    <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">Join Type</div>
-                    <Select value={joinForm.join_type} onValueChange={(value: any) => setJoinForm((prev) => prev ? ({ ...prev, join_type: value }) : prev)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="left">left</SelectItem>
-                        <SelectItem value="inner">inner</SelectItem>
-                        <SelectItem value="right">right</SelectItem>
-                        <SelectItem value="full">full</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">Cardinality</div>
-                    <Select
-                      value={joinForm.cardinality}
-                      onValueChange={(value: any) =>
-                        setJoinForm((prev) => prev ? ({
-                          ...prev,
-                          cardinality: value,
-                          aggregation_strategy: value === '1:N' ? prev.aggregation_strategy : 'none',
-                        }) : prev)
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1:1">1:1</SelectItem>
-                        <SelectItem value="N:1">N:1</SelectItem>
-                        <SelectItem value="1:N">1:N</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">聚合策略</div>
-                    <Select value={joinForm.aggregation_strategy} onValueChange={(value: any) => setJoinForm((prev) => prev ? ({ ...prev, aggregation_strategy: value }) : prev)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">none</SelectItem>
-                        <SelectItem value="aggregate_before_join">aggregate_before_join</SelectItem>
-                        <SelectItem value="latest_snapshot">latest_snapshot</SelectItem>
-                        <SelectItem value="distinct_on_target">distinct_on_target</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">说明</div>
-                  <Textarea
-                    rows={3}
-                    value={joinForm.description}
-                    onChange={(e) => setJoinForm((prev) => prev ? ({ ...prev, description: e.target.value }) : prev)}
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={handleJoinSave} data-testid="domain-inspector-save" className="rounded-full px-4">
-                    <Save className="mr-1.5 h-4 w-4" />
-                    保存当前 Join
-                  </Button>
-                  <Button variant="outline" onClick={handleDeleteSelectedEdge} className="rounded-full border-[hsl(var(--workbench-outline))] bg-white/88 px-4">
-                    <Trash2 className="mr-1.5 h-4 w-4" />
-                    删除 Join
-                  </Button>
-                </div>
-              </div>
-            </>
-          ) : selectedCube ? (
-            <>
-              <div data-testid="domain-inspector-cube" className="space-y-3">
-                <div className="rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-4">
-                  <div className="flex items-center gap-2">
-                    <div className="font-semibold text-[hsl(var(--workbench-ink))]">{selectedCube.title}</div>
-                    <Badge variant="outline">{getSemanticStatusLabel(selectedCube.status || 'draft')}</Badge>
-                  </div>
-                  <div className="mt-1 font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{selectedCube.name}</div>
-                  <div className="mt-3 text-sm text-[hsl(var(--workbench-muted-foreground))]">
-                    {selectedCube.dimension_count} 维度 · {selectedCube.measure_count} 指标 · {selectedCube.join_count ?? 0} 条关联
-                  </div>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
-                    <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">数据源</div>
-                    <div className="mt-2 text-sm font-medium text-[hsl(var(--workbench-ink))]">
-                      {selectedCube.state_summary?.source_binding_summary?.source_name || '未绑定'}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
-                    <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">同步状态</div>
-                    <div className="mt-2">
-                      <SyncStatusBadge status={selectedCube.state_summary?.sync_status as any} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-4">
-                <div className="flex items-center gap-2">
-                  <div className="font-semibold text-[hsl(var(--workbench-ink))]">{data?.domain.name}</div>
-                  <Badge variant={data?.domain.status === 'active' ? 'default' : 'secondary'}>
-                    {getSemanticStatusLabel(data?.domain.status)}
-                  </Badge>
-                </div>
-                <div className="mt-1 font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{data?.domain.code}</div>
-                <p className="mt-3 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                  {data?.domain.description || '当前领域尚未补充说明。建议先定义边界，再逐步补足 Join 关系。'}
-                </p>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
-                  <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">当前规模</div>
-                  <div className="mt-2 text-lg font-semibold text-[hsl(var(--workbench-ink))]">{nodes.length}</div>
-                  <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">已入域 Cube</div>
-                </div>
-                <div className="rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
-                  <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">关系数</div>
-                  <div className="mt-2 text-lg font-semibold text-[hsl(var(--workbench-ink))]">{edges.length}</div>
-                  <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">领域 Join</div>
-                </div>
-              </div>
-              <div className="space-y-2 rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-4">
-                <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">发布前检查</div>
-                <div className="text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                  {summary.description}
-                </div>
-                {summary.blockers && summary.blockers.length > 0 && (
-                  <ul className="space-y-1 text-sm text-[hsl(var(--semantic-error))]">
-                    {summary.blockers.map((blocker) => (
-                      <li key={blocker}>• {blocker}</li>
-                    ))}
-                  </ul>
-                )}
-                {summary.hints && summary.hints.length > 0 && (
-                  <ul className="space-y-1 text-sm text-[hsl(var(--workbench-muted-foreground))]">
-                    {summary.hints.map((hint) => (
-                      <li key={hint}>• {hint}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </>
-          )}
-        </aside>
-      </div>
+        <DomainInspectorPanel
+          domain={data?.domain}
+          summary={summary}
+          selectedCube={selectedCube}
+          selectedEdgeId={selectedEdgeId}
+          joinForm={joinForm}
+          cubeIndex={cubeIndex}
+          nodesCount={nodes.length}
+          edgesCount={edges.length}
+          onJoinFormChange={setJoinForm}
+          onJoinSave={handleJoinSave}
+          onDeleteEdge={handleDeleteSelectedEdge}
+        />
       </SemanticSurface>
     </SemanticPageShell>
   )

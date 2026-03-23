@@ -1,20 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import Editor from '@monaco-editor/react'
-import {
-  Bug,
-  Play,
-  Loader2,
-  CheckCircle2,
-  AlertTriangle,
-  RotateCcw,
-  Copy,
-  Check,
-} from 'lucide-react'
+import { AlertTriangle, Bug, Check, CheckCircle2, Copy, Loader2, Play, RotateCcw } from 'lucide-react'
 import { compileDsl } from '@/api/semantic'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { SemanticEmptyState } from '@/components/Semantic/workbench'
 import { useToast } from '@/hooks/use-toast'
+import { cn } from '@/lib/utils'
 
 const EXAMPLE_DSL = JSON.stringify(
   {
@@ -39,12 +31,34 @@ interface CompileStep {
   detail?: string
 }
 
-export function CompileDebugTab() {
+export interface CompileDebugStatus {
+  state: 'idle' | 'running' | 'success' | 'error'
+  label: string
+  lastRunAt?: string | null
+}
+
+export function CompileDebugTab({
+  onStatusChange,
+}: {
+  onStatusChange?: (status: CompileDebugStatus) => void
+}) {
   const { toast } = useToast()
   const [dslInput, setDslInput] = useState(EXAMPLE_DSL)
   const [steps, setSteps] = useState<CompileStep[]>([])
   const [sqlResult, setSqlResult] = useState<string>('')
   const [copied, setCopied] = useState(false)
+  const [lastRunAt, setLastRunAt] = useState<string | null>(null)
+  const [primaryCube, setPrimaryCube] = useState<string>('')
+  const [joinedCubes, setJoinedCubes] = useState<string[]>([])
+  const [compileState, setCompileState] = useState<CompileDebugStatus>({
+    state: 'idle',
+    label: '未执行',
+    lastRunAt: null,
+  })
+
+  useEffect(() => {
+    onStatusChange?.(compileState)
+  }, [compileState, onStatusChange])
 
   const compileMutation = useMutation({
     mutationFn: async (dsl: Record<string, any>) => {
@@ -52,35 +66,44 @@ export function CompileDebugTab() {
       return res.data
     },
     onSuccess: (data) => {
-      const newSteps: CompileStep[] = [
+      const executedAt = new Date().toLocaleString('zh-CN')
+      setLastRunAt(executedAt)
+      setPrimaryCube(data.primary_cube)
+      setJoinedCubes(data.joined_cubes)
+      setSteps([
         { name: 'DSL 解析', status: 'ok', detail: '语法正确' },
-        {
-          name: 'Cube 解析',
-          status: 'ok',
-          detail: `主 Cube: ${data.primary_cube}`,
-        },
+        { name: 'Cube 解析', status: 'ok', detail: `主 Cube: ${data.primary_cube}` },
         {
           name: 'JOIN 路径推导',
           status: data.joined_cubes.length > 0 ? 'ok' : 'skipped',
-          detail:
-            data.joined_cubes.length > 0
-              ? `${data.primary_cube} → ${data.joined_cubes.join(' → ')}`
-              : '无需 JOIN（单 Cube 查询）',
+          detail: data.joined_cubes.length > 0 ? `${data.primary_cube} → ${data.joined_cubes.join(' → ')}` : '无需 JOIN（单 Cube 查询）',
         },
-        { name: 'Fan-out 检测', status: 'ok', detail: '安全' },
-        { name: '分区注入', status: 'ok', detail: '已注入' },
-        { name: 'Default Filter', status: 'ok', detail: '已注入' },
+        { name: 'Fan-out 检测', status: 'ok', detail: '未发现扩表风险' },
+        { name: '默认过滤注入', status: 'ok', detail: '已完成' },
         { name: 'SQL 生成', status: 'ok', detail: '完成' },
-      ]
-      setSteps(newSteps)
+      ])
       setSqlResult(data.sql)
+      setCompileState({
+        state: 'success',
+        label: '成功',
+        lastRunAt: executedAt,
+      })
     },
     onError: (err: Error) => {
+      const executedAt = new Date().toLocaleString('zh-CN')
+      setLastRunAt(executedAt)
+      setPrimaryCube('')
+      setJoinedCubes([])
       setSteps([
-        { name: 'DSL 解析', status: 'ok' },
+        { name: 'DSL 解析', status: 'ok', detail: '输入 JSON 可解析' },
         { name: '编译失败', status: 'error', detail: err.message },
       ])
       setSqlResult('')
+      setCompileState({
+        state: 'error',
+        label: '失败',
+        lastRunAt: executedAt,
+      })
       toast({ title: '编译失败', description: err.message, variant: 'destructive' })
     },
   })
@@ -90,16 +113,29 @@ export function CompileDebugTab() {
       const parsed = JSON.parse(dslInput)
       setSteps([])
       setSqlResult('')
+      setCompileState({
+        state: 'running',
+        label: '编译中',
+        lastRunAt,
+      })
       compileMutation.mutate(parsed)
-    } catch (e) {
-      toast({ title: 'JSON 格式错误', description: String(e), variant: 'destructive' })
+    } catch (error) {
+      toast({ title: 'JSON 格式错误', description: String(error), variant: 'destructive' })
     }
-  }, [dslInput, compileMutation, toast])
+  }, [compileMutation, dslInput, lastRunAt, toast])
 
   const handleReset = () => {
     setDslInput(EXAMPLE_DSL)
     setSteps([])
     setSqlResult('')
+    setPrimaryCube('')
+    setJoinedCubes([])
+    setCompileState({
+      state: 'idle',
+      label: '未执行',
+      lastRunAt: null,
+    })
+    setLastRunAt(null)
   }
 
   const handleCopy = () => {
@@ -109,145 +145,187 @@ export function CompileDebugTab() {
     })
   }
 
+  const issueSummary = useMemo(() => {
+    const errorStep = steps.find((step) => step.status === 'error')
+    if (errorStep) {
+      return {
+        title: '当前阻塞',
+        description: errorStep.detail || '编译失败，请回到左侧 DSL 输入检查字段引用和 JSON 结构。',
+      }
+    }
+    if (compileState.state === 'success') {
+      return {
+        title: '定位建议',
+        description: joinedCubes.length > 0
+          ? `当前会经过 ${joinedCubes.length} 个 JOIN 节点。建议优先检查 ${primaryCube} 与 ${joinedCubes[0]} 的关系定义。`
+          : '当前查询只依赖单个 Cube。建议优先检查指标、维度和时间粒度定义。',
+      }
+    }
+    return {
+      title: '结果定位',
+      description: '先执行编译，再从右侧依次查看结论、日志步骤和 SQL 结果。',
+    }
+  }, [compileState.state, joinedCubes, primaryCube, steps])
+
   const isDark = document.documentElement.classList.contains('dark')
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
-      {/* 左侧: DSL 输入 */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold">DSL 输入</h3>
-        <div className="rounded-lg border overflow-hidden" style={{ height: '400px' }}>
-          <Editor
-            height="100%"
-            language="json"
-            value={dslInput}
-            theme={isDark ? 'vs-dark' : 'vs'}
-            onChange={(v) => setDslInput(v ?? '{}')}
-            options={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 13,
-              minimap: { enabled: false },
-              lineNumbers: 'on',
-              scrollBeyondLastLine: false,
-              wordWrap: 'on',
-              tabSize: 2,
-            }}
-          />
+    <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-4">
+          <SummaryItem label="最近执行" value={lastRunAt || '未执行'} tone="default" />
+          <SummaryItem label="编译结论" value={compileState.label} tone={compileState.state === 'error' ? 'warning' : compileState.state === 'success' ? 'accent' : 'default'} />
+          <SummaryItem label="主 Cube" value={primaryCube || '未生成'} tone="default" />
+          <SummaryItem label="Join 数" value={joinedCubes.length} tone="default" />
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleCompile} disabled={compileMutation.isPending}>
-            {compileMutation.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin mr-1.5" aria-hidden="true" />
-                编译中…
-              </>
-            ) : (
-              <>
-                <Play className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                编译
-              </>
-            )}
-          </Button>
-          <Button variant="outline" onClick={handleReset}>
-            <RotateCcw className="w-4 h-4 mr-1.5" aria-hidden="true" />
-            重置
-          </Button>
-        </div>
-      </div>
 
-      {/* 右侧: 编译步骤 */}
-      <div className="space-y-4">
-        {steps.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Bug className="w-10 h-10 text-muted-foreground/30 mb-3" aria-hidden="true" />
-            <p className="text-sm text-muted-foreground">
-              输入 DSL JSON 并点击编译，查看逐步编译结果
-            </p>
+        <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[rgba(248,250,252,0.96)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-4 py-3">
+            <div>
+              <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">DSL 输入</div>
+              <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">输入 JSON DSL 后执行编译，结果会同步到右侧日志和 SQL 面板。</div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleCompile} disabled={compileMutation.isPending}>
+                {compileMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    编译中…
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-1.5 h-4 w-4" />
+                    编译
+                  </>
+                )}
+              </Button>
+              <Button variant="outline" onClick={handleReset}>
+                <RotateCcw className="mr-1.5 h-4 w-4" />
+                重置
+              </Button>
+            </div>
           </div>
+          <div style={{ height: 'calc(100vh - 28rem)' }}>
+            <Editor
+              height="100%"
+              language="json"
+              value={dslInput}
+              theme={isDark ? 'vs-dark' : 'vs'}
+              onChange={(value) => setDslInput(value ?? '{}')}
+              options={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 13,
+                minimap: { enabled: false },
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+                tabSize: 2,
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white px-4 py-4">
+          <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">{issueSummary.title}</div>
+          <p className="mt-2 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">{issueSummary.description}</p>
+        </div>
+
+        {steps.length === 0 ? (
+          <SemanticEmptyState
+            icon={<Bug className="h-6 w-6" />}
+            title="还没有编译记录"
+            description="左侧输入 DSL JSON 并执行编译。这里会先展示结论和步骤日志，再给出 SQL 结果。"
+          />
         ) : (
-          <>
-            <h3 className="text-sm font-semibold">编译步骤</h3>
+          <div className="space-y-3 rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white px-4 py-4">
+            <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">步骤日志</div>
             <div className="space-y-2" role="list">
-              {steps.map((step, i) => (
+              {steps.map((step, index) => (
                 <div
-                  key={i}
+                  key={`${step.name}-${index}`}
                   className={cn(
-                    'rounded-lg border p-3 transition-all',
-                    step.status === 'error' && 'border-destructive/50 bg-destructive/5',
-                    step.status === 'ok' && 'bg-card',
-                    step.status === 'skipped' && 'opacity-60',
+                    'rounded-[var(--workbench-radius-sm)] border px-3 py-3 transition-colors',
+                    step.status === 'error'
+                      ? 'border-[hsl(var(--semantic-error))]/30 bg-[hsl(var(--semantic-error))]/6'
+                      : step.status === 'ok'
+                        ? 'border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface-2))]'
+                        : 'border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))]',
                   )}
                   role="listitem"
                 >
                   <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold',
-                        step.status === 'ok' && 'bg-[hsl(var(--semantic-ok))]/10 text-[hsl(var(--semantic-ok))]',
-                        step.status === 'error' && 'bg-destructive/10 text-destructive',
-                        step.status === 'skipped' && 'bg-muted text-muted-foreground',
-                      )}
-                    >
-                      {step.status === 'ok' ? (
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      ) : step.status === 'error' ? (
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                      ) : (
-                        '—'
-                      )}
-                    </span>
-                    <span className="text-sm font-medium">{step.name}</span>
-                    {step.status === 'skipped' && (
-                      <span className="text-[10px] text-muted-foreground ml-1">跳过</span>
+                    {step.status === 'ok' ? (
+                      <CheckCircle2 className="h-4 w-4 text-[hsl(var(--semantic-ok))]" />
+                    ) : step.status === 'error' ? (
+                      <AlertTriangle className="h-4 w-4 text-[hsl(var(--semantic-error))]" />
+                    ) : (
+                      <Bug className="h-4 w-4 text-[hsl(var(--workbench-muted-foreground))]" />
                     )}
+                    <span className="text-sm font-medium text-[hsl(var(--workbench-ink))]">{step.name}</span>
                   </div>
-                  {step.detail && (
-                    <p
-                      className={cn(
-                        'text-xs mt-1 ml-7',
-                        step.status === 'error' ? 'text-destructive' : 'text-muted-foreground',
-                      )}
-                      style={{ fontFamily: 'var(--font-mono)' }}
-                    >
+                  {step.detail ? (
+                    <p className="mt-2 pl-6 text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]" style={{ fontFamily: 'var(--font-mono)' }}>
                       {step.detail}
                     </p>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
-
-            {/* SQL 结果 */}
-            {sqlResult && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">生成的 SQL</h3>
-                  <Button variant="ghost" size="sm" onClick={handleCopy}>
-                    {copied ? <Check className="w-3.5 h-3.5 mr-1" /> : <Copy className="w-3.5 h-3.5 mr-1" />}
-                    {copied ? '已复制' : '复制'}
-                  </Button>
-                </div>
-                <div className="rounded-lg border overflow-hidden">
-                  <Editor
-                    height="200px"
-                    language="sql"
-                    value={sqlResult}
-                    theme={isDark ? 'vs-dark' : 'vs'}
-                    options={{
-                      readOnly: true,
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: 12,
-                      minimap: { enabled: false },
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      wordWrap: 'on',
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </>
+          </div>
         )}
-      </div>
+
+        {sqlResult ? (
+          <div className="overflow-hidden rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[rgba(248,250,252,0.96)]">
+            <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-4 py-3">
+              <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">生成 SQL</div>
+              <Button variant="ghost" size="sm" onClick={handleCopy}>
+                {copied ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
+                {copied ? '已复制' : '复制'}
+              </Button>
+            </div>
+            <Editor
+              height="220px"
+              language="sql"
+              value={sqlResult}
+              theme={isDark ? 'vs-dark' : 'vs'}
+              options={{
+                readOnly: true,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                minimap: { enabled: false },
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                wordWrap: 'on',
+              }}
+            />
+          </div>
+        ) : null}
+      </section>
+    </div>
+  )
+}
+
+function SummaryItem({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string | number
+  tone: 'default' | 'accent' | 'warning'
+}) {
+  const toneClassName = {
+    default: 'bg-white text-[hsl(var(--workbench-ink))]',
+    accent: 'bg-[hsl(var(--workbench-accent-soft))] text-[hsl(var(--workbench-accent))]',
+    warning: 'bg-[hsl(var(--semantic-warn))]/10 text-[hsl(var(--semantic-warn))]',
+  }[tone]
+
+  return (
+    <div className={cn('rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] px-3 py-3', toneClassName)}>
+      <div className="text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]">{label}</div>
+      <div className="mt-1 text-sm font-semibold" style={{ fontVariantNumeric: 'tabular-nums' }}>{value}</div>
     </div>
   )
 }

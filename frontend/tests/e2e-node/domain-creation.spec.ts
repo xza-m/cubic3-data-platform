@@ -10,7 +10,7 @@ test('创建领域后进入领域画布', async ({ page }) => {
   await createDomainViaUi(page, domainName)
 
   await expect(page.getByRole('heading', { name: '领域设计' })).toBeVisible()
-  await expect(page.getByText(domainName, { exact: false })).toBeVisible()
+  await expect(page.getByTestId('domain-inspector-panel').getByText(domainName, { exact: false })).toBeVisible()
   await expect(page.getByText('草稿', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('创建领域失败', { exact: false })).toHaveCount(0)
 })

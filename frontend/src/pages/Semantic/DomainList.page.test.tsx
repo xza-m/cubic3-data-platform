@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import DomainList from './DomainList'
@@ -128,5 +128,75 @@ describe('DomainList page', () => {
 
     const trigger = screen.getByTestId('domain-create-trigger')
     expect(trigger).toHaveAttribute('href', '/semantic/modeling')
+  })
+
+  it('支持治理透镜过滤领域，并在右侧切到当前领域摘要', async () => {
+    const domains = [
+      {
+        id: 'domain-empty',
+        code: 'empty_domain',
+        name: '空领域',
+        description: '',
+        status: 'draft',
+        cube_count: 0,
+        join_count: 0,
+        catalog_code: 'default',
+        catalog_name: '默认目录',
+        state_summary: {},
+      },
+      {
+        id: 'domain-ready',
+        code: 'ready_domain',
+        name: '成熟领域',
+        description: '',
+        status: 'active',
+        cube_count: 2,
+        join_count: 1,
+        catalog_code: 'default',
+        catalog_name: '默认目录',
+        state_summary: {},
+      },
+    ]
+
+    semanticApiMocks.listDomainCatalogs.mockResolvedValueOnce({
+      data: {
+        catalogs: [
+          {
+            code: 'default',
+            name: '默认目录',
+            description: '默认目录',
+            status: 'active',
+            domain_count: 2,
+            active_count: 1,
+            draft_count: 1,
+            domains,
+          },
+        ],
+      },
+    })
+    semanticApiMocks.listDomains.mockResolvedValueOnce({
+      data: {
+        domains,
+        total: 2,
+        page: 1,
+        page_size: 10,
+        page_count: 1,
+      },
+    })
+
+    renderPage()
+    await screen.findByRole('heading', { name: '领域目录' })
+
+    fireEvent.click(screen.getByTestId('domain-governance-lens-empty'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('domain-list-item-domain-empty')).toBeInTheDocument()
+      expect(screen.queryByTestId('domain-list-item-domain-ready')).not.toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByTestId('domain-list-item-domain-empty'))
+
+    expect(screen.getByTestId('domain-detail-panel')).toBeInTheDocument()
+    expect(within(screen.getByTestId('domain-detail-panel')).getByText('空领域')).toBeInTheDocument()
   })
 })

@@ -1,536 +1,214 @@
 # 项目启动指南
 
-完整的项目启动说明，支持多种启动方式。
+本文档提供当前实现下的完整启动方式、端口说明和排障建议。
 
----
-
-## 📋 前置要求
+## 1. 环境要求
 
 ### 必需
 
-- **Python 3.9+**
-- **Node.js 16+** (前端开发)
-- **PostgreSQL** (或使用Docker自带)
-- **Redis** (或使用Docker自带)
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL 15+，或使用 Docker 自带实例
+- Redis 7+，或使用 Docker 自带实例
 
-### 外部服务
+### 可选外部服务
 
-- **Superset** 访问权限（用户名/密码 或 JWT）
-- **飞书机器人** App ID 和 Secret
+- OpenAI 兼容 LLM
+- 飞书开放平台
+- Superset
+- 阿里云 OSS
 
----
+## 2. 当前服务与端口
 
-## 🚀 快速启动（推荐）
+| 服务 | 默认端口 | 说明 |
+|---|---:|---|
+| 前端开发服务器 | 3000 | `vite` 开发模式 |
+| Nginx | 81 | Docker 模式前端入口与 API 代理 |
+| Flask API | 5000 | 后端服务 |
+| Redis | 6379 | 队列与缓存 |
+| PostgreSQL | 5432 | 元数据数据库 |
 
-### 方式1: Docker Compose 完整栈（最简单）
+## 3. 启动模式
 
-适合生产环境或想快速体验完整功能。
+### 模式 A：Docker 完整栈
 
-```bash
-# 1. 配置环境变量
-cp env.sample .env
-vim .env  # 编辑必要配置
+适用场景：
 
-# 2. 一键启动（包含前端+后端+数据库+Redis+RQ Worker）
-docker-compose -f docker-compose.full.yml up --build -d
+- 快速体验
+- 联调后端、Worker、Redis、PostgreSQL
+- 使用 Nginx 托管前端构建产物
 
-# 3. 初始化数据库
-docker-compose -f docker-compose.full.yml exec backend flask db upgrade
-
-# 4. 访问应用
-# 前端: http://localhost (Nginx)
-# 后端API: http://localhost/api/v1/*
-```
-
-**服务列表**:
-- ✅ Nginx (端口 80/443) - 反向代理 + 前端静态文件
-- ✅ Frontend (React SPA)
-- ✅ Backend (Flask API, 端口 5000)
-- ✅ RQ Worker (2个实例)
-- ✅ Redis (端口 6379)
-- ✅ PostgreSQL (端口 5432, 可选)
-
-**停止服务**:
-```bash
-docker-compose -f docker-compose.full.yml down
-```
-
----
-
-### 方式2: Docker Compose 后端 + 本地前端
-
-适合前端开发，后端使用Docker。
-
-```bash
-# 1. 启动后端服务
-docker-compose up --build -d
-
-# 包含: backend + rq_worker + redis
-# 前端: http://localhost:5173 (Vite dev server)
-# 后端API: http://localhost:5000/api/v1/*
-
-# 2. 本地启动前端（另一个终端）
-cd frontend
-npm install
-npm run dev
-
-# 访问 http://localhost:5173
-```
-
----
-
-## 🛠️ 开发环境启动（本地运行）
-
-### 1. 配置环境变量
+步骤：
 
 ```bash
 cp env.sample .env
-vim .env
+cd frontend && npm install && npm run build && cd ..
+docker compose up --build -d
 ```
 
-**必需配置**:
-```bash
-# 数据库
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cubic3_data_platform
+说明：
 
-# Redis
-REDIS_URL=redis://localhost:6379/0
+- `docker-compose.yml` 当前没有独立的前端构建阶段
+- Nginx 会直接读取宿主机的 `frontend/dist`
+- 如果前端代码刚改过而未重新构建，Nginx 会继续提供旧资源
 
-# Superset
-SUPERSET_BASE_URL=https://your-superset.com
-SUPERSET_USERNAME=admin
-SUPERSET_PASSWORD=admin123
-
-# 飞书
-FEISHU_APP_ID=cli_xxx
-FEISHU_APP_SECRET=xxx_secret
-
-# JWT认证
-JWT_SECRET=your-very-long-secret-key-change-in-production
-```
-
-### 2. 安装Python依赖
+验证：
 
 ```bash
-# 创建虚拟环境（推荐）
-python3 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或
-venv\Scripts\activate  # Windows
-
-# 安装依赖
-pip install -r requirements.txt
-```
-
-### 3. 初始化数据库
-
-```bash
-# 创建数据库
-createdb cubic3_data_platform
-
-# 或使用SQL
-# psql -c "CREATE DATABASE cubic3_data_platform;"
-
-# 运行迁移
-flask db upgrade
-```
-
-### 4. 启动Redis（如果本地没有）
-
-```bash
-# 使用Docker启动Redis
-docker run -d -p 6379:6379 redis:7-alpine
-
-# 或使用brew安装（Mac）
-brew install redis
-brew services start redis
-```
-
-### 5. 启动后端服务
-
-```bash
-# 方式1: 使用Flask开发服务器
-flask run
-
-# 方式2: 使用Gunicorn（生产模式）
-gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
-
-# 访问: http://localhost:5000
-```
-
-### 6. 启动RQ Worker（另一个终端）
-
-```bash
-# 激活虚拟环境
-source venv/bin/activate
-
-# 启动Worker
-rq worker default --url redis://localhost:6379/0
-
-# 启动多个Worker（可选）
-rq worker default --url redis://localhost:6379/0 --name worker-1 &
-rq worker default --url redis://localhost:6379/0 --name worker-2 &
-```
-
-### 7. 启动前端（另一个终端）
-
-```bash
-cd frontend
-
-# 安装依赖（首次）
-npm install
-
-# 启动开发服务器
-npm run dev
-
-# 访问: http://localhost:5173
-```
-
----
-
-## 🧪 运行测试
-
-### 后端测试
-
-```bash
-# 安装测试依赖
-pip install -r requirements.txt
-
-# 运行所有测试
-pytest -v
-
-# 运行特定测试
-pytest tests/unit/domain/ -v
-
-# 生成覆盖率报告
-pytest --cov=app --cov-report=html
-open htmlcov/index.html
-```
-
-### 前端测试（待实现）
-
-```bash
-cd frontend
-npm run test
-```
-
----
-
-## 🐳 Docker 命令速查
-
-### docker-compose.yml (基础版)
-
-```bash
-# 启动
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f
-
-# 查看特定服务日志
-docker-compose logs -f backend
-docker-compose logs -f rq_worker
-
-# 进入容器
-docker-compose exec backend bash
-
-# 重启服务
-docker-compose restart backend
-
-# 停止
-docker-compose down
-
-# 清理（包括数据卷）
-docker-compose down -v
-```
-
-### docker-compose.full.yml (完整版)
-
-```bash
-# 启动
-docker-compose -f docker-compose.full.yml up -d
-
-# 构建并启动
-docker-compose -f docker-compose.full.yml up --build -d
-
-# 查看所有服务状态
-docker-compose -f docker-compose.full.yml ps
-
-# 数据库迁移
-docker-compose -f docker-compose.full.yml exec backend flask db upgrade
-
-# 查看Nginx日志
-docker-compose -f docker-compose.full.yml logs -f nginx
-
-# 重新构建前端
-docker-compose -f docker-compose.full.yml build frontend
-
-# 停止
-docker-compose -f docker-compose.full.yml down
-```
-
----
-
-## 📊 服务端口说明
-
-| 服务 | 端口 | 说明 |
-|------|------|------|
-| Nginx | 80 | HTTP入口（完整版） |
-| Nginx | 443 | HTTPS入口（完整版） |
-| Frontend (Dev) | 5173 | Vite开发服务器 |
-| Backend (Flask) | 5000 | API服务 |
-| PostgreSQL | 5432 | 数据库 |
-| Redis | 6379 | 缓存 + 队列 |
-
----
-
-## 🔍 健康检查
-
-### 检查后端
-
-```bash
-# Health检查
+docker compose ps
 curl http://localhost:5000/health
-
-# 返回:
-# {"status": "healthy", "timestamp": "..."}
-
-# 检查数据源API
-curl http://localhost:5000/api/v1/datasources \
-  -H "X-User-Id: admin"
+curl http://localhost:81/health
 ```
 
-### 检查Redis
+### 模式 B：纯本地开发
+
+适用场景：
+
+- 前后端联调
+- 本地调试代码
+- 需要热更新
+
+#### 终端 1：后端
 
 ```bash
-# 连接Redis
-redis-cli
-
-# 或Docker方式
-docker-compose exec redis redis-cli
-
-# 测试
-127.0.0.1:6379> PING
-PONG
-
-127.0.0.1:6379> KEYS *
-```
-
-### 检查RQ队列
-
-```bash
-# 查看队列状态
-rq info --url redis://localhost:6379/0
-
-# 查看Worker
-rq info --url redis://localhost:6379/0 --workers
-
-# 使用Docker
-docker-compose logs -f rq_worker
-```
-
----
-
-## ⚙️ 常见配置
-
-### 修改后端端口
-
-**.env**:
-```bash
-FLASK_RUN_PORT=8000
-```
-
-或启动时指定:
-```bash
-flask run --port 8000
-```
-
-### 修改数据库
-
-**.env**:
-```bash
-# PostgreSQL
-DATABASE_URL=postgresql://user:pass@host:5432/dbname
-
-# SQLite (开发用)
-DATABASE_URL=sqlite:///instance/local.db
-```
-
-### 修改Redis
-
-**.env**:
-```bash
-# 本地Redis
-REDIS_URL=redis://localhost:6379/0
-
-# 远程Redis（带密码）
-REDIS_URL=redis://:password@host:6379/0
-
-# Redis Cluster
-REDIS_URL=redis://host1:6379,host2:6379/0
-```
-
----
-
-## 🐛 常见问题
-
-### 1. 数据库连接失败
-
-**错误**: `psycopg2.OperationalError: could not connect to server`
-
-**解决**:
-```bash
-# 检查PostgreSQL是否运行
-pg_isready
-
-# 检查DATABASE_URL配置
-echo $DATABASE_URL
-
-# 重启PostgreSQL
-brew services restart postgresql  # Mac
-sudo service postgresql restart   # Linux
-```
-
-### 2. Redis连接失败
-
-**错误**: `redis.exceptions.ConnectionError: Error 111 connecting to localhost:6379`
-
-**解决**:
-```bash
-# 启动Redis
-redis-server
-
-# 或使用Docker
-docker run -d -p 6379:6379 redis:7-alpine
-
-# 检查Redis
-redis-cli ping
-```
-
-### 3. 端口被占用
-
-**错误**: `OSError: [Errno 48] Address already in use`
-
-**解决**:
-```bash
-# 查找占用端口的进程
-lsof -i :5000
-
-# 杀死进程
-kill -9 <PID>
-
-# 或换个端口
-flask run --port 8000
-```
-
-### 4. 前端API请求失败
-
-**错误**: `Network Error` 或 `CORS Error`
-
-**解决**:
-
-检查前端API配置 `frontend/src/api/client.ts`:
-```typescript
-const apiClient = axios.create({
-  baseURL: 'http://localhost:5000',  // 确保端口正确
-  // ...
-})
-```
-
-### 5. 依赖安装失败
-
-**错误**: `pip install` 失败
-
-**解决**:
-```bash
-# 升级pip
-pip install --upgrade pip
-
-# 使用国内镜像
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-
-# 清理缓存重试
-pip cache purge
 pip install -r requirements.txt
+flask --app wsgi.py db upgrade
+flask --app wsgi.py run
 ```
 
-### 6. Docker构建慢
-
-**解决**:
-```bash
-# 使用BuildKit
-DOCKER_BUILDKIT=1 docker-compose build
-
-# 清理无用镜像
-docker system prune -a
-
-# 使用缓存
-docker-compose build --parallel
-```
-
----
-
-## 📦 生产部署建议
-
-### 1. 环境变量
-
-使用独立的 `.env.prod`:
-```bash
-cp env.sample .env.prod
-vim .env.prod
-
-# 使用
-docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d
-```
-
-### 2. 数据库迁移
+#### 终端 2：前端
 
 ```bash
-# 备份数据库
-pg_dump cubic3_data_platform > backup.sql
-
-# 运行迁移
-flask db upgrade
-
-# 回滚（如果需要）
-flask db downgrade
+cd frontend
+npm install
+VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 ```
 
-### 3. 日志管理
+#### 终端 3：Worker
 
 ```bash
-# 查看实时日志
-docker-compose logs -f --tail=100
-
-# 导出日志
-docker-compose logs > logs/app.log
-
-# 清理日志
-docker-compose logs --no-log-prefix > /dev/null
+python run_worker.py
 ```
 
-### 4. 监控
+### 模式 C：Docker 后端 + 本地前端
 
-- 使用 `rq-dashboard` 监控任务队列
-- 添加 Prometheus + Grafana
-- 配置告警（Sentry等）
+适用场景：
 
----
+- 后端依赖交给 Docker 管理
+- 前端保留本地热更新
 
-## 🎯 下一步
+步骤：
 
-1. ✅ 启动成功后，访问前端：http://localhost（或 http://localhost:5173）
-2. ✅ 创建第一个数据源
-3. ✅ 注册数据集
-4. ✅ 配置提取任务
-5. ✅ 配置Superset订阅推送
+```bash
+docker compose up -d backend redis postgres rq_worker
+cd frontend
+npm install
+VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
+```
 
-完整功能文档：[README.md](../README.md)
+如果你同时启动了 Nginx，也可以沿用默认代理目标 `http://localhost:81`。
 
----
+## 4. 数据库与迁移
 
-**需要帮助?** 
+### Docker 模式
 
-- 查看日志：`docker-compose logs -f`
-- 提交Issue
-- 联系运维团队
+后端容器启动时会自动尝试：
+
+1. 初始化迁移目录（若不存在）
+2. 执行 `flask --app wsgi.py db upgrade`
+3. 启动 Gunicorn
+
+你仍然可以手动执行：
+
+```bash
+docker compose exec backend flask --app wsgi.py db upgrade
+```
+
+### 本地模式
+
+```bash
+flask --app wsgi.py db upgrade
+```
+
+## 5. Worker 启动方式
+
+当前仓库存在三种入口：
+
+### 推荐：Flask 上下文 Worker
+
+```bash
+python run_worker.py
+```
+
+特点：
+
+- 会加载 `create_app(role="worker")`
+- 与当前后端依赖装配保持一致
+
+### Shell 脚本 Worker
+
+```bash
+./start_rq_worker.sh
+```
+
+特点：
+
+- 从 `.env` 读取 Redis 配置
+- 启动 `rq worker --with-scheduler`
+
+### 模块入口 Worker
+
+```bash
+python -m app.infrastructure.tasks.rq_worker
+```
+
+特点：
+
+- 更轻量
+- 适合直接验证 RQ 连通性
+
+## 6. 验证与测试
+
+### 后端
+
+```bash
+pytest
+```
+
+### 前端
+
+```bash
+cd frontend
+npm run test:unit
+npm run test:e2e
+npm run verify:ui
+```
+
+### 语义中心
+
+```bash
+cd frontend
+npm run verify:semantic-layout
+DOMAIN_SMOKE_BASE_URL=http://127.0.0.1:3000 npm run verify:semantic
+```
+
+## 7. 常用日志命令
+
+```bash
+docker compose logs -f
+docker compose logs -f backend
+docker compose logs -f rq_worker
+docker compose logs -f nginx
+```
+
+## 8. 已废弃或不再适用的旧说明
+
+以下说法不再适用于当前仓库：
+
+- `docker-compose.full.yml` 是主启动文件
+- 前端默认端口是 `5173`
+- 启动前需要手工编辑 `app/config.py`
+- 健康检查路径是 `/api/v1/health`
+- 前端使用 `pnpm` 或 `Ant Design 5` 作为当前主栈
+
+当前真实基线请以本文件、`docs/QUICK_START.md` 与代码实现为准。
