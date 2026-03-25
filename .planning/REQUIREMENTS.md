@@ -104,51 +104,51 @@
 
 ## Traceability
 
-由 roadmap 阶段补齐每个需求与 phase 的对应关系。
+由 roadmap 阶段补齐每个需求与 phase 的对应关系，且每条 v1 需求只能映射到一个 phase。
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase TBD | Pending |
-| DATA-02 | Phase TBD | Pending |
-| DATA-03 | Phase TBD | Pending |
-| DATA-04 | Phase TBD | Pending |
-| DATA-05 | Phase TBD | Pending |
-| SEM-01 | Phase TBD | Pending |
-| SEM-02 | Phase TBD | Pending |
-| SEM-03 | Phase TBD | Pending |
-| SEM-04 | Phase TBD | Pending |
-| SEM-05 | Phase TBD | Pending |
-| DOM-01 | Phase TBD | Pending |
-| DOM-02 | Phase TBD | Pending |
-| DOM-03 | Phase TBD | Pending |
-| DOM-04 | Phase TBD | Pending |
-| RUN-01 | Phase TBD | Pending |
-| RUN-02 | Phase TBD | Pending |
-| RUN-03 | Phase TBD | Pending |
-| RUN-04 | Phase TBD | Pending |
-| RUN-05 | Phase TBD | Pending |
-| QRY-01 | Phase TBD | Pending |
-| QRY-02 | Phase TBD | Pending |
-| QRY-03 | Phase TBD | Pending |
-| QRY-04 | Phase TBD | Pending |
-| APP-01 | Phase TBD | Pending |
-| APP-02 | Phase TBD | Pending |
-| APP-03 | Phase TBD | Pending |
-| APP-04 | Phase TBD | Pending |
-| APP-05 | Phase TBD | Pending |
-| AIQ-01 | Phase TBD | Pending |
-| AIQ-02 | Phase TBD | Pending |
-| DAG-01 | Phase TBD | Pending |
-| DAG-02 | Phase TBD | Pending |
-| OPS-01 | Phase TBD | Pending |
-| OPS-02 | Phase TBD | Pending |
-| OPS-03 | Phase TBD | Pending |
+| DATA-01 | Phase 1 | Pending |
+| DATA-02 | Phase 1 | Pending |
+| DATA-03 | Phase 1 | Pending |
+| DATA-04 | Phase 1 | Pending |
+| DATA-05 | Phase 1 | Pending |
+| SEM-01 | Phase 2 | Pending |
+| SEM-02 | Phase 2 | Pending |
+| SEM-03 | Phase 2 | Pending |
+| SEM-04 | Phase 2 | Pending |
+| SEM-05 | Phase 2 | Pending |
+| DOM-01 | Phase 2 | Pending |
+| DOM-02 | Phase 2 | Pending |
+| DOM-03 | Phase 2 | Pending |
+| DOM-04 | Phase 2 | Pending |
+| RUN-01 | Phase 3 | Pending |
+| RUN-02 | Phase 3 | Pending |
+| RUN-03 | Phase 3 | Pending |
+| RUN-04 | Phase 3 | Pending |
+| RUN-05 | Phase 3 | Pending |
+| QRY-01 | Phase 3 | Pending |
+| QRY-02 | Phase 3 | Pending |
+| QRY-03 | Phase 3 | Pending |
+| QRY-04 | Phase 3 | Pending |
+| APP-01 | Phase 4 | Pending |
+| APP-02 | Phase 4 | Pending |
+| APP-03 | Phase 4 | Pending |
+| APP-04 | Phase 4 | Pending |
+| APP-05 | Phase 4 | Pending |
+| AIQ-01 | Phase 5 | Pending |
+| AIQ-02 | Phase 5 | Pending |
+| DAG-01 | Phase 6 | Pending |
+| DAG-02 | Phase 6 | Pending |
+| OPS-01 | Phase 1 | Pending |
+| OPS-02 | Phase 6 | Pending |
+| OPS-03 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 35 total
-- Mapped to phases: 0
-- Unmapped: 35 ⚠️
+- Mapped to phases: 35
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 after initial definition*
+*Last updated: 2026-03-25 after roadmap creation*
