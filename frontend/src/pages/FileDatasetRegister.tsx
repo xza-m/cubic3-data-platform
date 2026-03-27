@@ -303,6 +303,11 @@ export default function FileDatasetRegister() {
               最新上传失败：{uploadError}
             </div>
           ) : null}
+          {fieldConfigs.length > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              已保留 {fieldConfigs.length} 个字段配置，修复上传问题后可继续复用。
+            </div>
+          ) : null}
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
             <div className="text-sm font-medium text-emerald-800">真实文件预览</div>
             <div className="mt-1 text-sm text-emerald-700">基于上传文件解析的真实样本数据。</div>

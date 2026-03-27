@@ -330,6 +330,11 @@ describe('FileDatasetRegister page', () => {
     const ownerInput = screen.getByRole('textbox', { name: '负责人' })
     await user.clear(ownerInput)
     await user.type(ownerInput, 'teaching-team')
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('原始学生姓名:来自上传元数据')
+    await user.click(screen.getByRole('button', { name: '应用字段配置' }))
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名（人工确认）:人工修正备注')
+    await user.click(screen.getByRole('button', { name: '上一步' }))
     await user.click(screen.getByRole('button', { name: '上一步' }))
 
     await user.click(screen.getByRole('button', { name: '重新上传并重新创建' }))
@@ -352,6 +357,7 @@ describe('FileDatasetRegister page', () => {
     expect(screen.getByText('scores.xlsx')).toBeInTheDocument()
     expect(screen.getByText('Alice')).toBeInTheDocument()
     expect(screen.getByText('最新上传失败：重新上传失败')).toBeInTheDocument()
+    expect(screen.getByText('已保留 1 个字段配置，修复上传问题后可继续复用。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '重新上传并重新创建' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '下一步' }))
@@ -361,6 +367,7 @@ describe('FileDatasetRegister page', () => {
     })
     expect(screen.getByText('scores.xlsx')).toBeInTheDocument()
     expect(screen.getByText('Alice')).toBeInTheDocument()
+    expect(screen.getByText('已保留 1 个字段配置，修复上传问题后可继续复用。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '重新上传并重新创建' })).toBeInTheDocument()
 
     fileRegisterMocks.uploadTabularFile.mockResolvedValueOnce({
