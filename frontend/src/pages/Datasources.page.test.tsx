@@ -13,7 +13,6 @@ const dataSourceMocks = vi.hoisted(() => ({
   deleteDataSource: vi.fn(),
   testDataSourceConnection: vi.fn(),
   syncDataSourceCatalog: vi.fn(),
-  getDataSourceStatistics: vi.fn(),
   getDataSourceTypes: vi.fn(),
   toast: vi.fn(),
 }))
@@ -25,7 +24,6 @@ vi.mock('../api/datasources', () => ({
   deleteDataSource: dataSourceMocks.deleteDataSource,
   testDataSourceConnection: dataSourceMocks.testDataSourceConnection,
   syncDataSourceCatalog: dataSourceMocks.syncDataSourceCatalog,
-  getDataSourceStatistics: dataSourceMocks.getDataSourceStatistics,
   getDataSourceTypes: dataSourceMocks.getDataSourceTypes,
 }))
 
@@ -235,10 +233,6 @@ describe('Datasources page', () => {
         ],
       },
     })
-    dataSourceMocks.getDataSourceStatistics.mockResolvedValue({
-      data: { total: 3, active: 2, connected: 1, inactive: 1 },
-    })
-
     renderPage()
 
     expect(await screen.findByRole('heading', { name: '数据源管理' })).toBeInTheDocument()
@@ -253,6 +247,7 @@ describe('Datasources page', () => {
     expect(screen.getByText('MaxCompute')).toBeInTheDocument()
     expect(screen.getByText('质量治理')).toBeInTheDocument()
     expect(screen.getAllByText('当前阶段未接入后端能力').length).toBeGreaterThan(0)
+    expect(screen.queryByText('已接入真实数据源能力')).not.toBeInTheDocument()
 
     await user.type(screen.getByPlaceholderText('搜索数据源名称或类型...'), 'max')
     expect(screen.getByText('MaxCompute 行为仓')).toBeInTheDocument()
@@ -266,9 +261,6 @@ describe('Datasources page', () => {
       data: {
         items: [makeDataSource()],
       },
-    })
-    dataSourceMocks.getDataSourceStatistics.mockResolvedValue({
-      data: { total: 1, active: 1, connected: 1, inactive: 0 },
     })
     dataSourceMocks.syncDataSourceCatalog.mockResolvedValue({ job_id: 'job-1', status: 'queued' })
 
@@ -287,10 +279,6 @@ describe('Datasources page', () => {
     dataSourceMocks.getDataSources.mockResolvedValue({
       data: { items: [] },
     })
-    dataSourceMocks.getDataSourceStatistics.mockResolvedValue({
-      data: { total: 0, active: 0, connected: 0, inactive: 0 },
-    })
-
     renderPage()
 
     expect(await screen.findByText('还没有数据源')).toBeInTheDocument()
@@ -309,9 +297,6 @@ describe('Datasources page', () => {
 
     dataSourceMocks.getDataSources.mockResolvedValue({
       data: { items: [] },
-    })
-    dataSourceMocks.getDataSourceStatistics.mockResolvedValue({
-      data: { total: 0, active: 0, connected: 0, inactive: 0 },
     })
     dataSourceMocks.createDataSource.mockResolvedValue({ data: {} })
 
@@ -386,9 +371,6 @@ describe('Datasources page', () => {
           }),
         ],
       },
-    })
-    dataSourceMocks.getDataSourceStatistics.mockResolvedValue({
-      data: { total: 2, active: 2, connected: 2, inactive: 0 },
     })
     dataSourceMocks.updateDataSource.mockResolvedValue({ data: {} })
     dataSourceMocks.syncDataSourceCatalog.mockResolvedValue({ job_id: 'job-1', status: 'queued' })
@@ -499,9 +481,6 @@ describe('Datasources page', () => {
     dataSourceMocks.getDataSources.mockResolvedValue({
       data: { items: [makeDataSource()] },
     })
-    dataSourceMocks.getDataSourceStatistics.mockResolvedValue({
-      data: { total: 1, active: 1, connected: 1, inactive: 0 },
-    })
     dataSourceMocks.createDataSource.mockRejectedValueOnce({
       response: { data: { message: '名称重复' } },
     })
@@ -559,9 +538,6 @@ describe('Datasources page', () => {
         ],
       },
     })
-    dataSourceMocks.getDataSourceStatistics.mockResolvedValue({
-      data: { total: 1, active: 1, connected: 1, inactive: 0 },
-    })
     dataSourceMocks.syncDataSourceCatalog.mockRejectedValueOnce({
       response: { data: { message: '同步队列不可用' } },
     })
@@ -580,5 +556,19 @@ describe('Datasources page', () => {
         variant: 'destructive',
       })
     })
+  })
+
+  it('列表加载失败时展示真实错误态而不是空态', async () => {
+    dataSourceMocks.getDataSources.mockRejectedValueOnce({
+      response: { data: { message: '数据源列表加载失败' } },
+      message: '数据源列表加载失败',
+    })
+
+    renderPage()
+
+    expect(await screen.findAllByText('加载数据源失败')).toHaveLength(2)
+    expect(screen.getAllByText('数据源列表加载失败').length).toBeGreaterThan(0)
+    expect(screen.queryByText('还没有数据源')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '创建第一个数据源' })).not.toBeInTheDocument()
   })
 })

@@ -159,17 +159,22 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('数据源和数据集页展示 Phase 1 已接入能力与禁用模块提示', async ({ page }) => {
+test('数据源页触发真实目录同步反馈，且不再显示历史摘要卡', async ({ page }) => {
   await page.goto('/data-center/datasources', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: '数据源管理' })).toBeVisible()
   await expect(page.getByText('管理已接入的数据源与目录同步状态')).toBeVisible()
   await expect(page.getByText('教学 PostgreSQL')).toBeVisible()
+  await expect(page.getByText('总数据源')).not.toBeVisible()
   await expect(page.getByText('目录同步', { exact: true })).toBeVisible()
   await expect(page.getByText('目录已同步')).toBeVisible()
   await expect(page.getByRole('heading', { name: '质量治理' })).toBeVisible()
   await expect(page.getByText('当前阶段未接入后端能力')).toBeVisible()
   await expect(page.getByTitle('同步目录')).toBeVisible()
+  const syncRequest = page.waitForRequest('**/api/v1/data-center/datasources/1/sync-catalog')
   await page.getByTitle('同步目录').click()
+  await syncRequest
+  await expect(page.getByTestId('async-task-notice').getByRole('heading', { name: '目录同步已触发' })).toBeVisible()
+  await expect(page.getByTestId('async-task-notice').getByText('目录刷新任务已加入队列，请稍后查看同步摘要。')).toBeVisible()
 
   await page.goto('/data-center/datasets', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: '数据集管理' })).toBeVisible()

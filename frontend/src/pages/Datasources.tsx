@@ -119,7 +119,7 @@ export default function Datasources() {
     project: ''
   })
 
-  const { data: listData, isLoading } = useQuery({
+  const { data: listData, isLoading, isError, error } = useQuery({
     queryKey: ['datasources'],
     queryFn: () => getDataSources({ page: 1, page_size: 100 })
   })
@@ -393,6 +393,10 @@ export default function Datasources() {
   }
 
   const datasources = listData?.data?.items || []
+  const listErrorMessage =
+    (error as AxiosLikeError | null)?.response?.data?.message ||
+    (error as AxiosLikeError | null)?.message ||
+    '数据源列表加载失败，请稍后重试。'
 
   const typeConfig: Record<string, { name: string }> = {
     postgresql: { name: 'PostgreSQL' },
@@ -511,24 +515,26 @@ export default function Datasources() {
     )
   }
 
-  const syncNoticeState: SyncNoticeState = syncNotice || (
+  const syncNoticeState: SyncNoticeState | null = syncNotice || (
     isLoading
       ? {
           tone: 'loading',
           title: '正在加载数据源',
           description: '正在从后端获取数据源列表与目录同步状态。',
         }
-      : datasources.length === 0
+      : isError
         ? {
-            tone: 'empty',
-            title: '尚未接入数据源',
-            description: '创建首个数据源后即可执行连接测试与目录同步。',
+            tone: 'error',
+            title: '加载数据源失败',
+            description: listErrorMessage,
           }
-        : {
-            tone: 'ready',
-            title: '已接入真实数据源能力',
-            description: '连接测试与目录同步均直接调用后端能力，治理模块保持禁用态。',
-          }
+        : datasources.length === 0
+          ? {
+              tone: 'empty',
+              title: '尚未接入数据源',
+              description: '创建首个数据源后即可执行连接测试与目录同步。',
+            }
+          : null
   )
 
   return (
@@ -543,11 +549,13 @@ export default function Datasources() {
           </FormButton>
         )}
       >
-        <AsyncTaskNotice
-          tone={syncNoticeState.tone}
-          title={syncNoticeState.title}
-          description={syncNoticeState.description}
-        />
+        {syncNoticeState ? (
+          <AsyncTaskNotice
+            tone={syncNoticeState.tone}
+            title={syncNoticeState.title}
+            description={syncNoticeState.description}
+          />
+        ) : null}
 
         <div className="space-y-4">
           <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3">
@@ -564,6 +572,13 @@ export default function Datasources() {
           {isLoading ? (
             <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white py-24">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            </div>
+          ) : isError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-5">
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold leading-6 text-rose-950">加载数据源失败</h3>
+                <p className="text-sm leading-6 text-rose-700">{listErrorMessage}</p>
+              </div>
             </div>
           ) : filteredData.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white py-24">
