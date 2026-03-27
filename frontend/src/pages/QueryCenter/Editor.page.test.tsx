@@ -133,7 +133,7 @@ vi.mock('@/components/business', () => ({
     columns: Array<{ accessorKey?: string | number }>
   }) => (
     <div data-testid="query-result-table">
-      rows:{data.length}; cols:{columns.length}
+      rows:{data.length}; cols:{columns.length}; headers:{columns.map((column) => String(column.accessorKey ?? '')).join('|')}
     </div>
   ),
   TooltipProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -290,8 +290,14 @@ describe('QueryEditor page', () => {
     await user.click(screen.getByTestId('schema-preview'))
     await waitFor(() => {
       expect(editorPageMocks.previewTableData).toHaveBeenCalledWith(1, 'analytics', 'orders')
-      expect(editorPageMocks.toast).toHaveBeenCalledWith({ title: '预览: orders', description: '共 1 行' })
+    expect(editorPageMocks.toast).toHaveBeenCalledWith({ title: '预览: orders', description: '共 1 行' })
     })
+    expect(screen.getByTestId('query-result-table')).toHaveTextContent('rows:1; cols:1; headers:id')
+
+    await user.click(toolbarButtons[3])
+    expect(createObjectURL).toHaveBeenCalledTimes(2)
+    expect(clickSpy).toHaveBeenCalledTimes(2)
+    expect(revokeObjectURL).toHaveBeenLastCalledWith('blob:query-result')
 
     vi.unstubAllGlobals()
     createElementSpy.mockRestore()
@@ -382,7 +388,7 @@ describe('QueryEditor page', () => {
     })
   })
 
-  it('未执行 SQL 或结果为空时，不能打开虚拟数据集对话框并给出明确提示', async () => {
+  it('未执行 SQL、执行结果为空或预览后，不能打开虚拟数据集对话框并给出明确提示', async () => {
     const user = userEvent.setup()
     editorPageMocks.executeQuery.mockResolvedValueOnce({
       data: {
@@ -420,6 +426,119 @@ describe('QueryEditor page', () => {
     await user.click(toolbarButtons[4])
     expect(editorPageMocks.toast).toHaveBeenLastCalledWith({
       title: '查询结果为空，无法保存为虚拟数据集',
+      variant: 'warning',
+    })
+    expect(screen.queryByTestId('save-dataset-dialog')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('schema-preview'))
+    await waitFor(() => {
+      expect(editorPageMocks.previewTableData).toHaveBeenCalledWith(1, 'analytics', 'orders')
+      expect(editorPageMocks.toast).toHaveBeenCalledWith({ title: '预览: orders', description: '共 1 行' })
+    })
+
+    await user.click(toolbarButtons[4])
+    expect(editorPageMocks.toast).toHaveBeenLastCalledWith({
+      title: '请先执行查询，再保存为虚拟数据集',
+      variant: 'warning',
+    })
+    expect(screen.queryByTestId('save-dataset-dialog')).not.toBeInTheDocument()
+  })
+
+  it('执行后修改 SQL 或切换数据源时，必须重新执行后才能保存为虚拟数据集', async () => {
+    const user = userEvent.setup()
+    editorPageMocks.getDataSources.mockResolvedValueOnce({
+      data: {
+        items: [
+          { id: 1, name: '教学 PostgreSQL', source_type: 'postgresql' },
+          { id: 2, name: '教学 ClickHouse', source_type: 'clickhouse' },
+        ],
+      },
+    })
+
+    renderPage([{ pathname: '/queries/editor', state: { sql: 'select * from retention_base', name: '执行上下文守卫' } }])
+
+    expect(await screen.findByTestId('query-editor-layout')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: '选择数据源' }).querySelectorAll('option').length).toBeGreaterThan(2)
+    })
+
+    const sourceSelect = screen.getByRole('combobox', { name: '选择数据源' })
+    const editor = screen.getByLabelText('sql-editor')
+    const toolbarButtons = screen.getAllByTestId('form-button')
+
+    await user.selectOptions(sourceSelect, '1')
+    await user.click(screen.getByRole('button', { name: '执行查询' }))
+    await waitFor(() => {
+      expect(editorPageMocks.executeQuery).toHaveBeenLastCalledWith({
+        source_id: 1,
+        sql_query: 'select * from retention_base',
+      })
+    })
+
+    await user.clear(editor)
+    await user.type(editor, 'select * from retention_changed')
+    await user.click(toolbarButtons[4])
+    expect(editorPageMocks.toast).toHaveBeenLastCalledWith({
+      title: '请先执行查询，再保存为虚拟数据集',
+      variant: 'warning',
+    })
+    expect(screen.queryByTestId('save-dataset-dialog')).not.toBeInTheDocument()
+
+    await user.selectOptions(sourceSelect, '2')
+    await user.click(toolbarButtons[4])
+    expect(editorPageMocks.toast).toHaveBeenLastCalledWith({
+      title: '请先执行查询，再保存为虚拟数据集',
+      variant: 'warning',
+    })
+    expect(screen.queryByTestId('save-dataset-dialog')).not.toBeInTheDocument()
+  })
+
+  it('执行进行中继续编辑时，不会被返回结果覆盖当前草稿', async () => {
+    const user = userEvent.setup()
+    let resolveQuery: ((value: unknown) => void) | undefined
+    editorPageMocks.executeQuery.mockImplementationOnce(() => (
+      new Promise((resolve) => {
+        resolveQuery = resolve
+      })
+    ))
+
+    renderPage([{ pathname: '/queries/editor', state: { sql: 'select * from slow_orders', name: '异步执行守卫' } }])
+
+    expect(await screen.findByTestId('query-editor-layout')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: '选择数据源' }).querySelectorAll('option').length).toBeGreaterThan(1)
+    })
+
+    const sourceSelect = screen.getByRole('combobox', { name: '选择数据源' })
+    const editor = screen.getByLabelText('sql-editor')
+    const toolbarButtons = screen.getAllByTestId('form-button')
+
+    await user.selectOptions(sourceSelect, '1')
+    await user.click(screen.getByRole('button', { name: '执行查询' }))
+    await waitFor(() => {
+      expect(editorPageMocks.executeQuery).toHaveBeenCalledWith({
+        source_id: 1,
+        sql_query: 'select * from slow_orders',
+      })
+    })
+
+    await user.clear(editor)
+    await user.type(editor, 'select * from edited_orders')
+
+    resolveQuery?.({
+      data: {
+        columns: ['id'],
+        data: [[1]],
+        row_count: 1,
+        execution_time_ms: 55,
+      },
+    })
+
+    expect(await screen.findByTestId('query-result-table')).toHaveTextContent('rows:1; cols:1; headers:id')
+    expect(screen.getByLabelText('sql-editor')).toHaveValue('select * from edited_orders')
+
+    await user.click(toolbarButtons[4])
+    expect(editorPageMocks.toast).toHaveBeenLastCalledWith({
+      title: '请先执行查询，再保存为虚拟数据集',
       variant: 'warning',
     })
     expect(screen.queryByTestId('save-dataset-dialog')).not.toBeInTheDocument()

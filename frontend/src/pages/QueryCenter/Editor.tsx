@@ -47,6 +47,22 @@ interface QueryResults {
   execution_time_ms?: number
 }
 
+const normalizeQueryColumns = (columns: unknown): string[] => {
+  if (!Array.isArray(columns)) {
+    return []
+  }
+
+  return columns.map((column) => {
+    if (typeof column === 'string') {
+      return column
+    }
+    if (typeof column === 'object' && column !== null && 'name' in column) {
+      return String((column as { name: unknown }).name)
+    }
+    return String(column ?? '')
+  })
+}
+
 const normalizeQueryRows = (columns: string[], rows: unknown): Record<string, unknown>[] => {
   if (!Array.isArray(rows)) {
     return []
@@ -63,12 +79,34 @@ const normalizeQueryRows = (columns: string[], rows: unknown): Record<string, un
   })
 }
 
+const buildQueryResults = ({
+  columns,
+  rows,
+  rowCount,
+  executionTimeMs,
+}: {
+  columns: unknown
+  rows: unknown
+  rowCount?: number
+  executionTimeMs?: number
+}): QueryResults => {
+  const normalizedColumns = normalizeQueryColumns(columns)
+  return {
+    columns: normalizedColumns,
+    data: normalizeQueryRows(normalizedColumns, rows),
+    row_count: rowCount,
+    execution_time_ms: executionTimeMs,
+  }
+}
+
 interface QueryTab {
   id: string
   name: string
   sql: string
   sourceId?: number
   results?: QueryResults
+  executedSql?: string
+  executedSourceId?: number
   modified?: boolean
 }
 
@@ -101,6 +139,11 @@ export default function QueryEditor() {
         ? currentTab.results.row_count
         : currentTab.results.data.length)
     : 0
+  const hasMatchingExecutionContext = Boolean(
+    currentTab?.results &&
+    currentTab.executedSql === sql &&
+    currentTab.executedSourceId === selectedSource
+  )
 
   // 获取数据源列表
   const { data: datasourcesData } = useQuery({
@@ -203,13 +246,22 @@ export default function QueryEditor() {
       })
 
       const payload = result.data
-      const normalizedPayload: QueryResults = {
-        columns: Array.isArray(payload?.columns) ? payload.columns.map((column: unknown) => String(column)) : [],
-        data: normalizeQueryRows(Array.isArray(payload?.columns) ? payload.columns.map((column: unknown) => String(column)) : [], payload?.data),
-        row_count: payload?.row_count,
-        execution_time_ms: payload?.execution_time_ms,
-      }
-      setTabs(tabs.map(t => t.id === activeTabId ? { ...t, results: normalizedPayload } : t))
+      const normalizedPayload = buildQueryResults({
+        columns: payload?.columns,
+        rows: payload?.data,
+        rowCount: payload?.row_count,
+        executionTimeMs: payload?.execution_time_ms,
+      })
+      setTabs(prevTabs => prevTabs.map(t => (
+        t.id === activeTabId
+          ? {
+              ...t,
+              results: normalizedPayload,
+              executedSql: sql,
+              executedSourceId: selectedSource,
+            }
+          : t
+      )))
       toast({
         title: '查询成功',
         description: `返回 ${normalizedPayload.row_count || 0} 行数据（耗时 ${normalizedPayload.execution_time_ms || 0}ms）`
@@ -326,7 +378,7 @@ export default function QueryEditor() {
       toast({ title: '请先输入 SQL 后再保存为虚拟数据集', variant: 'warning' })
       return
     }
-    if (!currentTab?.results) {
+    if (!hasMatchingExecutionContext) {
       toast({ title: '请先执行查询，再保存为虚拟数据集', variant: 'warning' })
       return
     }
@@ -544,10 +596,19 @@ export default function QueryEditor() {
               toast({ title: `正在加载 ${table} 预览数据...` })
               const result = await previewTableData(selectedSource, database, table)
               const payload = (result as { data: { columns: Array<{ name: string; type: string }>; data: Array<Record<string, unknown>>; row_count: number; table_name: string } }).data
-              setTabs(tabs.map(t => t.id === activeTabId ? {
-                ...t,
-                results: payload as unknown as QueryResults,
-              } : t))
+              const normalizedPayload = buildQueryResults({
+                columns: payload.columns,
+                rows: payload.data,
+                rowCount: payload.row_count,
+              })
+              setTabs(prevTabs => prevTabs.map(t => (
+                t.id === activeTabId ? {
+                  ...t,
+                  results: normalizedPayload,
+                  executedSql: undefined,
+                  executedSourceId: undefined,
+                } : t
+              )))
               toast({ title: `预览: ${table}`, description: `共 ${payload.row_count} 行` })
             } catch (err) {
               toast({ title: '预览失败', description: (err as Error).message, variant: 'destructive' })
