@@ -50,7 +50,7 @@ export default function Datasets() {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(10)
   const [datasetToDelete, setDatasetToDelete] = useState<Dataset | null>(null)
-  const [syncingDatasetId, setSyncingDatasetId] = useState<number | null>(null)
+  const [syncingDatasetIds, setSyncingDatasetIds] = useState<number[]>([])
 
   const { data: listData, isLoading } = useQuery({
     queryKey: ['datasets', currentPage, pageSize, searchText],
@@ -87,7 +87,9 @@ export default function Datasets() {
   const syncMutation = useMutation({
     mutationFn: syncDatasetSchema,
     onMutate: async (datasetId) => {
-      setSyncingDatasetId(datasetId)
+      setSyncingDatasetIds((currentIds) =>
+        currentIds.includes(datasetId) ? currentIds : [...currentIds, datasetId],
+      )
     },
     onSuccess: () => {
       toast({ title: '元数据同步已触发', description: '正在刷新数据集元数据...' })
@@ -101,8 +103,8 @@ export default function Datasets() {
         variant: 'destructive'
       })
     },
-    onSettled: () => {
-      setSyncingDatasetId(null)
+    onSettled: (_data, _error, datasetId) => {
+      setSyncingDatasetIds((currentIds) => currentIds.filter((id) => id !== datasetId))
     }
   })
 
@@ -236,7 +238,7 @@ export default function Datasets() {
               const syncStyle = getSyncStatusStyle(ds.sync_status)
               const typeLabel = ds.dataset_type === 'virtual' ? 'SQL' : ds.dataset_type === 'file' ? '文件' : '物理表'
               const syncReason = ds.sync_status === 'failed' ? (ds.sync_error || '同步失败，后端未返回具体原因') : null
-              const isCurrentRowSyncing = syncingDatasetId === ds.id
+              const isCurrentRowSyncing = syncingDatasetIds.includes(ds.id)
               return (
                 <div
                   key={ds.id}

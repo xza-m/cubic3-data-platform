@@ -293,9 +293,9 @@ describe('Datasets page', () => {
     })
   })
 
-  it('同步时只禁用当前行的同步按钮，其他行保持可操作', async () => {
+  it('同步时支持多行并发 pending，并按各自行结束时释放状态', async () => {
     const user = userEvent.setup()
-    let resolveSync: ((value: { job_id: string; status: string }) => void) | undefined
+    const pendingSyncResolves = new Map<number, (value: { job_id: string; status: string }) => void>()
 
     datasetMocks.getDatasets.mockResolvedValue({
       data: {
@@ -326,9 +326,9 @@ describe('Datasets page', () => {
       data: { total: 2, synced: 1, failed: 1, pending: 0 },
     })
     datasetMocks.syncDatasetSchema.mockImplementation(
-      () =>
+      (datasetId: number) =>
         new Promise<{ job_id: string; status: string }>((resolve) => {
-          resolveSync = resolve
+          pendingSyncResolves.set(datasetId, resolve)
         }),
     )
 
@@ -353,8 +353,35 @@ describe('Datasets page', () => {
     expect(physicalSyncButton.querySelector('svg')?.className.baseVal ?? '').toContain('animate-spin')
     expect(virtualSyncButton.querySelector('svg')?.className.baseVal ?? '').not.toContain('animate-spin')
 
+    await user.click(virtualSyncButton)
+
+    await waitFor(() => {
+      expect(datasetMocks.syncDatasetSchema).toHaveBeenCalledTimes(2)
+      expect(datasetMocks.syncDatasetSchema.mock.calls[1][0]).toBe(10)
+      expect(physicalSyncButton).toBeDisabled()
+      expect(virtualSyncButton).toBeDisabled()
+    })
+    expect(physicalSyncButton.querySelector('svg')?.className.baseVal ?? '').toContain('animate-spin')
+    expect(virtualSyncButton.querySelector('svg')?.className.baseVal ?? '').toContain('animate-spin')
+
     await act(async () => {
-      resolveSync?.({ job_id: 'job-1', status: 'queued' })
+      pendingSyncResolves.get(9)?.({ job_id: 'job-9', status: 'queued' })
+    })
+
+    await waitFor(() => {
+      expect(physicalSyncButton).not.toBeDisabled()
+      expect(virtualSyncButton).toBeDisabled()
+    })
+    expect(physicalSyncButton.querySelector('svg')?.className.baseVal ?? '').not.toContain('animate-spin')
+    expect(virtualSyncButton.querySelector('svg')?.className.baseVal ?? '').toContain('animate-spin')
+
+    await act(async () => {
+      pendingSyncResolves.get(10)?.({ job_id: 'job-10', status: 'queued' })
+    })
+
+    await waitFor(() => {
+      expect(physicalSyncButton).not.toBeDisabled()
+      expect(virtualSyncButton).not.toBeDisabled()
     })
   })
 })
