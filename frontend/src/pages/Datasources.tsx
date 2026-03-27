@@ -573,14 +573,7 @@ export default function Datasources() {
             <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white py-24">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
             </div>
-          ) : isError ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-6 py-5">
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold leading-6 text-rose-950">加载数据源失败</h3>
-                <p className="text-sm leading-6 text-rose-700">{listErrorMessage}</p>
-              </div>
-            </div>
-          ) : filteredData.length === 0 ? (
+          ) : isError ? null : filteredData.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white py-24">
               <Inbox className="mb-4 h-16 w-16 text-slate-200" />
               <p className="mb-4 text-sm text-slate-500">

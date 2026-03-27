@@ -566,8 +566,8 @@ describe('Datasources page', () => {
 
     renderPage()
 
-    expect(await screen.findAllByText('加载数据源失败')).toHaveLength(2)
-    expect(screen.getAllByText('数据源列表加载失败').length).toBeGreaterThan(0)
+    expect(await screen.findByText('加载数据源失败')).toBeInTheDocument()
+    expect(screen.getByText('数据源列表加载失败')).toBeInTheDocument()
     expect(screen.queryByText('还没有数据源')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '创建第一个数据源' })).not.toBeInTheDocument()
   })
