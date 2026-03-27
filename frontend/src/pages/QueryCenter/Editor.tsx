@@ -2,7 +2,7 @@
  * SQL 编辑器页面 - Migrated to shadcn/ui
  * 多Tab功能、Monaco Editor、数据库结构浏览器
  */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import {
@@ -13,28 +13,21 @@ import {
   ChevronLeft,
   Plus,
   X,
-  Database,
   Table2,
-  RefreshCw,
-  ChevronRight,
   Loader2,
   Inbox
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
 import { format } from 'sql-formatter'
-import { getDataSources, getDataSourceTables, previewTableData } from '../../api/datasources'
+import { getDataSources, previewTableData } from '../../api/datasources'
 import type { DataSource } from '@/types'
-import { executeQuery, createQuery, getQuery, updateQuery, type CreateQueryRequest } from '../../api/queries'
+import { executeQuery, createQuery, getQuery, type CreateQueryRequest } from '../../api/queries'
 import {
   FormButton,
   FormSelect,
   useToast,
   PageModal,
   DataTable,
-  PageTabs,
-  PageTabsContent,
-  PageTabsList,
-  PageTabsTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -44,7 +37,6 @@ import {
 } from '@/components/business'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { ColumnDef } from '@tanstack/react-table'
 
@@ -80,14 +72,6 @@ interface QueryTab {
   modified?: boolean
 }
 
-interface TableInfo {
-  table_name: string
-  comment?: string
-  columns?: Array<{ name: string; type: string; comment?: string }>
-  loading?: boolean
-  expanded?: boolean
-}
-
 let tabIdCounter = 1
 
 export default function QueryEditor() {
@@ -97,6 +81,8 @@ export default function QueryEditor() {
   const { toast } = useToast()
   const [searchParams] = useSearchParams()
   const queryId = searchParams.get('id')
+  const sqlParam = searchParams.get('sql')
+  const sourceIdParam = searchParams.get('source_id')
 
   const [tabs, setTabs] = useState<QueryTab[]>([
     { id: `tab-${tabIdCounter}`, name: '查询 1', sql: '-- 编写您的 SQL 查询\nSELECT * FROM your_table\nLIMIT 100' }
@@ -108,13 +94,13 @@ export default function QueryEditor() {
   const [saveFormData, setSaveFormData] = useState({ query_name: '', description: '' })
   const [datasetDialogOpen, setDatasetDialogOpen] = useState(false)
 
-  // 数据库结构
-  const [tables, setTables] = useState<TableInfo[]>([])
-  const [loadingTables, setLoadingTables] = useState(false)
-  const [dbPanelCollapsed, setDbPanelCollapsed] = useState(false)
-
   const currentTab = tabs.find(t => t.id === activeTabId)
   const sql = currentTab?.sql || ''
+  const currentResultRowCount = currentTab?.results
+    ? (typeof currentTab.results.row_count === 'number'
+        ? currentTab.results.row_count
+        : currentTab.results.data.length)
+    : 0
 
   // 获取数据源列表
   const { data: datasourcesData } = useQuery({
@@ -123,42 +109,6 @@ export default function QueryEditor() {
   })
 
   const datasources = datasourcesData?.data?.items || []
-
-  // 加载表列表
-  const loadTables = useCallback(async (sourceId: number) => {
-    setLoadingTables(true)
-    try {
-      const source = datasources.find((ds: DataSource) => ds.id === sourceId)
-      let dbName = 'postgres' // PostgreSQL 默认
-
-      if (source?.source_type === 'maxcompute') {
-        dbName = (source?.connection_config as Record<string, string>)?.project || 'default'
-      } else if ((source?.connection_config as Record<string, string>)?.database) {
-        dbName = (source.connection_config as Record<string, string>).database
-      }
-
-      const response = await getDataSourceTables(sourceId, dbName)
-      const tableList = response?.data || response || []
-      setTables(Array.isArray(tableList) ? tableList.map((t: string | { table_name: string; comment?: string }) => ({
-        table_name: typeof t === 'string' ? t : t.table_name,
-        comment: typeof t === 'string' ? undefined : t.comment
-      })) : [])
-    } catch (error: unknown) {
-      console.error('Failed to load tables:', error)
-      setTables([])
-    } finally {
-      setLoadingTables(false)
-    }
-  }, [datasources])
-
-  // 数据源变化时加载表列表
-  useEffect(() => {
-    if (selectedSource) {
-      loadTables(selectedSource)
-    } else {
-      setTables([])
-    }
-  }, [selectedSource, loadTables])
 
   // 加载已保存的查询或模板
   useEffect(() => {
@@ -189,8 +139,32 @@ export default function QueryEditor() {
       }).catch(() => {
         toast({ title: '加载查询失败', variant: 'destructive' })
       })
+      return
     }
-  }, [queryId, location.state])
+
+    if (sqlParam) {
+      const nextSourceId = sourceIdParam ? Number(sourceIdParam) : undefined
+      setTabs([{
+        id: 'tab-1',
+        name: '历史回放',
+        sql: sqlParam,
+        sourceId: Number.isFinite(nextSourceId) ? nextSourceId : undefined,
+        modified: true,
+      }])
+      setActiveTabId('tab-1')
+      if (Number.isFinite(nextSourceId)) {
+        setSelectedSource(nextSourceId)
+      }
+      return
+    }
+
+    if (sourceIdParam) {
+      const nextSourceId = Number(sourceIdParam)
+      if (Number.isFinite(nextSourceId)) {
+        setSelectedSource(nextSourceId)
+      }
+    }
+  }, [location.pathname, location.state, navigate, queryId, sourceIdParam, sqlParam, toast])
 
   const handleSqlChange = (value: string | undefined) => {
     setTabs(tabs.map(t => t.id === activeTabId ? { ...t, sql: value || '', modified: true } : t))
@@ -343,6 +317,26 @@ export default function QueryEditor() {
     toast({ title: '表名已插入' })
   }
 
+  const handleOpenDatasetDialog = () => {
+    if (!selectedSource) {
+      toast({ title: '请先选择数据源后再保存为虚拟数据集', variant: 'warning' })
+      return
+    }
+    if (!sql.trim()) {
+      toast({ title: '请先输入 SQL 后再保存为虚拟数据集', variant: 'warning' })
+      return
+    }
+    if (!currentTab?.results) {
+      toast({ title: '请先执行查询，再保存为虚拟数据集', variant: 'warning' })
+      return
+    }
+    if (currentResultRowCount <= 0) {
+      toast({ title: '查询结果为空，无法保存为虚拟数据集', variant: 'warning' })
+      return
+    }
+    setDatasetDialogOpen(true)
+  }
+
   // DataTable columns for query results
   const resultColumns: ColumnDef<Record<string, unknown>>[] = currentTab?.results?.columns.map((col: string) => ({
     accessorKey: col,
@@ -354,15 +348,23 @@ export default function QueryEditor() {
     ...row
   })) || []
 
+  const handleBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      navigate(-1)
+      return
+    }
+    navigate('/queries/my')
+  }
+
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col bg-gray-50">
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-gray-50" data-testid="query-editor-layout">
       {/* 工具栏 */}
       <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FormButton
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/queries')}
+            onClick={handleBack}
           >
             <ChevronLeft className="w-5 h-5" />
           </FormButton>
@@ -419,8 +421,7 @@ export default function QueryEditor() {
                 <FormButton
                   variant="outline"
                   size="icon"
-                  onClick={() => setDatasetDialogOpen(true)}
-                  disabled={!currentTab?.results || !selectedSource}
+                  onClick={handleOpenDatasetDialog}
                 >
                   <Table2 className="w-4 h-4" />
                 </FormButton>
