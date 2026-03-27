@@ -16,12 +16,27 @@ const fileRegisterMocks = vi.hoisted(() => ({
 }))
 
 const navigateMock = vi.fn()
-const configuredFields = [
+const configuredFieldChanges = [
   {
     physical_name: 'student_name',
     data_type: 'string',
     display_name: '学生姓名（人工确认）',
-    comment: '人工修正备注',
+    business_type: 'metric',
+    sensitivity_level: 'confidential',
+    mask_rule: 'full_mask',
+    confidence: 0.23,
+    reasons: ['人工确认覆盖后端识别'],
+    auto_recognized: false,
+    field_order: 1,
+  },
+]
+
+const normalizedConfiguredFields = [
+  {
+    physical_name: 'student_name',
+    data_type: 'string',
+    display_name: '学生姓名（人工确认）',
+    comment: '来自上传元数据',
     business_type: 'metric',
     sensitivity_level: 'confidential',
     mask_rule: 'full_mask',
@@ -57,7 +72,7 @@ vi.mock('../components/FieldConfigurator/FieldConfigurator', () => ({
       matched_rules?: string[]
       auto_recognized?: boolean
     }>
-    onConfigChange: (configs: typeof configuredFields) => void
+    onConfigChange: (configs: typeof configuredFieldChanges) => void
   }) => (
     <div>
       <div>字段配置器</div>
@@ -73,7 +88,7 @@ vi.mock('../components/FieldConfigurator/FieldConfigurator', () => ({
           String(field.auto_recognized ?? ''),
         ].join(':')).join('|')}
       </div>
-      <button type="button" onClick={() => onConfigChange(configuredFields)}>
+      <button type="button" onClick={() => onConfigChange(configuredFieldChanges)}>
         应用字段配置
       </button>
     </div>
@@ -321,7 +336,7 @@ describe('FileDatasetRegister page', () => {
     )
     await user.click(screen.getByRole('button', { name: '应用字段配置' }))
     expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent(
-      '学生姓名（人工确认）:人工修正备注:metric:confidential:full_mask:0.23:人工确认覆盖后端识别:false',
+      '学生姓名（人工确认）:来自上传元数据:metric:confidential:full_mask:0.23:人工确认覆盖后端识别:false',
     )
 
     await user.click(screen.getByRole('button', { name: '上一步' }))
@@ -329,7 +344,7 @@ describe('FileDatasetRegister page', () => {
     await user.click(screen.getByRole('button', { name: '下一步' }))
     expect(screen.getByText('字段配置器')).toBeInTheDocument()
     expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent(
-      '学生姓名（人工确认）:人工修正备注:metric:confidential:full_mask:0.23:人工确认覆盖后端识别:false',
+      '学生姓名（人工确认）:来自上传元数据:metric:confidential:full_mask:0.23:人工确认覆盖后端识别:false',
     )
   })
 
@@ -363,7 +378,9 @@ describe('FileDatasetRegister page', () => {
     await user.click(screen.getByRole('button', { name: '下一步' }))
     expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('原始学生姓名:来自上传元数据')
     await user.click(screen.getByRole('button', { name: '应用字段配置' }))
-    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名（人工确认）:人工修正备注')
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent(
+      '学生姓名（人工确认）:来自上传元数据:metric:confidential:full_mask:0.23:人工确认覆盖后端识别:false',
+    )
     await user.click(screen.getByRole('button', { name: '上一步' }))
     await user.click(screen.getByRole('button', { name: '上一步' }))
 
@@ -543,7 +560,7 @@ describe('FileDatasetRegister page', () => {
           row_count: 2,
           uploaded_at: '2026-03-25T10:00:00Z',
         },
-        fields: configuredFields,
+        fields: normalizedConfiguredFields,
       })
     })
     expect(fileRegisterMocks.toast).toHaveBeenCalledWith({ title: '文件数据集创建成功' })

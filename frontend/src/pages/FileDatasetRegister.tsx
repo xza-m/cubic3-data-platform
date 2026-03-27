@@ -64,6 +64,19 @@ export function submitFileDatasetRegistration({
   onValid()
 }
 
+type FileFieldConfiguratorChange = {
+  physical_name: string
+  data_type: string
+  display_name?: string
+  business_type?: string
+  sensitivity_level?: string
+  mask_rule?: string
+  field_order?: number
+  auto_recognized?: boolean
+  confidence?: number
+  reasons?: string[]
+}
+
 export default function FileDatasetRegister() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -229,8 +242,31 @@ export default function FileDatasetRegister() {
     }))
   }, [fieldConfigs, fileMetadata])
 
-  const handleFieldConfigChange = (configs: FieldConfigItem[]) => {
-    setFieldConfigs(configs)
+  const handleFieldConfigChange = (configs: FileFieldConfiguratorChange[]) => {
+    const sourceFieldMap = new Map(
+      fieldConfiguratorFields.map((field) => [
+        field.physical_name || field.name || '',
+        field,
+      ]),
+    )
+
+    setFieldConfigs(configs.map((config) => {
+      const sourceField = sourceFieldMap.get(config.physical_name)
+
+      return {
+        physical_name: config.physical_name,
+        data_type: config.data_type,
+        display_name: config.display_name,
+        business_type: config.business_type,
+        sensitivity_level: config.sensitivity_level,
+        mask_rule: config.mask_rule,
+        comment: sourceField?.comment,
+        confidence_score: config.confidence,
+        matched_rules: config.reasons,
+        auto_recognized: config.auto_recognized,
+        field_order: config.field_order,
+      }
+    }))
   }
 
   const previewColumns: ColumnDef<Record<string, unknown>>[] = fileMetadata?.columns?.map((column: { name: string }) => ({
