@@ -50,6 +50,7 @@ export default function Datasets() {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(10)
   const [datasetToDelete, setDatasetToDelete] = useState<Dataset | null>(null)
+  const [syncingDatasetId, setSyncingDatasetId] = useState<number | null>(null)
 
   const { data: listData, isLoading } = useQuery({
     queryKey: ['datasets', currentPage, pageSize, searchText],
@@ -85,6 +86,9 @@ export default function Datasets() {
 
   const syncMutation = useMutation({
     mutationFn: syncDatasetSchema,
+    onMutate: async (datasetId) => {
+      setSyncingDatasetId(datasetId)
+    },
     onSuccess: () => {
       toast({ title: '元数据同步已触发', description: '正在刷新数据集元数据...' })
       queryClient.invalidateQueries({ queryKey: ['datasets'] })
@@ -96,6 +100,9 @@ export default function Datasets() {
         description: err.response?.data?.message || err.message,
         variant: 'destructive'
       })
+    },
+    onSettled: () => {
+      setSyncingDatasetId(null)
     }
   })
 
@@ -229,6 +236,7 @@ export default function Datasets() {
               const syncStyle = getSyncStatusStyle(ds.sync_status)
               const typeLabel = ds.dataset_type === 'virtual' ? 'SQL' : ds.dataset_type === 'file' ? '文件' : '物理表'
               const syncReason = ds.sync_status === 'failed' ? (ds.sync_error || '同步失败，后端未返回具体原因') : null
+              const isCurrentRowSyncing = syncingDatasetId === ds.id
               return (
                 <div
                   key={ds.id}
@@ -261,11 +269,11 @@ export default function Datasets() {
                     <button
                       type="button"
                       onClick={() => syncMutation.mutate(ds.id)}
-                      disabled={syncMutation.isPending}
+                      disabled={isCurrentRowSyncing}
                       className="text-[#94A3B8] hover:text-[#2563EB] disabled:opacity-50 cursor-pointer"
                       title="同步元数据"
                     >
-                      <RefreshCw className={cn("h-4 w-4", syncMutation.isPending && "animate-spin")} />
+                      <RefreshCw className={cn("h-4 w-4", isCurrentRowSyncing && "animate-spin")} />
                     </button>
                     <button
                       type="button"

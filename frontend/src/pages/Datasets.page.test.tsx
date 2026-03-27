@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -290,6 +290,71 @@ describe('Datasets page', () => {
         description: '数据集仍被引用',
         variant: 'destructive',
       })
+    })
+  })
+
+  it('同步时只禁用当前行的同步按钮，其他行保持可操作', async () => {
+    const user = userEvent.setup()
+    let resolveSync: ((value: { job_id: string; status: string }) => void) | undefined
+
+    datasetMocks.getDatasets.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 9,
+            dataset_code: 'lesson_progress',
+            dataset_name: '课堂进度',
+            dataset_type: 'physical',
+            physical_table: 'dwd_lesson_progress',
+            owner: 'data-team',
+            sync_status: 'synced',
+          },
+          {
+            id: 10,
+            dataset_code: 'behavior_segment',
+            dataset_name: '行为细分',
+            dataset_type: 'virtual',
+            owner: 'ops-team',
+            sync_status: 'failed',
+            sync_error: 'schema_fetch_failed',
+          },
+        ],
+        total: 2,
+      },
+    })
+    datasetMocks.getDatasetStatistics.mockResolvedValue({
+      data: { total: 2, synced: 1, failed: 1, pending: 0 },
+    })
+    datasetMocks.syncDatasetSchema.mockImplementation(
+      () =>
+        new Promise<{ job_id: string; status: string }>((resolve) => {
+          resolveSync = resolve
+        }),
+    )
+
+    renderPage()
+
+    const physicalRow = (await screen.findByText('课堂进度')).parentElement?.parentElement
+    const virtualRow = screen.getByText('行为细分').parentElement?.parentElement
+    expect(physicalRow).not.toBeNull()
+    expect(virtualRow).not.toBeNull()
+
+    const physicalSyncButton = within(physicalRow!).getByTitle('同步元数据')
+    const virtualSyncButton = within(virtualRow!).getByTitle('同步元数据')
+
+    await user.click(physicalSyncButton)
+
+    await waitFor(() => {
+      expect(datasetMocks.syncDatasetSchema).toHaveBeenCalledTimes(1)
+      expect(datasetMocks.syncDatasetSchema.mock.calls[0][0]).toBe(9)
+      expect(physicalSyncButton).toBeDisabled()
+      expect(virtualSyncButton).not.toBeDisabled()
+    })
+    expect(physicalSyncButton.querySelector('svg')?.className.baseVal ?? '').toContain('animate-spin')
+    expect(virtualSyncButton.querySelector('svg')?.className.baseVal ?? '').not.toContain('animate-spin')
+
+    await act(async () => {
+      resolveSync?.({ job_id: 'job-1', status: 'queued' })
     })
   })
 })
