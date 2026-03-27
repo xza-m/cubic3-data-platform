@@ -36,12 +36,22 @@ vi.mock('../api/datasets', () => ({
 
 vi.mock('../components/FieldConfigurator/FieldConfigurator', () => ({
   default: ({
+    fields,
     onConfigChange,
   }: {
+    fields: Array<{
+      name?: string
+      physical_name?: string
+      display_name?: string
+      comment?: string
+    }>
     onConfigChange: (configs: typeof configuredFields) => void
   }) => (
     <div>
       <div>字段配置器</div>
+      <div data-testid="field-configurator-fields">
+        {fields.map((field) => `${field.display_name || field.name || field.physical_name}:${field.comment || ''}`).join('|')}
+      </div>
       <button type="button" onClick={() => onConfigChange(configuredFields)}>
         应用字段配置
       </button>
@@ -287,7 +297,9 @@ describe('FileDatasetRegister page', () => {
     await user.click(screen.getByRole('button', { name: '下一步' }))
     await user.type(screen.getByRole('textbox', { name: '例如: 2025年销售明细' }), '课堂成绩文件数据集')
     await user.click(screen.getByRole('button', { name: '下一步' }))
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名:')
     await user.click(screen.getByRole('button', { name: '应用字段配置' }))
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名:')
 
     expect(screen.getByText('字段配置器')).toBeInTheDocument()
 
@@ -312,6 +324,8 @@ describe('FileDatasetRegister page', () => {
     })
 
     expect(screen.getByText('scores.xlsx')).toBeInTheDocument()
+    expect(screen.getByText('Alice')).toBeInTheDocument()
+    expect(screen.getByText('最新上传失败：重新上传失败')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '重新上传并重新创建' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '下一步' }))
@@ -320,7 +334,51 @@ describe('FileDatasetRegister page', () => {
       variant: 'warning',
     })
     expect(screen.getByText('scores.xlsx')).toBeInTheDocument()
+    expect(screen.getByText('Alice')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '重新上传并重新创建' })).toBeInTheDocument()
+
+    fileRegisterMocks.uploadTabularFile.mockResolvedValueOnce({
+      file_id: 'f2',
+      file_name: 'retry-success.xlsx',
+      file_path: '/tmp/retry-success.xlsx',
+      file_size: 2048,
+      row_count: 3,
+      uploaded_at: '2026-03-25T11:00:00Z',
+      columns: [
+        { name: 'student_name', type: 'string', sample_values: ['Alice'] },
+        { name: 'score', type: 'int', sample_values: [98] },
+      ],
+      fields: [
+        {
+          physical_name: 'student_name',
+          data_type: 'string',
+          business_type: 'dimension',
+          sensitivity_level: 'public',
+          confidence_score: 0.9,
+          matched_rules: [],
+          display_name: '学生姓名',
+          comment: '',
+        },
+      ],
+      sample_rows: [{ student_name: 'Alice', score: 98 }],
+      preview: [{ student_name: 'Alice', score: 98 }],
+    })
+    await user.click(screen.getByRole('button', { name: '重新上传并重新创建' }))
+    const successRetryInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const successRetryFile = new File(['name,score\nAlice,98'], 'retry-success.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await user.upload(successRetryInput, successRetryFile)
+
+    await waitFor(() => {
+      expect(fileRegisterMocks.uploadTabularFile).toHaveBeenCalledTimes(3)
+    })
+
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    expect(screen.getByRole('textbox', { name: '例如: 2025年销售明细' })).toHaveValue('课堂成绩文件数据集')
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    expect(screen.getByText('字段配置器')).toBeInTheDocument()
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名:')
   })
 
   it('提交校验失败时弹出 destructive 提示并回到填写信息步骤', () => {

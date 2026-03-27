@@ -187,6 +187,19 @@ export default function FileDatasetRegister() {
   }
 
   const fieldConfiguratorFields = useMemo(() => {
+    if (fieldConfigs.length > 0) {
+      return fieldConfigs.map((field) => ({
+        name: field.physical_name,
+        physical_name: field.physical_name,
+        type: field.data_type,
+        data_type: field.data_type,
+        display_name: field.display_name,
+        comment: field.comment,
+        mask_rule: field.mask_rule,
+        field_order: field.field_order,
+      }))
+    }
+
     if (!fileMetadata) return []
 
     if (!fileMetadata.fields) {
@@ -209,7 +222,7 @@ export default function FileDatasetRegister() {
       matched_rules: field.matched_rules,
       auto_recognized: field.confidence_score > 0.5,
     }))
-  }, [fileMetadata])
+  }, [fieldConfigs, fileMetadata])
 
   const handleFieldConfigChange = (configs: FieldConfigItem[]) => {
     const fields = configs.map((config) => ({
@@ -242,19 +255,19 @@ export default function FileDatasetRegister() {
       )
     }
 
-    if (uploadError) {
-      return (
-        <PreviewPanel
-          title="文件样本预览"
-          description="上传成功后展示真实文件名、真实样本数据与字段识别结果。"
-          state="error"
-          errorTitle="文件上传失败"
-          errorDescription={uploadError}
-        />
-      )
-    }
-
     if (!fileMetadata) {
+      if (uploadError) {
+        return (
+          <PreviewPanel
+            title="文件样本预览"
+            description="上传成功后展示真实文件名、真实样本数据与字段识别结果。"
+            state="error"
+            errorTitle="文件上传失败"
+            errorDescription={uploadError}
+          />
+        )
+      }
+
       return (
         <PreviewPanel
           title="文件样本预览"
@@ -285,6 +298,11 @@ export default function FileDatasetRegister() {
         state="ready"
       >
         <div className="space-y-4">
+          {uploadError ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+              最新上传失败：{uploadError}
+            </div>
+          ) : null}
           <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3">
             <div className="text-sm font-medium text-emerald-800">真实文件预览</div>
             <div className="mt-1 text-sm text-emerald-700">基于上传文件解析的真实样本数据。</div>
