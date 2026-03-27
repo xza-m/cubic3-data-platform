@@ -108,14 +108,13 @@ export default function FileDatasetRegister() {
 
     setUploading(true)
     setUploadError(null)
-    setFieldConfigs([])
 
     try {
       const result = await uploadTabularFile(file)
       setFileMetadata(result)
+      setFieldConfigs([])
       toast({ title: `文件上传成功，共 ${result.row_count} 行数据` })
     } catch (error: unknown) {
-      setFileMetadata(null)
       setUploadError(getErrorMessage(error, '文件上传失败'))
       toast({
         title: '上传失败',
@@ -415,11 +414,9 @@ export default function FileDatasetRegister() {
                     variant="link"
                     onClick={(event) => {
                       event.stopPropagation()
-                      setFileMetadata(null)
-                      setUploadError(null)
-                      setFieldConfigs([])
                       if (fileInputRef.current) {
                         fileInputRef.current.value = ''
+                        fileInputRef.current.click()
                       }
                     }}
                     className="mt-4 text-indigo-600 hover:text-indigo-700"

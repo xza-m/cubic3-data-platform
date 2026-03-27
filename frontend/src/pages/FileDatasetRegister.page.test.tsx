@@ -164,6 +164,10 @@ function renderPage() {
 describe('FileDatasetRegister page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    fileRegisterMocks.uploadTabularFile.mockReset()
+    fileRegisterMocks.createDataset.mockReset()
+    fileRegisterMocks.toast.mockReset()
+    navigateMock.mockReset()
     fileRegisterMocks.uploadTabularFile.mockResolvedValue({
       file_id: 'f1',
       file_name: 'scores.xlsx',
@@ -221,7 +225,7 @@ describe('FileDatasetRegister page', () => {
     expect(screen.getByRole('button', { name: '重新上传并重新创建' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '重新上传并重新创建' }))
-    expect(screen.getByText('上传 CSV / Excel 文件')).toBeInTheDocument()
+    expect(screen.getByText('scores.xlsx')).toBeInTheDocument()
   })
 
   it('未上传文件时阻止进入下一步，并在上传失败时提示错误', async () => {
@@ -257,6 +261,66 @@ describe('FileDatasetRegister page', () => {
       title: '请先上传 CSV / Excel 文件',
       variant: 'warning',
     })
+  })
+
+  it('已有成功上传上下文后重传失败时保留原文件上下文、已填表单与字段配置', async () => {
+    const user = userEvent.setup()
+
+    renderPage()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const firstFile = new File(['name,score\nAlice,98'], 'scores.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await user.upload(input, firstFile)
+
+    await waitFor(() => {
+      expect(fileRegisterMocks.uploadTabularFile).toHaveBeenCalledTimes(1)
+    })
+    expect(await screen.findByText('scores.xlsx')).toBeInTheDocument()
+
+    fileRegisterMocks.uploadTabularFile.mockRejectedValueOnce({
+      response: { data: { message: '重新上传失败' } },
+      message: '重新上传失败',
+    })
+
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.type(screen.getByRole('textbox', { name: '例如: 2025年销售明细' }), '课堂成绩文件数据集')
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.click(screen.getByRole('button', { name: '应用字段配置' }))
+
+    expect(screen.getByText('字段配置器')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '上一步' }))
+    await user.click(screen.getByRole('button', { name: '上一步' }))
+
+    await user.click(screen.getByRole('button', { name: '重新上传并重新创建' }))
+    const retryInput = document.querySelector('input[type="file"]') as HTMLInputElement
+
+    const retryFile = new File(['name,score\nBob,88'], 'retry.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await user.upload(retryInput, retryFile)
+
+    await waitFor(() => {
+      expect(fileRegisterMocks.uploadTabularFile).toHaveBeenCalledTimes(2)
+      expect(fileRegisterMocks.toast).toHaveBeenCalledWith({
+        title: '上传失败',
+        description: '重新上传失败',
+        variant: 'destructive',
+      })
+    })
+
+    expect(screen.getByText('scores.xlsx')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重新上传并重新创建' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    expect(fileRegisterMocks.toast).toHaveBeenLastCalledWith({
+      title: '请先修复上传失败问题',
+      variant: 'warning',
+    })
+    expect(screen.getByText('scores.xlsx')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重新上传并重新创建' })).toBeInTheDocument()
   })
 
   it('提交校验失败时弹出 destructive 提示并回到填写信息步骤', () => {
