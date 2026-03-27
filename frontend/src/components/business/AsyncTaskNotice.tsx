@@ -42,9 +42,13 @@ export function AsyncTaskNotice({
   testId,
 }: AsyncTaskNoticeProps) {
   const meta = toneMeta[tone]
+  const liveProps =
+    tone === 'error'
+      ? { role: 'alert' as const }
+      : { role: 'status' as const, 'aria-live': 'polite' as const }
 
   return (
-    <div data-testid={testId ?? 'async-task-notice'}>
+    <div data-testid={testId ?? 'async-task-notice'} {...liveProps}>
       <PageCard className={cn('shadow-none', meta.wrapperClassName, className)}>
         <div className="flex items-start gap-3">
           <div className="mt-0.5 rounded-full border border-current/10 p-2 text-current">{meta.icon}</div>

@@ -5,37 +5,83 @@ import { cn } from '@/lib/utils'
 
 export type PreviewPanelState = 'loading' | 'empty' | 'error' | 'ready'
 
-interface PreviewPanelProps {
+interface PreviewPanelBaseProps {
   title: string
   description?: string
-  state: PreviewPanelState
-  loadingText?: string
-  emptyTitle?: string
-  emptyDescription?: ReactNode
-  errorTitle?: string
-  errorDescription?: ReactNode
-  children?: ReactNode
   actions?: ReactNode
   className?: string
   bodyClassName?: string
   testId?: string
 }
 
-export function PreviewPanel({
-  title,
-  description,
-  state,
-  loadingText = '加载中',
-  emptyTitle = '暂无内容',
-  emptyDescription = '当前没有可展示的内容。',
-  errorTitle = '加载失败',
-  errorDescription = '预览内容暂时不可用。',
-  children,
-  actions,
-  className,
-  bodyClassName,
-  testId = 'preview-panel',
-}: PreviewPanelProps) {
+interface PreviewPanelLoadingProps extends PreviewPanelBaseProps {
+  state: 'loading'
+  loadingText?: string
+  emptyTitle?: never
+  emptyDescription?: never
+  errorTitle?: never
+  errorDescription?: never
+  children?: never
+}
+
+interface PreviewPanelEmptyProps extends PreviewPanelBaseProps {
+  state: 'empty'
+  emptyTitle?: string
+  emptyDescription?: ReactNode
+  loadingText?: never
+  errorTitle?: never
+  errorDescription?: never
+  children?: never
+}
+
+interface PreviewPanelErrorProps extends PreviewPanelBaseProps {
+  state: 'error'
+  errorTitle?: string
+  errorDescription?: ReactNode
+  loadingText?: never
+  emptyTitle?: never
+  emptyDescription?: never
+  children?: never
+}
+
+interface PreviewPanelReadyProps extends PreviewPanelBaseProps {
+  state: 'ready'
+  children: ReactNode
+  loadingText?: never
+  emptyTitle?: never
+  emptyDescription?: never
+  errorTitle?: never
+  errorDescription?: never
+}
+
+export type PreviewPanelProps =
+  | PreviewPanelLoadingProps
+  | PreviewPanelEmptyProps
+  | PreviewPanelErrorProps
+  | PreviewPanelReadyProps
+
+export function PreviewPanel(props: PreviewPanelProps) {
+  const {
+    title,
+    description,
+    state,
+    actions,
+    className,
+    bodyClassName,
+    testId = 'preview-panel',
+  } = props
+  const loadingText = 'loadingText' in props && props.loadingText ? props.loadingText : '加载中'
+  const emptyTitle = 'emptyTitle' in props && props.emptyTitle ? props.emptyTitle : '暂无内容'
+  const emptyDescription =
+    'emptyDescription' in props && props.emptyDescription !== undefined
+      ? props.emptyDescription
+      : '当前没有可展示的内容。'
+  const errorTitle = 'errorTitle' in props && props.errorTitle ? props.errorTitle : '加载失败'
+  const errorDescription =
+    'errorDescription' in props && props.errorDescription !== undefined
+      ? props.errorDescription
+      : '预览内容暂时不可用。'
+
   const content = (() => {
     switch (state) {
       case 'loading':
@@ -63,7 +109,7 @@ export function PreviewPanel({
           />
         )
       case 'ready':
-        return children
+        return props.children
       default:
         return null
     }

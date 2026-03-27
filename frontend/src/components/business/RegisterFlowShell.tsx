@@ -24,6 +24,8 @@ export function RegisterFlowShell({
   sidebarClassName,
   testId = 'register-flow-shell',
 }: RegisterFlowShellProps) {
+  const hasSidebar = Boolean(sidebar)
+
   return (
     <div className={cn('space-y-5', className)} data-testid={testId}>
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -35,7 +37,7 @@ export function RegisterFlowShell({
         </div>
         {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
       </header>
-      <div className={cn('grid gap-5 lg:grid-cols-[minmax(0,1fr)_19rem]', bodyClassName)}>
+      <div className={cn('grid gap-5', hasSidebar && 'lg:grid-cols-[minmax(0,1fr)_19rem]', bodyClassName)}>
         <section className="min-w-0">{children}</section>
         {sidebar ? (
           <aside className={cn('min-w-0', sidebarClassName)}>{sidebar}</aside>
