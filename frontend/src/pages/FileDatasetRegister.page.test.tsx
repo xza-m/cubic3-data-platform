@@ -20,8 +20,8 @@ const configuredFields = [
   {
     physical_name: 'student_name',
     data_type: 'string',
-    display_name: '学生姓名',
-    comment: '上传识别字段',
+    display_name: '学生姓名（人工确认）',
+    comment: '人工修正备注',
     field_order: 1,
   },
 ]
@@ -197,8 +197,8 @@ describe('FileDatasetRegister page', () => {
           sensitivity_level: 'public',
           confidence_score: 0.9,
           matched_rules: [],
-          display_name: '学生姓名',
-          comment: '',
+          display_name: '原始学生姓名',
+          comment: '来自上传元数据',
         },
       ],
       sample_rows: [{ student_name: 'Alice', score: 98 }],
@@ -273,7 +273,37 @@ describe('FileDatasetRegister page', () => {
     })
   })
 
-  it('已有成功上传上下文后重传失败时保留原文件上下文、已填表单与字段配置', async () => {
+  it('字段配置完成后返回字段步骤时优先使用已保存配置重新回填', async () => {
+    const user = userEvent.setup()
+
+    renderPage()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const firstFile = new File(['name,score\nAlice,98'], 'scores.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await user.upload(input, firstFile)
+
+    await waitFor(() => {
+      expect(fileRegisterMocks.uploadTabularFile).toHaveBeenCalledTimes(1)
+    })
+    expect(await screen.findByText('scores.xlsx')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.type(screen.getByRole('textbox', { name: '例如: 2025年销售明细' }), '字段回填验证数据集')
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('原始学生姓名:来自上传元数据')
+    await user.click(screen.getByRole('button', { name: '应用字段配置' }))
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名（人工确认）:人工修正备注')
+
+    await user.click(screen.getByRole('button', { name: '上一步' }))
+    expect(screen.getByRole('textbox', { name: '例如: 2025年销售明细' })).toHaveValue('字段回填验证数据集')
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    expect(screen.getByText('字段配置器')).toBeInTheDocument()
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名（人工确认）:人工修正备注')
+  })
+
+  it('已有成功上传上下文后重传失败时保留原文件预览与全部已填表单值，并可在修复后继续使用', async () => {
     const user = userEvent.setup()
 
     renderPage()
@@ -296,14 +326,10 @@ describe('FileDatasetRegister page', () => {
 
     await user.click(screen.getByRole('button', { name: '下一步' }))
     await user.type(screen.getByRole('textbox', { name: '例如: 2025年销售明细' }), '课堂成绩文件数据集')
-    await user.click(screen.getByRole('button', { name: '下一步' }))
-    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名:')
-    await user.click(screen.getByRole('button', { name: '应用字段配置' }))
-    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名:')
-
-    expect(screen.getByText('字段配置器')).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: '上一步' }))
+    await user.type(screen.getByRole('textbox', { name: '描述此文件数据集的用途' }), '用于课堂成绩汇总分析')
+    const ownerInput = screen.getByRole('textbox', { name: '负责人' })
+    await user.clear(ownerInput)
+    await user.type(ownerInput, 'teaching-team')
     await user.click(screen.getByRole('button', { name: '上一步' }))
 
     await user.click(screen.getByRole('button', { name: '重新上传并重新创建' }))
@@ -376,9 +402,8 @@ describe('FileDatasetRegister page', () => {
 
     await user.click(screen.getByRole('button', { name: '下一步' }))
     expect(screen.getByRole('textbox', { name: '例如: 2025年销售明细' })).toHaveValue('课堂成绩文件数据集')
-    await user.click(screen.getByRole('button', { name: '下一步' }))
-    expect(screen.getByText('字段配置器')).toBeInTheDocument()
-    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名:')
+    expect(screen.getByRole('textbox', { name: '描述此文件数据集的用途' })).toHaveValue('用于课堂成绩汇总分析')
+    expect(screen.getByRole('textbox', { name: '负责人' })).toHaveValue('teaching-team')
   })
 
   it('提交校验失败时弹出 destructive 提示并回到填写信息步骤', () => {
