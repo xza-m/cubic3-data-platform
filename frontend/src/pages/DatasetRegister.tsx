@@ -125,6 +125,7 @@ export default function DatasetRegister() {
     isLoading: loadingPreview,
     error: previewError,
     isError: hasPreviewError,
+    refetch: refetchPreview,
   } = useQuery({
     queryKey: ['tablePreview', selectedSource, selectedDatabase, selectedTable],
     queryFn: () =>
@@ -251,6 +252,16 @@ export default function DatasetRegister() {
           state="error"
           errorTitle="元数据加载失败"
           errorDescription={getErrorMessage(previewError, '请检查数据源连接后重试')}
+          actions={(
+            <FormButton
+              variant="outline"
+              onClick={() => {
+                void refetchPreview()
+              }}
+            >
+              重试加载
+            </FormButton>
+          )}
         />
       )
     }

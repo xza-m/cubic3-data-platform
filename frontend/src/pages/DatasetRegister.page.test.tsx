@@ -199,6 +199,13 @@ function renderPage() {
 describe('DatasetRegister page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    datasetRegisterMocks.getDataSources.mockReset()
+    datasetRegisterMocks.getDataSourceDatabases.mockReset()
+    datasetRegisterMocks.getDataSourceTables.mockReset()
+    datasetRegisterMocks.previewDataset.mockReset()
+    datasetRegisterMocks.createDataset.mockReset()
+    datasetRegisterMocks.toast.mockReset()
+    navigateMock.mockReset()
     datasetRegisterMocks.getDataSources.mockResolvedValue({
       data: {
         items: [
@@ -277,6 +284,50 @@ describe('DatasetRegister page', () => {
     expect(screen.getByRole('combobox', { name: '请选择数据源' })).toHaveValue('1')
     expect(screen.getByRole('combobox', { name: '请选择数据库' })).toHaveValue('learning')
     expect(screen.getByRole('combobox', { name: '请选择数据表' })).toHaveValue('lesson_progress')
+  })
+
+  it('物理表 preview 失败后支持直接重试加载', async () => {
+    const user = userEvent.setup()
+    datasetRegisterMocks.previewDataset
+      .mockRejectedValueOnce({
+        response: { data: { message: 'schema offline' } },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          preview_limit: 20,
+          sample_columns: ['user_id', 'score'],
+          sample_rows: [{ user_id: 'alice', score: 95 }],
+          fields: [
+            { physical_name: 'user_id', data_type: 'string', business_type: 'dimension', sensitivity_level: 'public' },
+          ],
+          statistics: {
+            total_fields: 1,
+            partition_fields: 0,
+            measure_fields: 0,
+            sensitive_fields: 0,
+          },
+          table_info: {
+            database: 'learning',
+            table: 'lesson_progress',
+          },
+        },
+      })
+
+    renderPage()
+
+    await screen.findByRole('option', { name: '教学 PostgreSQL (postgresql)' })
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据源' }), '1')
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据库' }), 'learning')
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据表' }), 'lesson_progress')
+
+    expect(await screen.findByText('元数据加载失败')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重试加载' }))
+
+    expect(await screen.findByText('元数据加载成功，共 1 个字段')).toBeInTheDocument()
+    expect(screen.getByText('alice')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(datasetRegisterMocks.previewDataset).toHaveBeenCalledTimes(2)
+    })
   })
 
   it('在未完成前置条件时阻止继续下一步', async () => {

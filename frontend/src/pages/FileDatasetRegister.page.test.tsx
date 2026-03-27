@@ -22,6 +22,12 @@ const configuredFields = [
     data_type: 'string',
     display_name: '学生姓名（人工确认）',
     comment: '人工修正备注',
+    business_type: 'metric',
+    sensitivity_level: 'confidential',
+    mask_rule: 'full_mask',
+    confidence_score: 0.23,
+    matched_rules: ['人工确认覆盖后端识别'],
+    auto_recognized: false,
     field_order: 1,
   },
 ]
@@ -44,13 +50,28 @@ vi.mock('../components/FieldConfigurator/FieldConfigurator', () => ({
       physical_name?: string
       display_name?: string
       comment?: string
+      business_type?: string
+      sensitivity_level?: string
+      mask_rule?: string
+      confidence_score?: number
+      matched_rules?: string[]
+      auto_recognized?: boolean
     }>
     onConfigChange: (configs: typeof configuredFields) => void
   }) => (
     <div>
       <div>字段配置器</div>
       <div data-testid="field-configurator-fields">
-        {fields.map((field) => `${field.display_name || field.name || field.physical_name}:${field.comment || ''}`).join('|')}
+        {fields.map((field) => [
+          field.display_name || field.name || field.physical_name,
+          field.comment || '',
+          field.business_type || '',
+          field.sensitivity_level || '',
+          field.mask_rule || '',
+          String(field.confidence_score ?? ''),
+          (field.matched_rules || []).join(','),
+          String(field.auto_recognized ?? ''),
+        ].join(':')).join('|')}
       </div>
       <button type="button" onClick={() => onConfigChange(configuredFields)}>
         应用字段配置
@@ -195,12 +216,14 @@ describe('FileDatasetRegister page', () => {
           data_type: 'string',
           business_type: 'dimension',
           sensitivity_level: 'public',
+          mask_rule: 'name',
           confidence_score: 0.9,
-          matched_rules: [],
+          matched_rules: ['后端识别命中姓名规则'],
           display_name: '原始学生姓名',
           comment: '来自上传元数据',
         },
       ],
+      preview_limit: 1,
       sample_rows: [{ student_name: 'Alice', score: 98 }],
       preview: [{ student_name: 'Alice', score: 98 }],
     })
@@ -228,6 +251,7 @@ describe('FileDatasetRegister page', () => {
       expect(fileRegisterMocks.uploadTabularFile).toHaveBeenCalled()
     })
     expect(await screen.findByText('scores.xlsx')).toBeInTheDocument()
+    expect(screen.getByText('样本预览（前 1 行）')).toBeInTheDocument()
     expect(screen.getByText('Alice')).toBeInTheDocument()
     expect(screen.queryByText('示例文件.xlsx')).not.toBeInTheDocument()
     expect(screen.queryByText('示例样本')).not.toBeInTheDocument()
@@ -292,15 +316,21 @@ describe('FileDatasetRegister page', () => {
     await user.click(screen.getByRole('button', { name: '下一步' }))
     await user.type(screen.getByRole('textbox', { name: '例如: 2025年销售明细' }), '字段回填验证数据集')
     await user.click(screen.getByRole('button', { name: '下一步' }))
-    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('原始学生姓名:来自上传元数据')
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent(
+      '原始学生姓名:来自上传元数据:dimension:public:name:0.9:后端识别命中姓名规则:true',
+    )
     await user.click(screen.getByRole('button', { name: '应用字段配置' }))
-    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名（人工确认）:人工修正备注')
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent(
+      '学生姓名（人工确认）:人工修正备注:metric:confidential:full_mask:0.23:人工确认覆盖后端识别:false',
+    )
 
     await user.click(screen.getByRole('button', { name: '上一步' }))
     expect(screen.getByRole('textbox', { name: '例如: 2025年销售明细' })).toHaveValue('字段回填验证数据集')
     await user.click(screen.getByRole('button', { name: '下一步' }))
     expect(screen.getByText('字段配置器')).toBeInTheDocument()
-    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent('学生姓名（人工确认）:人工修正备注')
+    expect(screen.getByTestId('field-configurator-fields')).toHaveTextContent(
+      '学生姓名（人工确认）:人工修正备注:metric:confidential:full_mask:0.23:人工确认覆盖后端识别:false',
+    )
   })
 
   it('已有成功上传上下文后重传失败时保留原文件预览与全部已填表单值，并可在修复后继续使用', async () => {
@@ -535,7 +565,7 @@ describe('FileDatasetRegister page', () => {
     await user.upload(input, file)
 
     expect(await screen.findByText('真实文件预览')).toBeInTheDocument()
-    expect(screen.getByText('样本预览（前 2 行）')).toBeInTheDocument()
+    expect(screen.getByText('样本预览（前 1 行）')).toBeInTheDocument()
   })
 
   it('创建文件数据集失败时展示 destructive 提示', async () => {

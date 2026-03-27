@@ -194,8 +194,13 @@ export default function FileDatasetRegister() {
         type: field.data_type,
         data_type: field.data_type,
         display_name: field.display_name,
+        business_type: field.business_type,
+        sensitivity_level: field.sensitivity_level,
         comment: field.comment,
         mask_rule: field.mask_rule,
+        confidence_score: field.confidence_score,
+        matched_rules: field.matched_rules,
+        auto_recognized: field.auto_recognized,
         field_order: field.field_order,
       }))
     }
@@ -225,15 +230,7 @@ export default function FileDatasetRegister() {
   }, [fieldConfigs, fileMetadata])
 
   const handleFieldConfigChange = (configs: FieldConfigItem[]) => {
-    const fields = configs.map((config) => ({
-      physical_name: config.physical_name,
-      data_type: config.data_type,
-      display_name: config.display_name,
-      mask_rule: config.mask_rule,
-      comment: config.comment,
-      field_order: config.field_order,
-    }))
-    setFieldConfigs(fields)
+    setFieldConfigs(configs)
   }
 
   const previewColumns: ColumnDef<Record<string, unknown>>[] = fileMetadata?.columns?.map((column: { name: string }) => ({
@@ -241,7 +238,7 @@ export default function FileDatasetRegister() {
     header: column.name,
   })) || []
   const previewRows = (fileMetadata?.sample_rows || fileMetadata?.preview || []) as Record<string, unknown>[]
-  const previewLimit = fileMetadata?.row_count || previewRows.length || 0
+  const previewLimit = fileMetadata?.preview_limit || previewRows.length || 0
 
   const previewPanel = (() => {
     if (uploading) {

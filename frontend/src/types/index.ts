@@ -24,8 +24,20 @@ export interface DataSource {
   source_type: string
   description?: string
   connection_config: Record<string, any>
+  extra_config?: {
+    catalog_sync?: {
+      status?: 'pending' | 'syncing' | 'synced' | 'failed' | string
+      last_run_at?: string | null
+      last_error?: string | null
+      tracked_databases?: string[]
+      database_count?: number
+    }
+    [key: string]: unknown
+  }
   is_active: boolean
   connection_status: string
+  last_test_at?: string
+  last_test_error?: string | null
   created_at: string
   updated_at: string
 }
@@ -46,6 +58,9 @@ export interface Dataset {
   sync_status: string
   last_sync_at?: string
   sync_error?: string
+  preview_limit?: number
+  sample_rows?: Record<string, unknown>[]
+  sample_columns?: string[]
   field_count?: number
   fields?: DatasetField[]
   created_at: string
@@ -158,8 +173,13 @@ export interface FieldConfigItem {
   physical_name: string
   data_type: string
   display_name?: string
+  business_type?: string
+  sensitivity_level?: string
   mask_rule?: string
   comment?: string
+  confidence_score?: number
+  matched_rules?: string[]
+  auto_recognized?: boolean
   field_order?: number
 }
 
