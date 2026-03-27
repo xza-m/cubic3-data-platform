@@ -1,10 +1,14 @@
 import { expect, test } from '@playwright/test'
 import { prepareAuthenticatedPage } from './helpers'
 
+let shouldFailDatasetUpdate = false
+
 test.beforeEach(async ({ page }) => {
   await prepareAuthenticatedPage(page)
+  shouldFailDatasetUpdate = false
   await page.route('**/api/v1/data-center/**', async (route) => {
     const url = new URL(route.request().url())
+    const method = route.request().method()
 
     if (url.pathname === '/api/v1/data-center/datasources/statistics') {
       await route.fulfill({
@@ -155,7 +159,7 @@ test.beforeEach(async ({ page }) => {
       return
     }
 
-    if (url.pathname === '/api/v1/data-center/datasets/9') {
+    if (url.pathname === '/api/v1/data-center/datasets/9' && method === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -164,6 +168,56 @@ test.beforeEach(async ({ page }) => {
             id: 9,
             dataset_code: 'lesson_progress',
             dataset_name: '课堂进度',
+            dataset_type: 'physical',
+            source_type: 'postgresql',
+            physical_table: 'dwd_lesson_progress',
+            description: '学生课程进度明细',
+            owner: 'data-team',
+            sync_status: 'synced',
+            last_sync_at: '2026-03-24T10:00:00Z',
+            field_count: 24,
+            sample_columns: ['student_id', 'score'],
+            sample_rows: [{ student_id: 's1', score: 95 }],
+            fields: [
+              {
+                id: 1,
+                physical_name: 'student_id',
+                data_type: 'string',
+                display_name: '学生ID',
+                business_type: 'dimension',
+                sensitivity_level: 'internal',
+                comment: '学生唯一标识',
+                field_order: 1,
+              },
+            ],
+            created_at: '2026-03-20T10:00:00Z',
+            updated_at: '2026-03-24T10:00:00Z',
+          },
+        }),
+      })
+      return
+    }
+
+    if (url.pathname === '/api/v1/data-center/datasets/9' && method === 'PUT') {
+      if (shouldFailDatasetUpdate) {
+        await route.fulfill({
+          status: 403,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            message: '没有权限修改数据集',
+          }),
+        })
+        return
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            id: 9,
+            dataset_code: 'lesson_progress',
+            dataset_name: '课堂进度（已更新）',
             dataset_type: 'physical',
             source_type: 'postgresql',
             physical_table: 'dwd_lesson_progress',
@@ -239,4 +293,18 @@ test('数据源页触发真实目录同步反馈，且不再显示历史摘要�
   await expect(page.getByRole('heading', { name: '血缘分析' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '影响分析' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '质量评分' })).toBeVisible()
+  shouldFailDatasetUpdate = true
+  await page.getByRole('button', { name: '编辑' }).click()
+  const nameInput = page.getByPlaceholder('请输入数据集名称')
+  const ownerInput = page.getByPlaceholder('请输入负责人')
+  const descriptionInput = page.getByPlaceholder('请输入描述')
+  await nameInput.fill('课堂进度（保存失败）')
+  await ownerInput.fill('失败后负责人')
+  await descriptionInput.fill('失败后描述')
+  await page.getByRole('button', { name: '保存' }).click()
+  await expect(page.getByText('保存失败')).toBeVisible()
+  await expect(page.getByText('没有权限修改数据集')).toBeVisible()
+  await expect(nameInput).toHaveValue('课堂进度（保存失败）')
+  await expect(ownerInput).toHaveValue('失败后负责人')
+  await expect(descriptionInput).toHaveValue('失败后描述')
 })

@@ -285,7 +285,9 @@ describe('DatasetDetail page', () => {
     await screen.findByRole('heading', { level: 1, name: '答题汇总' })
     await user.click(screen.getByRole('button', { name: '编辑' }))
 
-    const nameInput = screen.getByPlaceholderText('请输入数据集名称')
+    const nameInput = screen.getByPlaceholderText('请输入数据集名称') as HTMLInputElement
+    const ownerInput = screen.getByPlaceholderText('请输入负责人') as HTMLInputElement
+    const descriptionInput = screen.getByPlaceholderText('请输入描述') as HTMLTextAreaElement
     await user.clear(nameInput)
     await user.click(screen.getByRole('button', { name: '保存' }))
 
@@ -295,6 +297,10 @@ describe('DatasetDetail page', () => {
     })
 
     await user.type(nameInput, '答题汇总（失败）')
+    await user.clear(ownerInput)
+    await user.type(ownerInput, '失败后的负责人')
+    await user.clear(descriptionInput)
+    await user.type(descriptionInput, '失败后的描述')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
@@ -304,6 +310,9 @@ describe('DatasetDetail page', () => {
         variant: 'destructive',
       })
     })
+    expect(nameInput.value).toBe('答题汇总（失败）')
+    expect(ownerInput.value).toBe('失败后的负责人')
+    expect(descriptionInput.value).toBe('失败后的描述')
   })
 
   it('同步失败且没有字段时展示错误摘要和空字段态', async () => {
