@@ -3,7 +3,7 @@
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { RefreshCcw, Plus, Edit, Trash2, Bell, Inbox } from 'lucide-react'
+import { RefreshCw, Plus, Edit, Trash2, Inbox } from 'lucide-react'
 import type { Subscription } from '@/types/config'
 import { CHANNEL_TYPE_OPTIONS, EVENT_TYPE_OPTIONS } from '@/types/config'
 import { getSubscriptions, deleteSubscription, toggleSubscription } from '@/api/subscriptions'
@@ -12,7 +12,6 @@ import { getInstances } from '@/api/appCenter'
 import SubscriptionForm from './SubscriptionForm'
 import {
   FormButton,
-  FormSelect,
   DataTable,
   useToast,
   Badge,
@@ -240,90 +239,86 @@ export default function Subscriptions() {
     ]
 
     return (
-        <div className="space-y-4 md:space-y-6 p-4 md:p-0">
+        <div className="flex h-full flex-col gap-6 p-8 px-10">
             {/* 页面标题 */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex-1 min-w-0">
-                    <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 truncate">订阅管理</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 hidden sm:block">配置应用执行结果的推送规则</p>
+            <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1">
+                    <h1 className="text-xl font-bold text-slate-900">订阅管理</h1>
+                    <p className="text-sm text-slate-500">配置应用执行结果的推送规则</p>
                 </div>
-                <div className="flex gap-2">
-                    <FormButton
-                        variant="outline"
+                <div className="flex items-center gap-2">
+                    <button
                         onClick={() => refetch()}
                         disabled={isLoading}
-                        className="hidden sm:inline-flex"
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-[13px] font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50"
                     >
-                        <RefreshCcw className="h-4 w-4 mr-2" />
+                        <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
                         刷新
-                    </FormButton>
-                    <FormButton
-                        variant="outline"
-                        onClick={() => refetch()}
-                        disabled={isLoading}
-                        size="icon"
-                        className="sm:hidden"
+                    </button>
+                    <button
+                        onClick={handleCreate}
+                        className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(37,99,235,0.19)] hover:bg-blue-700"
                     >
-                        <RefreshCcw className="h-4 w-4" />
-                    </FormButton>
-                    <FormButton onClick={handleCreate}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        <span className="hidden sm:inline">创建订阅</span>
-                        <span className="sm:hidden">创建</span>
-                    </FormButton>
+                        <Plus className="h-3.5 w-3.5" />
+                        创建订阅
+                    </button>
                 </div>
             </div>
 
             {/* 筛选栏 */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm">
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <FormSelect
-                        placeholder="筛选应用"
-                        value={appFilter ? appFilter.toString() : ''}
-                        onChange={(val: string) => setAppFilter(val ? Number(val) : '')}
-                        options={appInstances.map((app: { id: number; instance_name?: string; name: string; app_code: string }) => ({
-                            value: app.id.toString(),
-                            label: `${app.instance_name || app.name} (${app.app_code})`
-                        }))}
-                        searchable
-                        className="w-full sm:w-56"
-                    />
-                    <FormSelect
-                        placeholder="筛选渠道"
-                        value={channelFilter ? channelFilter.toString() : ''}
-                        onChange={(val: string) => setChannelFilter(val ? Number(val) : '')}
-                        options={channels.map((ch: { id: number; name: string; channel_type: string }) => ({
-                            value: ch.id.toString(),
-                            label: ch.name
-                        }))}
-                        className="w-full sm:w-44"
-                    />
-                </div>
+            <div className="flex items-center gap-4">
+                <select
+                    value={appFilter ? appFilter.toString() : ''}
+                    onChange={(e) => setAppFilter(e.target.value ? Number(e.target.value) : '')}
+                    className="flex items-center gap-8 rounded-lg bg-slate-100 px-3.5 py-2 text-[13px] text-slate-500 outline-none"
+                >
+                    <option value="">筛选应用</option>
+                    {appInstances.map((app: { id: number; instance_name?: string; name: string; app_code: string }) => (
+                        <option key={app.id} value={app.id}>
+                            {app.instance_name || app.name}
+                        </option>
+                    ))}
+                </select>
+                <select
+                    value={channelFilter ? channelFilter.toString() : ''}
+                    onChange={(e) => setChannelFilter(e.target.value ? Number(e.target.value) : '')}
+                    className="flex items-center gap-8 rounded-lg bg-slate-100 px-3.5 py-2 text-[13px] text-slate-500 outline-none"
+                >
+                    <option value="">筛选渠道</option>
+                    {channels.map((ch: { id: number; name: string; channel_type: string }) => (
+                        <option key={ch.id} value={ch.id}>{ch.name}</option>
+                    ))}
+                </select>
             </div>
 
             {/* 订阅列表 */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div className="flex-1 overflow-hidden rounded-xl bg-white shadow-[0_2px_24px_rgba(15,23,42,0.03)]">
                 {isLoading ? (
-                    <div className="flex items-center justify-center h-64">
-                        <Skeleton className="h-32 w-full" />
+                    <div className="p-8 space-y-4">
+                        <Skeleton className="h-12 w-full" />
+                        <Skeleton className="h-12 w-full" />
+                        <Skeleton className="h-12 w-full" />
                     </div>
                 ) : filteredSubscriptions.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 py-8">
-                        <Inbox className="h-16 w-16 text-gray-300 mb-4" />
-                        <div className="text-center">
-                            <p className="text-lg font-medium text-gray-600 mb-2">
-                                {appFilter || channelFilter ? '未找到匹配的订阅' : '还没有订阅'}
-                            </p>
-                            <p className="text-sm text-gray-400 mb-4">
-                                {appFilter || channelFilter
-                                    ? '尝试调整筛选条件'
-                                    : '创建订阅规则，自动推送应用执行结果'}
-                            </p>
-                            <FormButton onClick={handleCreate}>
-                                <Plus className="h-4 w-4 mr-2" />
+                        <Inbox className="h-16 w-16 text-slate-200 mb-4" />
+                        <p className="text-base font-medium text-slate-600 mb-2">
+                            {appFilter || channelFilter ? '未找到匹配的订阅' : '还没有订阅'}
+                        </p>
+                        <p className="text-sm text-slate-400 mb-4">
+                            {appFilter || channelFilter
+                                ? '尝试调整筛选条件'
+                                : '创建订阅规则，自动推送应用执行结果'}
+                        </p>
+                        {!appFilter && !channelFilter && (
+                            <button
+                                onClick={handleCreate}
+                                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(37,99,235,0.19)]"
+                            >
+                                <Plus className="h-3.5 w-3.5" />
                                 立即创建
-                            </FormButton>
-                        </div>
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <DataTable

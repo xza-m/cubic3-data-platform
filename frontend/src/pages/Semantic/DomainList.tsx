@@ -1,25 +1,40 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { GitBranch, PlusCircle, Search, Settings2, Trash2 } from 'lucide-react'
+import {
+  Box,
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  HelpCircle,
+  Info,
+  ListTree,
+  Maximize2,
+  Network,
+  PanelLeftClose,
+  PlusCircle,
+  Search,
+  Settings2,
+  Trash2,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react'
 import {
   deleteCatalog,
-  listDomainCatalogs,
-  listDomains,
+  getDomainCanvas,
+  type DomainCanvasData,
+  type DomainCanvasEdge,
+  type DomainCanvasNode,
   type DomainSummary,
 } from '@/api/semantic'
-import { DataTable, type DataTableColumn } from '@/components/business/DataTable'
 import { CatalogEditorDialog } from '@/components/Semantic/CatalogEditorDialog'
 import { useToast } from '@/components/business'
 import {
-  SemanticEmptyState,
   SemanticPageHeader,
   SemanticPageShell,
-  SemanticStatusBanner,
   SemanticSurface,
-  type SemanticValidationSummary,
 } from '@/components/Semantic/workbench'
-import { SemanticWorkbenchContextBar } from '@/components/Semantic/SemanticWorkbenchContextBar'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,148 +45,175 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useDomainGovernance } from '@/hooks/semantic-ia'
 import { useUrlState } from '@/hooks/useUrlState'
 import { getSemanticStatusLabel } from '@/lib/semantic-status'
 import { cn } from '@/lib/utils'
 
-const PAGE_SIZE_OPTIONS = [10, 20, 50]
-type DomainGovernanceLens = 'all' | 'empty' | 'draft' | 'join_gap'
+// ── Tree types ──
 
-function statusVariant(status: string) {
-  if (status === 'active') return 'default' as const
-  if (status === 'draft') return 'secondary' as const
-  return 'outline' as const
+interface TreeState {
+  expandedCatalogs: Set<string>
+  expandedDomains: Set<string>
 }
 
-function formatSummaryTime(value?: string | null) {
-  if (!value) return '未记录'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN')
+// ── Canvas preview helpers ──
+
+const NODE_W = 180
+const NODE_HEADER_H = 34
+const NODE_FIELD_H = 18
+const NODE_FOOTER_H = 24
+const NODE_PAD = 10
+const NODE_GAP_X = 160
+const NODE_GAP_Y = 40
+
+function calcNodeHeight(node: DomainCanvasNode) {
+  const fields = node.dimensions + node.measures
+  return NODE_HEADER_H + NODE_PAD + fields * NODE_FIELD_H + NODE_PAD + NODE_FOOTER_H
 }
 
-function parsePositiveInt(value: string, fallback: number) {
-  const parsed = Number.parseInt(value, 10)
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return fallback
-  }
-  return parsed
+function layoutNodes(nodes: DomainCanvasNode[]) {
+  const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)))
+  return nodes.map((node, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    return {
+      ...node,
+      x: 80 + col * (NODE_W + NODE_GAP_X),
+      y: 60 + row * (calcNodeHeight(node) + NODE_GAP_Y),
+      w: NODE_W,
+      h: calcNodeHeight(node),
+    }
+  })
 }
 
-function domainKey(domain?: DomainSummary | null) {
-  return domain ? String(domain.id || domain.code) : ''
-}
-
-function getDomainHealth(domain?: DomainSummary | null) {
-  if (!domain) {
-    return {
-      tone: 'neutral',
-      title: '先选择一个领域',
-      description: '从列表中选择领域后，再进入画布完成编排和发布。',
-    }
-  }
-  if (domain.cube_count === 0) {
-    return {
-      tone: 'warn',
-      title: '领域边界还没有沉淀下来',
-      description: '当前领域还没有纳入 Cube，先进入画布补充核心模型。',
-    }
-  }
-  if (domain.join_count === 0 && domain.cube_count > 1) {
-    return {
-      tone: 'warn',
-      title: '关联关系仍然缺失',
-      description: '领域里已有多个 Cube，但 Join 还未成型，优先补齐关系。',
-    }
-  }
-  if (domain.status !== 'active') {
-    return {
-      tone: 'neutral',
-      title: '领域仍处于草稿状态',
-      description: '结构已具备基础规模，建议进入画布确认后发布。',
-    }
-  }
+function joinLinePath(
+  positioned: Array<DomainCanvasNode & { x: number; y: number; w: number; h: number }>,
+  edge: DomainCanvasEdge,
+) {
+  const src = positioned.find((n) => n.id === edge.source)
+  const tgt = positioned.find((n) => n.id === edge.target)
+  if (!src || !tgt) return null
+  const x1 = src.x + src.w
+  const y1 = src.y + src.h / 2
+  const x2 = tgt.x
+  const y2 = tgt.y + tgt.h / 2
+  const cx = (x1 + x2) / 2
   return {
-    tone: 'ok',
-    title: '领域结构已可复用',
-    description: '当前领域已发布，可继续补充边界、关系与说明。',
+    d: `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`,
+    labelX: cx,
+    labelY: (y1 + y2) / 2,
+    label: edge.source_field || edge.target_field || '',
   }
 }
 
-function getCatalogHealth(catalog?: { name: string; domain_count: number; draft_count: number; active_count: number } | null, domains: DomainSummary[] = []) {
-  if (!catalog) {
-    return {
-      tone: 'neutral',
-      title: '先选择一个目录',
-      description: '切换左侧目录后，再从中间列表筛出需要处理的领域。',
-    }
-  }
-  const emptyCount = domains.filter((domain) => domain.cube_count === 0).length
-  const joinGapCount = domains.filter((domain) => domain.cube_count > 1 && domain.join_count === 0).length
-  if (catalog.domain_count === 0) {
-    return {
-      tone: 'warn',
-      title: '当前目录还是空的',
-      description: '建议先从领域建模入口创建领域，再逐步沉淀目录边界。',
-    }
-  }
-  if (catalog.draft_count > 0) {
-    return {
-      tone: 'warn',
-      title: '目录内仍有草稿积压',
-      description: `当前目录有 ${catalog.draft_count} 个草稿领域，建议优先确认结构后发布。`,
-    }
-  }
-  if (emptyCount > 0 || joinGapCount > 0) {
-    return {
-      tone: 'neutral',
-      title: '目录治理仍需收口',
-      description: `空领域 ${emptyCount} 个，Join 缺失 ${joinGapCount} 个，建议通过治理透镜继续排查。`,
-    }
-  }
-  return {
-    tone: 'ok',
-    title: '目录结构已经稳定',
-    description: '当前目录内领域已具备基本发布条件，可继续扩展说明和边界治理。',
-  }
-}
+// ── Skeleton ──
 
-function matchesGovernanceLens(domain: DomainSummary, lens: DomainGovernanceLens) {
-  if (lens === 'all') return true
-  if (lens === 'empty') return domain.cube_count === 0
-  if (lens === 'draft') return domain.status !== 'active'
-  return domain.cube_count > 1 && domain.join_count === 0
-}
-
-function getGovernanceLabel(domain: DomainSummary) {
-  if (domain.cube_count === 0) {
-    return { label: '空领域', tone: 'warning' as const }
-  }
-  if (domain.cube_count > 1 && domain.join_count === 0) {
-    return { label: 'Join 缺失', tone: 'warning' as const }
-  }
-  if (domain.status !== 'active') {
-    return { label: '待发布', tone: 'default' as const }
-  }
-  return { label: '已发布', tone: 'accent' as const }
-}
-
-function VisualModelSkeleton() {
+function DomainListSkeleton() {
   return (
     <div className="space-y-4">
       <Skeleton className="h-20 rounded-2xl" />
-      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1.2fr)_360px]">
-        <Skeleton className="h-[42rem] rounded-2xl" />
-        <Skeleton className="h-[42rem] rounded-2xl" />
-        <Skeleton className="h-[42rem] rounded-2xl" />
+      <div className="grid gap-0 xl:grid-cols-[380px_8px_minmax(0,1fr)]">
+        <Skeleton className="h-[42rem] rounded-l-2xl" />
+        <div />
+        <Skeleton className="h-[42rem] rounded-r-2xl" />
       </div>
     </div>
   )
 }
+
+// ── Cube Node Card (canvas preview) ──
+
+function PreviewCubeNode({
+  node,
+  selected,
+  onClick,
+}: {
+  node: DomainCanvasNode & { x: number; y: number; w: number; h: number }
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <g
+      transform={`translate(${node.x},${node.y})`}
+      onClick={onClick}
+      className="cursor-pointer"
+    >
+      {/* Shadow */}
+      <rect
+        width={node.w}
+        height={node.h}
+        rx={10}
+        fill="white"
+        stroke={selected ? 'hsl(var(--workbench-accent))' : 'hsl(var(--workbench-outline))'}
+        strokeWidth={selected ? 2 : 1}
+        filter="url(#nodeShadow)"
+      />
+      {/* Header */}
+      <rect
+        width={node.w}
+        height={NODE_HEADER_H}
+        rx={10}
+        fill={selected ? 'hsl(var(--workbench-accent-soft))' : 'hsl(var(--workbench-surface-2))'}
+      />
+      {/* Cover bottom corners of header */}
+      <rect
+        y={NODE_HEADER_H - 10}
+        width={node.w}
+        height={10}
+        fill={selected ? 'hsl(var(--workbench-accent-soft))' : 'hsl(var(--workbench-surface-2))'}
+      />
+      {/* Header text */}
+      <text
+        x={12}
+        y={22}
+        fontSize={12}
+        fontWeight={600}
+        fill={selected ? 'hsl(var(--workbench-accent))' : 'hsl(var(--workbench-ink))'}
+      >
+        {node.title || node.id}
+      </text>
+      {/* Fields placeholder */}
+      {Array.from({ length: Math.min(node.dimensions, 6) }).map((_, i) => (
+        <g key={`d${i}`} transform={`translate(12, ${NODE_HEADER_H + NODE_PAD + i * NODE_FIELD_H})`}>
+          <circle cx={3} cy={6} r={3} fill="hsl(var(--workbench-accent))" />
+          <text x={12} y={10} fontSize={10} fill="hsl(var(--workbench-muted-foreground))">
+            dim_{i + 1}
+          </text>
+        </g>
+      ))}
+      {Array.from({ length: Math.min(node.measures, 4) }).map((_, i) => (
+        <g key={`m${i}`} transform={`translate(12, ${NODE_HEADER_H + NODE_PAD + node.dimensions * NODE_FIELD_H + i * NODE_FIELD_H})`}>
+          <circle cx={3} cy={6} r={3} fill="hsl(var(--semantic-info, 200 80% 60%))" />
+          <text x={12} y={10} fontSize={10} fill="hsl(var(--workbench-muted-foreground))">
+            msr_{i + 1}
+          </text>
+        </g>
+      ))}
+      {/* Footer */}
+      <line
+        x1={0}
+        y1={node.h - NODE_FOOTER_H}
+        x2={node.w}
+        y2={node.h - NODE_FOOTER_H}
+        stroke="hsl(var(--workbench-outline))"
+        strokeWidth={0.5}
+      />
+      <text
+        x={12}
+        y={node.h - 8}
+        fontSize={9}
+        fill="hsl(var(--workbench-muted-foreground))"
+      >
+        {node.dimensions} 维度 · {node.measures} 指标
+      </text>
+    </g>
+  )
+}
+
+// ── Main Component ──
 
 export default function DomainList() {
   const queryClient = useQueryClient()
@@ -182,13 +224,15 @@ export default function DomainList() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [catalogEditingCode, setCatalogEditingCode] = useState<string | null>(null)
   const [activeCatalogCode, setActiveCatalogCode] = useUrlState<string>('catalog', '')
-  const [selectedDomainKey, setSelectedDomainKey] = useUrlState<string>('selected', '')
-  const [search, setSearch] = useUrlState<string>('q', '')
-  const [lens, setLens] = useUrlState<DomainGovernanceLens>('lens', 'all')
-  const [panelMode, setPanelMode] = useUrlState<'catalog' | 'domain'>('panel', 'catalog')
-  const [page, setPage] = useUrlState<string>('page', '1')
-  const [pageSize, setPageSize] = useUrlState<string>('page_size', '10')
-  const updateQueryParams = (updates: Record<string, string | undefined>) => {
+  const [selectedDomainKey] = useUrlState<string>('selected', '')
+  const [treeSearch, setTreeSearch] = useState('')
+  const [treeState, setTreeState] = useState<TreeState>({
+    expandedCatalogs: new Set<string>(),
+    expandedDomains: new Set<string>(),
+  })
+  const [previewSelectedNode, setPreviewSelectedNode] = useState<string | null>(null)
+
+  const updateQueryParams = useCallback((updates: Record<string, string | undefined>) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       for (const [key, value] of Object.entries(updates)) {
@@ -200,83 +244,105 @@ export default function DomainList() {
       }
       return next
     }, { replace: true })
+  }, [setSearchParams])
+
+  const {
+    catalogs,
+    activeCatalog,
+    domains,
+    isLoading,
+  } = useDomainGovernance({
+    catalogCode: activeCatalogCode || undefined,
+    page: 1,
+    pageSize: 999,
+    lens: 'all',
+  })
+
+  // Auto-expand first catalog
+  useEffect(() => {
+    if (catalogs.length > 0 && treeState.expandedCatalogs.size === 0) {
+      setTreeState((prev) => ({
+        ...prev,
+        expandedCatalogs: new Set([catalogs[0].code]),
+      }))
+      if (!activeCatalogCode) {
+        setActiveCatalogCode(catalogs[0].code)
+      }
+    }
+  }, [catalogs, activeCatalogCode, setActiveCatalogCode, treeState.expandedCatalogs.size])
+
+  // Fetch canvas data for selected domain
+  const selectedDomain = useMemo(() => {
+    if (!selectedDomainKey) return null
+    for (const catalog of catalogs) {
+      const found = catalog.domains?.find(
+        (d) => (d.id || d.code) === selectedDomainKey,
+      )
+      if (found) return found
+    }
+    return domains.find((d) => (d.id || d.code) === selectedDomainKey) || null
+  }, [catalogs, domains, selectedDomainKey])
+
+  const canvasQuery = useQuery({
+    queryKey: ['semantic', 'domain-canvas', selectedDomainKey],
+    queryFn: async () => (await getDomainCanvas(selectedDomainKey)).data,
+    enabled: Boolean(selectedDomainKey),
+  })
+  const canvasData: DomainCanvasData | undefined = canvasQuery.data
+
+  // Layout canvas nodes
+  const positionedNodes = useMemo(() => {
+    if (!canvasData?.nodes.length) return []
+    return layoutNodes(canvasData.nodes)
+  }, [canvasData?.nodes])
+
+  const joinPaths = useMemo(() => {
+    if (!canvasData?.edges.length || !positionedNodes.length) return []
+    return canvasData.edges
+      .map((edge) => joinLinePath(positionedNodes, edge))
+      .filter(Boolean) as Array<{ d: string; labelX: number; labelY: number; label: string }>
+  }, [canvasData?.edges, positionedNodes])
+
+  const canvasWidth = useMemo(() => {
+    if (!positionedNodes.length) return 800
+    return Math.max(800, ...positionedNodes.map((n) => n.x + n.w + 80))
+  }, [positionedNodes])
+
+  const canvasHeight = useMemo(() => {
+    if (!positionedNodes.length) return 500
+    return Math.max(500, ...positionedNodes.map((n) => n.y + n.h + 80))
+  }, [positionedNodes])
+
+  // Tree toggle helpers
+  const toggleCatalog = (code: string) => {
+    setTreeState((prev) => {
+      const next = new Set(prev.expandedCatalogs)
+      if (next.has(code)) {
+        next.delete(code)
+      } else {
+        next.add(code)
+      }
+      return { ...prev, expandedCatalogs: next }
+    })
   }
 
-  const pageNumber = parsePositiveInt(page, 1)
-  const pageSizeNumber = parsePositiveInt(pageSize, 10)
-  const trimmedSearch = search.trim()
-
-  const { data: catalogsData, isLoading: catalogsLoading } = useQuery({
-    queryKey: ['semantic', 'catalogs'],
-    queryFn: async () => (await listDomainCatalogs()).data,
-  })
-
-  const catalogs = catalogsData?.catalogs ?? []
-  const activeCatalog = useMemo(
-    () => catalogs.find((catalog) => catalog.code === activeCatalogCode) ?? catalogs[0] ?? null,
-    [activeCatalogCode, catalogs],
-  )
-
-  useEffect(() => {
-    if (!catalogs.length) return
-    if (!activeCatalogCode || !catalogs.some((catalog) => catalog.code === activeCatalogCode)) {
-      setActiveCatalogCode(catalogs[0].code)
-    }
-  }, [activeCatalogCode, catalogs, setActiveCatalogCode])
-
-  const resolvedCatalogCode = activeCatalog?.code || ''
-
-  const { data: domainsData, isLoading: domainsLoading } = useQuery({
-    queryKey: ['semantic', 'domains', { catalog: resolvedCatalogCode, q: trimmedSearch, page: pageNumber, pageSize: pageSizeNumber }],
-    queryFn: async () => (
-      await listDomains({
-        catalog_code: resolvedCatalogCode || undefined,
-        q: trimmedSearch || undefined,
-        page: pageNumber,
-        page_size: pageSizeNumber,
-      })
-    ).data,
-    enabled: !catalogsLoading,
-  })
-
-  const domains = domainsData?.domains ?? []
-  const totalDomains = domainsData?.total ?? 0
-  const pageCount = domainsData?.page_count ?? 0
-  const filteredDomains = useMemo(
-    () => domains.filter((domain) => matchesGovernanceLens(domain, lens)),
-    [domains, lens],
-  )
-  const selectedDomain = useMemo(() => {
-    if (!filteredDomains.length) return null
-    return filteredDomains.find((domain) => domainKey(domain) === selectedDomainKey) ?? filteredDomains[0] ?? null
-  }, [filteredDomains, selectedDomainKey])
-
-  useEffect(() => {
-    if (pageCount > 0 && pageNumber > pageCount) {
-      setPage(String(pageCount))
-    }
-  }, [pageCount, pageNumber, setPage])
-
-  useEffect(() => {
-    if (!filteredDomains.length) {
-      if (selectedDomainKey) {
-        setSelectedDomainKey('')
+  const toggleDomain = (key: string) => {
+    setTreeState((prev) => {
+      const next = new Set(prev.expandedDomains)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
       }
-      return
-    }
-    if (!selectedDomainKey || !filteredDomains.some((domain) => domainKey(domain) === selectedDomainKey)) {
-      setSelectedDomainKey(domainKey(filteredDomains[0]))
-    }
-  }, [filteredDomains, selectedDomainKey, setSelectedDomainKey])
+      return { ...prev, expandedDomains: next }
+    })
+  }
 
-  useEffect(() => {
-    if (!selectedDomain) {
-      setPanelMode('catalog')
-      return
-    }
-    if (panelMode !== 'domain') return
-    setPanelMode('domain')
-  }, [panelMode, selectedDomain, setPanelMode])
+  const selectDomain = (domain: DomainSummary) => {
+    const key = domain.id || domain.code
+    updateQueryParams({ selected: key })
+    setPreviewSelectedNode(null)
+  }
 
   const deleteCatalogMutation = useMutation({
     mutationFn: async () => {
@@ -296,543 +362,360 @@ export default function DomainList() {
     },
   })
 
-  const domainColumns = useMemo<DataTableColumn<DomainSummary>[]>(() => [
-    {
-      key: 'name',
-      title: '领域',
-      dataIndex: 'name',
-      render: (_value, record) => (
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-[hsl(var(--workbench-ink))]">{record.name}</div>
-          <div className="mt-1 truncate font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{record.code}</div>
-        </div>
-      ),
-    },
-    {
-      key: 'status',
-      title: '状态',
-      dataIndex: 'status',
-      width: 110,
-      render: (value) => (
-        <Badge variant={statusVariant((value as string) || 'draft')}>
-          {getSemanticStatusLabel((value as string) || 'draft')}
-        </Badge>
-      ),
-    },
-    {
-      key: 'governance',
-      title: '治理',
-      width: 120,
-      render: (_value, record) => {
-        const governance = getGovernanceLabel(record)
-        return (
-          <Badge
-            variant="outline"
-            className={cn(
-              'border-transparent',
-              governance.tone === 'accent'
-                ? 'bg-[hsl(var(--workbench-accent))]/10 text-[hsl(var(--workbench-accent))]'
-                : governance.tone === 'warning'
-                  ? 'bg-[hsl(var(--semantic-warn))]/10 text-[hsl(var(--semantic-warn))]'
-                  : 'bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]',
-            )}
-          >
-            {governance.label}
-          </Badge>
-        )
-      },
-    },
-    {
-      key: 'cube_count',
-      title: 'Cube',
-      dataIndex: 'cube_count',
-      width: 90,
-      align: 'right',
-    },
-    {
-      key: 'join_count',
-      title: 'Join',
-      dataIndex: 'join_count',
-      width: 90,
-      align: 'right',
-    },
-    {
-      key: 'published_at',
-      title: '最近发布',
-      width: 180,
-      render: (_value, record) => formatSummaryTime(record.state_summary?.last_published_at),
-    },
-    {
-      key: 'updated_at',
-      title: '最近变更',
-      width: 180,
-      render: (_value, record) => formatSummaryTime(record.state_summary?.updated_at),
-    },
-  ], [])
-
-  if (catalogsLoading || domainsLoading) {
-    return <VisualModelSkeleton />
-  }
-
-  const domainHealth = getDomainHealth(selectedDomain)
-  const catalogHealth = getCatalogHealth(activeCatalog, domains)
   const canDeleteCatalog = Boolean(activeCatalog && activeCatalog.code !== 'default' && activeCatalog.domain_count === 0)
-  const summary: SemanticValidationSummary = {
-    status: catalogHealth.tone === 'warn' ? 'blocked' : 'ready',
-    title: catalogHealth.title,
-    description: catalogHealth.description,
-    blockers: catalogHealth.tone === 'warn' ? [catalogHealth.description] : [],
-    hints: [
-      lens === 'all' ? '全部领域' : lens === 'empty' ? '空领域透镜' : lens === 'draft' ? '草稿透镜' : 'Join 缺失透镜',
-    ],
+
+  // Filter tree by search
+  const filteredCatalogs = useMemo(() => {
+    const keyword = treeSearch.trim().toLowerCase()
+    if (!keyword) return catalogs
+    return catalogs
+      .map((catalog) => ({
+        ...catalog,
+        domains: (catalog.domains || []).filter(
+          (d) =>
+            d.name.toLowerCase().includes(keyword)
+            || d.code.toLowerCase().includes(keyword),
+        ),
+      }))
+      .filter(
+        (catalog) =>
+          catalog.name.toLowerCase().includes(keyword)
+          || catalog.domains.length > 0,
+      )
+  }, [catalogs, treeSearch])
+
+  if (isLoading) {
+    return <DomainListSkeleton />
   }
 
   return (
     <SemanticPageShell>
       <SemanticPageHeader
         title="领域目录"
-        description="围绕目录治理领域结构，先判断目录健康度，再继续进入画布完成建模闭环。"
-        status="ready"
-        eyebrow="Domain Catalog"
-        meta={
-          <>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{activeCatalog?.name || '未选择目录'}</Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{totalDomains} 个领域</Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{activeCatalog?.draft_count || 0} 个草稿</Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{`第 ${Math.max(pageNumber, 1)} / ${Math.max(pageCount, 1)} 页`}</Badge>
-          </>
-        }
+        description="从目录和领域结构出发，查看关联资产及 Join 关系预览。"
+        eyebrow={null}
         actions={
           <>
-            <Button type="button" onClick={() => setCatalogDialogOpen(true)} className="h-10 rounded-full px-4 shadow-[0_14px_28px_rgba(67,97,238,0.16)]" data-testid="catalog-create-trigger">
+            <Button type="button" onClick={() => setCatalogDialogOpen(true)} className="h-10 rounded-full px-4" data-testid="catalog-create-trigger">
               <PlusCircle className="mr-1.5 h-4 w-4" />
               新建目录
             </Button>
-            <Button asChild variant="outline" className="h-10 rounded-full border-[hsl(var(--workbench-outline))] bg-white/84 px-4" data-testid="domain-create-trigger">
-              <Link to="/semantic/modeling">
-                <GitBranch className="mr-1.5 h-4 w-4" />
-                进入领域建模
+            <Button asChild variant="outline" className="h-10 rounded-full border-[hsl(var(--workbench-outline))] bg-white/84 px-4">
+              <Link to="/semantic/modeling" data-testid="domain-create-trigger">
+                <HelpCircle className="mr-1.5 h-4 w-4" />
+                帮助
               </Link>
             </Button>
           </>
         }
       />
 
-      <SemanticStatusBanner
-        summary={summary}
-        primaryAction={{
-          label: '进入领域建模',
-          href: '/semantic/modeling',
-          icon: <GitBranch className="mr-1.5 h-4 w-4" />,
-        }}
-      />
-
-      <SemanticWorkbenchContextBar
-        items={[
-          { label: '当前目录', value: activeCatalog?.name || '未选择', tone: 'default' },
-          { label: '领域数', value: totalDomains, tone: 'default' },
-          { label: '草稿数', value: activeCatalog?.draft_count || 0, tone: activeCatalog?.draft_count ? 'warning' : 'default' },
-          { label: '治理透镜', value: lens === 'all' ? '全部' : lens === 'empty' ? '空领域' : lens === 'draft' ? '草稿积压' : 'Join 缺失', tone: lens === 'all' ? 'default' : 'accent' },
-        ]}
-        actions={(
-          <Button asChild variant="outline" className="rounded-full border-[hsl(var(--workbench-outline))] bg-white px-4">
-            <Link to="/semantic/modeling">
-              <GitBranch className="mr-1.5 h-4 w-4" />
-              去领域建模
-            </Link>
-          </Button>
-        )}
-        testId="domain-list-context-bar"
-      />
-
       <SemanticSurface bodyClassName="p-0">
-        <div className="grid xl:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="border-b border-[hsl(var(--workbench-outline))] bg-[rgba(249,251,254,0.86)] p-4 xl:border-b-0 xl:border-r">
-            <div className="flex items-center justify-between gap-2 px-1 pb-3">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-                Catalogs
+        <div className="grid min-h-[42rem] xl:grid-cols-[380px_8px_minmax(0,1fr)]">
+          {/* ── Left Panel: Tree ── */}
+          <aside className="flex flex-col overflow-hidden border-r-0 bg-[hsl(var(--workbench-surface))]" data-testid="domain-tree-panel">
+            {/* Tree Header */}
+            <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface-2))] px-4 py-3.5">
+              <div className="flex items-center gap-2">
+                <ListTree className="h-4 w-4 text-[hsl(var(--workbench-accent))]" />
+                <span className="text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">目录结构</span>
               </div>
-              {activeCatalog ? (
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    aria-label="编辑当前目录"
-                    onClick={() => {
-                      setCatalogEditingCode(activeCatalog.code)
-                      setCatalogDialogOpen(true)
-                    }}
-                    data-testid="catalog-edit-trigger"
-                  >
-                    <Settings2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    aria-label="删除当前目录"
-                    disabled={!canDeleteCatalog}
-                    onClick={() => setDeleteDialogOpen(true)}
-                    data-testid="catalog-delete-trigger"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 rounded-lg bg-[hsl(var(--workbench-surface))] px-2.5 py-1.5">
+                  <Search className="h-3 w-3 text-[hsl(var(--workbench-muted-foreground))]" />
+                  <input
+                    type="text"
+                    value={treeSearch}
+                    onChange={(e) => setTreeSearch(e.target.value)}
+                    placeholder="搜索..."
+                    className="w-16 bg-transparent text-[11px] text-[hsl(var(--workbench-ink))] placeholder:text-[hsl(var(--workbench-muted-foreground))] focus:outline-none"
+                    data-testid="domain-tree-search"
+                  />
+                </div>
+                <button type="button" className="flex h-7 w-7 items-center justify-center rounded-lg">
+                  <PanelLeftClose className="h-4 w-4 text-[hsl(var(--workbench-muted-foreground))]" />
+                </button>
+              </div>
+            </div>
+
+            {/* Tree Content */}
+            <div className="flex-1 overflow-y-auto" data-testid="domain-tree-content">
+              {filteredCatalogs.map((catalog) => {
+                const isExpanded = treeState.expandedCatalogs.has(catalog.code)
+                const isActive = activeCatalogCode === catalog.code
+
+                return (
+                  <div key={catalog.code}>
+                    {/* Catalog Header */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleCatalog(catalog.code)
+                        setActiveCatalogCode(catalog.code)
+                      }}
+                      className={cn(
+                        'flex w-full items-center gap-2 px-4 py-3 text-left transition-colors',
+                        isActive && isExpanded
+                          ? 'bg-[hsl(var(--workbench-accent-soft))]'
+                          : 'bg-[hsl(var(--workbench-surface-2))] hover:bg-[hsl(var(--workbench-panel))]',
+                      )}
+                      data-testid={`domain-catalog-${catalog.code}`}
+                    >
+                      {isExpanded
+                        ? <ChevronDown className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />
+                        : <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />}
+                      {isExpanded
+                        ? <FolderOpen className="h-4 w-4 text-[hsl(var(--workbench-accent))]" />
+                        : <Folder className="h-4 w-4 text-[hsl(var(--workbench-muted-foreground))]" />}
+                      <span className="flex-1 truncate text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">
+                        {catalog.name}
+                      </span>
+                      <span className={cn(
+                        'rounded-full px-2 py-0.5 text-[10px] font-medium',
+                        isActive && isExpanded
+                          ? 'bg-[hsl(var(--workbench-accent-soft))] text-[hsl(var(--workbench-accent))]'
+                          : 'bg-[hsl(var(--workbench-surface))] text-[hsl(var(--workbench-muted-foreground))]',
+                      )}>
+                        {catalog.domain_count} 领域
+                      </span>
+                    </button>
+
+                    {/* Catalog Actions (when active) */}
+                    {isActive && isExpanded ? (
+                      <div className="flex items-center gap-1 border-b border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-accent-soft))] px-4 py-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCatalogEditingCode(catalog.code)
+                            setCatalogDialogOpen(true)
+                          }}
+                          className="rounded p-1 text-[hsl(var(--workbench-muted-foreground))] hover:text-[hsl(var(--workbench-ink))]"
+                          data-testid="catalog-edit-trigger"
+                        >
+                          <Settings2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!canDeleteCatalog}
+                          onClick={() => setDeleteDialogOpen(true)}
+                          className="rounded p-1 text-[hsl(var(--workbench-muted-foreground))] hover:text-[hsl(var(--workbench-ink))] disabled:opacity-40"
+                          data-testid="catalog-delete-trigger"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {/* Domain Rows */}
+                    {isExpanded
+                      ? (catalog.domains || []).map((domain) => {
+                          const domainKey = domain.id || domain.code
+                          const isDomainExpanded = treeState.expandedDomains.has(domainKey)
+                          const isDomainSelected = selectedDomainKey === domainKey
+
+                          return (
+                            <div key={domainKey}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  selectDomain(domain)
+                                  toggleDomain(domainKey)
+                                }}
+                                className={cn(
+                                  'flex w-full items-center gap-2 py-2.5 pl-9 pr-4 text-left transition-colors',
+                                  isDomainSelected
+                                    ? 'bg-[hsl(var(--workbench-accent-soft))]'
+                                    : 'hover:bg-[hsl(var(--workbench-panel))]',
+                                )}
+                                data-testid={`domain-list-item-${domainKey}`}
+                              >
+                                {isDomainExpanded
+                                  ? <ChevronDown className="h-3 w-3 text-[hsl(var(--workbench-muted-foreground))]" />
+                                  : <ChevronRight className="h-3 w-3 text-[hsl(var(--workbench-muted-foreground))]" />}
+                                <Network className={cn(
+                                  'h-3.5 w-3.5',
+                                  isDomainSelected ? 'text-[hsl(var(--workbench-accent))]' : 'text-[hsl(var(--workbench-muted-foreground))]',
+                                )} />
+                                <span className={cn(
+                                  'flex-1 truncate text-[12px]',
+                                  isDomainSelected ? 'font-medium text-[hsl(var(--workbench-accent))]' : 'text-[hsl(var(--workbench-ink))]',
+                                )}>
+                                  {domain.name}
+                                </span>
+                                <span className="rounded-lg bg-[hsl(var(--workbench-surface))] px-1.5 py-0.5 text-[10px] text-[hsl(var(--workbench-muted-foreground))]">
+                                  {domain.cube_count} Cubes
+                                </span>
+                              </button>
+
+                              {/* Cube Rows (from canvas data if this is the selected domain) */}
+                              {isDomainExpanded && isDomainSelected && canvasData?.nodes
+                                ? canvasData.nodes.map((cube) => (
+                                    <button
+                                      key={cube.id}
+                                      type="button"
+                                      onClick={() => setPreviewSelectedNode(cube.id)}
+                                      className={cn(
+                                        'flex w-full items-center gap-2 py-2 pl-14 pr-4 text-left transition-colors',
+                                        previewSelectedNode === cube.id
+                                          ? 'bg-[hsl(var(--workbench-accent-soft))]'
+                                          : 'hover:bg-[hsl(var(--workbench-panel))]',
+                                      )}
+                                      data-testid={`domain-cube-${cube.id}`}
+                                    >
+                                      <Box className="h-3 w-3 text-[hsl(var(--workbench-muted-foreground))]" />
+                                      <span className="flex-1 truncate text-[12px] text-[hsl(var(--workbench-ink))]">
+                                        {cube.title || cube.id}
+                                      </span>
+                                      <span className="text-[10px] text-[hsl(var(--workbench-muted-foreground))]">
+                                        {cube.dimensions}维 · {cube.measures}指
+                                      </span>
+                                    </button>
+                                  ))
+                                : null}
+
+                              {/* Show cube count hint if domain expanded but not selected */}
+                              {isDomainExpanded && !isDomainSelected && domain.cube_count > 0 ? (
+                                <div className="py-2 pl-14 pr-4 text-[11px] text-[hsl(var(--workbench-muted-foreground))]">
+                                  点击选中领域后查看 Cube 列表
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })
+                      : null}
+                  </div>
+                )
+              })}
+
+              {filteredCatalogs.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-[hsl(var(--workbench-muted-foreground))]">
+                  {treeSearch ? '没有匹配的目录或领域' : '还没有创建目录'}
                 </div>
               ) : null}
             </div>
-
-            <div className="space-y-1.5">
-              {catalogs.map((catalog) => (
-                <button
-                  key={catalog.code}
-                  type="button"
-                  data-testid={`domain-catalog-${catalog.code}`}
-                  onClick={() => {
-                    updateQueryParams({
-                      catalog: catalog.code,
-                      page: undefined,
-                    })
-                  }}
-                  className={cn(
-                    'w-full rounded-[var(--workbench-radius)] border px-3.5 py-3 text-left transition-all',
-                    catalog.code === activeCatalog?.code
-                      ? 'border-[hsl(var(--workbench-accent))]/20 bg-[hsl(var(--workbench-accent-soft))]'
-                      : 'border-transparent bg-white/72 hover:border-[hsl(var(--workbench-outline))] hover:bg-white',
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-[hsl(var(--workbench-ink))]">{catalog.name}</div>
-                      <div className="mt-1 truncate font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{catalog.code}</div>
-                    </div>
-                    <Badge
-                      variant={statusVariant(catalog.status)}
-                      className={cn(
-                        'border-transparent',
-                        catalog.status === 'active'
-                          ? 'bg-[hsl(var(--workbench-accent))]/10 text-[hsl(var(--workbench-accent))]'
-                          : 'bg-[hsl(var(--workbench-surface-2))] text-[hsl(var(--workbench-muted-foreground))]',
-                      )}
-                    >
-                      {getSemanticStatusLabel(catalog.status)}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-[hsl(var(--workbench-muted-foreground))]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    <span className="rounded-full bg-[hsl(var(--workbench-surface-2))] px-2.5 py-1">{catalog.domain_count} 个领域</span>
-                    <span className="rounded-full bg-[hsl(var(--workbench-surface-2))] px-2.5 py-1">{catalog.active_count} 个已发布</span>
-                    <span className="rounded-full bg-[hsl(var(--workbench-surface-2))] px-2.5 py-1">{catalog.draft_count} 个草稿</span>
-                    {catalog.domain_count === 0 ? (
-                      <span className="rounded-full bg-[hsl(var(--semantic-warn))]/10 px-2.5 py-1 text-[hsl(var(--semantic-warn))]">空目录</span>
-                    ) : null}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {activeCatalog ? (
-              <div className="mt-4 rounded-[var(--workbench-radius)] border border-dashed border-[hsl(var(--workbench-outline))] bg-white/82 px-4 py-4 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                {activeCatalog.description || '当前目录还没有补充说明。'}
-              </div>
-            ) : null}
           </aside>
 
-          <section className="min-w-0">
-            <div className="flex flex-col gap-3 border-b border-[hsl(var(--workbench-outline))] px-5 py-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-                  Domains
-                </div>
-                <div className="text-[1.02rem] font-semibold text-[hsl(var(--workbench-ink))]">
-                  {activeCatalog?.name || '未选择目录'}
-                </div>
-                <p className="text-sm leading-5 text-[hsl(var(--workbench-muted-foreground))]">
-                  当前页展示 {filteredDomains.length} / {totalDomains}，目录切换、治理透镜和分页状态都会保留在 URL 中。
-                </p>
+          {/* ── Resize Handle ── */}
+          <div className="flex cursor-col-resize items-center justify-center">
+            <div className="h-10 w-[3px] rounded-sm bg-[hsl(var(--workbench-outline))]" />
+          </div>
+
+          {/* ── Right Panel: Canvas Preview ── */}
+          <section className="flex flex-col bg-[hsl(var(--workbench-surface-2))]" data-testid="domain-canvas-preview">
+            {/* Canvas Header */}
+            <div className="flex items-center justify-between border-b border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] px-5 py-3">
+              <div className="flex items-center gap-2">
+                <Network className="h-4 w-4 text-[hsl(var(--workbench-accent))]" />
+                <span className="text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">
+                  {selectedDomain
+                    ? `${selectedDomain.name} · Join 关系预览`
+                    : '选择一个领域查看关系预览'}
+                </span>
               </div>
-              <div className="flex w-full max-w-[42rem] flex-col gap-3">
-                <div className="flex flex-wrap gap-2" data-testid="domain-governance-lens">
-                  {([
-                    { value: 'all', label: '全部' },
-                    { value: 'empty', label: '空领域' },
-                    { value: 'draft', label: '草稿积压' },
-                    { value: 'join_gap', label: 'Join 缺失' },
-                  ] as const).map((item) => (
-                    <button
-                      key={item.value}
-                      type="button"
-                      onClick={() => {
-                        updateQueryParams({
-                          lens: item.value === 'all' ? undefined : item.value,
-                          page: undefined,
-                        })
-                      }}
-                      className={cn(
-                        'rounded-full border px-3 py-1.5 text-sm transition-colors',
-                        lens === item.value
-                          ? 'border-[hsl(var(--workbench-accent))]/20 bg-[hsl(var(--workbench-accent-soft))] text-[hsl(var(--workbench-accent))]'
-                          : 'border-[hsl(var(--workbench-outline))] bg-white text-[hsl(var(--workbench-muted-foreground))]',
-                      )}
-                      data-testid={`domain-governance-lens-${item.value}`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative w-full max-w-sm">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--workbench-muted-foreground))]" />
-                  <Input
-                    name="domain_search"
-                    autoComplete="off"
-                    value={search}
-                    onChange={(event) => {
-                      updateQueryParams({
-                        q: event.target.value || undefined,
-                        page: undefined,
-                      })
-                    }}
-                    placeholder="搜索领域名称、编码或说明…"
-                    className="h-10 rounded-xl border-[hsl(var(--workbench-outline))] bg-white pl-9"
-                    data-testid="domain-list-search"
-                  />
-                </div>
+              <div className="flex items-center gap-3">
+                <ZoomOut className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />
+                <span className="text-[11px] text-[hsl(var(--workbench-muted-foreground))]">100%</span>
+                <ZoomIn className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />
+                <Maximize2 className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />
               </div>
             </div>
 
-            <div className="grid xl:grid-cols-[minmax(0,1fr)_340px]">
-              <div className="min-w-0 border-b border-[hsl(var(--workbench-outline))] p-5 xl:border-b-0 xl:border-r">
-                <DataTable
-                  columns={domainColumns}
-                  data={filteredDomains}
-                  rowKey={(record) => domainKey(record)}
-                  emptyText={trimmedSearch ? '当前目录下没有命中搜索条件的领域。' : lens === 'all' ? '当前目录下还没有可浏览的领域。' : '当前治理透镜下没有命中的领域。'}
-                  onRow={(record) => ({
-                    onClick: () => {
-                      updateQueryParams({
-                        selected: domainKey(record),
-                        panel: 'domain',
-                      })
-                    },
-                    testId: `domain-list-item-${domainKey(record)}`,
-                    className: cn(
-                      recordKey(record) === selectedDomainKey
-                        ? 'bg-[hsl(var(--workbench-accent-soft))] hover:bg-[hsl(var(--workbench-accent-soft))]'
-                        : 'hover:bg-[hsl(var(--workbench-panel))]',
-                    ),
-                  })}
-                  pagination={{
-                    current: pageNumber,
-                    pageSize: pageSizeNumber,
-                    total: totalDomains,
-                    pageSizeOptions: PAGE_SIZE_OPTIONS,
-                    onChange: (nextPage) => setPage(String(nextPage)),
-                    onPageSizeChange: (nextPageSize) => {
-                      setPage('1')
-                      setPageSize(String(nextPageSize))
-                    },
-                  }}
-                />
-              </div>
+            {/* Canvas Area */}
+            <div className="relative flex-1 overflow-auto bg-[hsl(var(--workbench-surface-2))]">
+              {selectedDomain && canvasData?.nodes.length ? (
+                <svg
+                  width={canvasWidth}
+                  height={canvasHeight}
+                  viewBox={`0 0 ${canvasWidth} ${canvasHeight}`}
+                  className="min-h-full min-w-full"
+                >
+                  <defs>
+                    <filter id="nodeShadow" x="-10%" y="-10%" width="120%" height="130%">
+                      <feDropShadow dx="0" dy="2" stdDeviation="8" floodColor="#2563EB" floodOpacity="0.08" />
+                    </filter>
+                  </defs>
 
-              <aside className="space-y-5 bg-[rgba(250,252,255,0.74)] p-5" data-testid="domain-summary-panel">
-                <div className="inline-flex rounded-[var(--workbench-radius-sm)] bg-[hsl(var(--workbench-surface-2))] p-1">
-                  <button
-                    type="button"
-                    onClick={() => setPanelMode('catalog')}
-                    className={panelMode === 'catalog'
-                      ? 'rounded-[var(--workbench-radius-sm)] bg-white px-3 py-1.5 text-sm font-medium text-[hsl(var(--workbench-ink))]'
-                      : 'rounded-[var(--workbench-radius-sm)] px-3 py-1.5 text-sm text-[hsl(var(--workbench-muted-foreground))]'}
-                    data-testid="domain-panel-catalog"
-                  >
-                    目录摘要
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!selectedDomain) return
-                      setPanelMode('domain')
-                    }}
-                    className={panelMode === 'domain'
-                      ? 'rounded-[var(--workbench-radius-sm)] bg-white px-3 py-1.5 text-sm font-medium text-[hsl(var(--workbench-ink))]'
-                      : 'rounded-[var(--workbench-radius-sm)] px-3 py-1.5 text-sm text-[hsl(var(--workbench-muted-foreground))]'}
-                    disabled={!selectedDomain}
-                    data-testid="domain-panel-domain"
-                  >
-                    当前领域
-                  </button>
-                </div>
-
-                {panelMode === 'catalog' || !selectedDomain ? (
-                  <div className="space-y-5" data-testid="catalog-summary-panel">
-                    <div className="rounded-[var(--workbench-radius)] border border-[hsl(var(--workbench-outline))] bg-white/92 px-4 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-                            当前目录
-                          </div>
-                          <h2 className="mt-2 truncate text-[1.22rem] font-semibold text-[hsl(var(--workbench-ink))]" data-semantic-display="true">
-                            {activeCatalog?.name || '未选择目录'}
-                          </h2>
-                          <div className="mt-1 truncate font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{activeCatalog?.code || '—'}</div>
-                        </div>
-                        {activeCatalog ? (
-                          <Badge
-                            variant={statusVariant(activeCatalog.status)}
-                            className={cn(
-                              'border-transparent',
-                              activeCatalog.status === 'active'
-                                ? 'bg-[hsl(var(--workbench-accent))]/10 text-[hsl(var(--workbench-accent))]'
-                                : 'bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]',
-                            )}
-                          >
-                            {getSemanticStatusLabel(activeCatalog.status)}
-                          </Badge>
-                        ) : null}
-                      </div>
-                      <div className="mt-4 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                        {activeCatalog?.description || '当前目录还没有补充说明。'}
-                      </div>
-                    </div>
-
-                    <div
-                      className={cn(
-                        'rounded-[var(--workbench-radius)] border px-4 py-4 text-sm leading-6',
-                        catalogHealth.tone === 'ok'
-                          ? 'border-[hsl(var(--semantic-ok))]/20 bg-[hsl(var(--semantic-ok))]/8 text-[hsl(var(--semantic-ok))]'
-                          : catalogHealth.tone === 'warn'
-                            ? 'border-[hsl(var(--semantic-warn))]/20 bg-[hsl(var(--semantic-warn))]/8 text-[hsl(var(--workbench-ink))]'
-                            : 'border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface-2))] text-[hsl(var(--workbench-ink))]',
-                      )}
-                    >
-                      <div className="text-sm font-semibold">{catalogHealth.title}</div>
-                      <div className="mt-2 text-[hsl(var(--workbench-muted-foreground))]">{catalogHealth.description}</div>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {[
-                        { label: '领域总数', value: String(activeCatalog?.domain_count || 0) },
-                        { label: '草稿数', value: String(activeCatalog?.draft_count || 0) },
-                        { label: '已发布', value: String(activeCatalog?.active_count || 0) },
-                        { label: '当前透镜', value: lens === 'all' ? '全部' : lens === 'empty' ? '空领域' : lens === 'draft' ? '草稿积压' : 'Join 缺失' },
-                      ].map((item) => (
-                        <div key={item.label} className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white/90 px-4 py-3">
-                          <div className="text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]">{item.label}</div>
-                          <div className="mt-1.5 text-sm font-semibold text-[hsl(var(--workbench-ink))]">{item.value}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button asChild className="rounded-full px-4 shadow-[0_12px_24px_rgba(67,97,238,0.12)]">
-                        <Link to="/semantic/modeling">
-                          <GitBranch className="mr-1.5 h-4 w-4" />
-                          去领域建模
-                        </Link>
-                      </Button>
-                      {selectedDomain ? (
-                        <Button asChild variant="outline" className="rounded-full border-[hsl(var(--workbench-outline))] bg-white/88 px-4">
-                          <Link to={`/semantic/domains/${domainKey(selectedDomain)}`}>
-                            <PlusCircle className="mr-1.5 h-4 w-4" />
-                            继续最近草稿
-                          </Link>
-                        </Button>
+                  {/* Join Lines */}
+                  {joinPaths.map((path, i) => (
+                    <g key={i}>
+                      <path
+                        d={path.d}
+                        fill="none"
+                        stroke="hsl(var(--workbench-accent))"
+                        strokeWidth={2}
+                        strokeDasharray="none"
+                      />
+                      {path.label ? (
+                        <g transform={`translate(${path.labelX - 30}, ${path.labelY - 8})`}>
+                          <rect width={60} height={16} rx={8} fill="hsl(var(--workbench-accent-soft))" stroke="hsl(var(--workbench-accent))" strokeWidth={1} />
+                          <text x={30} y={12} textAnchor="middle" fontSize={9} fontWeight={500} fill="hsl(var(--workbench-accent))">
+                            {path.label}
+                          </text>
+                        </g>
                       ) : null}
-                    </div>
+                    </g>
+                  ))}
+
+                  {/* Cube Nodes */}
+                  {positionedNodes.map((node) => (
+                    <PreviewCubeNode
+                      key={node.id}
+                      node={node}
+                      selected={previewSelectedNode === node.id}
+                      onClick={() => setPreviewSelectedNode(node.id)}
+                    />
+                  ))}
+                </svg>
+              ) : selectedDomain ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="flex items-center gap-2 rounded-full bg-[hsl(var(--workbench-surface))] px-4 py-2 text-[11px] text-[hsl(var(--workbench-muted-foreground))]">
+                    <Info className="h-3 w-3" />
+                    当前领域还没有 Cube 或 Join 关系
                   </div>
-                ) : (
-                  <div className="space-y-5" data-testid="domain-detail-panel">
-                    <div className="rounded-[var(--workbench-radius)] border border-[hsl(var(--workbench-outline))] bg-white/92 px-4 py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-                            当前领域
-                          </div>
-                          <h2 className="mt-2 truncate text-[1.22rem] font-semibold text-[hsl(var(--workbench-ink))]" data-semantic-display="true">
-                            {selectedDomain.name}
-                          </h2>
-                          <div className="mt-1 truncate font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{selectedDomain.code}</div>
-                        </div>
-                        <Badge
-                          variant={statusVariant(selectedDomain.status)}
-                          className={cn(
-                            'border-transparent',
-                            selectedDomain.status === 'active'
-                              ? 'bg-[hsl(var(--workbench-accent))]/10 text-[hsl(var(--workbench-accent))]'
-                              : 'bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]',
-                          )}
-                        >
-                          {getSemanticStatusLabel(selectedDomain.status)}
-                        </Badge>
-                      </div>
-                      <div className="mt-4 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                        {selectedDomain.description || '当前领域还没有补充业务边界说明。'}
-                      </div>
-                    </div>
-
-                    <div
-                      className={cn(
-                        'rounded-[var(--workbench-radius)] border px-4 py-4 text-sm leading-6',
-                        domainHealth.tone === 'ok'
-                          ? 'border-[hsl(var(--semantic-ok))]/20 bg-[hsl(var(--semantic-ok))]/8 text-[hsl(var(--semantic-ok))]'
-                          : domainHealth.tone === 'warn'
-                            ? 'border-[hsl(var(--semantic-warn))]/20 bg-[hsl(var(--semantic-warn))]/8 text-[hsl(var(--workbench-ink))]'
-                            : 'border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface-2))] text-[hsl(var(--workbench-ink))]',
-                      )}
-                    >
-                      <div className="text-sm font-semibold">{domainHealth.title}</div>
-                      <div className="mt-2 text-[hsl(var(--workbench-muted-foreground))]">{domainHealth.description}</div>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {[
-                        { label: '所属目录', value: selectedDomain.catalog_name || '默认目录' },
-                        { label: 'Cube 数', value: String(selectedDomain.cube_count) },
-                        { label: 'Join 数', value: String(selectedDomain.join_count) },
-                        { label: '最近发布', value: formatSummaryTime(selectedDomain.state_summary?.last_published_at) },
-                        { label: '最近变更', value: formatSummaryTime(selectedDomain.state_summary?.updated_at) },
-                        { label: '同步状态', value: selectedDomain.state_summary?.sync_status || '未记录' },
-                      ].map((item) => (
-                        <div key={item.label} className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white/90 px-4 py-3">
-                          <div className="text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]">{item.label}</div>
-                          <div className="mt-1.5 text-sm font-semibold text-[hsl(var(--workbench-ink))]">{item.value}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button asChild className="rounded-full px-4 shadow-[0_12px_24px_rgba(67,97,238,0.12)]" data-testid="domain-open-design">
-                        <Link to={`/semantic/domains/${domainKey(selectedDomain)}`}>
-                          <GitBranch className="mr-1.5 h-4 w-4" />
-                          进入画布
-                        </Link>
-                      </Button>
-                      <Button asChild variant="outline" className="rounded-full border-[hsl(var(--workbench-outline))] bg-white/88 px-4">
-                        <Link to="/semantic/modeling">
-                          <PlusCircle className="mr-1.5 h-4 w-4" />
-                          去领域建模
-                        </Link>
-                      </Button>
-                    </div>
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="flex items-center gap-2 rounded-full bg-[hsl(var(--workbench-surface))] px-4 py-2 text-[11px] text-[hsl(var(--workbench-muted-foreground))]">
+                    <Info className="h-3 w-3" />
+                    点击左侧领域查看 Join 关系
                   </div>
-                )}
-              </aside>
+                </div>
+              )}
+
+              {/* Info card overlay (bottom-right) */}
+              {selectedDomain ? (
+                <div className="absolute bottom-4 right-4 w-56 rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-4 shadow-sm">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--workbench-muted-foreground))]">
+                    管理与治理
+                  </div>
+                  <div className="mt-2 text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">
+                    {selectedDomain.name}
+                  </div>
+                  <div className="mt-1 text-[11px] text-[hsl(var(--workbench-muted-foreground))]">
+                    {getSemanticStatusLabel(selectedDomain.status)} · {selectedDomain.cube_count} Cube · {selectedDomain.join_count} Join
+                  </div>
+                  <Button asChild size="sm" className="mt-3 h-8 w-full rounded-lg text-xs" data-testid="domain-open-design">
+                    <Link to={`/semantic/domains/${selectedDomain.id || selectedDomain.code}`}>
+                      进入画布
+                    </Link>
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </section>
         </div>
       </SemanticSurface>
 
+      {/* ── Dialogs ── */}
       <CatalogEditorDialog
         open={catalogDialogOpen}
-        catalog={catalogEditingCode ? catalogs.find((catalog) => catalog.code === catalogEditingCode) : undefined}
+        catalog={catalogEditingCode ? catalogs.find((c) => c.code === catalogEditingCode) : undefined}
         onOpenChange={(open) => {
           setCatalogDialogOpen(open)
           if (!open) setCatalogEditingCode(null)
         }}
         onSuccess={(catalog) => {
-          updateQueryParams({
-            catalog: catalog.code,
-            page: undefined,
-          })
+          updateQueryParams({ catalog: catalog.code })
         }}
       />
 
@@ -859,8 +742,4 @@ export default function DomainList() {
       </AlertDialog>
     </SemanticPageShell>
   )
-}
-
-function recordKey(record: DomainSummary) {
-  return domainKey(record)
 }

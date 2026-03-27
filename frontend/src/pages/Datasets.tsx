@@ -23,7 +23,6 @@ import type { Dataset } from '@/types'
 import {
   CapabilityGateCard,
   DataCenterPageShell,
-  FormButton,
   useToast,
   AlertDialog,
   AlertDialogAction,

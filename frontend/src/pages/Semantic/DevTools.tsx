@@ -1,219 +1,83 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Bug, FileCode, RefreshCw } from 'lucide-react'
-import {
-  listCubes,
-  listDomainCatalogs,
-  listDomains,
-  listViews,
-  type CubeSummary,
-  type DomainCatalogSummary,
-  type DomainSummary,
-  type ViewSummary,
-} from '@/api/semantic'
-import { CompileDebugTab, type CompileDebugStatus } from '@/components/Semantic/DevTools/CompileDebugTab'
+import { CheckCircle, ChevronRight, Link as LinkIcon, Upload } from 'lucide-react'
+import { describeCube, type CubeDetail } from '@/api/semantic'
+import { CompileDebugTab } from '@/components/Semantic/DevTools/CompileDebugTab'
 import { SchemaSyncTab } from '@/components/Semantic/DevTools/SchemaSyncTab'
 import { SemanticEditorEmptyState } from '@/components/Semantic/DevTools/SemanticEditorEmptyState'
-import { SemanticResourceTree, type SemanticResourceTreeGroup } from '@/components/Semantic/DevTools/SemanticResourceTree'
-import { SemanticWorkspaceHeader } from '@/components/Semantic/DevTools/SemanticWorkspaceHeader'
-import { YamlEditorTab, type YamlEditorFileType } from '@/components/Semantic/DevTools/YamlEditorTab'
+import { SemanticResourceTree } from '@/components/Semantic/DevTools/SemanticResourceTree'
+import { SemanticWorkbenchContextBar } from '@/components/Semantic/SemanticWorkbenchContextBar'
+import { YamlEditorTab } from '@/components/Semantic/DevTools/YamlEditorTab'
 import { SemanticPageHeader, SemanticPageShell, SemanticSurface } from '@/components/Semantic/workbench'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useSemanticDevTools } from '@/hooks/semantic-ia'
 import { useUrlState } from '@/hooks/useUrlState'
-import { getSemanticStatusLabel } from '@/lib/semantic-status'
-import { buildSemanticSelection, type SemanticObjectKind } from '@/lib/semantic-workbench'
+import type { SemanticObjectKind } from '@/lib/semantic-workbench'
 
 const tabMeta = {
-  editor: {
-    title: '定义文件',
-    description: '当前区只承载对象定义、校验和保存，不再重复显示第二套文件树。',
-  },
-  compiler: {
-    title: '编译调试',
-    description: '先看结论，再看步骤日志和 SQL 结果，避免一开始陷入长日志。',
-  },
-  sync: {
-    title: 'Schema 同步',
-    description: '把漂移结果收敛成可扫描的问题列表和建议动作，而不是大段说明。',
-  },
+  editor: { title: 'YAML', description: '查看和维护对象定义文件。' },
+  compiler: { title: '编译调试', description: '查看编译结果、执行日志和 SQL 输出。' },
+  sync: { title: '预览', description: '查看 Schema 漂移、同步状态和建议动作。' },
 } as const
 
 type IdeTab = keyof typeof tabMeta
-
-type SelectedResource =
-  | {
-      kind: 'catalog'
-      name: string
-      code: string
-      pathLabel: string
-      objectTypeLabel: string
-      schemaLabel: string
-      schemaTone: 'default' | 'accent' | 'warning'
-      editorType: null
-      editorSupported: false
-      actionHref: string
-      highlightObjectName: null
-    }
-  | {
-      kind: 'domain'
-      name: string
-      code: string
-      pathLabel: string
-      objectTypeLabel: string
-      schemaLabel: string
-      schemaTone: 'default' | 'accent' | 'warning'
-      editorType: null
-      editorSupported: false
-      actionHref: string
-      highlightObjectName: string
-    }
-  | {
-      kind: 'cube'
-      name: string
-      code: string
-      pathLabel: string
-      objectTypeLabel: string
-      schemaLabel: string
-      schemaTone: 'default' | 'accent' | 'warning'
-      editorType: YamlEditorFileType
-      editorSupported: true
-      actionHref: string
-      highlightObjectName: string
-    }
-  | {
-      kind: 'view'
-      name: string
-      code: string
-      pathLabel: string
-      objectTypeLabel: string
-      schemaLabel: string
-      schemaTone: 'default' | 'accent' | 'warning'
-      editorType: YamlEditorFileType
-      editorSupported: true
-      actionHref: string
-      highlightObjectName: string
-    }
 
 function IdeSkeleton() {
   return (
     <div className="space-y-4">
       <Skeleton className="h-20 rounded-2xl" />
       <Skeleton className="h-16 rounded-2xl" />
-      <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <Skeleton className="h-[42rem] rounded-2xl" />
-        <Skeleton className="h-[42rem] rounded-2xl" />
+      <div className="grid gap-0 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
+        <Skeleton className="h-[42rem] rounded-l-2xl" />
+        <Skeleton className="h-[42rem]" />
+        <Skeleton className="h-[42rem] rounded-r-2xl" />
       </div>
     </div>
   )
 }
 
-function getKindLabel(kind: SemanticObjectKind) {
-  const labels: Record<SemanticObjectKind, string> = {
-    catalog: 'Catalog',
-    domain: 'Domain',
-    cube: 'Cube',
-    view: 'View',
-  }
-  return labels[kind]
+function InspectorField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">{label}</div>
+      <div className="rounded-md bg-[hsl(var(--workbench-surface-2))] px-3 py-2">
+        <span className={`text-[13px] text-[hsl(var(--workbench-ink))] ${mono ? 'font-mono' : ''}`}>
+          {value || '—'}
+        </span>
+      </div>
+    </div>
+  )
 }
 
-function getSyncMeta(status?: string | null) {
-  const normalized = String(status || '').toLowerCase()
-  if (normalized === 'ok' || normalized === 'active') {
-    return { label: '正常', tone: 'accent' as const }
-  }
-  if (normalized === 'warn' || normalized === 'draft') {
-    return { label: '待处理', tone: 'warning' as const }
-  }
-  if (normalized === 'error') {
-    return { label: '异常', tone: 'warning' as const }
-  }
-  return { label: '未记录', tone: 'default' as const }
+function InspectorStat({ value, label }: { value: string | number; label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-1 rounded-[10px] bg-[hsl(var(--workbench-surface-2))] px-3 py-3">
+      <span className="text-[22px] font-semibold text-[hsl(var(--workbench-accent))]">{value}</span>
+      <span className="text-[11px] text-[hsl(var(--workbench-muted-foreground))]">{label}</span>
+    </div>
+  )
 }
 
-function buildResourceGroups({
-  catalogs,
-  domains,
-  cubes,
-  views,
-  keyword,
-}: {
-  catalogs: DomainCatalogSummary[]
-  domains: DomainSummary[]
-  cubes: CubeSummary[]
-  views: ViewSummary[]
-  keyword: string
-}): SemanticResourceTreeGroup[] {
-  const matches = (values: Array<string | null | undefined>) => {
-    if (!keyword) return true
-    return values.some((value) => String(value || '').toLowerCase().includes(keyword))
-  }
-
-  return [
-    {
-      kind: 'catalog',
-      label: 'Catalog',
-      count: catalogs.length,
-      items: catalogs
-        .filter((item) => matches([item.name, item.code, item.description]))
-        .map((item) => ({
-          key: item.code,
-          label: item.name,
-          meta: `${item.domain_count} 个领域 · 草稿 ${item.draft_count}`,
-        })),
-    },
-    {
-      kind: 'domain',
-      label: 'Domain',
-      count: domains.length,
-      items: domains
-        .filter((item) => matches([item.name, item.code, item.catalog_name]))
-        .map((item) => ({
-          key: String(item.id || item.code),
-          label: item.name,
-          meta: `${item.catalog_name || '默认目录'} · ${getSemanticStatusLabel(item.status)}`,
-        })),
-    },
-    {
-      kind: 'cube',
-      label: 'Cube',
-      count: cubes.length,
-      items: cubes
-        .filter((item) => matches([item.title, item.name, item.domain_name, item.description]))
-        .map((item) => ({
-          key: item.name,
-          label: item.title,
-          meta: `${item.name} · ${getSemanticStatusLabel(item.status || 'draft')}`,
-        })),
-    },
-    {
-      kind: 'view',
-      label: 'View',
-      count: views.length,
-      items: views
-        .filter((item) => matches([item.title, item.name, item.description]))
-        .map((item) => ({
-          key: item.name,
-          label: item.title,
-          meta: `${item.name} · ${item.public ? '公开' : '私有'}`,
-        })),
-    },
-  ]
+function InspectorJoinItem({ name, joinType }: { name: string; joinType: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-[hsl(var(--workbench-surface-2))] px-3 py-2">
+      <LinkIcon className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />
+      <span className="flex-1 text-[13px] text-[hsl(var(--workbench-ink))]">{name}</span>
+      <span className="font-mono text-[10px] font-medium text-[hsl(var(--workbench-accent))]">
+        {joinType.toUpperCase()}
+      </span>
+    </div>
+  )
 }
 
 export default function DevTools() {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [, setSearchParams] = useSearchParams()
   const [tab] = useUrlState<IdeTab>('tab', 'editor')
   const [selectedKind] = useUrlState<SemanticObjectKind>('kind', 'cube')
   const [selectedCode] = useUrlState<string>('resource', '')
   const [selectedName] = useUrlState<string>('file', '')
   const [resourceSearch] = useUrlState<string>('q', '')
-  const [compileStatus, setCompileStatus] = useState<CompileDebugStatus>({ state: 'idle', label: '未执行', lastRunAt: null })
-  const [editorDirty, setEditorDirty] = useState(false)
-
   const updateQueryParams = useCallback((updates: Record<string, string | undefined>) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
@@ -236,180 +100,90 @@ export default function DevTools() {
     updateQueryParams({
       kind: kind === 'cube' ? undefined : kind,
       resource: key,
-      file: kind === 'cube' || kind === 'view' ? key : undefined,
+      file: kind === 'cube' || kind === 'view' || kind === 'recipe' ? key : undefined,
     })
   }, [updateQueryParams])
 
-  const { data: catalogsData, isLoading: catalogsLoading } = useQuery({
-    queryKey: ['semantic', 'catalogs'],
-    queryFn: async () => (await listDomainCatalogs()).data,
-  })
-  const { data: domainsData, isLoading: domainsLoading } = useQuery({
-    queryKey: ['semantic', 'domains'],
-    queryFn: async () => (await listDomains()).data,
-  })
-  const { data: cubesData, isLoading: cubesLoading } = useQuery({
-    queryKey: ['semantic', 'cubes'],
-    queryFn: async () => (await listCubes()).data,
-  })
-  const { data: viewsData, isLoading: viewsLoading } = useQuery({
-    queryKey: ['semantic', 'views'],
-    queryFn: async () => (await listViews()).data,
+  const {
+    cubes,
+    views,
+    recipes,
+    selection,
+    selectedResource,
+    resourceGroups,
+    defaultSelection,
+    isLoading,
+  } = useSemanticDevTools({
+    keyword: resourceSearch,
+    selectedKind,
+    selectedCode,
+    selectedName,
   })
 
-  const isLoading = catalogsLoading || domainsLoading || cubesLoading || viewsLoading
-  const catalogs = catalogsData?.catalogs ?? []
-  const domains = domainsData?.domains ?? []
-  const cubes = cubesData?.cubes ?? []
-  const views = viewsData?.views ?? []
+  // Fetch cube detail for inspector panel
+  const cubeDetailQuery = useQuery({
+    queryKey: ['semantic', 'cube-detail', selectedCode],
+    queryFn: async () => (await describeCube(selectedCode)).data,
+    enabled: Boolean(selectedCode && selectedKind === 'cube'),
+  })
+  const cubeDetail: CubeDetail | undefined = cubeDetailQuery.data
+
+  // Find the selected cube from cubes list as fallback
+  const selectedCubeSummary = useMemo(
+    () => cubes.find((c) => c.name === selectedCode),
+    [cubes, selectedCode],
+  )
 
   useEffect(() => {
     if (selectedCode) return
-    if (cubes.length > 0) {
-      updateQueryParams({ kind: undefined, resource: cubes[0].name, file: cubes[0].name })
-      return
+    if (defaultSelection) {
+      updateQueryParams({
+        kind: defaultSelection.kind === 'cube' ? undefined : defaultSelection.kind,
+        resource: defaultSelection.resource,
+        file: defaultSelection.file,
+      })
     }
-    if (views.length > 0) {
-      updateQueryParams({ kind: 'view', resource: views[0].name, file: views[0].name })
-      return
-    }
-    if (domains.length > 0) {
-      updateQueryParams({ kind: 'domain', resource: String(domains[0].id || domains[0].code), file: undefined })
-      return
-    }
-    if (catalogs.length > 0) {
-      updateQueryParams({ kind: 'catalog', resource: catalogs[0].code, file: undefined })
-    }
-  }, [catalogs, cubes, domains, selectedCode, updateQueryParams, views])
-
-  useEffect(() => {
-    setEditorDirty(false)
-  }, [selectedCode, selectedKind, selectedName])
-
-  const selection = useMemo(() => {
-    if (selectedKind === 'cube') {
-      const cube = cubes.find((item) => item.name === selectedCode || item.name === selectedName)
-      return cube ? buildSemanticSelection('ide', 'cube', { name: cube.title, code: cube.name }) : null
-    }
-    if (selectedKind === 'view') {
-      const view = views.find((item) => item.name === selectedCode || item.name === selectedName)
-      return view ? buildSemanticSelection('ide', 'view', { name: view.title, code: view.name }) : null
-    }
-    if (selectedKind === 'domain') {
-      const domain = domains.find((item) => String(item.id || item.code) === selectedCode || item.code === selectedCode)
-      return domain ? buildSemanticSelection('ide', 'domain', { name: domain.name, code: String(domain.id || domain.code) }) : null
-    }
-    const catalog = catalogs.find((item) => item.code === selectedCode)
-    return catalog ? buildSemanticSelection('ide', 'catalog', { name: catalog.name, code: catalog.code }) : null
-  }, [catalogs, cubes, domains, selectedCode, selectedKind, selectedName, views])
-
-  const selectedResource = useMemo<SelectedResource | null>(() => {
-    if (selectedKind === 'cube') {
-      const cube = cubes.find((item) => item.name === selectedCode || item.name === selectedName)
-      if (!cube) return null
-      const syncMeta = getSyncMeta(cube.state_summary?.sync_status || cube.sync_status)
-      return {
-        kind: 'cube',
-        name: cube.title,
-        code: cube.name,
-        pathLabel: `Cube / ${cube.name}`,
-        objectTypeLabel: 'Cube',
-        schemaLabel: syncMeta.label,
-        schemaTone: syncMeta.tone,
-        editorType: 'cubes',
-        editorSupported: true,
-        actionHref: `/semantic/cubes/${cube.name}`,
-        highlightObjectName: cube.name,
-      }
-    }
-    if (selectedKind === 'view') {
-      const view = views.find((item) => item.name === selectedCode || item.name === selectedName)
-      if (!view) return null
-      return {
-        kind: 'view',
-        name: view.title,
-        code: view.name,
-        pathLabel: `View / ${view.name}`,
-        objectTypeLabel: 'View',
-        schemaLabel: '仅发布后可检测',
-        schemaTone: 'default',
-        editorType: 'views',
-        editorSupported: true,
-        actionHref: `/semantic/views/${view.name}`,
-        highlightObjectName: view.name,
-      }
-    }
-    if (selectedKind === 'domain') {
-      const domain = domains.find((item) => String(item.id || item.code) === selectedCode || item.code === selectedCode)
-      if (!domain) return null
-      const syncMeta = getSyncMeta(domain.state_summary?.sync_status)
-      return {
-        kind: 'domain',
-        name: domain.name,
-        code: String(domain.id || domain.code),
-        pathLabel: `Domain / ${domain.code}`,
-        objectTypeLabel: 'Domain',
-        schemaLabel: syncMeta.label,
-        schemaTone: syncMeta.tone,
-        editorType: null,
-        editorSupported: false,
-        actionHref: `/semantic/domains/${domain.id || domain.code}`,
-        highlightObjectName: domain.code,
-      }
-    }
-    const catalog = catalogs.find((item) => item.code === selectedCode)
-    if (!catalog) return null
-    const syncMeta = getSyncMeta(catalog.status)
-    return {
-      kind: 'catalog',
-      name: catalog.name,
-      code: catalog.code,
-      pathLabel: `Catalog / ${catalog.code}`,
-      objectTypeLabel: 'Catalog',
-      schemaLabel: syncMeta.label,
-      schemaTone: syncMeta.tone,
-      editorType: null,
-      editorSupported: false,
-      actionHref: '/semantic/domains',
-      highlightObjectName: null,
-    }
-  }, [catalogs, cubes, domains, selectedCode, selectedKind, selectedName, views])
-
-  const resourceGroups = useMemo(() => buildResourceGroups({
-    catalogs,
-    domains,
-    cubes,
-    views,
-    keyword: resourceSearch.trim().toLowerCase(),
-  }), [catalogs, cubes, domains, resourceSearch, views])
+  }, [defaultSelection, selectedCode, updateQueryParams])
 
   const currentTabMeta = tabMeta[tab]
   const workspaceTitle = selectedResource?.name || '请选择对象'
-  const workspaceDescription = selectedResource
-    ? `${selectedResource.pathLabel}。${currentTabMeta.description}`
-    : currentTabMeta.description
 
-  const workspaceItems = useMemo(() => [
-    { label: '对象类型', value: selection ? getKindLabel(selection.kind) : '未选择', tone: 'default' as const },
-    { label: 'Schema 状态', value: selectedResource?.schemaLabel || '未记录', tone: selectedResource?.schemaTone || 'default' as const },
-    tab === 'compiler'
-      ? {
-          label: '最近编译',
-          value: compileStatus.lastRunAt ? `${compileStatus.label} · ${compileStatus.lastRunAt}` : compileStatus.label,
-          tone: compileStatus.state === 'error' ? 'warning' as const : compileStatus.state === 'success' ? 'accent' as const : 'default' as const,
-        }
-      : tab === 'editor'
-      ? {
-          label: selectedResource?.editorSupported ? '编辑状态' : '维护方式',
-          value: selectedResource?.editorSupported ? (editorDirty ? '有未保存修改' : '未修改') : '可视化维护',
-          tone: editorDirty ? 'warning' as const : 'default' as const,
-        }
-      : {
-          label: '当前工作区',
-          value: currentTabMeta.title,
-          tone: 'accent' as const,
-        },
-  ], [compileStatus.label, compileStatus.lastRunAt, compileStatus.state, currentTabMeta.title, editorDirty, selectedResource, selection, tab])
+  const workbenchContextItems = useMemo(() => [
+    {
+      label: '当前对象',
+      value: selectedResource?.pathLabel || '未选择',
+      tone: selectedResource ? 'default' as const : 'warning' as const,
+    },
+    {
+      label: '当前标签页',
+      value: currentTabMeta.title,
+      tone: 'accent' as const,
+    },
+    {
+      label: 'Schema 状态',
+      value: selectedResource?.schemaLabel || '未记录',
+      tone: selectedResource?.schemaTone || 'default',
+    },
+    {
+      label: '资源规模',
+      value: `${cubes.length} Cube / ${views.length} View / ${recipes.length} Recipe`,
+      tone: 'default' as const,
+    },
+  ], [cubes.length, currentTabMeta.title, recipes.length, selectedResource, views.length])
+
+  // Inspector data
+  const inspectorMeasureCount = cubeDetail
+    ? Object.keys(cubeDetail.measures).length
+    : selectedCubeSummary?.measure_count ?? 0
+  const inspectorDimensionCount = cubeDetail
+    ? Object.keys(cubeDetail.dimensions).length
+    : selectedCubeSummary?.dimension_count ?? 0
+  const inspectorJoinCount = cubeDetail
+    ? Object.keys(cubeDetail.joins).length
+    : selectedCubeSummary?.join_count ?? 0
+  const inspectorJoins = cubeDetail
+    ? Object.entries(cubeDetail.joins).map(([key, join]) => ({ name: join.target_cube, joinType: join.type, key }))
+    : []
 
   if (isLoading) {
     return <IdeSkeleton />
@@ -418,119 +192,234 @@ export default function DevTools() {
   return (
     <SemanticPageShell>
       <SemanticPageHeader
-        title="开发工具"
-        description="用轻量 IDE 方式切换语义对象、查看定义文件、执行编译调试，并集中处理 Schema 同步问题。"
-        status="ready"
-        eyebrow="Dev Tools"
-        meta={(
-          <>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{catalogs.length} 个目录</Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{domains.length} 个领域</Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{cubes.length} 个 Cube</Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{views.length} 个 View</Badge>
-          </>
-        )}
-        actions={(
-          <Button variant="outline" asChild className="h-10 rounded-full border-[hsl(var(--workbench-outline))] bg-white/88 px-4">
-            <Link to="/semantic/cubes">进入 Cube 模块</Link>
-          </Button>
-        )}
+        title="语义模型"
+        description="查看语义对象定义、编译结果和 Schema 同步状态。"
+        eyebrow={null}
       />
 
-      <SemanticSurface bodyClassName="p-0">
-        <div className="grid min-h-[42rem] xl:grid-cols-[300px_minmax(0,1fr)]">
-          <SemanticResourceTree
-            search={resourceSearch}
-            onSearchChange={(value) => updateQueryParams({ q: value || undefined })}
-            groups={resourceGroups}
-            selectedKind={selectedKind}
-            selectedCode={selectedCode}
-            onSelect={handleSelectResource}
-          />
+      <div className="space-y-4" data-testid="devtools-screen">
+        <SemanticWorkbenchContextBar
+          items={workbenchContextItems}
+          testId="devtools-workbench-context-bar"
+        />
 
-          <section className="bg-[rgba(255,255,255,0.9)]">
-            <SemanticWorkspaceHeader
-              title={workspaceTitle}
-              description={workspaceDescription}
-              items={workspaceItems}
-              actions={(
-                <div className="flex flex-wrap items-center gap-2">
-                  {selectedResource ? (
-                    <Button variant="outline" asChild className="rounded-full border-[hsl(var(--workbench-outline))] bg-white px-4">
-                      <Link to={selectedResource.actionHref}>
-                        {selectedResource.kind === 'domain'
-                          ? '打开领域模块'
-                          : selectedResource.kind === 'catalog'
-                            ? '打开目录治理'
-                            : '查看对象'}
-                      </Link>
-                    </Button>
-                  ) : null}
-                  {tab !== 'editor' && selectedResource?.editorSupported ? (
-                    <Button variant="outline" onClick={() => setTabValue('editor')} className="rounded-full border-[hsl(var(--workbench-outline))] bg-white px-4">
-                      <FileCode className="mr-1.5 h-4 w-4" />
-                      定义文件
-                    </Button>
-                  ) : null}
-                  {tab !== 'compiler' ? (
-                    <Button variant="outline" onClick={() => setTabValue('compiler')} className="rounded-full border-[hsl(var(--workbench-outline))] bg-white px-4">
-                      <Bug className="mr-1.5 h-4 w-4" />
-                      编译调试
-                    </Button>
-                  ) : null}
-                  {tab !== 'sync' ? (
-                    <Button variant="outline" onClick={() => setTabValue('sync')} className="rounded-full border-[hsl(var(--workbench-outline))] bg-white px-4">
-                      <RefreshCw className="mr-1.5 h-4 w-4" />
-                      Schema 同步
-                    </Button>
-                  ) : null}
-                </div>
-              )}
-              testId="devtools-workspace-header"
+        <SemanticSurface bodyClassName="p-0">
+          <div className="grid min-h-[42rem] xl:grid-cols-[280px_minmax(0,1fr)_280px]">
+            {/* ── Left Panel: Resource Tree ── */}
+            <SemanticResourceTree
+              search={resourceSearch}
+              onSearchChange={(value) => updateQueryParams({ q: value || undefined })}
+              groups={resourceGroups}
+              selectedKind={selectedKind}
+              selectedCode={selectedCode}
+              onSelect={handleSelectResource}
             />
 
-            <div className="px-6 py-5">
-              <div className="inline-flex rounded-[var(--workbench-radius-sm)] bg-[hsl(var(--workbench-surface-2))] p-1">
-                {(['editor', 'compiler', 'sync'] as const).map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setTabValue(item)}
-                    className={
-                      item === tab
-                        ? 'rounded-[var(--workbench-radius-sm)] bg-white px-4 py-2 text-sm font-medium text-[hsl(var(--workbench-ink))] shadow-[0_8px_24px_rgba(15,23,42,0.08)]'
-                        : 'rounded-[var(--workbench-radius-sm)] px-4 py-2 text-sm text-[hsl(var(--workbench-muted-foreground))] transition-colors hover:text-[hsl(var(--workbench-ink))]'
-                    }
-                    data-testid={`devtools-tab-${item}`}
-                  >
-                    {tabMeta[item].title}
-                  </button>
-                ))}
+            {/* ── Center Panel: Toolbar + Editor ── */}
+            <section className="flex min-w-0 flex-col border-x border-[hsl(var(--workbench-outline))]">
+              {/* Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-5 py-0">
+                {/* Left: object name + sync badge */}
+                <div className="flex items-center gap-3 py-3">
+                  <span className="text-[15px] font-semibold text-[hsl(var(--workbench-ink))]">
+                    {workspaceTitle}
+                  </span>
+                  {selectedResource ? (
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                        selectedResource.schemaTone === 'accent'
+                          ? 'bg-[#F0FDF4] text-[#15803D]'
+                          : selectedResource.schemaTone === 'warning'
+                            ? 'bg-[hsl(var(--semantic-warn))]/10 text-[hsl(var(--semantic-warn))]'
+                            : 'bg-[hsl(var(--workbench-surface-2))] text-[hsl(var(--workbench-muted-foreground))]'
+                      }`}
+                    >
+                      {selectedResource.schemaTone === 'accent' ? (
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#22C55E]" />
+                      ) : null}
+                      {selectedResource.schemaLabel}
+                    </span>
+                  ) : null}
+                </div>
+
+                {/* Center: tab group */}
+                <div className="flex items-center">
+                  {(['editor', 'compiler', 'sync'] as const).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setTabValue(item)}
+                      className={
+                        item === tab
+                          ? 'border-b-2 border-[hsl(var(--workbench-accent))] px-4 py-3 text-[13px] font-medium text-[hsl(var(--workbench-accent))]'
+                          : 'px-4 py-3 text-[13px] text-[hsl(var(--workbench-muted-foreground))] transition-colors hover:text-[hsl(var(--workbench-ink))]'
+                      }
+                      data-testid={`devtools-tab-${item}`}
+                    >
+                      {tabMeta[item].title}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Right: action buttons */}
+                <div className="flex items-center gap-2 py-3">
+                  {selectedResource?.editorSupported && tab === 'editor' ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[hsl(var(--workbench-outline))] px-4 py-2 text-[13px] font-medium text-[hsl(var(--workbench-ink))] transition-colors hover:bg-[hsl(var(--workbench-surface-2))]"
+                    >
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      验证
+                    </button>
+                  ) : null}
+                  {selectedResource ? (
+                    <Link
+                      to={selectedResource.actionHref}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[hsl(var(--workbench-accent))] px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      发布
+                    </Link>
+                  ) : null}
+                </div>
               </div>
 
-              {tab === 'editor' ? (
-                selectedResource?.editorSupported ? (
-                  <YamlEditorTab
-                    fileType={selectedResource.editorType}
-                    fileName={selectedResource.code}
-                    onDirtyChange={setEditorDirty}
+              {/* Editor Area */}
+              <div className={`flex-1 ${tab === 'editor' ? 'bg-[#1E293B]' : 'bg-[rgba(255,255,255,0.9)]'}`}>
+                {tab === 'editor' ? (
+                  selectedResource?.editorSupported ? (
+                    <div className="h-full [&_.monaco-editor]:!bg-[#1E293B] [&_.monaco-editor_.margin]:!bg-[#1E293B]">
+                      <YamlEditorTab
+                        fileType={selectedResource.editorType}
+                        fileName={selectedResource.code}
+                        recipeMeta={selectedResource.recipeMeta}
+                        onDirtyChange={setEditorDirty}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-full items-center justify-center bg-[rgba(255,255,255,0.9)]">
+                      <SemanticEditorEmptyState kind={selectedKind === 'domain' ? 'domain' : 'catalog'} selectionCode={selectedCode} />
+                    </div>
+                  )
+                ) : null}
+
+                {tab === 'compiler' ? (
+                  <div className="px-6 py-5">
+                    <CompileDebugTab onStatusChange={setCompileStatus} />
+                  </div>
+                ) : null}
+
+                {tab === 'sync' ? (
+                  <div className="px-6 py-5">
+                    <SchemaSyncTab highlightObjectName={selectedResource?.highlightObjectName} />
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            {/* ── Right Panel: Inspector ── */}
+            <aside className="flex flex-col gap-5 overflow-y-auto bg-[hsl(var(--workbench-surface))] p-5" data-testid="devtools-inspector-panel">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <span className="text-[15px] font-bold text-[hsl(var(--workbench-ink))]">属性</span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] shadow-sm">
+                  <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />
+                </div>
+              </div>
+
+              {/* Properties Section */}
+              {selectedResource ? (
+                <div className="space-y-4">
+                  <InspectorField
+                    label="模型名称"
+                    value={cubeDetail?.title || selectedResource.name}
                   />
-                ) : (
-                  <SemanticEditorEmptyState kind={selectedKind === 'domain' ? 'domain' : 'catalog'} selectionCode={selectedCode} />
-                )
+                  <InspectorField
+                    label="数据源"
+                    value={
+                      cubeDetail?.source_binding_summary?.source_name
+                      || (cubeDetail?.source_database ? `${cubeDetail.source_database}` : '')
+                      || selectedCubeSummary?.source_database
+                      || '—'
+                    }
+                  />
+                  <InspectorField
+                    label="SQL 表名"
+                    value={cubeDetail?.table || selectedCubeSummary?.table || ''}
+                    mono
+                  />
+                  <InspectorField
+                    label="描述"
+                    value={cubeDetail?.description || ''}
+                  />
+                </div>
+              ) : (
+                <div className="text-sm text-[hsl(var(--workbench-muted-foreground))]">
+                  在左侧选择一个对象后查看属性。
+                </div>
+              )}
+
+              {/* Divider */}
+              {selectedResource ? (
+                <div className="h-px bg-[hsl(var(--workbench-outline))]" />
               ) : null}
 
-              {tab === 'compiler' ? (
-                <CompileDebugTab onStatusChange={setCompileStatus} />
+              {/* Stats Section */}
+              {selectedResource && selectedKind === 'cube' ? (
+                <div className="space-y-3">
+                  <span className="text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">模型统计</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <InspectorStat value={inspectorMeasureCount} label="度量" />
+                    <InspectorStat value={inspectorDimensionCount} label="维度" />
+                    <InspectorStat value={inspectorJoinCount} label="关联" />
+                  </div>
+                </div>
               ) : null}
 
-              {tab === 'sync' ? (
-                <SchemaSyncTab highlightObjectName={selectedResource?.highlightObjectName} />
+              {/* Joins Section */}
+              {inspectorJoins.length > 0 ? (
+                <div className="space-y-2">
+                  <span className="text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">关联模型</span>
+                  {inspectorJoins.map((join) => (
+                    <InspectorJoinItem key={join.key} name={join.name} joinType={join.joinType} />
+                  ))}
+                </div>
               ) : null}
-            </div>
-          </section>
-        </div>
-      </SemanticSurface>
+
+              {/* Non-cube resource info */}
+              {selectedResource && selectedKind !== 'cube' ? (
+                <div className="space-y-3">
+                  <span className="text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">对象信息</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <InspectorStat value={selection ? selectedResource.objectTypeLabel : '—'} label="类型" />
+                    <InspectorStat value={selectedResource.schemaLabel} label="状态" />
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Recipe meta */}
+              {selectedResource?.recipeMeta ? (
+                <div className="space-y-2">
+                  <span className="text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">Recipe 信息</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <InspectorStat value={selectedResource.recipeMeta.relatedCubes.length} label="关联 Cube" />
+                    <InspectorStat value={selectedResource.recipeMeta.exampleCount} label="示例数" />
+                  </div>
+                  {selectedResource.recipeMeta.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedResource.recipeMeta.tags.map((tag) => (
+                        <span key={tag} className="rounded-full bg-[hsl(var(--workbench-surface-2))] px-2.5 py-1 text-[10px] text-[hsl(var(--workbench-muted-foreground))]">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </aside>
+          </div>
+        </SemanticSurface>
+      </div>
     </SemanticPageShell>
   )
 }
