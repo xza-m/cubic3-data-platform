@@ -1,222 +1,267 @@
+/**
+ * Dashboard - 优化版本
+ * 统一配色 + 增强交互反馈
+ */
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
-  Activity,
-  ArrowRight,
-  Clock3,
   Database,
-  FileText,
   Table2,
+  FileText,
+  Activity,
+  TrendingUp,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  ArrowRight,
+  Sparkles,
+  Zap
 } from 'lucide-react'
 import { getDataSourceStatistics } from '../api/datasources'
 import { getDatasetStatistics } from '../api/datasets'
 import { getTasks } from '../api/extraction'
-
-function formatRelativeLabel(index: number) {
-  if (index === 0) return '刚刚'
-  if (index === 1) return '1 小时内'
-  return `${index} 小时前`
-}
 
 export default function Dashboard() {
   const navigate = useNavigate()
 
   const { data: datasourceStats } = useQuery({
     queryKey: ['datasources', 'statistics'],
-    queryFn: getDataSourceStatistics,
+    queryFn: getDataSourceStatistics
   })
 
   const { data: datasetStats } = useQuery({
     queryKey: ['datasets', 'statistics'],
-    queryFn: getDatasetStatistics,
+    queryFn: getDatasetStatistics
   })
 
   const { data: recentTasks } = useQuery({
     queryKey: ['extraction', 'recent'],
-    queryFn: () => getTasks({ page: 1, page_size: 5 }),
+    queryFn: () => getTasks({ page: 1, page_size: 5 })
   })
 
-  const summaryItems = [
+  // 统一使用主色系和辅助色
+  const stats = [
     {
       label: '数据源',
       value: datasourceStats?.data?.total || 0,
-      hint: `活跃连接 ${datasourceStats?.data?.active || 0}`,
       icon: Database,
-      toneClassName: 'bg-[rgba(237,245,255,0.92)] text-sky-700',
+      gradient: 'from-indigo-500 to-indigo-600',
+      bgColor: 'bg-indigo-50',
+      iconBg: 'bg-gradient-to-br from-indigo-500 to-indigo-600',
+      change: '+12%'
     },
     {
       label: '数据集',
       value: datasetStats?.data?.total || 0,
-      hint: '已注册对象',
       icon: Table2,
-      toneClassName: 'bg-[rgba(237,250,242,0.92)] text-emerald-700',
+      gradient: 'from-emerald-500 to-emerald-600',
+      bgColor: 'bg-emerald-50',
+      iconBg: 'bg-gradient-to-br from-emerald-500 to-emerald-600',
+      change: '+8%'
     },
     {
       label: '提取任务',
       value: recentTasks?.data?.total || 0,
-      hint: '最近执行记录',
       icon: FileText,
-      toneClassName: 'bg-[rgba(244,240,255,0.92)] text-violet-700',
+      gradient: 'from-indigo-600 to-purple-600',
+      bgColor: 'bg-indigo-50',
+      iconBg: 'bg-gradient-to-br from-indigo-600 to-purple-600',
+      change: '+24%'
     },
     {
-      label: '系统状态',
-      value: '正常',
-      hint: '队列与接口可用',
+      label: '活跃连接',
+      value: datasourceStats?.data?.active || 0,
       icon: Activity,
-      toneClassName: 'bg-[rgba(255,247,237,0.92)] text-amber-700',
-    },
+      gradient: 'from-amber-500 to-amber-600',
+      bgColor: 'bg-amber-50',
+      iconBg: 'bg-gradient-to-br from-amber-500 to-amber-600',
+      change: '100%'
+    }
   ]
 
   const quickActions = [
     {
-      title: '连接数据源',
-      description: '新增数据库或数仓连接，并确认接入状态。',
-      path: '/data-center/datasources',
+      title: '创建数据源',
+      description: '连接新的数据库或数据仓库',
+      icon: Database,
+      gradient: 'from-indigo-500 to-indigo-600',
+      path: '/data-center/datasources'
     },
     {
       title: '注册数据集',
-      description: '从已连接来源选择表对象，继续下游建模。',
-      path: '/data-center/datasets',
+      description: '从已连接的数据源注册表',
+      icon: Table2,
+      gradient: 'from-emerald-500 to-emerald-600',
+      path: '/data-center/datasets'
     },
     {
-      title: '查看提取任务',
-      description: '检查最近执行结果，处理失败和待继续任务。',
-      path: '/extraction',
-    },
+      title: '数据提取',
+      description: '创建数据提取和导出任务',
+      icon: FileText,
+      gradient: 'from-indigo-600 to-purple-600',
+      path: '/extraction'
+    }
   ]
 
   const recentActivities = recentTasks?.data?.items || []
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[1.75rem] border border-slate-200/90 bg-[rgba(255,255,255,0.9)] px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.04)]">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-              <span className="h-2 w-2 rounded-full bg-sky-500" />
-              Control Center
+    <div className="space-y-8">
+      {/* 优化后的欢迎区域 - 降低视觉干扰 */}
+      <div className="relative overflow-hidden hero-gradient rounded-3xl p-8 text-white shadow-lg">
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+              <Sparkles className="w-4 h-4 text-white" />
             </div>
-            <div className="space-y-2">
-              <h1 className="text-[2rem] font-semibold tracking-[-0.04em] text-slate-900">控制台</h1>
-              <p className="max-w-3xl text-sm leading-6 text-slate-600">
-                查看平台连接、数据集和提取执行状态。当前页只保留运行概况、下一步动作和最近活动，不再叠加营销化模块。
-              </p>
-            </div>
+            <span className="text-sm font-medium text-white/90">实时数据分析</span>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700">
-              系统运行正常
-            </div>
-            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-600">
-              最近任务 {recentActivities.length} 条
-            </div>
-          </div>
+          <h1 className="text-3xl font-bold mb-3">
+            欢迎回来！
+          </h1>
+          <p className="text-white/85 max-w-2xl text-base leading-relaxed">
+            CUBIC3 运行正常。您可以连接 Source、沉淀 Semantic，并编排 Application。
+          </p>
         </div>
-      </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-        <section className="rounded-[1.75rem] border border-slate-200/90 bg-[rgba(255,255,255,0.92)] shadow-[0_14px_34px_rgba(15,23,42,0.035)]">
-          <div className="border-b border-slate-200/90 px-6 py-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Platform Summary</div>
-            <div className="mt-2 text-lg font-semibold text-slate-900">平台概览</div>
-          </div>
-          <div className="grid gap-px bg-slate-200/80 sm:grid-cols-2 xl:grid-cols-4">
-            {summaryItems.map((item) => {
-              const Icon = item.icon
-              return (
-                <div key={item.label} className="space-y-4 bg-white px-5 py-5">
-                  <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl ${item.toneClassName}`}>
-                    <Icon className="h-4.5 w-4.5" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>
-                    <div className="text-[2rem] font-semibold tracking-[-0.05em] text-slate-900">{item.value}</div>
-                    <div className="text-sm text-slate-500">{item.hint}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        <section className="rounded-[1.75rem] border border-slate-200/90 bg-[rgba(248,250,252,0.94)] p-5 shadow-[0_14px_34px_rgba(15,23,42,0.03)]">
-          <div className="space-y-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Next</div>
-            <div className="text-lg font-semibold text-slate-900">下一步动作</div>
-            <p className="text-sm leading-6 text-slate-600">按频率和影响排序，先完成接入，再进入数据治理和执行检查。</p>
-          </div>
-          <div className="mt-5 space-y-3">
-            {quickActions.map((action) => (
-              <button
-                key={action.title}
-                type="button"
-                onClick={() => navigate(action.path)}
-                className="w-full rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1.5">
-                    <div className="font-semibold text-slate-900">{action.title}</div>
-                    <div className="text-sm leading-6 text-slate-500">{action.description}</div>
-                  </div>
-                  <ArrowRight className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" />
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
+        {/* 优化装饰元素 - 更加柔和 */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-white/8 rounded-full blur-3xl -translate-y-1/3 translate-x-1/4"></div>
+        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-white/8 rounded-full blur-3xl translate-y-1/3"></div>
       </div>
 
-      <section className="rounded-[1.75rem] border border-slate-200/90 bg-[rgba(255,255,255,0.92)] shadow-[0_14px_34px_rgba(15,23,42,0.035)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/90 px-6 py-4">
-          <div className="space-y-1">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Recent Activity</div>
-            <div className="text-lg font-semibold text-slate-900">最近活动</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => navigate('/extraction')}
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-900"
-          >
-            查看全部任务
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-        {recentActivities.length === 0 ? (
-          <div className="px-6 py-12">
-            <div className="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400">
-                <Clock3 className="h-6 w-6" />
+      {/* 统计卡片 - 增强交互反馈 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {stats.map((stat, index) => {
+          const Icon = stat.icon
+          return (
+            <div
+              key={index}
+              className="group bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 transition-all duration-300 cursor-pointer hover:scale-[1.03]"
+            >
+              <div className="flex items-start justify-between mb-5">
+                <div className={`w-14 h-14 rounded-xl ${stat.iconBg} flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}>
+                  <Icon className="w-7 h-7 text-white" />
+                </div>
+                <div className="flex items-center gap-1.5 text-emerald-600 text-sm font-semibold bg-emerald-50 px-2.5 py-1 rounded-full">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  {stat.change}
+                </div>
               </div>
-              <div className="mt-4 text-lg font-semibold text-slate-900">暂无活动记录</div>
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-                还没有最近执行结果。你可以先创建数据提取任务，或检查已有数据源和数据集是否已经准备好。
-              </p>
+
+              <div className="stat-value mb-1.5">
+                {stat.value}
+              </div>
+              <div className="stat-label">
+                {stat.label}
+              </div>
             </div>
+          )
+        })}
+      </div>
+
+      {/* 快速操作 - 增强悬浮效果 */}
+      <div>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
+            <Zap className="w-5 h-5 text-indigo-600" />
           </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {recentActivities.map((task, index: number) => {
-              const isEnabled = task.is_enabled ?? task.is_active
-              return (
-                <div key={task.id} className="flex flex-wrap items-start gap-4 px-6 py-5">
-                  <div className={`mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-2xl ${
-                    isEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    {isEnabled ? <Activity className="h-4.5 w-4.5" /> : <Clock3 className="h-4.5 w-4.5" />}
+          <h2 className="text-2xl font-bold text-gray-900">快速开始</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {quickActions.map((action, index) => {
+            const Icon = action.icon
+            return (
+              <button
+                key={index}
+                onClick={() => navigate(action.path)}
+                className="group bg-white rounded-2xl p-7 border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 text-left transition-all duration-300 hover:scale-[1.02]"
+              >
+                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${action.gradient} flex items-center justify-center mb-6 shadow-lg group-hover:scale-110 group-hover:-translate-y-1 transition-all duration-300`}>
+                  <Icon className="w-8 h-8 text-white" />
+                </div>
+
+                <h3 className="text-lg font-bold text-gray-900 mb-2">
+                  {action.title}
+                </h3>
+                <p className="text-gray-500 text-sm mb-5 leading-relaxed">
+                  {action.description}
+                </p>
+
+                <div className="flex items-center gap-2 text-indigo-600 font-semibold text-sm group-hover:gap-3 transition-all">
+                  <span>立即开始</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 最近活动 */}
+      <div>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
+            <Clock className="w-5 h-5 text-purple-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900">最近活动</h2>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          {recentActivities.length === 0 ? (
+            <div className="text-center py-20 px-6">
+              <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-6">
+                <FileText className="w-10 h-10 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无活动记录</h3>
+              <p className="text-gray-500 mb-6 max-w-sm mx-auto">
+                开始创建数据提取任务，所有活动将会显示在这里
+              </p>
+              <button
+                onClick={() => navigate('/extraction')}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] transition-all duration-200 cursor-pointer shadow-md"
+              >
+                创建第一个任务
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {recentActivities.map((task, index: number) => {
+                const isEnabled = task.is_enabled ?? task.is_active
+                return (
+                <div
+                  key={task.id}
+                  className="flex items-center gap-5 p-6 hover:bg-gray-50 transition-colors cursor-pointer group"
+                >
+                  <div className={`
+                    w-12 h-12 rounded-xl flex items-center justify-center transition-all
+                    ${isEnabled
+                      ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/25'
+                      : 'bg-gray-200'}
+                  `}>
+                    {isEnabled ? (
+                      <CheckCircle className="w-6 h-6 text-white" />
+                    ) : (
+                      <AlertCircle className="w-6 h-6 text-gray-400" />
+                    )}
                   </div>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="font-semibold text-slate-900">{task.task_name}</div>
-                    <div className="text-sm text-slate-500">
+
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 truncate text-base">{task.task_name}</div>
+                    <div className="text-sm text-gray-500 mt-0.5">
                       数据集 ID: {task.dataset_id} · 类型: {task.task_type || 'manual'}
                     </div>
                   </div>
-                  <div className="text-sm font-medium text-slate-400">{formatRelativeLabel(index)}</div>
+
+                  <div className="text-sm text-gray-400 group-hover:text-gray-600 transition-colors">
+                    {index === 0 ? '刚刚' : `${index}h前`}
+                  </div>
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
+              )})}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
