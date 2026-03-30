@@ -94,7 +94,7 @@ function StringTagsWidget(props: WidgetProps) {
         placeholder={props.placeholder || '每行输入一个值（留空表示不限制）'}
         value={text}
         disabled={props.disabled || props.readonly}
-        className="font-mono text-sm"
+        className="font-mono text-[0.875rem] leading-6"
         onChange={(e) => {
           const raw = e.target.value
           const arr = raw
@@ -105,7 +105,7 @@ function StringTagsWidget(props: WidgetProps) {
         }}
       />
       {values.length > 0 && (
-        <p className="text-xs text-muted-foreground">共 {values.length} 个</p>
+        <p className="text-[0.75rem] leading-4 text-muted-foreground">共 {values.length} 个</p>
       )}
     </div>
   )
@@ -508,7 +508,7 @@ export default function ConfigDrawer({
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
-      <SheetContent side="right" className="w-[720px] sm:max-w-[720px] overflow-y-auto flex flex-col">
+      <SheetContent side="right" className="flex w-[720px] flex-col overflow-y-auto sm:max-w-[720px]">
         <SheetHeader>
           <SheetTitle>{isEdit ? '编辑实例' : `创建实例 - ${app?.name}`}</SheetTitle>
           <SheetDescription>配置应用实例参数</SheetDescription>
@@ -524,7 +524,7 @@ export default function ConfigDrawer({
               value={formValues.name}
               onChange={(e) => updateField('name', e.target.value)}
             />
-            {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
+            {errors.name && <p className="text-[0.875rem] leading-5 text-red-500">{errors.name}</p>}
           </div>
 
           {/* 描述 */}
@@ -571,6 +571,7 @@ export default function ConfigDrawer({
                 Cron 表达式
                 <span className="text-red-500"> *</span>
                 <span className="ml-2 text-xs text-muted-foreground">
+                  
                   格式：分 时 日 月 周，例如：0 9 * * * 表示每天早上9点
                 </span>
               </Label>
@@ -578,11 +579,11 @@ export default function ConfigDrawer({
                 id="schedule_config"
                 rows={2}
                 placeholder='{"cron": "0 9 * * *"}'
-                className="font-mono text-sm"
+                className="font-mono text-[0.875rem] leading-6"
                 value={formValues.schedule_config}
                 onChange={(e) => updateField('schedule_config', e.target.value)}
               />
-              {errors.schedule_config && <p className="text-sm text-red-500">{errors.schedule_config}</p>}
+              {errors.schedule_config && <p className="text-[0.875rem] leading-5 text-red-500">{errors.schedule_config}</p>}
             </div>
           )}
 
@@ -591,7 +592,7 @@ export default function ConfigDrawer({
             <div className="flex items-center justify-between">
               <Label>
                 应用配置
-                <span className="ml-2 text-xs text-muted-foreground">({getModeName()})</span>
+                <span className="ml-2 text-[0.75rem] leading-4 text-muted-foreground">({getModeName()})</span>
               </Label>
               <div className="flex gap-2">
                 <TooltipProvider>
@@ -648,9 +649,9 @@ export default function ConfigDrawer({
             ) : (
               <>
                 {app && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm">
-                    <div className="font-medium text-blue-900 mb-2">配置说明</div>
-                    <div className="text-blue-800 whitespace-pre-wrap">
+                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[0.9375rem] leading-6">
+                    <div className="mb-2 font-medium text-blue-900">配置说明</div>
+                    <div className="whitespace-pre-wrap text-blue-800">
                       {getConfigExample(app.code)}
                     </div>
                   </div>
@@ -658,7 +659,7 @@ export default function ConfigDrawer({
                 <Textarea
                   rows={12}
                   placeholder={app ? getConfigPlaceholder(app.code) : '请输入 JSON 格式的配置'}
-                  className="font-mono text-sm"
+                  className="font-mono text-[0.875rem] leading-6"
                   value={formValues.config}
                   onChange={(e) => updateField('config', e.target.value)}
                 />
@@ -674,7 +675,7 @@ export default function ConfigDrawer({
               checked={formValues.enabled}
               onCheckedChange={(v) => updateField('enabled', v)}
             />
-            <span className="text-sm text-muted-foreground">
+            <span className="text-[0.875rem] leading-5 text-muted-foreground">
               {formValues.enabled ? '已启用' : '已禁用'}
             </span>
           </div>

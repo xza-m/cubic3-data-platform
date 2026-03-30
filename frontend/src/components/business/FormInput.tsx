@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { Search } from "lucide-react"
 
 interface BaseInputProps {
+  id?: string
   value?: string
   onChange?: ((value: string) => void) | ((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void)  // Support both types
   placeholder?: string
@@ -23,6 +24,7 @@ interface FormInputProps extends BaseInputProps {
 }
 
 export function FormInput({
+  id,
   value,
   onChange,
   type = "text",
@@ -45,6 +47,7 @@ export function FormInput({
   
   return (
     <Input
+      id={id}
       type={type}
       value={value}
       onChange={handleChange}
@@ -59,9 +62,10 @@ export function FormInput({
 
 // Password Input
 export function FormPassword({
+  id,
   value,
   onChange,
-  placeholder = "Enter password",
+  placeholder = "请输入密码",
   className,
   disabled,
 }: BaseInputProps) {
@@ -77,6 +81,7 @@ export function FormPassword({
   
   return (
     <Input
+      id={id}
       type="password"
       value={value}
       onChange={handleChange}
@@ -89,9 +94,10 @@ export function FormPassword({
 
 // Search Input
 export function FormSearch({
+  id,
   value,
   onChange,
-  placeholder = "Search...",
+  placeholder = "请输入关键词",
   className,
   disabled,
 }: BaseInputProps) {
@@ -109,6 +115,7 @@ export function FormSearch({
     <div className="relative">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
       <Input
+        id={id}
         type="search"
         value={value}
         onChange={handleChange}
@@ -126,6 +133,7 @@ interface FormTextareaProps extends BaseInputProps {
 }
 
 export function FormTextarea({
+  id,
   value,
   onChange,
   placeholder,
@@ -145,6 +153,7 @@ export function FormTextarea({
   
   return (
     <Textarea
+      id={id}
       value={value}
       onChange={handleChange}
       placeholder={placeholder}

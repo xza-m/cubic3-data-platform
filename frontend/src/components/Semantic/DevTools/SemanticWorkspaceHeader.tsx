@@ -25,7 +25,7 @@ export function SemanticWorkspaceHeader({
     >
       <div className="space-y-1">
         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-          Workspace
+          工作区
         </div>
         <div className="text-lg font-semibold text-[hsl(var(--workbench-ink))]">{title}</div>
         <p className="max-w-2xl text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">{description}</p>

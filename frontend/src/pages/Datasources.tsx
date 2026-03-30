@@ -31,8 +31,6 @@ import {
   useToast,
   PageModal,
   DataCenterPageShell,
-  CapabilityGateCard,
-  AsyncTaskNotice,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -76,12 +74,6 @@ interface DataSourceTypeOption {
   icon?: string
 }
 
-interface SyncNoticeState {
-  tone: 'loading' | 'empty' | 'error' | 'ready'
-  title: string
-  description: string
-}
-
 export default function Datasources() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -92,7 +84,6 @@ export default function Datasources() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [dsToDelete, setDsToDelete] = useState<DataSource | null>(null)
   const [syncingCatalogId, setSyncingCatalogId] = useState<number | null>(null)
-  const [syncNotice, setSyncNotice] = useState<SyncNoticeState | null>(null)
   // 创建表单数据
   const [createFormData, setCreateFormData] = useState({
     name: '',
@@ -210,18 +201,8 @@ export default function Datasources() {
     mutationFn: (id: number) => syncDataSourceCatalog(id),
     onMutate: (id: number) => {
       setSyncingCatalogId(id)
-      setSyncNotice({
-        tone: 'loading',
-        title: '目录同步提交中',
-        description: `正在为数据源 #${id} 提交目录同步任务。`,
-      })
     },
     onSuccess: () => {
-      setSyncNotice({
-        tone: 'ready',
-        title: '目录同步已触发',
-        description: '目录刷新任务已加入队列，请稍后查看同步摘要。',
-      })
       toast({
         title: '目录同步已触发',
         description: '目录刷新任务已加入队列，请稍后查看同步摘要。',
@@ -230,11 +211,6 @@ export default function Datasources() {
     },
     onError: (error: unknown) => {
       const err = error as AxiosLikeError
-      setSyncNotice({
-        tone: 'error',
-        title: '目录同步失败',
-        description: err.response?.data?.message || err.message || '目录同步请求失败',
-      })
       toast({
         title: '目录同步失败',
         description: err.response?.data?.message || err.message,
@@ -393,6 +369,12 @@ export default function Datasources() {
   }
 
   const datasources = listData?.data?.items || []
+  const stats = {
+    total: datasources.length,
+    active: datasources.filter((ds) => ds.is_active).length,
+    connected: datasources.filter((ds) => ds.connection_status === 'connected').length,
+    inactive: datasources.filter((ds) => !ds.is_active).length,
+  }
   const listErrorMessage =
     (error as AxiosLikeError | null)?.response?.data?.message ||
     (error as AxiosLikeError | null)?.message ||
@@ -515,77 +497,80 @@ export default function Datasources() {
     )
   }
 
-  const syncNoticeState: SyncNoticeState | null = syncNotice || (
-    isLoading
-      ? {
-          tone: 'loading',
-          title: '正在加载数据源',
-          description: '正在从后端获取数据源列表与目录同步状态。',
-        }
-      : isError
-        ? {
-            tone: 'error',
-            title: '加载数据源失败',
-            description: listErrorMessage,
-          }
-        : datasources.length === 0
-          ? {
-              tone: 'empty',
-              title: '尚未接入数据源',
-              description: '创建首个数据源后即可执行连接测试与目录同步。',
-            }
-          : null
-  )
+  const statsCards = [
+    { label: '总数据源', value: stats.total, color: 'text-slate-950' },
+    { label: '活跃', value: stats.active, color: 'text-blue-600' },
+    { label: '已连接', value: stats.connected, color: 'text-emerald-600' },
+    { label: '未激活', value: stats.inactive, color: 'text-slate-400' },
+  ]
 
   return (
     <TooltipProvider>
       <DataCenterPageShell
         title="数据源管理"
-        description="管理已接入的数据源与目录同步状态"
+        description="管理所有数据库连接配置"
+        className="px-10 py-8"
         actions={(
-          <FormButton onClick={() => setCreateVisible(true)}>
-            <Plus className="mr-1 h-4 w-4" />
+          <FormButton
+            onClick={() => setCreateVisible(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#2563EB] px-5 py-2.5 text-sm font-medium text-white shadow-[0_2px_8px_#2563EB30] hover:bg-[#1D4ED8]"
+          >
+            <Plus className="h-4 w-4" />
             新建数据源
           </FormButton>
         )}
       >
-        {syncNoticeState ? (
-          <AsyncTaskNotice
-            tone={syncNoticeState.tone}
-            title={syncNoticeState.title}
-            description={syncNoticeState.description}
-          />
-        ) : null}
-
         <div className="space-y-4">
-          <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-3">
-            <Search className="h-[18px] w-[18px] text-slate-400" />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {statsCards.map((stat) => (
+              <div
+                key={stat.label}
+                className="relative overflow-hidden rounded-xl bg-white p-5 shadow-[0_4px_20px_#0F172A08]"
+              >
+                <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-gradient-to-b from-[#2563EB] to-[#3B82F6]" />
+                <div className={`text-[28px] font-semibold ${stat.color}`}>{stat.value}</div>
+                <div className="mt-2 text-[13px] text-[#64748B]">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2.5 rounded-lg bg-[#F1F5F9] px-4 py-3">
+            <Search className="h-[18px] w-[18px] text-[#94A3B8]" />
             <input
               type="text"
               placeholder="搜索数据源名称或类型..."
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
-              className="flex-1 bg-transparent text-sm text-slate-900 placeholder:text-slate-400 outline-none"
+              className="flex-1 bg-transparent text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none"
             />
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white py-24">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <div className="flex items-center justify-center rounded-xl bg-white py-32 shadow-[0_2px_24px_#0F172A08]">
+              <Loader2 className="h-8 w-8 animate-spin text-[#94A3B8]" />
             </div>
-          ) : isError ? null : filteredData.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white py-24">
-              <Inbox className="mb-4 h-16 w-16 text-slate-200" />
-              <p className="mb-4 text-sm text-slate-500">
+          ) : isError ? (
+            <div className="flex flex-col items-center justify-center rounded-xl bg-white py-32 shadow-[0_2px_24px_#0F172A08]">
+              <Inbox className="mb-4 h-16 w-16 text-[#E2E8F0]" />
+              <p className="mb-2 text-base font-semibold text-[#0F172A]">加载数据源失败</p>
+              <p className="text-sm text-[#64748B]">{listErrorMessage}</p>
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl bg-white py-32 shadow-[0_2px_24px_#0F172A08]">
+              <Inbox className="mb-4 h-16 w-16 text-[#E2E8F0]" />
+              <p className="mb-4 text-sm text-[#64748B]">
                 {searchText ? '未找到匹配的数据源' : '还没有数据源'}
               </p>
-              <FormButton onClick={() => setCreateVisible(true)}>
-                <Plus className="mr-1 h-4 w-4" />
+              <FormButton
+                onClick={() => setCreateVisible(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#2563EB] px-4 py-2 text-sm text-white"
+              >
+                <Plus className="h-4 w-4" />
                 创建第一个数据源
               </FormButton>
             </div>
           ) : (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid gap-4 xl:grid-cols-3">
               {filteredData.map((ds: DataSource) => {
                 const config = typeConfig[ds.source_type] || typeConfig.postgresql
                 const catalogSync = getCatalogSyncSummary(ds)
@@ -603,22 +588,27 @@ export default function Datasources() {
                 return (
                   <div
                     key={ds.id}
-                    className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                    className="flex flex-col gap-3 rounded-xl bg-white p-5 shadow-[0_2px_16px_#0F172A08]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-2">
-                        <span className="text-base font-semibold text-slate-950">{ds.name}</span>
+                        <span className="text-[15px] font-semibold text-[#0F172A]">{ds.name}</span>
                         {ds.description ? (
-                          <p className="text-sm leading-6 text-slate-500">{ds.description}</p>
+                          <p className="text-[13px] leading-6 text-[#64748B]">{ds.description}</p>
                         ) : null}
                       </div>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.bg} ${badge.text}`}>
+                      <span className={`rounded-md px-2.5 py-1 text-xs font-medium ${badge.bg} ${badge.text}`}>
                         {config.name}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs text-slate-400">
-                      <span>ID: {ds.id}</span>
+                    <div className="space-y-2 rounded-lg bg-[#F8FAFC] px-3.5 py-3">
+                      <div className="flex items-center justify-between text-xs text-[#94A3B8]">
+                        <span>ID: {ds.id}</span>
+                        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', syncBadge.className)}>
+                          {syncBadge.label}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         {ds.connection_status === 'connected' ? (
                           <>
@@ -637,27 +627,18 @@ export default function Datasources() {
                           </>
                         )}
                       </div>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-                      <div className="flex items-center justify-between">
-                        <span>目录同步</span>
-                        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', syncBadge.className)}>
-                          {syncBadge.label}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center justify-between text-xs text-[#94A3B8]">
                         <span>最近同步</span>
                         <span>{formatRelativeSummaryTime(catalogSync.last_run_at)}</span>
                       </div>
                       {catalogSync.last_error ? (
-                        <div className="mt-2 text-rose-600" title={catalogSync.last_error}>
+                        <div className="text-xs text-rose-600" title={catalogSync.last_error}>
                           {catalogSync.last_error}
                         </div>
                       ) : null}
                     </div>
 
-                    <div className="flex items-center gap-1 border-t border-slate-100 pt-3">
+                    <div className="flex items-center gap-3 pt-1 text-[#94A3B8]">
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
@@ -665,7 +646,7 @@ export default function Datasources() {
                             title="同步目录"
                             onClick={() => syncCatalogMutation.mutate(ds.id)}
                             disabled={isCatalogSyncing}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-blue-600 disabled:opacity-50"
+                            className="cursor-pointer hover:text-[#2563EB] disabled:opacity-50"
                           >
                             {isCatalogSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
                           </button>
@@ -678,7 +659,7 @@ export default function Datasources() {
                             type="button"
                             title="测试连接"
                             onClick={() => handleCardTestConnection(ds)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-emerald-600"
+                            className="cursor-pointer hover:text-[#10B981]"
                           >
                             <Play className="h-4 w-4" />
                           </button>
@@ -691,14 +672,13 @@ export default function Datasources() {
                             type="button"
                             title="编辑"
                             onClick={() => handleEdit(ds)}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            className="cursor-pointer hover:text-[#64748B]"
                           >
                             <Edit2 className="h-4 w-4" />
                           </button>
                         </TooltipTrigger>
                         <TooltipContent><p>编辑</p></TooltipContent>
                       </Tooltip>
-                      <div className="flex-1" />
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
@@ -708,7 +688,7 @@ export default function Datasources() {
                               setDsToDelete(ds)
                               setDeleteConfirmOpen(true)
                             }}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            className="cursor-pointer hover:text-[#EF4444]"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -721,8 +701,6 @@ export default function Datasources() {
               })}
             </div>
           )}
-
-          <CapabilityGateCard title="质量治理" reason="质量治理能力将在后端真实接口接入后开放。" />
         </div>
       </DataCenterPageShell>
 

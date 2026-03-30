@@ -29,6 +29,7 @@ interface SchemaTreeNodeProps {
     node: TreeNode
     depth: number
     isSelected: boolean
+    compact?: boolean
     searchTerm: string
     nodes: Map<NodeKey, TreeNode>
     isNodeVisible: (key: NodeKey) => boolean
@@ -108,6 +109,7 @@ export default function SchemaTreeNode({
     node,
     depth,
     isSelected,
+    compact = false,
     searchTerm,
     nodes,
     isNodeVisible,
@@ -155,7 +157,7 @@ export default function SchemaTreeNode({
                         : 'border-l-2 border-l-transparent hover:bg-gray-100'
                     }
         `}
-                style={{ height: 28, paddingLeft: indent + 4, paddingRight: 8 }}
+                style={{ height: compact ? 44 : 28, paddingLeft: indent + (compact ? 10 : 4), paddingRight: compact ? 12 : 8 }}
                 onClick={() => {
                     onSelect(node.key)
                     if (hasChildren) onToggle(node.key)
@@ -164,13 +166,13 @@ export default function SchemaTreeNode({
                 onContextMenu={(e) => onContextMenu(e, node)}
             >
                 {/* 缩进引导线 */}
-                {Array.from({ length: depth }, (_, i) => (
+                {!compact ? Array.from({ length: depth }, (_, i) => (
                     <span
                         key={i}
                         className="absolute top-0 bottom-0 border-l border-gray-200"
                         style={{ left: i * 16 + 12 }}
                     />
-                ))}
+                )) : null}
 
                 {/* Chevron (旋转动画) */}
                 <span className="w-4 flex-shrink-0 flex items-center justify-center">
@@ -193,7 +195,7 @@ export default function SchemaTreeNode({
                     <TooltipProvider delayDuration={150}>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <span className="text-[13px] text-gray-700 truncate flex-1 leading-none">
+                                <span className="flex-1 truncate text-[0.875rem] leading-5 text-gray-700">
                                     {highlightMatch(node.name, searchTerm)}
                                 </span>
                             </TooltipTrigger>
@@ -203,14 +205,14 @@ export default function SchemaTreeNode({
                         </Tooltip>
                     </TooltipProvider>
                 ) : (
-                    <span className="text-[13px] text-gray-700 truncate flex-1 leading-none">
+                    <span className="flex-1 truncate text-[0.875rem] leading-5 text-gray-700">
                         {highlightMatch(node.name, searchTerm)}
                     </span>
                 )}
 
                 {/* Badges */}
                 {node.type === 'column' && node.metadata?.dataType && (
-                    <span className="text-[11px] text-gray-400 flex-shrink-0 uppercase font-mono">
+                    <span className="flex-shrink-0 font-mono text-[0.75rem] uppercase leading-4 text-gray-400">
                         {node.metadata.dataType}
                     </span>
                 )}
@@ -221,7 +223,7 @@ export default function SchemaTreeNode({
                     <span className="text-[10px] text-pink-500 flex-shrink-0">🧩</span>
                 )}
                 {(node.type === 'table' || node.type === 'view') && node.metadata?.comment && (
-                    <span className="text-[11px] text-gray-400 flex-shrink-0 truncate max-w-[80px] hidden group-hover:inline">
+                    <span className="hidden max-w-[88px] flex-shrink-0 truncate text-[0.75rem] leading-4 text-gray-400 group-hover:inline">
                         {node.metadata.comment}
                     </span>
                 )}
@@ -256,6 +258,7 @@ export default function SchemaTreeNode({
                                 node={childNode}
                                 depth={depth + 1}
                                 isSelected={false}
+                                compact={compact}
                                 searchTerm={searchTerm}
                                 nodes={nodes}
                                 isNodeVisible={isNodeVisible}

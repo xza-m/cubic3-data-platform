@@ -14,7 +14,7 @@ test('拖入 Cube 后发布领域', async ({ page }) => {
   const domainName = uniqueName('Playwright 领域发布')
   await createDomainViaUi(page, domainName)
 
-  await expect(page.getByRole('heading', { name: '领域设计' })).toBeVisible()
+  await expect(page.getByTestId('domain-canvas-page')).toBeVisible()
   const cubes = page.locator('[data-testid^="domain-library-cube-"]')
   await expect(cubes.first()).toBeVisible()
   const cubeCount = await cubes.count()
@@ -26,11 +26,11 @@ test('拖入 Cube 后发布领域', async ({ page }) => {
   await dragLibraryCubeToCanvas(page, dragIndex)
 
   let published = false
-  for (let attempt = 0; attempt < Math.min(3, cubeCount); attempt += 1) {
+  for (let attempt = 0; attempt < cubeCount; attempt += 1) {
     const responsePromise = page.waitForResponse((response) => {
       return response.url().includes('/publish') && response.request().method() === 'POST'
     })
-    await page.getByTestId('publish-domain-button').click()
+    await page.getByRole('button', { name: '保存' }).click()
     const response = await responsePromise
     const payload = await response.json()
 
@@ -54,6 +54,6 @@ test('拖入 Cube 后发布领域', async ({ page }) => {
   }
 
   expect(published).toBe(true)
-  await expect(page.getByText('领域画布已就绪', { exact: false })).toBeVisible()
+  await expect(page.getByText('领域 YAML 发布成功', { exact: true })).toBeVisible()
   await expect(page.getByText('发布失败', { exact: false })).toHaveCount(0)
 })

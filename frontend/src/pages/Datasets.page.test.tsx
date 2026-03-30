@@ -173,7 +173,7 @@ describe('Datasets page', () => {
     await user.click(await screen.findByRole('menuitem', { name: /CSV \/ Excel 文件数据集/ }))
 
     expect(navigateMock).toHaveBeenCalledWith('/data-center/datasets/register/table')
-    expect(navigateMock).toHaveBeenCalledWith('/queries/editor')
+    expect(navigateMock).toHaveBeenCalledWith('/queries')
     expect(navigateMock).toHaveBeenCalledWith('/data-center/datasets/register/file')
 
     await user.type(screen.getByPlaceholderText('搜索数据集名称或编码...'), 'lesson')

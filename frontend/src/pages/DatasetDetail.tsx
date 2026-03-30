@@ -63,6 +63,7 @@ export default function DatasetDetail() {
     : previewRows.length > 0
       ? Object.keys(previewRows[0] ?? {})
       : []
+  const hasPreviewData = previewRows.length > 0 && previewColumnKeys.length > 0
   const governanceCards = [
     { title: '血缘分析', reason: '血缘关系需要后端真实编排链路支撑，当前阶段仅展示禁用入口。' },
     { title: '影响分析', reason: '影响分析依赖下游任务、订阅和消费关系汇总，当前阶段尚未接入。' },
@@ -404,41 +405,45 @@ export default function DatasetDetail() {
         )}
       </PageCard>
 
-      <PreviewPanel
-        title="数据预览"
-        state={previewRows.length > 0 && previewColumnKeys.length > 0 ? 'ready' : 'empty'}
-        emptyDescription="当前数据集暂无可展示预览"
-      >
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  {previewColumnKeys.map((column) => (
-                    <th
-                      key={column}
-                      className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold text-slate-500"
-                    >
-                      {column}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {previewRows.map((row, rowIndex) => (
-                  <tr key={`preview-row-${rowIndex}`}>
+      {hasPreviewData ? (
+        <PreviewPanel title="数据预览" state="ready">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
                     {previewColumnKeys.map((column) => (
-                      <td key={`${rowIndex}-${column}`} className="whitespace-nowrap px-4 py-3 text-slate-700">
-                        {toDisplayText(row[column])}
-                      </td>
+                      <th
+                        key={column}
+                        className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold text-slate-500"
+                      >
+                        {column}
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {previewRows.map((row, rowIndex) => (
+                    <tr key={`preview-row-${rowIndex}`}>
+                      {previewColumnKeys.map((column) => (
+                        <td key={`${rowIndex}-${column}`} className="whitespace-nowrap px-4 py-3 text-slate-700">
+                          {toDisplayText(row[column])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      </PreviewPanel>
+        </PreviewPanel>
+      ) : (
+        <PreviewPanel
+          title="数据预览"
+          state="empty"
+          emptyDescription="当前数据集暂无可展示预览"
+        />
+      )}
 
       {/* 字段信息 */}
       <PageCard className="border-gray-200 bg-white shadow-sm">

@@ -1,265 +1,327 @@
 /**
- * Dashboard - 优化版本
- * 统一配色 + 增强交互反馈
+ * Dashboard - 首页工作台
+ * 基于 uiv2.pen 设计稿 (q0cE6) 生成
  */
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   Database,
-  Table2,
-  FileText,
-  Activity,
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  ArrowRight,
-  Sparkles,
-  Zap
+  Inbox,
+  Search,
+  Boxes,
+  MessageSquare,
+  FilePlus,
+  Bot,
 } from 'lucide-react'
-import { getDataSourceStatistics } from '../api/datasources'
-import { getDatasetStatistics } from '../api/datasets'
-import { getTasks } from '../api/extraction'
+import type { LucideIcon } from 'lucide-react'
+import { getDashboardOverview, type DashboardOverviewRecentQuery } from '../api/dashboard'
+
+/* ---------- types ---------- */
+
+interface StatCard {
+  label: string
+  value: string | null
+  trend: string | null
+  trendFallback?: string | null
+  icon: LucideIcon
+  iconColor: string
+  iconBg: string
+}
+
+interface QuickAction {
+  label: string
+  icon: LucideIcon
+  iconColor: string
+  iconBg: string
+  path: string
+}
+
+interface QueryItem {
+  name: string
+  tag: string
+  time: string
+  status: '成功' | '运行中' | '失败'
+}
+
+interface HealthItem {
+  label: string
+  value: number | null
+  color: string
+  textColor: string
+}
+
+const quickActions: QuickAction[] = [
+  { label: '新建查询', icon: FilePlus, iconColor: 'text-[#2563EB]', iconBg: 'bg-[#EFF6FF]', path: '/queries' },
+  { label: '创建模型', icon: Boxes, iconColor: 'text-[#6366F1]', iconBg: 'bg-[#EEF2FF]', path: '/semantic/cubes' },
+  { label: '导入数据源', icon: Database, iconColor: 'text-[#10B981]', iconBg: 'bg-[#ECFDF5]', path: '/data-center/datasources' },
+  { label: '智能问数', icon: Bot, iconColor: 'text-[#6366F1]', iconBg: 'bg-[#EEF2FF]', path: '/data-chat' },
+]
+
+const statusStyles: Record<string, { text: string; bg: string }> = {
+  '成功': { text: 'text-[#10B981]', bg: 'bg-[#ECFDF5]' },
+  '运行中': { text: 'text-[#F59E0B]', bg: 'bg-[#FFF7ED]' },
+  '失败': { text: 'text-[#EF4444]', bg: 'bg-[#FEF2F2]' },
+}
+
+const getRelativeTimeLabel = (value?: string) => {
+  if (!value) return '刚刚'
+
+  const target = new Date(value)
+  const diff = Date.now() - target.getTime()
+  const minute = 60 * 1000
+  const hour = 60 * minute
+  const day = 24 * hour
+
+  if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))} 分钟前`
+  if (diff < day) return `${Math.floor(diff / hour)} 小时前`
+  return '昨天'
+}
+
+const getQueryStatusLabel = (status: DashboardOverviewRecentQuery['status']): QueryItem['status'] => {
+  switch (status) {
+    case 'success':
+      return '成功'
+    case 'failed':
+    case 'timeout':
+      return '失败'
+    default:
+      return '运行中'
+  }
+}
+
+const getQueryTitle = (history: DashboardOverviewRecentQuery) => {
+  const firstLine = history.name.split('\n')[0]?.trim() || '未命名查询'
+  return firstLine.length > 32 ? `${firstLine.slice(0, 32)}...` : firstLine
+}
+
+const formatTrend = (value: number | null, suffix: string) => {
+  if (value === null) return null
+  const prefix = value > 0 ? '+' : ''
+  return `${prefix}${value} ${suffix}`
+}
+
+const formatWeekTrend = (value: number | null) => {
+  if (value === null) return null
+  return `近 7 日 ${value}`
+}
+
+const formatStatValue = (value: number | null) => (value === null ? '--' : String(value))
+
+/* ---------- component ---------- */
 
 export default function Dashboard() {
   const navigate = useNavigate()
 
-  const { data: datasourceStats } = useQuery({
-    queryKey: ['datasources', 'statistics'],
-    queryFn: getDataSourceStatistics
+  const { data: overview } = useQuery({
+    queryKey: ['dashboard', 'overview'],
+    queryFn: getDashboardOverview,
   })
 
-  const { data: datasetStats } = useQuery({
-    queryKey: ['datasets', 'statistics'],
-    queryFn: getDatasetStatistics
-  })
+  const recentQueries = useMemo<QueryItem[]>(() => {
+    const items = overview?.recent_queries || []
+    return items.slice(0, 5).map((history) => ({
+      name: getQueryTitle(history),
+      tag: history.datasource_name || '查询中心',
+      time: getRelativeTimeLabel(history.executed_at),
+      status: getQueryStatusLabel(history.status),
+    }))
+  }, [overview])
 
-  const { data: recentTasks } = useQuery({
-    queryKey: ['extraction', 'recent'],
-    queryFn: () => getTasks({ page: 1, page_size: 5 })
-  })
+  const healthItems = useMemo<HealthItem[]>(() => {
+    return [
+      {
+        label: '数据源连通性',
+        value: overview?.health.datasource_connectivity ?? null,
+        color: 'bg-[#10B981]',
+        textColor: 'text-[#10B981]',
+      },
+      {
+        label: '模型覆盖率',
+        value: overview?.health.semantic_coverage ?? null,
+        color: 'bg-[#2563EB]',
+        textColor: 'text-[#2563EB]',
+      },
+      {
+        label: '查询成功率',
+        value: overview?.health.query_success_rate ?? null,
+        color: 'bg-[#10B981]',
+        textColor: 'text-[#10B981]',
+      },
+    ]
+  }, [overview])
 
-  // 统一使用主色系和辅助色
-  const stats = [
+  const stats: StatCard[] = [
     {
-      label: '数据源',
-      value: datasourceStats?.data?.total || 0,
+      label: '已接入数据源',
+      value: formatStatValue(overview?.stats.datasource_total ?? null),
+      trend: formatTrend(overview?.trends.datasource_month_delta ?? null, '本月'),
+      trendFallback: '暂无趋势',
       icon: Database,
-      gradient: 'from-indigo-500 to-indigo-600',
-      bgColor: 'bg-indigo-50',
-      iconBg: 'bg-gradient-to-br from-indigo-500 to-indigo-600',
-      change: '+12%'
+      iconColor: 'text-[#2563EB]',
+      iconBg: 'bg-[#EFF6FF]',
     },
     {
-      label: '数据集',
-      value: datasetStats?.data?.total || 0,
-      icon: Table2,
-      gradient: 'from-emerald-500 to-emerald-600',
-      bgColor: 'bg-emerald-50',
-      iconBg: 'bg-gradient-to-br from-emerald-500 to-emerald-600',
-      change: '+8%'
+      label: '今日查询',
+      value: formatStatValue(overview?.stats.today_query_count ?? null),
+      trend: formatWeekTrend(overview?.trends.query_count_week ?? null),
+      trendFallback: '暂无趋势',
+      icon: Search,
+      iconColor: 'text-[#2563EB]',
+      iconBg: 'bg-[#EFF6FF]',
     },
     {
-      label: '提取任务',
-      value: recentTasks?.data?.total || 0,
-      icon: FileText,
-      gradient: 'from-indigo-600 to-purple-600',
-      bgColor: 'bg-indigo-50',
-      iconBg: 'bg-gradient-to-br from-indigo-600 to-purple-600',
-      change: '+24%'
+      label: '语义模型',
+      value: formatStatValue(overview?.stats.semantic_model_total ?? null),
+      trend: formatTrend(overview?.trends.dataset_week_delta ?? null, '本周'),
+      trendFallback: '暂无趋势',
+      icon: Boxes,
+      iconColor: 'text-[#6366F1]',
+      iconBg: 'bg-[#EEF2FF]',
     },
     {
-      label: '活跃连接',
-      value: datasourceStats?.data?.active || 0,
-      icon: Activity,
-      gradient: 'from-amber-500 to-amber-600',
-      bgColor: 'bg-amber-50',
-      iconBg: 'bg-gradient-to-br from-amber-500 to-amber-600',
-      change: '100%'
-    }
+      label: 'AI 对话',
+      value: formatStatValue(overview?.stats.ai_chat_count ?? null),
+      trend: null,
+      trendFallback: '未接入',
+      icon: MessageSquare,
+      iconColor: 'text-[#6366F1]',
+      iconBg: 'bg-[#EEF2FF]',
+    },
   ]
 
-  const quickActions = [
-    {
-      title: '创建数据源',
-      description: '连接新的数据库或数据仓库',
-      icon: Database,
-      gradient: 'from-indigo-500 to-indigo-600',
-      path: '/data-center/datasources'
-    },
-    {
-      title: '注册数据集',
-      description: '从已连接的数据源注册表',
-      icon: Table2,
-      gradient: 'from-emerald-500 to-emerald-600',
-      path: '/data-center/datasets'
-    },
-    {
-      title: '数据提取',
-      description: '创建数据提取和导出任务',
-      icon: FileText,
-      gradient: 'from-indigo-600 to-purple-600',
-      path: '/extraction'
-    }
-  ]
+  const visibleHealthItems = healthItems.filter((item) => item.value !== null)
 
-  const recentActivities = recentTasks?.data?.items || []
+  const today = new Date()
+  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const dateStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日 ${weekDays[today.getDay()]}`
 
   return (
-    <div className="space-y-8">
-      {/* 优化后的欢迎区域 - 降低视觉干扰 */}
-      <div className="relative overflow-hidden hero-gradient rounded-3xl p-8 text-white shadow-lg">
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-sm font-medium text-white/90">实时数据分析</span>
-          </div>
-          <h1 className="text-3xl font-bold mb-3">
-            欢迎回来！
-          </h1>
-          <p className="text-white/85 max-w-2xl text-base leading-relaxed">
-            CUBIC3 运行正常。您可以连接 Source、沉淀 Semantic，并编排 Application。
-          </p>
+    <div className="flex flex-col gap-6 px-10 py-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold text-[#0F172A]">欢迎回来，数据工程师</h1>
+          <p className="text-sm text-[#64748B]">以下是您的工作台概览</p>
         </div>
-
-        {/* 优化装饰元素 - 更加柔和 */}
-        <div className="absolute top-0 right-0 w-80 h-80 bg-white/8 rounded-full blur-3xl -translate-y-1/3 translate-x-1/4"></div>
-        <div className="absolute bottom-0 left-1/3 w-64 h-64 bg-white/8 rounded-full blur-3xl translate-y-1/3"></div>
+        <span className="text-sm text-[#94A3B8]">{dateStr}</span>
       </div>
 
-      {/* 统计卡片 - 增强交互反馈 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => {
+      {/* Stat Cards */}
+      <div className="grid grid-cols-4 gap-5">
+        {stats.map((stat) => {
           const Icon = stat.icon
           return (
             <div
-              key={index}
-              className="group bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 transition-all duration-300 cursor-pointer hover:scale-[1.03]"
+              key={stat.label}
+              className="rounded-xl bg-white p-6 shadow-[0_4px_20px_#0F172A08] flex flex-col gap-3"
             >
-              <div className="flex items-start justify-between mb-5">
-                <div className={`w-14 h-14 rounded-xl ${stat.iconBg} flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}>
-                  <Icon className="w-7 h-7 text-white" />
-                </div>
-                <div className="flex items-center gap-1.5 text-emerald-600 text-sm font-semibold bg-emerald-50 px-2.5 py-1 rounded-full">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                  {stat.change}
-                </div>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-[10px] ${stat.iconBg}`}>
+                <Icon className={`h-5 w-5 ${stat.iconColor}`} />
               </div>
-
-              <div className="stat-value mb-1.5">
-                {stat.value}
-              </div>
-              <div className="stat-label">
-                {stat.label}
+              <p className="text-sm text-[#64748B]">{stat.label}</p>
+              <div className="flex min-h-[54px] items-end justify-between gap-3">
+                <span className="text-[32px] font-semibold leading-tight text-[#0F172A]">{stat.value}</span>
+                <span className={stat.trend ? 'pb-1 text-xs font-medium text-[#10B981]' : 'pb-1 text-xs text-[#94A3B8]'}>
+                  {stat.trend || stat.trendFallback || '暂无趋势'}
+                </span>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* 快速操作 - 增强悬浮效果 */}
-      <div>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center">
-            <Zap className="w-5 h-5 text-indigo-600" />
+      {/* Mid Row: Recent Queries + Data Health */}
+      <div className="flex gap-5">
+        {/* Left: Recent Queries */}
+        <div className="flex-1 rounded-xl bg-white shadow-[0_2px_24px_#0F172A08]">
+          <div className="flex items-center justify-between border-b border-[#F1F5F9] px-6 py-5">
+            <span className="text-base font-semibold text-[#0F172A]">近期查询</span>
+            <button
+              type="button"
+              onClick={() => navigate('/queries')}
+              className="text-[13px] font-medium text-[#2563EB] hover:text-[#1D4ED8] cursor-pointer"
+            >
+              查看全部 &rarr;
+            </button>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">快速开始</h2>
+          {recentQueries.length > 0 ? (
+            recentQueries.map((q, i) => {
+              const style = statusStyles[q.status]
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center gap-3 px-6 py-3.5 ${i < recentQueries.length - 1 ? 'border-b border-[#E2E8F0]' : ''}`}
+                >
+                  <span className="flex-1 truncate text-sm font-medium text-[#0F172A]">{q.name}</span>
+                  <span className="shrink-0 rounded-full bg-[#EFF6FF] px-2 py-0.5 text-[11px] font-medium text-[#2563EB]">{q.tag}</span>
+                  <span className="shrink-0 text-xs text-[#94A3B8]">{q.time}</span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${style.text} ${style.bg}`}>{q.status}</span>
+                </div>
+              )
+            })
+          ) : (
+            <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
+              <Inbox className="h-10 w-10 text-[#CBD5E1]" />
+              <p className="mt-3 text-sm text-[#94A3B8]">最近还没有真实查询记录</p>
+            </div>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {quickActions.map((action, index) => {
-            const Icon = action.icon
-            return (
-              <button
-                key={index}
-                onClick={() => navigate(action.path)}
-                className="group bg-white rounded-2xl p-7 border border-gray-100 shadow-sm hover:shadow-xl hover:border-gray-200 text-left transition-all duration-300 hover:scale-[1.02]"
-              >
-                <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${action.gradient} flex items-center justify-center mb-6 shadow-lg group-hover:scale-110 group-hover:-translate-y-1 transition-all duration-300`}>
-                  <Icon className="w-8 h-8 text-white" />
+        {/* Right: Data Health */}
+        <div className="w-[340px] shrink-0 rounded-xl bg-white shadow-[0_2px_24px_#0F172A08]">
+          <div className="border-b border-[#F1F5F9] px-6 py-5">
+            <span className="text-base font-semibold text-[#0F172A]">数据健康</span>
+          </div>
+          {visibleHealthItems.length > 0 ? (
+            visibleHealthItems.map((h, i, list) => (
+                <div
+                  key={h.label}
+                  className={`flex flex-col gap-2.5 px-6 py-4 ${i < list.length - 1 ? 'border-b border-[#E2E8F0]' : ''}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-[#0F172A]">{h.label}</span>
+                    <span className={`text-sm font-semibold ${h.textColor}`}>
+                      {h.value === null ? '' : `${Number.isInteger(h.value) ? h.value : h.value.toFixed(1)}%`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-[#E2E8F0]">
+                    <div
+                      className={`h-1.5 rounded-full ${h.color}`}
+                      style={{ width: `${Math.max(0, Math.min(100, h.value ?? 0))}%` }}
+                    />
+                  </div>
                 </div>
-
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  {action.title}
-                </h3>
-                <p className="text-gray-500 text-sm mb-5 leading-relaxed">
-                  {action.description}
-                </p>
-
-                <div className="flex items-center gap-2 text-indigo-600 font-semibold text-sm group-hover:gap-3 transition-all">
-                  <span>立即开始</span>
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </button>
-            )
-          })}
+              ))
+          ) : (
+            <div className="flex min-h-[220px] flex-col items-center justify-center rounded-b-xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] text-center">
+              <Inbox className="h-10 w-10 text-[#CBD5E1]" />
+              <p className="mt-3 text-sm text-[#94A3B8]">暂无可用健康指标</p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 最近活动 */}
-      <div>
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center">
-            <Clock className="w-5 h-5 text-purple-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900">最近活动</h2>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          {recentActivities.length === 0 ? (
-            <div className="text-center py-20 px-6">
-              <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-6">
-                <FileText className="w-10 h-10 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无活动记录</h3>
-              <p className="text-gray-500 mb-6 max-w-sm mx-auto">
-                开始创建数据提取任务，所有活动将会显示在这里
-              </p>
+      {/* Quick Actions */}
+      <div className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold text-[#0F172A]">快捷操作</h2>
+        <div className="grid grid-cols-4 gap-4">
+          {quickActions.map((action) => {
+            const Icon = action.icon
+            return (
               <button
-                onClick={() => navigate('/extraction')}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.98] transition-all duration-200 cursor-pointer shadow-md"
+                key={action.label}
+                type="button"
+                onClick={() => navigate(action.path)}
+                className="flex flex-col items-center gap-3 rounded-xl bg-white p-6 shadow-[0_4px_20px_#0F172A08] transition-shadow hover:shadow-[0_4px_20px_#0F172A14] cursor-pointer"
               >
-                创建第一个任务
-              </button>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {recentActivities.map((task, index: number) => {
-                const isEnabled = task.is_enabled ?? task.is_active
-                return (
-                <div
-                  key={task.id}
-                  className="flex items-center gap-5 p-6 hover:bg-gray-50 transition-colors cursor-pointer group"
-                >
-                  <div className={`
-                    w-12 h-12 rounded-xl flex items-center justify-center transition-all
-                    ${isEnabled
-                      ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/25'
-                      : 'bg-gray-200'}
-                  `}>
-                    {isEnabled ? (
-                      <CheckCircle className="w-6 h-6 text-white" />
-                    ) : (
-                      <AlertCircle className="w-6 h-6 text-gray-400" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 truncate text-base">{task.task_name}</div>
-                    <div className="text-sm text-gray-500 mt-0.5">
-                      数据集 ID: {task.dataset_id} · 类型: {task.task_type || 'manual'}
-                    </div>
-                  </div>
-
-                  <div className="text-sm text-gray-400 group-hover:text-gray-600 transition-colors">
-                    {index === 0 ? '刚刚' : `${index}h前`}
-                  </div>
+                <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${action.iconBg}`}>
+                  <Icon className={`h-6 w-6 ${action.iconColor}`} />
                 </div>
-              )})}
-            </div>
-          )}
+                <span className="text-sm font-medium text-[#0F172A]">{action.label}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
     </div>

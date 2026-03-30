@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, Plus, Edit, Trash2, Inbox } from 'lucide-react'
 import type { Subscription } from '@/types/config'
-import { CHANNEL_TYPE_OPTIONS, EVENT_TYPE_OPTIONS } from '@/types/config'
+import { EVENT_TYPE_OPTIONS } from '@/types/config'
 import { getSubscriptions, deleteSubscription, toggleSubscription } from '@/api/subscriptions'
 import { getChannels } from '@/api/channels'
 import { getInstances } from '@/api/appCenter'
@@ -14,7 +14,6 @@ import {
   FormButton,
   DataTable,
   useToast,
-  Badge,
 } from '@/components/business'
 import {
   AlertDialog,
@@ -27,10 +26,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ColumnDef } from '@tanstack/react-table'
-import { format } from 'date-fns'
 
 export default function Subscriptions() {
     const queryClient = useQueryClient()
@@ -129,24 +126,14 @@ export default function Subscriptions() {
         queryClient.invalidateQueries({ queryKey: ['subscriptions'] })
     }
 
-    const getEventTypeTags = (filter: Subscription['event_filter']) => {
-        const types = filter?.event_types || []
-        if (types.length === 0) return <Badge>所有事件</Badge>
+    const getEventSummary = (subscription: Subscription) => {
+        const types = subscription.event_types || subscription.event_filter?.event_types || []
+        if (types.length === 0) return '全部事件'
 
-        return (
-            <div className="flex flex-wrap gap-1">
-                {types.slice(0, 2).map(type => {
-                    const opt = EVENT_TYPE_OPTIONS.find(o => o.value === type)
-                    return <Badge key={type} variant="default">{opt?.label || type}</Badge>
-                })}
-                {types.length > 2 && <Badge variant="secondary">+{types.length - 2}</Badge>}
-            </div>
-        )
-    }
-
-    const getChannelTypeTag = (type: string) => {
-        const option = CHANNEL_TYPE_OPTIONS.find(o => o.value === type)
-        return <Badge variant={(option?.color as 'default' | 'secondary' | 'destructive' | 'outline') || 'default'}>{option?.label || type}</Badge>
+        return types
+            .slice(0, 2)
+            .map(type => EVENT_TYPE_OPTIONS.find(option => option.value === type)?.label || type)
+            .join('、')
     }
 
     const columns: ColumnDef<Subscription>[] = [
@@ -159,44 +146,39 @@ export default function Subscriptions() {
         },
         {
             id: 'app_instance',
-            header: '应用实例',
+            header: '关联应用',
             cell: ({ row }) => (
                 <div>
-                    <div className="font-medium">{row.original.app_instance?.name || '-'}</div>
-                    <div className="text-xs text-gray-400">
-                        {row.original.app_instance?.app_name || row.original.app_instance?.app_code}
-                    </div>
+                    <div className="font-medium">{row.original.app_instance?.app_name || row.original.app_instance?.name || '-'}</div>
+                    <div className="text-xs text-gray-400">{getEventSummary(row.original)}</div>
                 </div>
             ),
         },
         {
             id: 'channel',
             header: '推送渠道',
-            cell: ({ row }) => getChannelTypeTag(row.original.channel?.channel_type || ''),
-        },
-        {
-            id: 'event_types',
-            header: '订阅事件',
-            cell: ({ row }) => getEventTypeTags(row.original.event_filter),
+            cell: ({ row }) => (
+                <div>
+                    <div className="font-medium">{row.original.channel?.name || '-'}</div>
+                    <div className="text-xs text-gray-400">{row.original.channel?.channel_type || '-'}</div>
+                </div>
+            ),
         },
         {
             accessorKey: 'enabled',
             header: '状态',
-            cell: ({ row }) => (
-                <Switch
-                    checked={row.getValue('enabled')}
-                    onCheckedChange={(checked) => toggleMutation.mutate({ id: row.original.id, enabled: checked })}
-                    disabled={toggleMutation.isPending}
-                    aria-label="Toggle subscription status"
-                />
-            ),
-        },
-        {
-            accessorKey: 'created_at',
-            header: '创建时间',
             cell: ({ row }) => {
-                const date = row.getValue('created_at') as string
-                return date ? format(new Date(date), 'yyyy-MM-dd HH:mm') : '-'
+                const enabled = Boolean(row.getValue('enabled'))
+                return (
+                    <button
+                        type="button"
+                        onClick={() => toggleMutation.mutate({ id: row.original.id, enabled: !enabled })}
+                        disabled={toggleMutation.isPending}
+                        className={enabled ? 'text-emerald-600' : 'text-amber-600'}
+                    >
+                        {enabled ? '启用' : '暂停'}
+                    </button>
+                )
             },
         },
         {
@@ -292,15 +274,15 @@ export default function Subscriptions() {
             </div>
 
             {/* 订阅列表 */}
-            <div className="flex-1 overflow-hidden rounded-xl bg-white shadow-[0_2px_24px_rgba(15,23,42,0.03)]">
+            <div className="flex-1 overflow-hidden">
                 {isLoading ? (
-                    <div className="p-8 space-y-4">
+                    <div className="space-y-4 rounded-xl bg-white p-8 shadow-[0_2px_24px_rgba(15,23,42,0.03)]">
                         <Skeleton className="h-12 w-full" />
                         <Skeleton className="h-12 w-full" />
                         <Skeleton className="h-12 w-full" />
                     </div>
                 ) : filteredSubscriptions.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-64 py-8">
+                    <div className="flex h-64 flex-col items-center justify-center rounded-xl bg-white py-8 shadow-[0_2px_24px_rgba(15,23,42,0.03)]">
                         <Inbox className="h-16 w-16 text-slate-200 mb-4" />
                         <p className="text-base font-medium text-slate-600 mb-2">
                             {appFilter || channelFilter ? '未找到匹配的订阅' : '还没有订阅'}

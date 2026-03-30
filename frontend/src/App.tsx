@@ -15,24 +15,15 @@ const ExtractionTasks = lazy(() => import('./pages/ExtractionTasks'))
 const ExtractionTaskConfig = lazy(() => import('./pages/ExtractionTaskConfig'))
 const ExtractionRuns = lazy(() => import('./pages/ExtractionRuns'))
 const DataChat = lazy(() => import('./pages/DataChat'))
-const QueryDashboard = lazy(() => import('./pages/QueryCenter/Dashboard'))
-const QueryEditor = lazy(() => import('./pages/QueryCenter/Editor'))
-const MyQueries = lazy(() => import('./pages/QueryCenter/MyQueries'))
-const QueryHistory = lazy(() => import('./pages/QueryCenter/History'))
-const Templates = lazy(() => import('./pages/QueryCenter/Templates'))
-const VisualBuilder = lazy(() => import('./pages/QueryCenter/VisualBuilder'))
-const ScheduledQueries = lazy(() => import('./pages/QueryCenter/ScheduledQueries'))
+const QueryCenterDashboard = lazy(() => import('./pages/QueryCenter/Dashboard'))
 const AppMarket = lazy(() => import('./pages/AppCenter/AppMarket'))
-const AppDetail = lazy(() => import('./pages/AppCenter/AppDetail'))
 const ExecutionMonitor = lazy(() => import('./pages/AppCenter/ExecutionMonitor'))
 const Channels = lazy(() => import('./pages/ConfigCenter/Channels'))
 const Subscriptions = lazy(() => import('./pages/ConfigCenter/Subscriptions'))
-const SemanticOverview = lazy(() => import('./pages/Semantic/Overview'))
 const CubeList = lazy(() => import('./pages/Semantic/CubeList'))
-const CubeDetail = lazy(() => import('./pages/Semantic/CubeDetail'))
-const CubeStudio = lazy(() => import('./pages/Semantic/CubeStudio'))
+const RelationCanvas = lazy(() => import('./pages/Semantic/RelationCanvas'))
 const DomainList = lazy(() => import('./pages/Semantic/DomainList'))
-const DomainModelingEntry = lazy(() => import('./pages/Semantic/DomainModelingEntry'))
+const ModelingRedirect = lazy(() => import('./pages/Semantic/ModelingRedirect'))
 const DomainCanvas = lazy(() => import('./pages/Semantic/DomainCanvas'))
 const ViewDetail = lazy(() => import('./pages/Semantic/ViewDetail'))
 const DevTools = lazy(() => import('./pages/Semantic/DevTools'))
@@ -73,6 +64,33 @@ function RedirectLegacyDomainCanvas() {
   )
 }
 
+function RedirectLegacyCubeDetailRoute() {
+  const { name } = useParams<{ name: string }>()
+  const location = useLocation()
+  return (
+    <Navigate
+      to={{
+        pathname: name ? `/semantic/cubes/${name}/edit` : '/semantic/cubes',
+        search: location.search,
+      }}
+      replace
+    />
+  )
+}
+
+function RedirectLegacyQueryRoute({ legacy }: { legacy: string }) {
+  const location = useLocation()
+  const params = new URLSearchParams()
+  params.set('legacy', legacy)
+  const currentParams = new URLSearchParams(location.search)
+  currentParams.forEach((value, key) => {
+    if (key === 'legacy') return
+    params.append(key, value)
+  })
+  const search = params.toString()
+  return <Navigate to={{ pathname: '/queries', search: search ? `?${search}` : '' }} replace />
+}
+
 function App() {
   return (
     <>
@@ -101,17 +119,17 @@ function App() {
             <Route path="extraction/config" element={<ExtractionTaskConfig />} />
             <Route path="extraction/runs" element={<ExtractionRuns />} />
             <Route path="data-chat" element={<DataChat />} />
-            <Route path="queries" element={<QueryDashboard />} />
-            <Route path="queries/editor" element={<QueryEditor />} />
-            <Route path="queries/visual" element={<VisualBuilder />} />
-            <Route path="queries/my" element={<MyQueries />} />
-            <Route path="queries/history" element={<QueryHistory />} />
-            <Route path="queries/templates" element={<Templates />} />
-            <Route path="queries/scheduled" element={<ScheduledQueries />} />
+            <Route path="queries" element={<QueryCenterDashboard />} />
+            <Route path="queries/editor" element={<RedirectLegacyQueryRoute legacy="editor" />} />
+            <Route path="queries/visual" element={<RedirectLegacyQueryRoute legacy="visual" />} />
+            <Route path="queries/my" element={<RedirectLegacyQueryRoute legacy="my" />} />
+            <Route path="queries/history" element={<RedirectLegacyQueryRoute legacy="history" />} />
+            <Route path="queries/templates" element={<RedirectLegacyQueryRoute legacy="templates" />} />
+            <Route path="queries/scheduled" element={<RedirectLegacyQueryRoute legacy="scheduled" />} />
 
             {/* 应用中心 */}
             <Route path="apps" element={<AppMarket />} />
-            <Route path="apps/:code" element={<AppDetail />} />
+            <Route path="apps/:code" element={<Navigate to="/apps" replace />} />
             <Route path="executions" element={<ExecutionMonitor />} />
 
             {/* 配置中心 */}
@@ -123,25 +141,26 @@ function App() {
 
             {/* 语义中心 */}
             <Route path="semantic">
-              <Route index element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<SemanticOverview />} />
+              <Route index element={<Navigate to="workbench" replace />} />
+              <Route path="workbench" element={<DevTools />} />
+              <Route path="overview" element={<RedirectSemanticRoute to="/semantic/workbench" />} />
               <Route path="cubes" element={<CubeList />} />
-              <Route path="cubes/new" element={<CubeStudio />} />
-              <Route path="cubes/:name/edit" element={<CubeStudio />} />
-              <Route path="cubes/:name" element={<CubeDetail />} />
+              <Route path="cubes/new" element={<RelationCanvas />} />
+              <Route path="cubes/:name/edit" element={<RelationCanvas />} />
+              <Route path="cubes/:name" element={<RedirectLegacyCubeDetailRoute />} />
               <Route path="domains" element={<DomainList />} />
-              <Route path="modeling" element={<DomainModelingEntry />} />
+              <Route path="modeling" element={<ModelingRedirect />} />
               <Route path="domains/:id" element={<DomainCanvas />} />
               <Route path="domains/:id/canvas" element={<RedirectLegacyDomainCanvas />} />
               <Route path="views/:name" element={<ViewDetail />} />
-              <Route path="tools" element={<DevTools />} />
+              <Route path="tools" element={<RedirectSemanticRoute to="/semantic/workbench" />} />
 
               <Route path="playground" element={<RedirectSemanticRoute to="/semantic/cubes" />} />
               <Route path="visual-model" element={<RedirectSemanticRoute to="/semantic/domains" />} />
               <Route path="visual-model/:id" element={<RedirectLegacyDomainCanvas />} />
               <Route path="canvas" element={<RedirectSemanticRoute to="/semantic/modeling" />} />
-              <Route path="ide" element={<RedirectSemanticRoute to="/semantic/tools" />} />
-              <Route path="devtools" element={<RedirectSemanticRoute to="/semantic/tools" />} />
+              <Route path="ide" element={<RedirectSemanticRoute to="/semantic/workbench" />} />
+              <Route path="devtools" element={<RedirectSemanticRoute to="/semantic/workbench" />} />
             </Route>
           </Route>
           </Route>

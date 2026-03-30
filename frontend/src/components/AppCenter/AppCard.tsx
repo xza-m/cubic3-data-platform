@@ -1,80 +1,102 @@
 /**
  * 应用卡片组件
+ * 基于 uiv2.pen 设计稿
  */
-import { BarChart3, Database, FileText, AlertTriangle, Send, Bell } from 'lucide-react'
-import { Badge } from '@/components/business'
+import {
+  BarChart3,
+  Database,
+  FileText,
+  AlertTriangle,
+  Send,
+  Bell,
+  Bot,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import type { AppDefinition } from '../../api/appCenter'
 
 interface AppCardProps {
   app: AppDefinition
-  onClick: () => void
+  onClick?: () => void
+  onCreateInstance?: () => void
 }
 
-// 应用图标映射
-const APP_ICONS = {
+const APP_ICONS: Record<string, LucideIcon> = {
   bi_dashboard_push: BarChart3,
   dataset_card_push: Database,
   report_push: FileText,
   anomaly_monitor: AlertTriangle,
   query_result_push: Send,
   extraction_notify: Bell,
+  data_agent: Bot,
 }
 
-// 渐变色方案映射（根据应用代码）
-const GRADIENT_COLORS = {
-  bi_dashboard_push: 'from-blue-500 to-cyan-500',
-  dataset_card_push: 'from-purple-500 to-pink-500',
-  report_push: 'from-emerald-500 to-teal-500',
-  anomaly_monitor: 'from-red-500 to-orange-500',
-  query_result_push: 'from-indigo-500 to-blue-500',
-  extraction_notify: 'from-amber-500 to-yellow-500',
+const ICON_STYLES: Record<string, { bg: string; color: string }> = {
+  bi_dashboard_push: { bg: 'bg-[#EFF6FF]', color: 'text-[#2563EB]' },
+  dataset_card_push: { bg: 'bg-[#EEF2FF]', color: 'text-[#6366F1]' },
+  report_push: { bg: 'bg-[#ECFDF5]', color: 'text-[#10B981]' },
+  anomaly_monitor: { bg: 'bg-[#FEF3C7]', color: 'text-[#F59E0B]' },
+  query_result_push: { bg: 'bg-[#EFF6FF]', color: 'text-[#2563EB]' },
+  extraction_notify: { bg: 'bg-[#FEF3C7]', color: 'text-[#F59E0B]' },
+  data_agent: { bg: 'bg-[#EEF2FF]', color: 'text-[#6366F1]' },
 }
 
-export default function AppCard({ app, onClick }: AppCardProps) {
-  const Icon = APP_ICONS[app.code as keyof typeof APP_ICONS] || Database
-  const gradient = GRADIENT_COLORS[app.code as keyof typeof GRADIENT_COLORS] || 'from-gray-500 to-gray-600'
-  
+export default function AppCard({ app, onClick, onCreateInstance }: AppCardProps) {
+  const Icon = APP_ICONS[app.code] || Database
+  const style = ICON_STYLES[app.code] || { bg: 'bg-[#F1F5F9]', color: 'text-[#64748B]' }
+
   return (
-    <button
+    <div
+      className="group flex h-full cursor-pointer flex-col gap-4 rounded-xl bg-white p-6 text-left shadow-[0_2px_16px_#0F172A08] transition-shadow hover:shadow-[0_4px_20px_#0F172A14]"
       onClick={onClick}
-      className="group relative bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6 text-left hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 cursor-pointer w-full"
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onClick?.()
+        }
+      }}
     >
-      {/* 应用图标 */}
-      <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-        <Icon className="w-7 h-7 text-white" />
+      {/* Icon */}
+      <div className={`flex h-10 w-10 items-center justify-center rounded-[10px] ${style.bg}`}>
+        <Icon className={`h-5 w-5 ${style.color}`} />
       </div>
-      
-      {/* 应用名称 */}
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">{app.name}</h3>
-      
-      {/* 应用描述 */}
-      <p className="text-sm text-gray-500 mb-4 line-clamp-2 min-h-[2.5rem]">
+
+      {/* Name */}
+      <span className="text-[15px] font-semibold text-[#0F172A]">{app.name}</span>
+
+      {/* Description */}
+      <p className="text-[13px] leading-[1.5] text-[#64748B] line-clamp-2">
         {app.description}
       </p>
-      
-      {/* 底部信息栏 */}
-      <div className="flex items-center justify-between">
-        {/* 实例数量徽章 */}
+
+      <div className="mt-auto flex items-center justify-between gap-3 text-xs">
+        <span className="text-[#10B981]">
+          {app.instance_count || 0} 个实例 · {app.enabled ? '已启用' : '未启用'}
+        </span>
         <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="px-2">
-            {app.instance_count || 0}
-          </Badge>
-          <span className="text-xs text-gray-400">个实例</span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onClick?.()
+            }}
+            className="rounded-md px-2.5 py-1.5 text-[#64748B] transition-colors hover:bg-[#EFF6FF] hover:text-[#2563EB]"
+          >
+            查看
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              onCreateInstance?.()
+            }}
+            className="rounded-md bg-[#EFF6FF] px-2.5 py-1.5 font-medium text-[#2563EB] transition-colors hover:bg-[#DBEAFE]"
+          >
+            新建实例
+          </button>
         </div>
-        
-        {/* 状态指示器 */}
-        {app.enabled ? (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span className="text-xs text-gray-500">已启用</span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-gray-300"></div>
-            <span className="text-xs text-gray-400">未启用</span>
-          </div>
-        )}
       </div>
-    </button>
+    </div>
   )
 }

@@ -491,7 +491,8 @@ describe('RelationCanvas page', () => {
       expect(semanticApiMocks.activateCube).toHaveBeenCalledWith('answer_records')
     })
 
-    await user.click(screen.getAllByRole('button', { name: '弃用' }).at(-1)!)
+    const deprecateButtons = screen.getAllByRole('button', { name: '弃用' })
+    await user.click(deprecateButtons[deprecateButtons.length - 1]!)
     await waitFor(() => {
       expect(semanticApiMocks.deprecateCube).toHaveBeenCalledWith('answer_records')
     })
@@ -513,7 +514,8 @@ describe('RelationCanvas page', () => {
     renderPage('/semantic/cubes/answer_records/edit')
 
     expect((await screen.findAllByText('编辑 Cube')).length).toBeGreaterThan(0)
-    await user.click(screen.getAllByRole('button', { name: '弃用' }).at(-1)!)
+    const deprecateButtons = screen.getAllByRole('button', { name: '弃用' })
+    await user.click(deprecateButtons[deprecateButtons.length - 1]!)
 
     await waitFor(() => {
       expect(toastMocks.toast).toHaveBeenCalledWith({
@@ -627,6 +629,7 @@ describe('RelationCanvas page', () => {
   })
 
   it('侧边栏关闭时返回索引，并在来源名缺失时回退到数据源类型', async () => {
+    const user = userEvent.setup()
     semanticApiMocks.getGraph.mockResolvedValueOnce({ data: buildGraphData() })
     datasourceMocks.getDataSources.mockResolvedValueOnce({
       data: {

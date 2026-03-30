@@ -14,13 +14,19 @@ import { Checkbox } from '@/components/ui/checkbox'
 import SchemaTreeNode from './SchemaTreeNode'
 import SchemaContextMenu from './SchemaContextMenu'
 import { useSchemaTree } from './useSchemaTree'
-import { SchemaBrowserProps, TreeNode, FilterableNodeType, getQualifiedName } from './types'
+import { SchemaBrowserProps, TreeNode, getQualifiedName } from './types'
 
 export default function SchemaBrowser({
     datasourceId,
     sourceType,
     collapsible = true,
     title = '数据库结构',
+    showTitle = true,
+    showSearch = true,
+    compactTree = false,
+    activeDatabase,
+    hideDatabaseLevel = false,
+    showStatusBar = true,
     className = '',
     onSelect,
     onDoubleClick,
@@ -73,8 +79,29 @@ export default function SchemaBrowser({
         const firstChildNode = nodes.get(firstChildKey)
         if (firstChildNode && (firstChildNode.type === 'schema' || firstChildNode.type === 'database') && !firstChildNode.expanded) {
             void toggleExpand(firstChildKey)
+            return
+        }
+
+        const tableParent = firstChildNode?.type === 'schema' || firstChildNode?.type === 'database'
+            ? firstChildNode
+            : firstRootNode
+        const firstTableKey = tableParent?.children?.[0]
+        if (!firstTableKey) return
+
+        const firstTableNode = nodes.get(firstTableKey)
+        if (firstTableNode && (firstTableNode.type === 'table' || firstTableNode.type === 'view') && !firstTableNode.expanded) {
+            void toggleExpand(firstTableKey)
         }
     }, [initialized, nodes, rootKeys, toggleExpand])
+
+    useEffect(() => {
+        if (!initialized || !activeDatabase) return
+        const dbKey = rootKeys.find((key) => nodes.get(key)?.name === activeDatabase)
+        const dbNode = dbKey ? nodes.get(dbKey) : null
+        if (dbKey && dbNode && !dbNode.expanded) {
+            void toggleExpand(dbKey)
+        }
+    }, [activeDatabase, initialized, nodes, rootKeys, toggleExpand])
 
     // 搜索防抖 200ms
     const handleSearchChange = useCallback((value: string) => {
@@ -113,34 +140,45 @@ export default function SchemaBrowser({
     if (collapsed && collapsible) {
         return (
             <div
-                className={`flex flex-col items-center py-3 gap-2 w-9 bg-white border-l border-gray-200 cursor-pointer select-none transition-all duration-300 ease-in-out ${className}`}
+                className={`flex flex-col items-center py-3 gap-2 w-9 bg-white cursor-pointer select-none transition-all duration-300 ease-in-out ${className}`}
                 onClick={() => setCollapsed(false)}
             >
                 <PanelRightOpen size={16} className="text-gray-500" />
-                <span className="text-xs text-gray-500 writing-vertical-lr tracking-widest">
+                <span className="text-[11px] text-gray-500 writing-vertical-lr tracking-[0.14em]">
                     {title}
                 </span>
             </div>
         )
     }
 
+    const visibleRootKeys = hideDatabaseLevel && activeDatabase
+        ? (() => {
+            const dbKey = rootKeys.find((key) => nodes.get(key)?.name === activeDatabase)
+            const dbNode = dbKey ? nodes.get(dbKey) : null
+            return dbNode?.children ?? []
+        })()
+        : rootKeys
+
     return (
-        <div className={`flex flex-col bg-white border-l border-gray-200 transition-all duration-300 ease-in-out overflow-hidden ${className}`} style={{ width: 280 }}>
+        <div className={`flex w-full min-w-0 flex-col overflow-hidden bg-white transition-all duration-300 ease-in-out ${className}`}>
             {/* 标题栏 */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200">
-                <span className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
-                    <Database size={14} className="text-indigo-500" />
-                    {title}
-                </span>
-                {collapsible && (
-                    <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setCollapsed(true)}>
-                        <PanelRightClose size={14} className="text-gray-400" />
-                    </Button>
-                )}
-            </div>
+            {showTitle ? (
+                <div className="flex items-center justify-between px-3 py-3 border-b border-gray-200">
+                    <span className="text-[0.9375rem] font-medium leading-6 text-gray-700 flex items-center gap-1.5">
+                        <Database size={14} className="text-indigo-500" />
+                        {title}
+                    </span>
+                    {collapsible && (
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setCollapsed(true)}>
+                            <PanelRightClose size={14} className="text-gray-400" />
+                        </Button>
+                    )}
+                </div>
+            ) : null}
 
             {/* 搜索栏 + 过滤器 */}
-            <div className="px-2 py-1.5 border-b border-gray-200">
+            {showSearch ? (
+            <div className="px-3 py-2.5 border-b border-gray-200">
                 <div className="relative flex gap-1">
                     <div className="relative flex-1">
                         <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -149,7 +187,7 @@ export default function SchemaBrowser({
                             value={localSearch}
                             onChange={(e) => handleSearchChange(e.target.value)}
                             placeholder="搜索表名或字段..."
-                            className="h-8 pl-7 pr-7 text-xs bg-gray-50 border-gray-200"
+                            className="h-10 rounded-xl border-gray-200 bg-gray-50 pl-7 pr-7 text-[0.875rem] leading-5"
                         />
                         {localSearch && (
                             <Button
@@ -167,20 +205,20 @@ export default function SchemaBrowser({
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className={`h-8 w-8 p-0 flex-shrink-0 ${!allTypesSelected ? 'text-indigo-500 bg-indigo-50' : 'text-gray-400'}`}
+                                className={`h-10 w-10 rounded-xl p-0 flex-shrink-0 ${!allTypesSelected ? 'text-indigo-500 bg-indigo-50' : 'text-gray-400'}`}
                             >
                                 <Filter size={14} />
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-44 p-2" align="end">
-                            <p className="text-xs font-medium text-gray-500 px-1 mb-1.5">对象类型过滤</p>
+                            <p className="mb-1.5 px-1 text-[0.75rem] font-medium uppercase tracking-[0.08em] text-gray-500">对象类型</p>
                             <label className="flex items-center gap-2 px-1 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
                                 <Checkbox
                                     checked={typeFilters.has('table')}
                                     onCheckedChange={() => toggleTypeFilter('table')}
                                 />
                                 <Table2 size={14} className="text-green-500" />
-                                <span className="text-xs text-gray-700">表 (Tables)</span>
+                                <span className="text-[0.875rem] leading-5 text-gray-700">表</span>
                             </label>
                             <label className="flex items-center gap-2 px-1 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
                                 <Checkbox
@@ -188,20 +226,21 @@ export default function SchemaBrowser({
                                     onCheckedChange={() => toggleTypeFilter('view')}
                                 />
                                 <Eye size={14} className="text-cyan-500" />
-                                <span className="text-xs text-gray-700">视图 (Views)</span>
+                                <span className="text-[0.875rem] leading-5 text-gray-700">视图</span>
                             </label>
                         </PopoverContent>
                     </Popover>
                 </div>
             </div>
+            ) : null}
 
             {/* 树形内容 */}
             <ScrollArea className="flex-1">
                 {!datasourceId ? (
                     <div className="flex flex-col items-center justify-center h-48 text-center px-4">
                         <Database size={48} className="text-gray-300 mb-3" />
-                        <p className="text-sm font-medium text-gray-500">请先选择数据源</p>
-                        <p className="text-xs text-gray-400 mt-1">选择后将显示数据库结构</p>
+                        <p className="text-[0.9375rem] font-medium leading-6 text-gray-500">请先选择数据源</p>
+                        <p className="mt-1 text-[0.8125rem] leading-5 text-gray-400">选择后将显示数据库结构</p>
                     </div>
                 ) : !initialized ? (
                     <div className="p-3 space-y-2">
@@ -215,11 +254,11 @@ export default function SchemaBrowser({
                             </div>
                         ))}
                     </div>
-                ) : rootKeys.length === 0 && (searchTerm || !allTypesSelected) ? (
+                ) : visibleRootKeys.length === 0 && (searchTerm || !allTypesSelected) ? (
                     <div className="flex flex-col items-center justify-center h-32 text-center px-4">
                         <Search size={32} className="text-gray-300 mb-2" />
-                        <p className="text-sm text-gray-500">未找到匹配的表或字段</p>
-                        <p className="text-xs text-gray-400 mt-1">尝试使用其他关键字或调整过滤器</p>
+                        <p className="text-[0.9375rem] leading-6 text-gray-500">未找到匹配的表或字段</p>
+                        <p className="mt-1 text-[0.8125rem] leading-5 text-gray-400">尝试使用其他关键字或调整过滤器</p>
                     </div>
                 ) : (
                     <SchemaContextMenu
@@ -230,7 +269,7 @@ export default function SchemaBrowser({
                         onRefresh={refreshNode}
                     >
                         <div className="py-1">
-                            {rootKeys.map(key => {
+                            {visibleRootKeys.map(key => {
                                 const node = nodes.get(key)
                                 if (!node) return null
                                 return (
@@ -239,6 +278,7 @@ export default function SchemaBrowser({
                                         node={node}
                                         depth={0}
                                         isSelected={selectedKey === key}
+                                        compact={compactTree}
                                         searchTerm={searchTerm}
                                         nodes={nodes}
                                         isNodeVisible={isNodeVisible}
@@ -255,8 +295,8 @@ export default function SchemaBrowser({
             </ScrollArea>
 
             {/* 状态栏 */}
-            {initialized && rootKeys.length > 0 && (
-                <div className="px-3 py-1.5 border-t border-gray-200 text-[11px] text-gray-400">
+            {showStatusBar && initialized && visibleRootKeys.length > 0 && (
+                <div className="border-t border-gray-200 px-3 py-1.5 text-[0.75rem] leading-4 text-gray-400">
                     {(() => {
                         let tableCount = 0
                         let viewCount = 0

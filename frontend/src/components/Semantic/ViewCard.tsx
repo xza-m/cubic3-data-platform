@@ -81,10 +81,11 @@ export function ViewCard({ view, materializeStatus, style }: ViewCardProps) {
       queryClient.invalidateQueries({ queryKey: ['semantic', 'view-mat-status', view.name] })
       setDialogOpen(false)
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
+      const errorMessage = err instanceof Error ? err.message : '未知错误'
       toast({
         title: '发布失败',
-        description: err?.response?.data?.message || err.message || '未知错误',
+        description: errorMessage,
         variant: 'destructive',
       })
     },

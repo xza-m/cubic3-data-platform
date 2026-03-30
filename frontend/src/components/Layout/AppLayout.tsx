@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
-  FolderTree,
   GitBranch,
   Grid3X3,
   HardDrive,
@@ -71,25 +70,28 @@ const navigation: NavItem[] = [
     icon: Layers,
     label: '语义中心',
     children: [
-      { path: '/semantic/overview', icon: LayoutDashboard, label: '总览' },
+      { path: '/semantic/workbench', icon: LayoutDashboard, label: '语义工作台' },
       { path: '/semantic/cubes', icon: Box, label: 'Cube 管理' },
-      { path: '/semantic/domains', icon: FolderTree, label: '领域目录' },
       { path: '/semantic/modeling', icon: GitBranch, label: '领域建模' },
-      { path: '/semantic/tools', icon: Terminal, label: '开发工具' },
     ],
   },
   { path: '/data-chat', icon: Bot, label: '智能问数' },
 ]
+
+const DEFAULT_EXPANDED_MENUS = navigation
+  .filter((item): item is Extract<NavItem, { key: string }> => 'key' in item)
+  .map((item) => item.key)
 
 /* ---------- component ---------- */
 
 export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [expandedMenus, setExpandedMenus] = useState<string[]>([])
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(DEFAULT_EXPANDED_MENUS)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
+  const isDashboardRoute = location.pathname === '/dashboard'
 
   // ⌘K to open command palette
   useEffect(() => {
@@ -123,7 +125,7 @@ export default function AppLayout() {
   return (
     <div className="flex h-screen bg-[#F8FAFC]">
       {/* Sidebar */}
-      <aside className="flex w-60 shrink-0 flex-col bg-[#0F172A] px-4 py-6">
+      <aside data-testid="app-shell-sidebar" className="flex w-60 shrink-0 flex-col bg-[#0F172A] px-4 py-6">
         {/* Logo */}
         <button
           type="button"
@@ -205,23 +207,27 @@ export default function AppLayout() {
               <div className="truncate text-[13px] font-medium text-white font-['Inter']">数据工程师</div>
               <div className="text-xs text-[#94A3B8] font-['Inter']">管理员</div>
             </div>
-            <button
-              type="button"
-              onClick={() => setNotifOpen((prev) => !prev)}
-              className="relative shrink-0 text-[#94A3B8] transition-colors hover:text-white cursor-pointer"
-              aria-label="通知中心"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
-            </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="shrink-0 text-[#94A3B8] transition-colors hover:text-white cursor-pointer"
-              aria-label="退出登录"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            {!isDashboardRoute ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setNotifOpen((prev) => !prev)}
+                  className="relative shrink-0 text-[#94A3B8] transition-colors hover:text-white cursor-pointer"
+                  aria-label="通知中心"
+                >
+                  <Bell className="h-4 w-4" />
+                  <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-red-500" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="shrink-0 text-[#94A3B8] transition-colors hover:text-white cursor-pointer"
+                  aria-label="退出登录"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </>
+            ) : null}
           </div>
         </div>
       </aside>
@@ -237,7 +243,7 @@ export default function AppLayout() {
       </main>
 
       {/* AI FAB */}
-      {!aiAssistantOpen && (
+      {!aiAssistantOpen && !isDashboardRoute && (
         <button
           onClick={() => setAiAssistantOpen(true)}
           className="fixed bottom-6 right-6 z-40 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-500 text-white shadow-[0_8px_20px_rgba(37,99,235,0.25)] hover:shadow-[0_12px_28px_rgba(37,99,235,0.35)] transition-shadow"

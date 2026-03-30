@@ -8,6 +8,7 @@ import Datasources from './Datasources'
 
 const dataSourceMocks = vi.hoisted(() => ({
   getDataSources: vi.fn(),
+  getDataSourceStatistics: vi.fn(),
   createDataSource: vi.fn(),
   updateDataSource: vi.fn(),
   deleteDataSource: vi.fn(),
@@ -19,6 +20,7 @@ const dataSourceMocks = vi.hoisted(() => ({
 
 vi.mock('../api/datasources', () => ({
   getDataSources: dataSourceMocks.getDataSources,
+  getDataSourceStatistics: dataSourceMocks.getDataSourceStatistics,
   createDataSource: dataSourceMocks.createDataSource,
   updateDataSource: dataSourceMocks.updateDataSource,
   deleteDataSource: dataSourceMocks.deleteDataSource,
@@ -184,6 +186,9 @@ function getDatasourceActions(name: string) {
 describe('Datasources page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    dataSourceMocks.getDataSourceStatistics.mockResolvedValue({
+      data: { total: 0, active: 0, connected: 0, inactive: 0 },
+    })
     dataSourceMocks.getDataSourceTypes.mockResolvedValue({
       data: [
         { type: 'postgresql', display_name: 'PostgreSQL' },
@@ -236,18 +241,18 @@ describe('Datasources page', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: '数据源管理' })).toBeInTheDocument()
-    expect(screen.getByText('管理已接入的数据源与目录同步状态')).toBeInTheDocument()
+    expect(screen.getByText('管理所有数据库连接配置')).toBeInTheDocument()
+    expect(screen.getByText('总数据源')).toBeInTheDocument()
+    expect(screen.getByText('活跃')).toBeInTheDocument()
+    expect(screen.getByText('已连接')).toBeInTheDocument()
+    expect(screen.getByText('未激活')).toBeInTheDocument()
     expect(await screen.findByText('教学 PostgreSQL')).toBeInTheDocument()
     expect(screen.getAllByText((_, element) => element?.textContent === '已连接').length).toBeGreaterThan(0)
     expect(screen.getAllByText((_, element) => element?.textContent === '连接失败').length).toBeGreaterThan(0)
     expect(screen.getAllByText((_, element) => element?.textContent === '未连接').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('目录同步').length).toBeGreaterThan(0)
     expect(screen.getByText('目录同步失败')).toBeInTheDocument()
     expect(screen.getByText('权限不足')).toBeInTheDocument()
     expect(screen.getByText('MaxCompute')).toBeInTheDocument()
-    expect(screen.getByText('质量治理')).toBeInTheDocument()
-    expect(screen.getAllByText('当前阶段未接入后端能力').length).toBeGreaterThan(0)
-    expect(screen.queryByText('已接入真实数据源能力')).not.toBeInTheDocument()
 
     await user.type(screen.getByPlaceholderText('搜索数据源名称或类型...'), 'max')
     expect(screen.getByText('MaxCompute 行为仓')).toBeInTheDocument()
@@ -267,7 +272,6 @@ describe('Datasources page', () => {
     renderPage()
 
     expect(await screen.findByText('教学 PostgreSQL')).toBeInTheDocument()
-    expect(screen.getByText('当前阶段未接入后端能力')).toBeInTheDocument()
 
     await user.click(screen.getByTitle('同步目录'))
     expect(dataSourceMocks.syncDataSourceCatalog).toHaveBeenCalledWith(1)

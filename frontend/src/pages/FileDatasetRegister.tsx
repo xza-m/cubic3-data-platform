@@ -77,6 +77,22 @@ type FileFieldConfiguratorChange = {
   reasons?: string[]
 }
 
+type FileFieldConfiguratorField = {
+  name: string
+  physical_name?: string
+  type: string
+  data_type?: string
+  display_name?: string
+  business_type?: string
+  sensitivity_level?: string
+  comment?: string
+  mask_rule?: string
+  confidence_score?: number
+  matched_rules?: string[]
+  auto_recognized?: boolean
+  field_order?: number
+}
+
 export default function FileDatasetRegister() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -199,7 +215,7 @@ export default function FileDatasetRegister() {
     })
   }
 
-  const fieldConfiguratorFields = useMemo(() => {
+  const fieldConfiguratorFields = useMemo<FileFieldConfiguratorField[]>(() => {
     if (fieldConfigs.length > 0) {
       return fieldConfigs.map((field) => ({
         name: field.physical_name,
@@ -223,7 +239,9 @@ export default function FileDatasetRegister() {
     if (!fileMetadata.fields) {
       return fileMetadata.columns.map((column: { name: string; type: string }) => ({
         name: column.name,
+        physical_name: column.name,
         type: column.type.toUpperCase(),
+        data_type: column.type.toUpperCase(),
         display_name: column.name,
       }))
     }

@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { CheckCircle, ChevronRight, Link as LinkIcon, Upload } from 'lucide-react'
 import { describeCube, type CubeDetail } from '@/api/semantic'
-import { CompileDebugTab } from '@/components/Semantic/DevTools/CompileDebugTab'
-import { SchemaSyncTab } from '@/components/Semantic/DevTools/SchemaSyncTab'
+import { CompileDebugTab, type CompileDebugStatus } from '@/components/Semantic/DevTools/CompileDebugTab'
+import { PythonPreviewTab } from '@/components/Semantic/DevTools/PythonPreviewTab'
 import { SemanticEditorEmptyState } from '@/components/Semantic/DevTools/SemanticEditorEmptyState'
+import { PlaygroundTab } from '@/components/Semantic/DevTools/PlaygroundTab'
 import { SemanticResourceTree } from '@/components/Semantic/DevTools/SemanticResourceTree'
-import { SemanticWorkbenchContextBar } from '@/components/Semantic/SemanticWorkbenchContextBar'
+// SemanticWorkbenchContextBar removed — design spec shows no context bar
 import { YamlEditorTab } from '@/components/Semantic/DevTools/YamlEditorTab'
-import { SemanticPageHeader, SemanticPageShell, SemanticSurface } from '@/components/Semantic/workbench'
+// workbench wrappers removed — page uses direct layout matching design spec
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSemanticDevTools } from '@/hooks/semantic-ia'
 import { useUrlState } from '@/hooks/useUrlState'
@@ -17,6 +18,7 @@ import type { SemanticObjectKind } from '@/lib/semantic-workbench'
 
 const tabMeta = {
   editor: { title: 'YAML', description: '查看和维护对象定义文件。' },
+  python: { title: 'PY', description: '查看 Python 版对象定义参考。' },
   compiler: { title: '编译调试', description: '查看编译结果、执行日志和 SQL 输出。' },
   sync: { title: '预览', description: '查看 Schema 漂移、同步状态和建议动作。' },
 } as const
@@ -25,13 +27,16 @@ type IdeTab = keyof typeof tabMeta
 
 function IdeSkeleton() {
   return (
-    <div className="space-y-4">
-      <Skeleton className="h-20 rounded-2xl" />
-      <Skeleton className="h-16 rounded-2xl" />
-      <div className="grid gap-0 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
-        <Skeleton className="h-[42rem] rounded-l-2xl" />
-        <Skeleton className="h-[42rem]" />
-        <Skeleton className="h-[42rem] rounded-r-2xl" />
+    <div className="flex h-full flex-col" data-testid="devtools-screen">
+      <div className="flex-1 overflow-hidden rounded-xl bg-white shadow-[0_2px_24px_#0F172A08]">
+        <div className="grid h-full xl:grid-cols-[280px_minmax(0,1fr)_280px]">
+          <Skeleton className="h-[42rem] rounded-l-xl" />
+          <div className="flex h-[42rem] flex-col">
+            <Skeleton className="h-14 rounded-none" />
+            <Skeleton className="flex-1 rounded-none" />
+          </div>
+          <Skeleton className="h-[42rem] rounded-r-xl" />
+        </div>
       </div>
     </div>
   )
@@ -78,6 +83,9 @@ export default function DevTools() {
   const [selectedCode] = useUrlState<string>('resource', '')
   const [selectedName] = useUrlState<string>('file', '')
   const [resourceSearch] = useUrlState<string>('q', '')
+  const [treeCollapsed, setTreeCollapsed] = useState(false)
+  const [, setCompileStatus] = useState<CompileDebugStatus>({ state: 'idle', label: '未执行', lastRunAt: null })
+  const [, setEditorDirty] = useState(false)
   const updateQueryParams = useCallback((updates: Record<string, string | undefined>) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
@@ -106,8 +114,6 @@ export default function DevTools() {
 
   const {
     cubes,
-    views,
-    recipes,
     selection,
     selectedResource,
     resourceGroups,
@@ -145,31 +151,11 @@ export default function DevTools() {
     }
   }, [defaultSelection, selectedCode, updateQueryParams])
 
-  const currentTabMeta = tabMeta[tab]
   const workspaceTitle = selectedResource?.name || '请选择对象'
-
-  const workbenchContextItems = useMemo(() => [
-    {
-      label: '当前对象',
-      value: selectedResource?.pathLabel || '未选择',
-      tone: selectedResource ? 'default' as const : 'warning' as const,
-    },
-    {
-      label: '当前标签页',
-      value: currentTabMeta.title,
-      tone: 'accent' as const,
-    },
-    {
-      label: 'Schema 状态',
-      value: selectedResource?.schemaLabel || '未记录',
-      tone: selectedResource?.schemaTone || 'default',
-    },
-    {
-      label: '资源规模',
-      value: `${cubes.length} Cube / ${views.length} View / ${recipes.length} Recipe`,
-      tone: 'default' as const,
-    },
-  ], [cubes.length, currentTabMeta.title, recipes.length, selectedResource, views.length])
+  const cubeResourceGroups = useMemo(
+    () => resourceGroups.filter((group) => group.kind === 'cube'),
+    [resourceGroups],
+  )
 
   // Inspector data
   const inspectorMeasureCount = cubeDetail
@@ -190,29 +176,21 @@ export default function DevTools() {
   }
 
   return (
-    <SemanticPageShell>
-      <SemanticPageHeader
-        title="语义模型"
-        description="查看语义对象定义、编译结果和 Schema 同步状态。"
-        eyebrow={null}
-      />
-
-      <div className="space-y-4" data-testid="devtools-screen">
-        <SemanticWorkbenchContextBar
-          items={workbenchContextItems}
-          testId="devtools-workbench-context-bar"
-        />
-
-        <SemanticSurface bodyClassName="p-0">
-          <div className="grid min-h-[42rem] xl:grid-cols-[280px_minmax(0,1fr)_280px]">
+    <div className="flex h-full flex-col" data-testid="devtools-screen">
+      <h1 className="sr-only">语义工作台</h1>
+      <div className="flex-1 overflow-hidden rounded-xl bg-white shadow-[0_2px_24px_#0F172A08]">
+        <div className="grid h-full xl:grid-cols-[280px_minmax(0,1fr)_280px]" style={{
+          gridTemplateColumns: treeCollapsed ? '56px minmax(0,1fr) 280px' : '280px minmax(0,1fr) 280px',
+        }}>
             {/* ── Left Panel: Resource Tree ── */}
             <SemanticResourceTree
               search={resourceSearch}
               onSearchChange={(value) => updateQueryParams({ q: value || undefined })}
-              groups={resourceGroups}
-              selectedKind={selectedKind}
+              groups={cubeResourceGroups}
+              collapsed={treeCollapsed}
+              onToggleCollapsed={() => setTreeCollapsed((current) => !current)}
               selectedCode={selectedCode}
-              onSelect={handleSelectResource}
+              onSelect={(_kind, key) => handleSelectResource('cube', key)}
             />
 
             {/* ── Center Panel: Toolbar + Editor ── */}
@@ -244,7 +222,7 @@ export default function DevTools() {
 
                 {/* Center: tab group */}
                 <div className="flex items-center">
-                  {(['editor', 'compiler', 'sync'] as const).map((item) => (
+                  {(['editor', 'python', 'compiler', 'sync'] as const).map((item) => (
                     <button
                       key={item}
                       type="button"
@@ -285,10 +263,10 @@ export default function DevTools() {
               </div>
 
               {/* Editor Area */}
-              <div className={`flex-1 ${tab === 'editor' ? 'bg-[#1E293B]' : 'bg-[rgba(255,255,255,0.9)]'}`}>
+              <div className="flex-1 bg-[hsl(var(--workbench-surface))]">
                 {tab === 'editor' ? (
                   selectedResource?.editorSupported ? (
-                    <div className="h-full [&_.monaco-editor]:!bg-[#1E293B] [&_.monaco-editor_.margin]:!bg-[#1E293B]">
+                    <div className="h-full">
                       <YamlEditorTab
                         fileType={selectedResource.editorType}
                         fileName={selectedResource.code}
@@ -297,21 +275,27 @@ export default function DevTools() {
                       />
                     </div>
                   ) : (
-                    <div className="flex h-full items-center justify-center bg-[rgba(255,255,255,0.9)]">
+                    <div className="flex h-full items-center justify-center bg-[hsl(var(--workbench-surface))] px-6 py-5">
                       <SemanticEditorEmptyState kind={selectedKind === 'domain' ? 'domain' : 'catalog'} selectionCode={selectedCode} />
                     </div>
                   )
                 ) : null}
 
                 {tab === 'compiler' ? (
-                  <div className="px-6 py-5">
+                  <div className="h-full overflow-auto px-6 py-5">
                     <CompileDebugTab onStatusChange={setCompileStatus} />
                   </div>
                 ) : null}
 
+                {tab === 'python' ? (
+                  <div className="h-full overflow-auto px-6 py-5">
+                    <PythonPreviewTab cube={cubeDetail} />
+                  </div>
+                ) : null}
+
                 {tab === 'sync' ? (
-                  <div className="px-6 py-5">
-                    <SchemaSyncTab highlightObjectName={selectedResource?.highlightObjectName} />
+                  <div className="h-full overflow-auto px-6 py-5">
+                    <PlaygroundTab preferredCube={selectedKind === 'cube' ? selectedCode : undefined} hideCubeSelect={selectedKind === 'cube'} />
                   </div>
                 ) : null}
               </div>
@@ -418,8 +402,7 @@ export default function DevTools() {
               ) : null}
             </aside>
           </div>
-        </SemanticSurface>
+        </div>
       </div>
-    </SemanticPageShell>
   )
 }

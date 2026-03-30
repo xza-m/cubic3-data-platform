@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Background,
   BackgroundVariant,
   Controls,
   ReactFlow,
+  ReactFlowProvider,
   type Connection,
   type Edge,
   type Node,
@@ -16,6 +17,10 @@ import {
 import ELK from 'elkjs/lib/elk.bundled.js'
 import {
   Box,
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
   GripVertical,
   Link as LinkIcon,
   Maximize2,
@@ -36,6 +41,7 @@ import {
 } from '@/api/semantic'
 import { CubeNode } from '@/components/Semantic/CubeNode'
 import { JoinEdge } from '@/components/Semantic/JoinEdge'
+import { ResourcePagination } from '@/components/Semantic/ResourcePagination'
 import type {
   JoinAggregationStrategy,
   JoinCardinality,
@@ -48,7 +54,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { useDomainCanvas } from '@/hooks/semantic-ia'
+import { useDomainCanvas, useDomainGovernance } from '@/hooks/semantic-ia'
 import { useUnsavedChangesPrompt } from '@/hooks/useUnsavedChangesPrompt'
 import { buildDomainValidationSummary, serializeDomainGraph } from './domainCanvasState'
 
@@ -57,6 +63,8 @@ import '@xyflow/react/dist/style.css'
 const nodeTypes = { cube: CubeNode }
 const edgeTypes = { join: JoinEdge }
 const elk = new ELK()
+
+type ResourcePanelMode = 'library' | 'catalog'
 
 /* ── Types ── */
 
@@ -88,24 +96,32 @@ async function layoutGraph(graphNodes: Node[], graphEdges: Array<Edge<JoinEdgeDa
   if (graphNodes.length === 0) {
     return { nodes: graphNodes, edges: graphEdges }
   }
-  const elkGraph = {
-    id: 'root',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': 'RIGHT',
-      'elk.spacing.nodeNode': '56',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '96',
-    },
-    children: graphNodes.map((node) => ({ id: node.id, width: 200, height: 180 })),
-    edges: graphEdges.map((edge) => ({ id: edge.id, sources: [edge.source], targets: [edge.target] })),
-  }
-  const result = await elk.layout(elkGraph)
-  return {
-    nodes: graphNodes.map((node) => {
-      const hit = result.children?.find((child) => child.id === node.id)
-      return { ...node, position: { x: hit?.x ?? 0, y: hit?.y ?? 0 } }
-    }),
-    edges: graphEdges,
+  try {
+    const validNodeIds = new Set(graphNodes.map((node) => String(node.id)))
+    const normalizedEdges = graphEdges.filter(
+      (edge) => validNodeIds.has(String(edge.source)) && validNodeIds.has(String(edge.target)),
+    )
+    const elkGraph = {
+      id: 'root',
+      layoutOptions: {
+        'elk.algorithm': 'layered',
+        'elk.direction': 'RIGHT',
+        'elk.spacing.nodeNode': '56',
+        'elk.layered.spacing.nodeNodeBetweenLayers': '96',
+      },
+      children: graphNodes.map((node) => ({ id: node.id, width: 200, height: 180 })),
+      edges: normalizedEdges.map((edge) => ({ id: edge.id, sources: [edge.source], targets: [edge.target] })),
+    }
+    const result = await elk.layout(elkGraph)
+    return {
+      nodes: graphNodes.map((node) => {
+        const hit = result.children?.find((child) => child.id === node.id)
+        return { ...node, position: { x: hit?.x ?? 0, y: hit?.y ?? 0 } }
+      }),
+      edges: normalizedEdges,
+    }
+  } catch {
+    return { nodes: graphNodes, edges: graphEdges }
   }
 }
 
@@ -320,6 +336,8 @@ function CanvasInner({
 
 export default function DomainCanvas() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const wrapperRef = useRef<HTMLDivElement | null>(null)
@@ -327,11 +345,26 @@ export default function DomainCanvas() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<JoinEdgeData>>([])
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
   const [joinForm, setJoinForm] = useState<JoinFormState | null>(null)
   const [cubeSearch, setCubeSearch] = useState('')
+  const [treeSearch, setTreeSearch] = useState('')
+  const [libraryPage, setLibraryPage] = useState(1)
+  const [catalogPage, setCatalogPage] = useState(1)
+  const [expandedCatalogs, setExpandedCatalogs] = useState<Set<string>>(new Set())
+  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set())
 
   const { data, isLoading } = useDomainCanvas(id)
+  const resourcePanelMode: ResourcePanelMode = searchParams.get('panel') === 'catalog' ? 'catalog' : 'library'
+  const {
+    catalogs,
+    isLoading: governanceLoading,
+  } = useDomainGovernance({
+    page: 1,
+    pageSize: 999,
+    lens: 'all',
+  })
 
   const cubeIndex = useMemo(() => {
     const result = new Map<string, CubeSummary>()
@@ -352,6 +385,19 @@ export default function DomainCanvas() {
     })
   }, [data, cubeIndex, setEdges, setNodes])
 
+  useEffect(() => {
+    if (!catalogs.length || expandedCatalogs.size > 0) return
+    setExpandedCatalogs(new Set([catalogs[0].code]))
+  }, [catalogs, expandedCatalogs.size])
+
+  useEffect(() => {
+    setLibraryPage(1)
+  }, [cubeSearch, resourcePanelMode])
+
+  useEffect(() => {
+    setCatalogPage(1)
+  }, [treeSearch, resourcePanelMode])
+
   const visibleLibrary = useMemo(() => {
     const keyword = cubeSearch.trim().toLowerCase()
     return (data?.library_cubes || []).filter((cube) => {
@@ -360,6 +406,32 @@ export default function DomainCanvas() {
       return cube.name.toLowerCase().includes(keyword) || cube.title.toLowerCase().includes(keyword)
     })
   }, [cubeSearch, data?.library_cubes])
+
+  const filteredCatalogs = useMemo(() => {
+    const keyword = treeSearch.trim().toLowerCase()
+    if (!keyword) return catalogs
+    return catalogs
+      .map((catalog) => ({
+        ...catalog,
+        domains: (catalog.domains || []).filter(
+          (domain) =>
+            domain.name.toLowerCase().includes(keyword)
+            || domain.code.toLowerCase().includes(keyword),
+        ),
+      }))
+      .filter(
+        (catalog) =>
+          catalog.name.toLowerCase().includes(keyword)
+          || (catalog.domains || []).length > 0,
+      )
+  }, [catalogs, treeSearch])
+
+  const libraryPageSize = 8
+  const catalogPageSize = 6
+  const libraryPageCount = Math.max(1, Math.ceil(visibleLibrary.length / libraryPageSize))
+  const catalogPageCount = Math.max(1, Math.ceil(filteredCatalogs.length / catalogPageSize))
+  const pagedLibrary = visibleLibrary.slice((libraryPage - 1) * libraryPageSize, libraryPage * libraryPageSize)
+  const pagedCatalogs = filteredCatalogs.slice((catalogPage - 1) * catalogPageSize, catalogPage * catalogPageSize)
 
   const graphSnapshot = useMemo(() => serializeDomainGraph(nodes, edges), [nodes, edges])
   const hasDirtyChanges = Boolean(initialSnapshotRef.current && graphSnapshot !== initialSnapshotRef.current)
@@ -387,6 +459,7 @@ export default function DomainCanvas() {
   })
 
   const summary = buildDomainValidationSummary(data?.domain, nodes, edges, data?.library_cubes || [], hasDirtyChanges, publishMutation.isPending)
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
 
   /* ── Event handlers ── */
 
@@ -523,9 +596,39 @@ export default function DomainCanvas() {
     setJoinForm(null)
   }, [])
 
+  const updatePanelMode = useCallback((mode: ResourcePanelMode) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('panel', mode)
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const toggleCatalog = useCallback((code: string) => {
+    setExpandedCatalogs((prev) => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }, [])
+
+  const toggleDomain = useCallback((domainKey: string) => {
+    setExpandedDomains((prev) => {
+      const next = new Set(prev)
+      if (next.has(domainKey)) next.delete(domainKey)
+      else next.add(domainKey)
+      return next
+    })
+  }, [])
+
+  const handleSelectDomain = useCallback((domainKey: string) => {
+    navigate(`/semantic/domains/${domainKey}?panel=catalog`)
+  }, [navigate])
+
   /* ── Loading skeleton ── */
 
-  if (isLoading) {
+  if (isLoading || governanceLoading) {
     return (
       <div className="flex h-full gap-2 p-4">
         <Skeleton className="h-full w-[240px] rounded-xl" />
@@ -539,36 +642,55 @@ export default function DomainCanvas() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden" data-testid="domain-canvas-page">
-      {/* ── Left: Cube 资源库 (240px) ── */}
+      {/* ── Left: 资源树 (240px) ── */}
       <aside className="flex w-[240px] shrink-0 flex-col border-r-0 bg-white">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-4">
-          <span className="text-sm font-semibold text-foreground">Cube 资源库</span>
-          <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-muted-foreground" />
+        <div className="border-b border-border px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="inline-flex items-center rounded-lg bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => updatePanelMode('library')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  resourcePanelMode === 'library' ? 'bg-white text-slate-900 shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                Cube 库
+              </button>
+              <button
+                type="button"
+                onClick={() => updatePanelMode('catalog')}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  resourcePanelMode === 'catalog' ? 'bg-white text-slate-900 shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                领域目录
+              </button>
+            </div>
             <button type="button" className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-muted">
               <PanelLeftClose className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
           </div>
         </div>
 
-        {/* Search */}
-        <div className="px-4 pb-3">
+        <div className="px-4 py-3">
           <div className="flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1.5">
             <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
             <input
               type="text"
-              placeholder="搜索 Cube..."
-              value={cubeSearch}
-              onChange={(e) => setCubeSearch(e.target.value)}
+              placeholder={resourcePanelMode === 'library' ? '搜索 Cube...' : '搜索目录、领域、Cube...'}
+              value={resourcePanelMode === 'library' ? cubeSearch : treeSearch}
+              onChange={(e) => {
+                if (resourcePanelMode === 'library') setCubeSearch(e.target.value)
+                else setTreeSearch(e.target.value)
+              }}
               className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
 
-        {/* Cube list */}
-        <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-4">
-          {visibleLibrary.map((cube) => {
+        <div className="flex flex-1 flex-col overflow-hidden px-2 pb-4">
+          <div className="flex-1 overflow-y-auto">
+          {resourcePanelMode === 'library' ? pagedLibrary.map((cube) => {
             const isInCanvas = inDomainSet.has(cube.name)
             return (
               <button
@@ -593,12 +715,97 @@ export default function DomainCanvas() {
                 <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </button>
             )
+          }) : pagedCatalogs.map((catalog) => {
+            const isCatalogExpanded = expandedCatalogs.has(catalog.code)
+            return (
+              <div key={catalog.code}>
+                <button
+                  type="button"
+                  onClick={() => toggleCatalog(catalog.code)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-slate-50"
+                >
+                  {isCatalogExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                  {isCatalogExpanded ? (
+                    <FolderOpen className="h-4 w-4 text-blue-500" />
+                  ) : (
+                    <Folder className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="flex-1 truncate text-xs font-medium text-foreground">{catalog.name}</span>
+                </button>
+                {isCatalogExpanded ? (
+                  <div className="pb-1 pl-6">
+                    {(catalog.domains || []).map((domain) => {
+                      const domainKey = domain.id || domain.code
+                      const isExpanded = expandedDomains.has(domainKey)
+                      const isActive = domainKey === id
+                      return (
+                        <div key={domainKey}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleSelectDomain(domainKey)
+                              toggleDomain(domainKey)
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left ${
+                              isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                            )}
+                            <Network className={`h-3.5 w-3.5 ${isActive ? 'text-blue-600' : 'text-muted-foreground'}`} />
+                            <span className="flex-1 truncate text-xs font-medium">{domain.name}</span>
+                            <span className="text-[10px] text-muted-foreground">{domain.cube_count} Cubes</span>
+                          </button>
+                          {isExpanded && isActive ? (
+                            <div className="space-y-0.5 pl-6">
+                              {nodes.map((node) => (
+                                <button
+                                  key={node.id}
+                                  type="button"
+                                  onClick={() => setSelectedNodeId(node.id)}
+                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-50"
+                                >
+                                  <Box className="h-3 w-3 text-muted-foreground" />
+                                  <span className="truncate text-[11px] text-foreground">
+                                    {String(node.data?.title || node.id)}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            )
           })}
-          {visibleLibrary.length === 0 ? (
+          {resourcePanelMode === 'library' && visibleLibrary.length === 0 ? (
             <div className="px-3 py-6 text-center text-xs text-muted-foreground">
               没有可加入的 Cube
             </div>
           ) : null}
+          {resourcePanelMode === 'catalog' && filteredCatalogs.length === 0 ? (
+            <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+              没有匹配的目录或领域
+            </div>
+          ) : null}
+          </div>
+          <div className="px-1 pt-2">
+            {resourcePanelMode === 'library' ? (
+              <ResourcePagination page={libraryPage} pageCount={libraryPageCount} onChange={setLibraryPage} />
+            ) : (
+              <ResourcePagination page={catalogPage} pageCount={catalogPageCount} onChange={setCatalogPage} />
+            )}
+          </div>
         </div>
       </aside>
 
@@ -625,20 +832,22 @@ export default function DomainCanvas() {
           </div>
         ) : null}
 
-        <CanvasInner
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeClick={handleNodeClick}
-          onEdgeClick={handleEdgeClick}
-          onConnect={handleConnect}
-          onPaneClick={handlePaneClick}
-          domainName={data?.domain.name || '未命名领域'}
-          cubeCount={nodes.length}
-          onPublish={() => publishMutation.mutate()}
-          publishing={publishMutation.isPending || summary.status === 'blocked'}
-        />
+        <ReactFlowProvider>
+          <CanvasInner
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeClick={handleNodeClick}
+            onEdgeClick={handleEdgeClick}
+            onConnect={handleConnect}
+            onPaneClick={handlePaneClick}
+            domainName={data?.domain.name || '未命名领域'}
+            cubeCount={nodes.length}
+            onPublish={() => publishMutation.mutate()}
+            publishing={publishMutation.isPending || summary.status === 'blocked'}
+          />
+        </ReactFlowProvider>
       </section>
 
       {/* Resize handle 2 */}
@@ -646,11 +855,13 @@ export default function DomainCanvas() {
         <div className="h-10 w-[3px] rounded-full bg-border" />
       </div>
 
-      {/* ── Right: Join 配置 (280px) ── */}
+      {/* ── Right: Join 配置 / 领域信息 (280px) ── */}
       <aside className="flex w-[280px] shrink-0 flex-col bg-white" data-testid="domain-join-panel">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-4">
-          <span className="text-sm font-semibold text-foreground">Join 配置</span>
+          <span className="text-sm font-semibold text-foreground">
+            {resourcePanelMode === 'library' ? 'Join 配置' : '领域信息'}
+          </span>
           <button type="button" className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-muted">
             <PanelRightClose className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
@@ -658,7 +869,7 @@ export default function DomainCanvas() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
-          {selectedEdgeId && joinForm ? (
+          {resourcePanelMode === 'library' && selectedEdgeId && joinForm ? (
             /* ── Join form (when editing) ── */
             <div className="space-y-4">
               <div className="space-y-3">
@@ -778,7 +989,7 @@ export default function DomainCanvas() {
                 </button>
               </div>
             </div>
-          ) : (
+          ) : resourcePanelMode === 'library' ? (
             /* ── Join list (default view) ── */
             <div className="flex flex-col gap-5">
               <div className="flex flex-col gap-2.5">
@@ -809,6 +1020,67 @@ export default function DomainCanvas() {
                 <Plus className="h-3.5 w-3.5" />
                 新建 Join 关系
               </button>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">领域说明</div>
+                <div className="mt-3 text-sm font-semibold text-slate-900">{data?.domain.name || '未命名领域'}</div>
+                <p className="mt-2 text-xs leading-6 text-slate-600">
+                  {data?.domain.description || '当前领域还没有补充业务说明。'}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">当前资源</div>
+                  <span className="text-[11px] text-slate-500">{nodes.length} Cubes</span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {selectedNode ? (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                      <div className="text-xs font-semibold text-blue-700">
+                        {String(selectedNode.data?.title || selectedNode.id)}
+                      </div>
+                      <div className="mt-1 text-[11px] text-blue-700/80">
+                        {String(selectedNode.data?.dimensions || 0)} 维度 · {String(selectedNode.data?.measures || 0)} 指标
+                      </div>
+                    </div>
+                  ) : null}
+                  {nodes.slice(0, 6).map((node) => (
+                    <button
+                      key={node.id}
+                      type="button"
+                      onClick={() => setSelectedNodeId(node.id)}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left ${
+                        selectedNodeId === node.id ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="truncate text-xs font-medium">{String(node.data?.title || node.id)}</span>
+                      <span className="shrink-0 text-[11px] text-slate-500">
+                        {String(node.data?.dimensions || 0)} / {String(node.data?.measures || 0)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Cube 关系</div>
+                {edges.length ? edges.map((edge) => (
+                  <JoinCard
+                    key={String(edge.id)}
+                    edge={edge}
+                    cubeIndex={cubeIndex}
+                    selected={selectedEdgeId === String(edge.id)}
+                    onClick={() => handleSelectJoinCard(edge)}
+                  />
+                )) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">
+                    当前领域还没有可展示的 Cube 关系
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

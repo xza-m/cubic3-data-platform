@@ -62,7 +62,7 @@ export default function SubscriptionForm({ open, subscription, onClose, onSucces
                 setName(subscription.name || '')
                 setAppInstanceId(subscription.app_instance_id)
                 setChannelId(subscription.channel_id)
-                setEventTypes(subscription.event_filter?.event_types || [])
+                setEventTypes(subscription.event_types || subscription.event_filter?.event_types || [])
                 setEnabled(subscription.enabled)
             } else {
                 // 新建模式 - 重置

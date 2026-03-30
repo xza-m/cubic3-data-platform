@@ -14,11 +14,44 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
 import type { TreeNode } from '@/components/business/SchemaBrowser/types'
 import type { DataSource } from '@/types'
 import { SemanticActionBar, type SemanticValidationSummary } from '@/components/Semantic/workbench'
 import type { CubeStudioStepKey } from './CubeStudioStepRail'
+
+function TaskAssistPanel({
+  title,
+  description,
+  items = [],
+  testId,
+}: {
+  title: string
+  description: string
+  items?: Array<{ label: string; value: string }>
+  testId?: string
+}) {
+  return (
+    <div
+      className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-4"
+      data-testid={testId}
+    >
+      <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">{title}</div>
+      <p className="mt-1 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">{description}</p>
+      {items.length ? (
+        <div className="mt-3 flex flex-wrap gap-2 text-[11px] leading-4 text-[hsl(var(--workbench-muted-foreground))]">
+          {items.map((item) => (
+            <span
+              key={item.label}
+              className="rounded-full border border-[hsl(var(--workbench-outline))] bg-white/84 px-2.5 py-1"
+            >
+              {item.label}：{item.value}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 function renderDimensionRows(dimensions: Record<string, DimensionInfo & { sql?: string }>) {
   const entries = Object.entries(dimensions || {})
@@ -190,12 +223,27 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
       <PanelFrame
         eyebrow="Step 1"
         title="基础信息"
-        description="先确认 Cube 的命名、说明和领域归属。新建模式下，如果还没有生成草稿，基础信息会在来源绑定完成后自动带入。"
+        description="维护 Cube 名称、说明和领域归属。"
       >
+        <TaskAssistPanel
+          title={draft || cubeDetail ? '人工补充当前定义' : '自动带入基础信息'}
+          description={
+            draft || cubeDetail
+              ? '名称、显示名称和领域归属已经带入当前草稿，当前只需要修正显示名称、领域和说明。'
+              : '新建模式下，基础信息会在生成草稿后自动带入。当前步骤只保留显示名称、领域和说明等少量人工补充项。'
+          }
+          items={[
+            { label: 'Cube 名称', value: draft || cubeDetail ? '已带入' : '等待草稿' },
+            { label: '显示名称', value: draft?.title || editForm.title ? '可编辑' : '等待草稿' },
+            { label: '所属领域', value: currentDomainValue !== '__none__' ? '可设置' : '可后补' },
+          ]}
+          testId="cube-studio-basic-assist"
+        />
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">Cube 名称</div>
             <Input
+              data-testid="cube-draft-name"
               value={draft?.name || cubeDetail?.name || ''}
               disabled={!draft}
               onChange={(event) => draft && onDraftChange({ ...draft, name: event.target.value })}
@@ -260,7 +308,7 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
               }
             }}
             rows={4}
-            placeholder={!draft && !cubeDetail ? '完成来源绑定并生成草稿后，再补充业务说明。' : undefined}
+            placeholder={!draft && !cubeDetail ? '用于补充业务说明。' : undefined}
           />
         </div>
       </PanelFrame>
@@ -272,9 +320,31 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
       <PanelFrame
         eyebrow="Step 2"
         title="来源绑定"
-        description="确认数据源、物理表和当前绑定摘要。这个步骤是新建 Cube 的起点，也是后续结构生成的前置条件。"
+        description="维护数据源、物理表和当前绑定摘要。"
       >
         <div className="space-y-5">
+          <TaskAssistPanel
+            title="自动生成草稿"
+            description={
+              isEditMode
+                ? '编辑模式下显示当前来源上下文，不在这里重新维护字段结构。'
+                : '确认数据源和物理表后直接生成初始 Cube。后续主要校对自动识别结果，而不是从空白开始手工配置。'
+            }
+            items={
+              isEditMode
+                ? [
+                    { label: '当前来源', value: cubeDetail?.source_binding_summary?.source_name || '未绑定' },
+                    { label: '物理表', value: cubeDetail?.table || '未记录' },
+                  ]
+                : [
+                    { label: '数据源', value: selectedDataSource?.name || '未选择' },
+                    { label: '物理表', value: selectedTable?.table || '未选择' },
+                    { label: '草稿', value: draft ? '已生成' : '待生成' },
+                  ]
+            }
+            testId="cube-studio-source-assist"
+          />
+
           {!isEditMode ? (
             <>
               <div className="grid gap-4 md:grid-cols-2">
@@ -299,7 +369,7 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
                     {selectedTable?.table || '尚未选择物理表'}
                   </div>
                   <div className="mt-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">
-                    {selectedDataSource?.name || '请先选择数据源'}
+                    {selectedDataSource?.name || '未选择数据源'}
                   </div>
                 </div>
               </div>
@@ -309,7 +379,7 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
                   <div>
                     <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">物理结构浏览器</div>
                     <p className="text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]">
-                      先选择物理表，再生成草稿并进入结构校对。
+                      显示所选数据源中的物理表和字段。
                     </p>
                   </div>
                   <Badge variant="outline">{selectedDataSource?.name || '未选数据源'}</Badge>
@@ -343,7 +413,7 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
 
           <SemanticActionBar
             title="来源绑定动作"
-            description={isEditMode ? '编辑模式下这里只确认来源上下文；如需调整字段结构，请回到上游物理表重新生成。' : '选择物理表后先生成草稿，再进入结构校对。'}
+            description={isEditMode ? '显示当前来源上下文。' : '执行草稿生成前的来源与物理表绑定。'}
             status={summary.status}
             primaryAction={!isEditMode ? {
               label: '生成 Cube 草稿',
@@ -363,8 +433,18 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
       <PanelFrame
         eyebrow="Step 3"
         title="维度 / 指标"
-        description="这里统一校对自动识别结果。当前阶段先保留预览和核对能力，不在这里扩展复杂字段编辑。"
+        description="显示自动识别出的维度和指标。"
       >
+        <TaskAssistPanel
+          title="自动识别结果"
+          description="当前维度和指标来自物理结构自动识别。优先确认差异和命名是否合理，再决定是否继续补充规则。"
+          items={[
+            { label: '维度', value: String(Object.keys(draftOrDetailDimensions).length) },
+            { label: '指标', value: String(Object.keys(draftOrDetailMeasures).length) },
+            { label: '处理方式', value: draft || cubeDetail ? '校对为主' : '先生成草稿' },
+          ]}
+          testId="cube-studio-structure-assist"
+        />
         {draft || cubeDetail ? (
           <div className="grid gap-4 xl:grid-cols-2">
             <div className="space-y-3">
@@ -378,7 +458,7 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
           </div>
         ) : (
           <SemanticIssueList
-            hints={['先完成来源绑定并生成草稿，系统才能根据物理表自动识别维度和指标。']}
+            hints={['生成草稿后显示自动识别结果。']}
             emptyText="当前还没有结构可供校对。"
           />
         )}
@@ -391,8 +471,17 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
       <PanelFrame
         eyebrow="Step 4"
         title="语义规则"
-        description="只保留当前阶段真正需要的规则项。高级能力后续再补，不在本阶段引入额外复杂度。"
+        description="维护默认粒度和实体主键。"
       >
+        <TaskAssistPanel
+          title="只维护必要规则"
+          description="当前阶段只保留默认粒度和实体主键两个高频规则，减少人工配置负担。"
+          items={[
+            { label: '默认粒度', value: grainValue ? '已填写' : '可后补' },
+            { label: '实体主键', value: entityKeyValue ? '已填写' : '可后补' },
+          ]}
+          testId="cube-studio-rules-assist"
+        />
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">默认粒度</div>
@@ -426,7 +515,7 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
           </div>
         </div>
         <div className="mt-4 rounded-[var(--workbench-radius-sm)] border border-dashed border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-4 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-          当前先开放粒度和实体主键两个核心规则项。更复杂的默认过滤、分区和高级聚合策略暂不在本阶段展开，符合 `YAGNI`。
+          当前开放默认粒度和实体主键两个规则项。
         </div>
       </PanelFrame>
     )
@@ -437,10 +526,10 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
       <PanelFrame
         eyebrow="Step 5"
         title="校验与预览"
-        description="把阻塞项、提醒项和当前结构规模集中到一个步骤里，避免保存前再来回切换。"
+        description="显示阻塞项、提醒项和结构摘要。"
       >
         <div className="space-y-5">
-          <SemanticIssueList blockers={summary.blockers} hints={summary.hints} emptyText="当前没有阻塞项，可以进入保存与发布。" />
+          <SemanticIssueList blockers={summary.blockers} hints={summary.hints} emptyText="当前没有阻塞项。" />
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {(summary.stats || []).map((item) => (
@@ -455,7 +544,7 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
           </div>
 
           <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-4 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-            当前页面只校验单 Cube 的命名、来源、结构和核心规则。领域关系、Join 和发布影响范围统一在领域建模页处理。
+            当前校验范围包括命名、来源、结构和核心规则。
           </div>
         </div>
       </PanelFrame>
@@ -466,7 +555,7 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
     <PanelFrame
       eyebrow="Step 6"
       title="保存与发布"
-      description="把保存草稿、保存修改和生命周期动作收敛到最后一步，避免在编辑过程中多个动作并列竞争。"
+      description="执行保存和生命周期动作。"
     >
       <div className="space-y-5">
         <SemanticActionBar
@@ -510,12 +599,12 @@ export function CubeStudioTaskPanel(props: CubeStudioTaskPanelProps) {
         />
 
         <div className="rounded-[var(--workbench-radius-sm)] border border-dashed border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-4 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-          下一步如需处理领域关系、Join 或发布链路，请保存后回到领域建模页继续。
+          领域关系、 Join 和发布链路在领域建模页维护。
           <div className="mt-3">
             <Button asChild variant="outline">
               <Link to="/semantic/modeling">
                 <GitBranch className="mr-1.5 h-4 w-4" />
-                打开领域建模
+                打开领域画布
               </Link>
             </Button>
           </div>

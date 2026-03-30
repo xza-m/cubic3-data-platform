@@ -661,8 +661,8 @@ export default function Playground() {
   return (
     <SemanticPageShell>
       <SemanticPageHeader
-        title="Playground"
-        description="浏览模型的维度、指标与归属信息。查看成员定义后可跳转到 IDE 编辑或 Visual Model 查看关系。"
+        title="Cube 管理"
+        description="浏览 Cube 与 View 的成员定义、归属信息和消费状态，按需跳转到建模或详情页继续处理。"
         status="ready"
         meta={
           <>

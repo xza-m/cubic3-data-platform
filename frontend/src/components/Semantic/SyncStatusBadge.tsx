@@ -1,7 +1,7 @@
 import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type SyncStatus = 'ok' | 'warn' | 'error' | undefined
+export type SyncStatus = 'ok' | 'warn' | 'error' | 'drift' | undefined
 
 const config = {
   ok: {
@@ -10,6 +10,11 @@ const config = {
     className: 'text-[hsl(var(--semantic-ok))] bg-[hsl(var(--semantic-ok))]/10',
   },
   warn: {
+    icon: AlertTriangle,
+    label: '存在漂移',
+    className: 'text-[hsl(var(--semantic-warn))] bg-[hsl(var(--semantic-warn))]/10',
+  },
+  drift: {
     icon: AlertTriangle,
     label: '存在漂移',
     className: 'text-[hsl(var(--semantic-warn))] bg-[hsl(var(--semantic-warn))]/10',
@@ -23,7 +28,10 @@ const config = {
 
 export function SyncStatusBadge({ status }: { status: SyncStatus }) {
   if (!status) return null
-  const { icon: Icon, label, className } = config[status]
+  const current = config[status]
+  if (!current) return null
+
+  const { icon: Icon, label, className } = current
 
   return (
     <span

@@ -17,6 +17,18 @@ function makeCube(name: string, status: string = 'active'): CubeSummary {
     title: name,
     description: '',
     table: `${name}_table`,
+    in_domain: true,
+    domain_id: 'semantic-domain',
+    domain_name: '语义领域',
+    domain_ids: ['semantic-domain'],
+    domains: [
+      {
+        id: 'semantic-domain',
+        code: 'semantic-domain',
+        name: '语义领域',
+      },
+    ],
+    domain_count: 1,
     dimensions: [],
     measures: [],
     dimension_count: 2,

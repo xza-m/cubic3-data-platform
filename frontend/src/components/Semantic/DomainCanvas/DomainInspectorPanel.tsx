@@ -1,7 +1,8 @@
 import { Save, Trash2 } from 'lucide-react'
 import type { CubeSummary, DomainCanvasData } from '@/api/semantic'
+import type { JoinAggregationStrategy, JoinCardinality, JoinType } from '@/components/Semantic/joinEdgeTypes'
 import { SemanticIssueList } from '@/components/Semantic/SemanticIssueList'
-import { SyncStatusBadge } from '@/components/Semantic/SyncStatusBadge'
+import { SyncStatusBadge, type SyncStatus } from '@/components/Semantic/SyncStatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,9 +16,9 @@ type JoinFormState = {
   target_cube: string
   source_field: string
   target_field: string
-  join_type: 'left' | 'inner' | 'right' | 'full'
-  cardinality: '1:1' | 'N:1' | '1:N'
-  aggregation_strategy: 'none' | 'aggregate_before_join' | 'latest_snapshot' | 'distinct_on_target'
+  join_type: JoinType
+  cardinality: JoinCardinality
+  aggregation_strategy: JoinAggregationStrategy
   description: string
 }
 
@@ -46,6 +47,15 @@ export function DomainInspectorPanel({
   onJoinSave: () => void
   onDeleteEdge: () => void
 }) {
+  const joinStatus = !joinForm
+    ? 'normal'
+    : !joinForm.source_field || !joinForm.target_field
+      ? 'missing'
+      : joinForm.cardinality === '1:N' && joinForm.aggregation_strategy === 'none'
+        ? 'conflict'
+        : 'normal'
+  const joinStatusLabel = joinStatus === 'missing' ? '缺失' : joinStatus === 'conflict' ? '冲突' : '正常'
+
   return (
     <aside className="space-y-4 bg-[rgba(249,251,254,0.84)] p-4" data-testid="domain-inspector-panel">
       <div className="space-y-1">
@@ -54,15 +64,40 @@ export function DomainInspectorPanel({
         </div>
         <p className="text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]">
           {selectedEdgeId
-            ? '在右侧直接编辑字段映射、Join 类型、基数和聚合策略。'
+            ? '维护字段映射、Join 类型、基数和聚合策略。'
             : selectedCube
-              ? '这里只展示当前节点的模型摘要和来源状态。'
-              : '这里统一查看领域规模、阻塞项和发布前摘要。'}
+              ? '显示当前节点的模型摘要、来源和同步状态。'
+              : '显示领域规模、阻塞项和发布前摘要。'}
         </p>
       </div>
 
       {selectedEdgeId && joinForm ? (
         <div data-testid="domain-inspector-join" className="space-y-4">
+          <div className="rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
+            <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">当前 Join 状态</div>
+            <div className="mt-2 flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={
+                  joinStatus === 'missing'
+                    ? 'border-[hsl(var(--semantic-warn))]/20 bg-[hsl(var(--semantic-warn))]/10 text-[hsl(var(--semantic-warn))]'
+                    : joinStatus === 'conflict'
+                      ? 'border-[hsl(var(--semantic-error))]/20 bg-[hsl(var(--semantic-error))]/10 text-[hsl(var(--semantic-error))]'
+                      : 'border-[hsl(var(--semantic-ok))]/20 bg-[hsl(var(--semantic-ok))]/10 text-[hsl(var(--semantic-ok))]'
+                }
+              >
+                {joinStatusLabel}
+              </Badge>
+              <span className="text-xs text-[hsl(var(--workbench-muted-foreground))]">
+                {joinStatus === 'missing'
+                  ? '补齐源字段和目标字段后即可保存。'
+                  : joinStatus === 'conflict'
+                    ? '当前基数需要搭配聚合策略。'
+                    : '当前 Join 已具备可发布的基础配置。'}
+              </span>
+            </div>
+          </div>
+
           <div className="grid gap-3 md:grid-cols-2">
             <div>
               <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">源 Cube</div>
@@ -110,7 +145,7 @@ export function DomainInspectorPanel({
           <div className="grid gap-3 md:grid-cols-3">
             <div>
               <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">Join Type</div>
-              <Select value={joinForm.join_type} onValueChange={(value: any) => onJoinFormChange({ ...joinForm, join_type: value })}>
+              <Select value={joinForm.join_type} onValueChange={(value) => onJoinFormChange({ ...joinForm, join_type: value as JoinType })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -126,9 +161,9 @@ export function DomainInspectorPanel({
               <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">Cardinality</div>
               <Select
                 value={joinForm.cardinality}
-                onValueChange={(value: any) => onJoinFormChange({
+                onValueChange={(value) => onJoinFormChange({
                   ...joinForm,
-                  cardinality: value,
+                  cardinality: value as JoinCardinality,
                   aggregation_strategy: value === '1:N' ? joinForm.aggregation_strategy : 'none',
                 })}
               >
@@ -144,7 +179,7 @@ export function DomainInspectorPanel({
             </div>
             <div>
               <div className="mb-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">聚合策略</div>
-              <Select value={joinForm.aggregation_strategy} onValueChange={(value: any) => onJoinFormChange({ ...joinForm, aggregation_strategy: value })}>
+              <Select value={joinForm.aggregation_strategy} onValueChange={(value) => onJoinFormChange({ ...joinForm, aggregation_strategy: value as JoinAggregationStrategy })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -182,8 +217,10 @@ export function DomainInspectorPanel({
               <Badge variant="outline">{getSemanticStatusLabel(selectedCube.status || 'draft')}</Badge>
             </div>
             <div className="mt-1 font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{selectedCube.name}</div>
-            <div className="mt-3 text-sm text-[hsl(var(--workbench-muted-foreground))]">
-              {selectedCube.dimension_count} 维度 · {selectedCube.measure_count} 指标 · {selectedCube.join_count ?? 0} 条关联
+            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm text-[hsl(var(--workbench-muted-foreground))]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              <span>{selectedCube.dimension_count} 维度</span>
+              <span>{selectedCube.measure_count} 指标</span>
+              <span>{selectedCube.join_count ?? 0} 条 Join</span>
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
@@ -196,7 +233,7 @@ export function DomainInspectorPanel({
             <div className="rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
               <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">同步状态</div>
               <div className="mt-2">
-                <SyncStatusBadge status={selectedCube.state_summary?.sync_status as any} />
+                <SyncStatusBadge status={selectedCube.state_summary?.sync_status as SyncStatus} />
               </div>
             </div>
           </div>
@@ -212,7 +249,7 @@ export function DomainInspectorPanel({
             </div>
             <div className="mt-1 font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{domain?.code}</div>
             <p className="mt-3 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-              {domain?.description || '当前领域尚未补充说明。建议先定义边界，再逐步补足 Join 关系。'}
+              {domain?.description || '当前领域尚未补充说明。'}
             </p>
           </div>
 
@@ -232,7 +269,7 @@ export function DomainInspectorPanel({
           <div className="space-y-3 rounded-xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-4">
             <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">发布前检查</div>
             <div className="text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">{summary.description}</div>
-            <SemanticIssueList blockers={summary.blockers} hints={summary.hints} emptyText="当前没有额外风险。可以继续补图或直接发布。" />
+            <SemanticIssueList blockers={summary.blockers} hints={summary.hints} emptyText="当前没有额外风险。" />
           </div>
         </>
       )}

@@ -39,12 +39,12 @@ export default function CommandPalette({ open, onClose }: Props) {
     {
       icon: <Database className="h-4 w-4 text-blue-600" />,
       label: '销售数据集',
-      action: () => { navigate('/datasets'); onClose() },
+      action: () => { navigate('/data-center/datasets'); onClose() },
     },
     {
       icon: <TrendingUp className="h-4 w-4 text-slate-500" />,
       label: 'Q3收入查询',
-      action: () => { navigate('/query-center'); onClose() },
+      action: () => { navigate('/queries?legacy=my'); onClose() },
     },
     {
       icon: <Layers className="h-4 w-4 text-slate-500" />,
@@ -54,7 +54,7 @@ export default function CommandPalette({ open, onClose }: Props) {
     {
       icon: <Terminal className="h-4 w-4 text-slate-500" />,
       label: '用户行为分析',
-      action: () => { navigate('/query-center'); onClose() },
+      action: () => { navigate('/queries?legacy=history'); onClose() },
     },
   ]
 
@@ -63,19 +63,19 @@ export default function CommandPalette({ open, onClose }: Props) {
       icon: <Plus className="h-4 w-4 text-slate-500" />,
       label: '新建查询',
       shortcut: '⌘N',
-      action: () => { navigate('/query-center/editor'); onClose() },
+      action: () => { navigate('/queries'); onClose() },
     },
     {
       icon: <Play className="h-4 w-4 text-slate-500" />,
       label: '运行SQL',
       shortcut: '⌘R',
-      action: () => { navigate('/query-center/editor'); onClose() },
+      action: () => { navigate('/queries'); onClose() },
     },
     {
       icon: <Upload className="h-4 w-4 text-slate-500" />,
       label: '导入数据集',
       shortcut: '⌘I',
-      action: () => { navigate('/datasets/register'); onClose() },
+      action: () => { navigate('/data-center/datasets/register'); onClose() },
     },
     {
       icon: <Sparkles className="h-4 w-4 text-indigo-500" />,

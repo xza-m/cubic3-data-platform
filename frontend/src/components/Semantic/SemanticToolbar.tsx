@@ -36,6 +36,7 @@ export function SemanticFilterChips<T extends string>({
   value,
   onChange,
   className,
+  size = 'default',
 }: {
   items: Array<{
     value: T
@@ -45,6 +46,7 @@ export function SemanticFilterChips<T extends string>({
   value: T
   onChange: (value: T) => void
   className?: string
+  size?: 'default' | 'compact'
 }) {
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)} data-testid="semantic-filter-chips">
@@ -56,7 +58,8 @@ export function SemanticFilterChips<T extends string>({
             type="button"
             onClick={() => onChange(item.value)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+              'inline-flex items-center rounded-full border font-medium transition-colors',
+              size === 'compact' ? 'gap-1 px-2.5 py-1 text-[11px]' : 'gap-1.5 px-3 py-1.5 text-xs',
               active
                 ? 'border-[hsl(var(--workbench-accent))]/18 bg-[hsl(var(--workbench-accent-soft))] text-[hsl(var(--workbench-accent))]'
                 : 'border-[hsl(var(--workbench-outline))] bg-white/88 text-[hsl(var(--workbench-muted-foreground))] hover:text-[hsl(var(--workbench-ink))]',
@@ -66,7 +69,12 @@ export function SemanticFilterChips<T extends string>({
           >
             <span>{item.label}</span>
             {typeof item.count === 'number' ? (
-              <span className="rounded-full bg-[hsl(var(--workbench-panel))] px-1.5 py-0.5 text-[10px] leading-none text-[hsl(var(--workbench-muted-foreground))]">
+              <span
+                className={cn(
+                  'rounded-full bg-[hsl(var(--workbench-panel))] leading-none text-[hsl(var(--workbench-muted-foreground))]',
+                  size === 'compact' ? 'px-1.5 py-0.5 text-[9px]' : 'px-1.5 py-0.5 text-[10px]',
+                )}
+              >
                 {item.count}
               </span>
             ) : null}

@@ -32,7 +32,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
 
 function CompileDiagnostics({
@@ -160,7 +159,7 @@ export function PlaygroundTab({
 
   const dsl = useMemo(() => {
     if (!selectedCube) return {}
-    const result: Record<string, any> = {}
+    const result: Record<string, unknown> = {}
 
     if (selectedMeasures.length > 0) {
       result.measures = selectedMeasures.map((m) => `${selectedCube}.${m}`)
@@ -169,7 +168,7 @@ export function PlaygroundTab({
       result.dimensions = selectedDims.map((d) => `${selectedCube}.${d}`)
     }
     if (timeDim) {
-      const td: Record<string, any> = { dimension: `${selectedCube}.${timeDim}` }
+      const td: Record<string, unknown> = { dimension: `${selectedCube}.${timeDim}` }
       if (granularity) td.granularity = granularity
       if (dateFrom && dateTo) td.date_range = [dateFrom, dateTo]
       result.time_dimensions = [td]
@@ -193,7 +192,7 @@ export function PlaygroundTab({
   }, [dsl])
 
   const compileMutation = useMutation({
-    mutationFn: async (dslInput: Record<string, any>) => {
+    mutationFn: async (dslInput: Record<string, unknown>) => {
       const res = await compileDsl(dslInput)
       return res.data
     },
@@ -203,7 +202,7 @@ export function PlaygroundTab({
   })
 
   const queryMutation = useMutation({
-    mutationFn: async (dslInput: Record<string, any>) => {
+    mutationFn: async (dslInput: Record<string, unknown>) => {
       const res = await querySemantic(dslInput)
       return res.data
     },

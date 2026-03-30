@@ -14,15 +14,15 @@ import { cn } from "@/lib/utils"
 
 interface PageModalProps {
   open: boolean
-  onOpenChange?: (open: boolean) => void  // Made optional
-  onClose?: () => void // 向后兼容
+  onOpenChange?: (open: boolean) => void
+  onClose?: () => void
   title?: string
   description?: string
   children: React.ReactNode
   footer?: React.ReactNode
   width?: string | number
-  className?: string // 支持自定义className
-  bodyClassName?: string // 内容区域自定义className
+  className?: string
+  bodyClassName?: string
 }
 
 export function PageModal({
@@ -37,7 +37,6 @@ export function PageModal({
   className,
   bodyClassName,
 }: PageModalProps) {
-  // 向后兼容：支持onClose和onOpenChange
   const handleOpenChange = (newOpen: boolean) => {
     if (onOpenChange) {
       onOpenChange(newOpen)
@@ -49,17 +48,17 @@ export function PageModal({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className={cn("sm:max-w-[425px]", className)}
+        className={cn("sm:max-w-[28rem]", className)}
         style={width ? { maxWidth: typeof width === 'number' ? `${width}px` : width } : undefined}
       >
         {(title || description) && (
-          <DialogHeader>
+          <DialogHeader className="border-b border-border pb-4">
             {title && <DialogTitle>{title}</DialogTitle>}
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
         )}
-        <div className={cn("py-4", bodyClassName)}>{children}</div>
-        {footer && <DialogFooter>{footer}</DialogFooter>}
+        <div className={cn("py-5", bodyClassName)}>{children}</div>
+        {footer && <DialogFooter className="border-t border-border pt-4">{footer}</DialogFooter>}
       </DialogContent>
     </Dialog>
   )

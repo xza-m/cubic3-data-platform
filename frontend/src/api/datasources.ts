@@ -77,6 +77,14 @@ export const testDataSourceConnection = (id: number) => {
   )
 }
 
+export const syncDataSourceCatalog = async (id: number) => {
+  const response = await apiClient.post<{
+    job_id: string
+    status: 'queued'
+  }>(`${API_BASE}/${id}/sync-catalog`)
+  return response.data
+}
+
 // 获取数据源统计信息
 export const getDataSourceStatistics = () => {
   return apiClient.get<{

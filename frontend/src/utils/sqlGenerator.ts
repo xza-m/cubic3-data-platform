@@ -75,29 +75,35 @@ function generateConditionClause(condition: FilterCondition, fields?: FieldMeta[
       return `${field} IS NOT NULL`
     
     case 'BETWEEN':
-      // value 应该是 [start, end]
-      if (!Array.isArray(value) || value.length !== 2) {
-        return ''
+      {
+        // value 应该是 [start, end]
+        if (!Array.isArray(value) || value.length !== 2) {
+          return ''
+        }
+        const [start, end] = value
+        return `${field} BETWEEN ${formatValue(start, isNumericField)} AND ${formatValue(end, isNumericField)}`
       }
-      const [start, end] = value
-      return `${field} BETWEEN ${formatValue(start, isNumericField)} AND ${formatValue(end, isNumericField)}`
     
     case 'IN':
     case 'NOT IN':
-      // value 应该是 string[] 或 number[]
-      if (!Array.isArray(value) || value.length === 0) {
-        return ''
+      {
+        // value 应该是 string[] 或 number[]
+        if (!Array.isArray(value) || value.length === 0) {
+          return ''
+        }
+        const formattedValues = value.map(v => formatValue(v, isNumericField)).join(', ')
+        return `${field} ${operator} (${formattedValues})`
       }
-      const formattedValues = value.map(v => formatValue(v, isNumericField)).join(', ')
-      return `${field} ${operator} (${formattedValues})`
     
     case 'LIKE':
-      // LIKE 需要加通配符
-      if (Array.isArray(value)) {
-        return ''
+      {
+        // LIKE 需要加通配符
+        if (Array.isArray(value)) {
+          return ''
+        }
+        const likeValue = String(value).includes('%') ? value : `%${value}%`
+        return `${field} LIKE ${formatValue(likeValue, false)}`
       }
-      const likeValue = String(value).includes('%') ? value : `%${value}%`
-      return `${field} LIKE ${formatValue(likeValue, false)}`
     
     default:
       // =, !=, >, <, >=, <=

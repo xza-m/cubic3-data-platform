@@ -15,6 +15,7 @@ export interface CreateDatasetRequest {
   source_id?: number
   database?: string
   table_name?: string
+  physical_table?: string
   // 虚拟数据集相关
   sql_query?: string
   // 文件数据集相关
@@ -123,6 +124,7 @@ export const previewDataset = (data: {
   table: string
 }) => {
   return apiClient.post<{
+    preview_limit: number
     table_info: {
       database: string
       table: string
@@ -133,7 +135,8 @@ export const previewDataset = (data: {
       last_modified?: string
     }
     fields: Array<{
-      field_name: string
+      field_name?: string
+      physical_name?: string
       data_type: string
       business_type: string
       sensitivity_level: string
@@ -146,6 +149,8 @@ export const previewDataset = (data: {
       is_measure: boolean
       is_sensitive: boolean
     }>
+    sample_rows: Record<string, unknown>[]
+    sample_columns: string[]
     statistics: {
       total_fields: number
       partition_fields: number

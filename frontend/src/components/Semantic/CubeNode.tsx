@@ -1,13 +1,16 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { getSemanticStatusLabel } from '@/lib/semantic-status'
+import { Box } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface CubeNodeData {
+export interface CubeNodeData {
   name: string
   title: string
   type: 'fact' | 'dimension'
   dimensions: number
   measures: number
+  /** Actual field name arrays — optional, shown when available */
+  dimensionFields?: string[]
+  measureFields?: string[]
   status?: string
   sourceBindingSummary?: {
     source_name?: string
@@ -23,58 +26,69 @@ export function CubeNode({ data, selected }: NodeProps) {
   const d = data as CubeNodeData
   const isFact = d.type === 'fact'
 
+  const dimFields = d.dimensionFields ?? []
+  const msrFields = d.measureFields ?? []
+  const hasFields = dimFields.length > 0 || msrFields.length > 0
+
   return (
     <div
       className={cn(
-        'rounded-xl border-2 bg-card px-4 py-3 shadow-sm transition-all w-48',
-        selected && 'ring-2 ring-ring',
-        isFact
-          ? 'border-[hsl(var(--semantic-fact))]'
-          : 'border-[hsl(var(--semantic-dim))]',
+        'w-[200px] rounded-[10px] bg-white shadow-sm transition-all',
+        selected
+          ? 'border-2 border-blue-500 shadow-[0_4px_16px_#2563EB18] ring-1 ring-blue-300/30'
+          : 'border border-border shadow-[0_2px_12px_#0F172A0A]',
       )}
       role="button"
       tabIndex={0}
       aria-label={`Cube: ${d.title} (${d.name}), ${d.dimensions} 维度, ${d.measures} 指标`}
     >
-      <Handle type="target" position={Position.Left} className="!bg-border !w-2 !h-2" />
-      <Handle type="source" position={Position.Right} className="!bg-border !w-2 !h-2" />
+      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !bg-border" />
+      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !bg-border" />
 
-      <div className="flex items-center gap-2 mb-2">
-        <div
-          className={cn(
-            'w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold',
-            isFact
-              ? 'bg-[hsl(var(--semantic-fact-bg))] text-[hsl(var(--semantic-fact))]'
-              : 'bg-[hsl(var(--semantic-dim-bg))] text-[hsl(var(--semantic-dim))]',
-          )}
-          aria-hidden="true"
-        >
-          {isFact ? '■' : '●'}
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold truncate">{d.title}</p>
-          <p
-            className="text-[10px] text-muted-foreground truncate"
-            style={{ fontFamily: 'var(--font-mono)' }}
-          >
-            {d.name}
-          </p>
-        </div>
-      </div>
+      {/* ── Header ── */}
       <div
-        className="flex gap-3 text-[10px] text-muted-foreground"
-        style={{ fontVariantNumeric: 'tabular-nums' }}
+        className={cn(
+          'flex items-center gap-2 rounded-t-[10px] px-3.5 py-3',
+          isFact || selected ? 'bg-blue-50' : 'bg-slate-50',
+        )}
       >
-        <span>{d.dimensions}D</span>
-        <span>{d.measures}M</span>
-        {d.status && <span>{getSemanticStatusLabel(d.status)}</span>}
+        <Box className={cn('h-4 w-4 shrink-0', isFact || selected ? 'text-blue-500' : 'text-muted-foreground')} />
+        <span className={cn('truncate text-[13px] font-semibold', isFact || selected ? 'text-blue-600' : 'text-foreground')}>
+          {d.title}
+        </span>
       </div>
-      {(d.sourceBindingSummary?.source_name || d.sourceBindingSummary?.database) && (
-        <div className="mt-2 text-[10px] text-muted-foreground truncate">
-          {d.sourceBindingSummary?.source_name || '未命名数据源'}
-          {d.sourceBindingSummary?.database ? ` · ${d.sourceBindingSummary.database}` : ''}
+
+      {/* ── Fields ── */}
+      {hasFields ? (
+        <div className="flex flex-col gap-[3px] px-3.5 py-2">
+          {dimFields.map((f) => (
+            <div key={f} className="flex items-center gap-1.5">
+              <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-blue-500" />
+              <span className="truncate text-[11px] text-muted-foreground">{f}</span>
+            </div>
+          ))}
+          {msrFields.map((f) => (
+            <div key={f} className="flex items-center gap-1.5">
+              <span className="h-[5px] w-[5px] shrink-0 rounded-full bg-violet-500" />
+              <span className="truncate text-[11px] text-muted-foreground">{f}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="px-3.5 py-2">
+          <div className="flex gap-3 text-[11px] text-muted-foreground" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <span>{d.dimensions} 维度</span>
+            <span>{d.measures} 指标</span>
+          </div>
         </div>
       )}
+
+      {/* ── Footer ── */}
+      <div className="border-t border-slate-100 px-3.5 py-1.5">
+        <span className="text-[9px] text-muted-foreground">
+          {d.dimensions} 维度 · {d.measures} 指标
+        </span>
+      </div>
     </div>
   )
 }

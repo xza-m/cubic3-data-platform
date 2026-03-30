@@ -2,7 +2,118 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import type {
+  BaseInputTemplateProps,
+  DescriptionFieldProps,
+  FieldTemplateProps,
+  ObjectFieldTemplateProps,
+  TitleFieldProps,
+  WidgetProps,
+} from '@rjsf/utils'
 import { templates, widgets } from './rjsf-theme'
+
+const rjsfRegistry = {} as FieldTemplateProps['registry']
+
+function makeFieldTemplateProps(
+  overrides: Partial<FieldTemplateProps> = {},
+): FieldTemplateProps {
+  return {
+    id: 'field-id',
+    label: '字段',
+    children: <input aria-label="字段输入" />,
+    errors: null,
+    rawErrors: [],
+    help: null,
+    description: null,
+    hidden: false,
+    required: false,
+    readonly: false,
+    disabled: false,
+    displayLabel: true,
+    schema: { type: 'string' } as FieldTemplateProps['schema'],
+    onChange: vi.fn(),
+    onKeyChange: vi.fn(),
+    onDropPropertyClick: vi.fn(),
+    registry: rjsfRegistry,
+    ...overrides,
+  }
+}
+
+function makeObjectFieldTemplateProps(
+  overrides: Partial<ObjectFieldTemplateProps> = {},
+): ObjectFieldTemplateProps {
+  return {
+    title: '对象',
+    description: null,
+    properties: [],
+    onAddClick: vi.fn(),
+    schema: { type: 'object' } as ObjectFieldTemplateProps['schema'],
+    idSchema: { $id: 'root' } as ObjectFieldTemplateProps['idSchema'],
+    registry: rjsfRegistry,
+    ...overrides,
+  }
+}
+
+function makeTitleFieldProps(overrides: Partial<TitleFieldProps> = {}): TitleFieldProps {
+  return {
+    id: 'title-id',
+    title: '标题',
+    schema: { type: 'string' } as TitleFieldProps['schema'],
+    registry: rjsfRegistry,
+    ...overrides,
+  }
+}
+
+function makeDescriptionFieldProps(
+  overrides: Partial<DescriptionFieldProps> = {},
+): DescriptionFieldProps {
+  return {
+    id: 'desc-id',
+    description: '描述文本',
+    schema: { type: 'string' } as DescriptionFieldProps['schema'],
+    registry: rjsfRegistry,
+    ...overrides,
+  }
+}
+
+function makeBaseInputTemplateProps(
+  overrides: Partial<BaseInputTemplateProps> = {},
+): BaseInputTemplateProps {
+  return {
+    id: 'base-input',
+    name: 'base-input',
+    label: '基础输入',
+    type: 'number',
+    value: '',
+    disabled: false,
+    readonly: false,
+    autofocus: false,
+    onBlur: vi.fn(),
+    onFocus: vi.fn(),
+    onChange: vi.fn(),
+    options: { emptyValue: undefined },
+    schema: { type: 'number' } as BaseInputTemplateProps['schema'],
+    rawErrors: ['错误'],
+    registry: rjsfRegistry,
+    ...overrides,
+  }
+}
+
+function makeWidgetProps(overrides: Partial<WidgetProps> = {}): WidgetProps {
+  return {
+    id: 'widget-id',
+    name: 'widget-name',
+    schema: { type: 'string' } as WidgetProps['schema'],
+    options: {},
+    value: '',
+    label: '控件',
+    onBlur: vi.fn(),
+    onFocus: vi.fn(),
+    onChange: vi.fn(),
+    registry: rjsfRegistry,
+    ...overrides,
+  }
+}
 
 vi.mock('@/components/ui/input', () => ({
   Input: ({
@@ -180,17 +291,17 @@ describe('rjsf-theme', () => {
 
     const { rerender } = render(
       <FieldTemplate
-        id="field-1"
-        label="名称"
-        children={<input aria-label="名称输入" />}
-        errors={<span>字段错误</span>}
-        rawErrors={['字段错误']}
-        help={<span>帮助</span>}
-        description={<span>说明</span>}
-        hidden={false}
-        required
-        displayLabel
-        schema={{ type: 'string' }}
+        {...makeFieldTemplateProps({
+          id: 'field-1',
+          label: '名称',
+          children: <input aria-label="名称输入" />,
+          errors: <span>字段错误</span>,
+          rawErrors: ['字段错误'],
+          help: <span>帮助</span>,
+          description: <span>说明</span>,
+          required: true,
+          schema: { type: 'string' } as FieldTemplateProps['schema'],
+        })}
       />,
     )
 
@@ -202,17 +313,14 @@ describe('rjsf-theme', () => {
 
     rerender(
       <FieldTemplate
-        id="field-2"
-        label="隐藏字段"
-        children={<input aria-label="隐藏输入" />}
-        errors={null}
-        rawErrors={[]}
-        help={null}
-        description={null}
-        hidden
-        required={false}
-        displayLabel={false}
-        schema={{ type: 'string' }}
+        {...makeFieldTemplateProps({
+          id: 'field-2',
+          label: '隐藏字段',
+          children: <input aria-label="隐藏输入" />,
+          hidden: true,
+          displayLabel: false,
+          schema: { type: 'string' } as FieldTemplateProps['schema'],
+        })}
       />,
     )
 
@@ -225,11 +333,13 @@ describe('rjsf-theme', () => {
 
     render(
       <ObjectFieldTemplate
-        title="根对象"
-        description={null}
-        properties={[{ content: <div key="root-content">根内容</div> }]}
-        idSchema={{ $id: 'root' }}
-        uiSchema={{}}
+        {...makeObjectFieldTemplateProps({
+          title: '根对象',
+          description: null,
+          properties: [{ name: 'root-content', hidden: false, content: <div key="root-content">根内容</div> }],
+          idSchema: { $id: 'root' } as ObjectFieldTemplateProps['idSchema'],
+          uiSchema: {},
+        })}
       />,
     )
 
@@ -238,11 +348,15 @@ describe('rjsf-theme', () => {
     cleanup()
     render(
       <ObjectFieldTemplate
-        title="高级配置"
-        description="可选字段"
-        properties={[{ content: <div key="nested-content">内层字段</div> }]}
-        idSchema={{ $id: 'advanced' }}
-        uiSchema={{ 'ui:options': { collapsed: true } }}
+        {...makeObjectFieldTemplateProps({
+          title: '高级配置',
+          description: '可选字段',
+          properties: [
+            { name: 'nested-content', hidden: false, content: <div key="nested-content">内层字段</div> },
+          ],
+          idSchema: { $id: 'advanced' } as ObjectFieldTemplateProps['idSchema'],
+          uiSchema: { 'ui:options': { collapsed: true } },
+        })}
       />,
     )
 
@@ -262,21 +376,14 @@ describe('rjsf-theme', () => {
 
     render(
       <div>
-        <TitleFieldTemplate id="title-id" title="标题" />
-        <DescriptionFieldTemplate id="desc-id" description="描述文本" />
+        <TitleFieldTemplate {...makeTitleFieldProps()} />
+        <DescriptionFieldTemplate {...makeDescriptionFieldProps()} />
         <BaseInputTemplate
-          id="base-input"
-          type="number"
-          value=""
-          disabled={false}
-          readonly={false}
-          autofocus={false}
-          onBlur={onBlur}
-          onFocus={onFocus}
-          onChange={onChange}
-          options={{ emptyValue: undefined }}
-          schema={{ type: 'number' }}
-          rawErrors={['错误']}
+          {...makeBaseInputTemplateProps({
+            onBlur,
+            onFocus,
+            onChange,
+          })}
         />
       </div>,
     )
@@ -306,17 +413,55 @@ describe('rjsf-theme', () => {
 
     render(
       <div>
-        <TextWidget id="text-widget" value="" onChange={onTextChange} onBlur={vi.fn()} onFocus={vi.fn()} />
-        <PasswordWidget id="password-widget" value="" onChange={onPasswordChange} onBlur={vi.fn()} onFocus={vi.fn()} />
-        <NumberWidget
-          id="number-widget"
-          value={1}
-          schema={{ minimum: 1, maximum: 9 }}
-          onChange={onNumberChange}
-          onBlur={vi.fn()}
-          onFocus={vi.fn()}
+        <TextWidget
+          {...makeWidgetProps({
+            id: 'text-widget',
+            name: 'text-widget',
+            value: '',
+            onChange: onTextChange,
+            onBlur: vi.fn(),
+            onFocus: vi.fn(),
+            label: '文本',
+            schema: { type: 'string' } as WidgetProps['schema'],
+          })}
         />
-        <CheckboxWidget id="checkbox-widget" value={false} label="启用功能" onChange={onCheckboxChange} />
+        <PasswordWidget
+          {...makeWidgetProps({
+            id: 'password-widget',
+            name: 'password-widget',
+            value: '',
+            onChange: onPasswordChange,
+            onBlur: vi.fn(),
+            onFocus: vi.fn(),
+            label: '密码',
+            schema: { type: 'string' } as WidgetProps['schema'],
+          })}
+        />
+        <NumberWidget
+          {...makeWidgetProps({
+            id: 'number-widget',
+            name: 'number-widget',
+            value: 1,
+            schema: { minimum: 1, maximum: 9 } as WidgetProps['schema'],
+            options: {},
+            onChange: onNumberChange,
+            onBlur: vi.fn(),
+            onFocus: vi.fn(),
+            label: '数字',
+          })}
+        />
+        <CheckboxWidget
+          {...makeWidgetProps({
+            id: 'checkbox-widget',
+            name: 'checkbox-widget',
+            value: false,
+            label: '启用功能',
+            onChange: onCheckboxChange,
+            onBlur: vi.fn(),
+            onFocus: vi.fn(),
+            schema: { type: 'boolean' } as WidgetProps['schema'],
+          })}
+        />
       </div>,
     )
 
@@ -347,23 +492,35 @@ describe('rjsf-theme', () => {
     render(
       <div>
         <TextareaWidget
-          id="textarea-widget"
-          value=""
-          onChange={onTextareaChange}
-          onBlur={vi.fn()}
-          onFocus={vi.fn()}
-          options={{ rows: 6 }}
+          {...makeWidgetProps({
+            id: 'textarea-widget',
+            name: 'textarea-widget',
+            value: '',
+            onChange: onTextareaChange,
+            onBlur: vi.fn(),
+            onFocus: vi.fn(),
+            options: { rows: 6 },
+            label: '多行文本',
+            schema: { type: 'string' } as WidgetProps['schema'],
+          })}
         />
         <SelectWidget
-          id="select-widget"
-          value="manual"
-          options={{
-            enumOptions: [
-              { value: 'manual', label: '手动' },
-              { value: 'cron', label: '定时' },
-            ],
-          }}
-          onChange={onSelectChange}
+          {...makeWidgetProps({
+            id: 'select-widget',
+            name: 'select-widget',
+            value: 'manual',
+            options: {
+              enumOptions: [
+                { value: 'manual', label: '手动' },
+                { value: 'cron', label: '定时' },
+              ],
+            },
+            onChange: onSelectChange,
+            onBlur: vi.fn(),
+            onFocus: vi.fn(),
+            label: '调度类型',
+            schema: { enum: ['manual', 'cron'] } as WidgetProps['schema'],
+          })}
         />
       </div>,
     )

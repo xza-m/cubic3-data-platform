@@ -28,6 +28,7 @@ import {
   type Conversation,
   type Message,
 } from '../api/conversations'
+import DatasetSelector from '../components/Chat/DatasetSelector'
 
 /* ---------- static sample data (design) ---------- */
 const sampleConversations = [
@@ -148,6 +149,10 @@ export default function DataChat() {
           </div>
         </div>
 
+        <div className="px-4 pb-3" data-testid="data-chat-dataset-selector">
+          <DatasetSelector value={selectedDataset} onChange={setSelectedDataset} />
+        </div>
+
         {/* Conversation Items */}
         <div className="flex-1 overflow-y-auto p-2">
           <div className="flex flex-col gap-1">
@@ -155,6 +160,7 @@ export default function DataChat() {
               <button
                 key={conv.id}
                 type="button"
+                data-testid={`conversation-row-${conv.id}`}
                 onClick={() => setCurrentConversation(conv.id)}
                 className={`flex flex-col gap-1 rounded-lg px-4 py-3 text-left cursor-pointer transition-colors ${
                   conv.active

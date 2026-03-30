@@ -32,15 +32,15 @@ export function Statistic({
   return (
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <p className="text-[0.875rem] font-medium leading-5 text-muted-foreground">{title}</p>
         {icon && <div className="text-muted-foreground">{icon}</div>}
       </div>
       <div className="flex items-baseline gap-2">
-        {prefix && <span className="text-sm text-muted-foreground">{prefix}</span>}
-        <p className={cn("text-3xl font-bold", valueClassName)}>
+        {prefix && <span className="text-[0.875rem] leading-5 text-muted-foreground">{prefix}</span>}
+        <p className={cn("font-workbench-display text-[2rem] font-semibold leading-none tracking-[-0.03em] [font-variant-numeric:tabular-nums]", valueClassName)}>
           {typeof value === 'number' ? value.toLocaleString() : value}
         </p>
-        {suffix && <span className="text-sm text-muted-foreground">{suffix}</span>}
+        {suffix && <span className="text-[0.875rem] leading-5 text-muted-foreground">{suffix}</span>}
       </div>
       {trend && (
         <div className="flex items-center gap-1">
@@ -51,7 +51,7 @@ export function Statistic({
           )}
           <span
             className={cn(
-              "text-sm font-medium",
+              "text-[0.875rem] font-medium leading-5 [font-variant-numeric:tabular-nums]",
               trend.isPositive !== false ? "text-emerald-600" : "text-red-600"
             )}
           >

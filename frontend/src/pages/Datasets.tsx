@@ -137,6 +137,7 @@ export default function Datasets() {
     { title: '影响分析', reason: '下游影响范围尚未接入真实任务和订阅关系，暂不开放操作。' },
     { title: '质量评分', reason: '质量评分依赖真实治理规则与监控结果回传，当前阶段仅显示禁用态。' },
   ]
+  const tableColumnsClass = 'grid grid-cols-[minmax(260px,2.1fr)_minmax(260px,1.7fr)_120px_minmax(120px,0.9fr)_120px] gap-4'
 
   return (
     <DataCenterPageShell
@@ -159,7 +160,7 @@ export default function Datasets() {
               <Database className="mr-2 h-4 w-4" />
               物理表数据集
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate('/queries/editor')}>
+            <DropdownMenuItem onClick={() => navigate('/queries')}>
               <Code className="mr-2 h-4 w-4" />
               SQL 虚拟数据集
             </DropdownMenuItem>
@@ -224,12 +225,12 @@ export default function Datasets() {
         ) : (
           <>
             {/* Table Header */}
-            <div className="flex items-center bg-[#F8FAFC] px-5 py-3.5 border-b border-[#E2E8F0]">
-              <span className="flex-1 text-xs font-semibold text-[#64748B]">数据集</span>
-              <span className="w-[120px] text-xs font-semibold text-[#64748B]">物理表</span>
-              <span className="w-[100px] text-xs font-semibold text-[#64748B]">同步状态</span>
-              <span className="w-[100px] text-xs font-semibold text-[#64748B]">负责人</span>
-              <span className="w-[120px] text-xs font-semibold text-[#64748B]">操作</span>
+            <div className={`${tableColumnsClass} items-center border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3.5`}>
+              <span className="min-w-0 text-xs font-semibold text-[#64748B]">数据集</span>
+              <span className="min-w-0 text-xs font-semibold text-[#64748B]">物理表</span>
+              <span className="text-xs font-semibold text-[#64748B]">同步状态</span>
+              <span className="text-xs font-semibold text-[#64748B]">负责人</span>
+              <span className="text-xs font-semibold text-[#64748B]">操作</span>
             </div>
 
             {/* Table Rows */}
@@ -241,32 +242,44 @@ export default function Datasets() {
               return (
                 <div
                   key={ds.id}
-                  className={`flex items-center px-5 py-3.5 ${i < datasets.length - 1 ? 'border-b border-[#F1F5F9]' : ''}`}
+                  className={`${tableColumnsClass} items-start px-5 py-4 ${i < datasets.length - 1 ? 'border-b border-[#F1F5F9]' : ''}`}
                 >
                   {/* Dataset info */}
-                  <div className="flex flex-1 flex-col gap-0.5">
-                    <span className="text-[13px] font-medium text-[#0F172A]">{ds.dataset_name}</span>
-                    <span className="text-xs text-[#94A3B8]">ID:{ds.id} · {typeLabel}</span>
-                    {syncReason ? <span className="text-xs text-[#EF4444]">{syncReason}</span> : null}
+                  <div className="min-w-0 pr-4">
+                    <span className="block truncate text-[13px] font-medium text-[#0F172A]" title={ds.dataset_name}>
+                      {ds.dataset_name}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-[#94A3B8]">ID:{ds.id} · {typeLabel}</span>
+                    {syncReason ? <span className="mt-1 block truncate text-xs text-[#EF4444]" title={syncReason}>{syncReason}</span> : null}
                   </div>
 
                   {/* Physical table */}
-                  <span className="w-[120px] text-[13px] text-[#64748B]">
+                  <span
+                    className="block min-w-0 truncate pr-4 text-[13px] text-[#64748B]"
+                    title={
+                      ds.physical_table ||
+                      (ds.dataset_type === 'virtual'
+                        ? '视图'
+                        : ds.dataset_type === 'file'
+                          ? ds.file_metadata?.file_name || '-'
+                          : '-')
+                    }
+                  >
                     {ds.physical_table || (ds.dataset_type === 'virtual' ? '视图' : ds.dataset_type === 'file' ? ds.file_metadata?.file_name : '-')}
                   </span>
 
                   {/* Sync status */}
-                  <span className={`w-[100px] text-[13px] font-medium ${syncStyle.color}`}>
+                  <span className={`block min-w-0 truncate text-[13px] font-medium ${syncStyle.color}`}>
                     {syncStyle.label}
                   </span>
 
                   {/* Owner */}
-                  <span className="w-[100px] text-[13px] text-[#64748B]">
+                  <span className="block min-w-0 truncate pr-4 text-[13px] text-[#64748B]" title={ds.owner || '-'}>
                     {ds.owner || '-'}
                   </span>
 
                   {/* Actions */}
-                  <div className="flex w-[120px] items-center gap-3">
+                  <div className="flex items-center justify-end gap-3 self-center">
                     <button
                       type="button"
                       onClick={() => syncMutation.mutate(ds.id)}

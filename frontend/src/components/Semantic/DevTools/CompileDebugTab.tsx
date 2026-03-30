@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import Editor from '@monaco-editor/react'
 import { AlertTriangle, Bug, Check, CheckCircle2, Copy, Loader2, Play, RotateCcw } from 'lucide-react'
@@ -50,6 +50,7 @@ export function CompileDebugTab({
   const [lastRunAt, setLastRunAt] = useState<string | null>(null)
   const [primaryCube, setPrimaryCube] = useState<string>('')
   const [joinedCubes, setJoinedCubes] = useState<string[]>([])
+  const copyResetTimerRef = useRef<number | null>(null)
   const [compileState, setCompileState] = useState<CompileDebugStatus>({
     state: 'idle',
     label: '未执行',
@@ -60,8 +61,14 @@ export function CompileDebugTab({
     onStatusChange?.(compileState)
   }, [compileState, onStatusChange])
 
+  useEffect(() => () => {
+    if (copyResetTimerRef.current !== null) {
+      window.clearTimeout(copyResetTimerRef.current)
+    }
+  }, [])
+
   const compileMutation = useMutation({
-    mutationFn: async (dsl: Record<string, any>) => {
+    mutationFn: async (dsl: Record<string, unknown>) => {
       const res = await compileDsl(dsl)
       return res.data
     },
@@ -140,8 +147,14 @@ export function CompileDebugTab({
 
   const handleCopy = () => {
     navigator.clipboard.writeText(sqlResult).then(() => {
+      if (copyResetTimerRef.current !== null) {
+        window.clearTimeout(copyResetTimerRef.current)
+      }
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      copyResetTimerRef.current = window.setTimeout(() => {
+        setCopied(false)
+        copyResetTimerRef.current = null
+      }, 2000)
     })
   }
 
@@ -150,24 +163,24 @@ export function CompileDebugTab({
     if (errorStep) {
       return {
         title: '当前阻塞',
-        description: errorStep.detail || '编译失败，请回到左侧 DSL 输入检查字段引用和 JSON 结构。',
+        description: errorStep.detail || '编译失败，请检查 DSL 字段引用和 JSON 结构。',
       }
     }
     if (compileState.state === 'success') {
       return {
-        title: '定位建议',
+        title: '编译摘要',
         description: joinedCubes.length > 0
-          ? `当前会经过 ${joinedCubes.length} 个 JOIN 节点。建议优先检查 ${primaryCube} 与 ${joinedCubes[0]} 的关系定义。`
-          : '当前查询只依赖单个 Cube。建议优先检查指标、维度和时间粒度定义。',
+          ? `当前会经过 ${joinedCubes.length} 个 JOIN 节点。主路径为 ${primaryCube} 与 ${joinedCubes[0]}。`
+          : '当前查询只依赖单个 Cube。'
       }
     }
     return {
       title: '结果定位',
-      description: '先执行编译，再从右侧依次查看结论、日志步骤和 SQL 结果。',
+      description: '显示编译结论、步骤日志和 SQL 输出。',
     }
   }, [compileState.state, joinedCubes, primaryCube, steps])
 
-  const isDark = document.documentElement.classList.contains('dark')
+  const isDark = false
 
   return (
     <div className="mt-4 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -179,11 +192,11 @@ export function CompileDebugTab({
           <SummaryItem label="Join 数" value={joinedCubes.length} tone="default" />
         </div>
 
-        <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[rgba(248,250,252,0.96)]">
+        <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-4 py-3">
             <div>
               <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">DSL 输入</div>
-              <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">输入 JSON DSL 后执行编译，结果会同步到右侧日志和 SQL 面板。</div>
+              <div className="text-xs text-[hsl(var(--workbench-muted-foreground))]">输入 JSON DSL 并执行编译。</div>
             </div>
             <div className="flex gap-2">
               <Button onClick={handleCompile} disabled={compileMutation.isPending}>
@@ -227,7 +240,7 @@ export function CompileDebugTab({
       </section>
 
       <section className="space-y-4">
-        <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white px-4 py-4">
+        <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-4">
           <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">{issueSummary.title}</div>
           <p className="mt-2 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">{issueSummary.description}</p>
         </div>
@@ -235,11 +248,11 @@ export function CompileDebugTab({
         {steps.length === 0 ? (
           <SemanticEmptyState
             icon={<Bug className="h-6 w-6" />}
-            title="还没有编译记录"
-            description="左侧输入 DSL JSON 并执行编译。这里会先展示结论和步骤日志，再给出 SQL 结果。"
+            title="暂未执行编译"
+            description="显示编译结论、步骤日志和 SQL 输出。"
           />
         ) : (
-          <div className="space-y-3 rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white px-4 py-4">
+          <div className="space-y-3 rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-4">
             <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">步骤日志</div>
             <div className="space-y-2" role="list">
               {steps.map((step, index) => (
@@ -249,9 +262,9 @@ export function CompileDebugTab({
                     'rounded-[var(--workbench-radius-sm)] border px-3 py-3 transition-colors',
                     step.status === 'error'
                       ? 'border-[hsl(var(--semantic-error))]/30 bg-[hsl(var(--semantic-error))]/6'
-                      : step.status === 'ok'
-                        ? 'border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface-2))]'
-                        : 'border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))]',
+                    : step.status === 'ok'
+                        ? 'border-[hsl(var(--workbench-outline))] bg-white'
+                        : 'border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface-2))]',
                   )}
                   role="listitem"
                 >
@@ -277,7 +290,7 @@ export function CompileDebugTab({
         )}
 
         {sqlResult ? (
-          <div className="overflow-hidden rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[rgba(248,250,252,0.96)]">
+          <div className="overflow-hidden rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))]">
             <div className="flex items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-4 py-3">
               <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">生成 SQL</div>
               <Button variant="ghost" size="sm" onClick={handleCopy}>

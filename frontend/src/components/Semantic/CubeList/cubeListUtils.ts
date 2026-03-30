@@ -3,8 +3,9 @@ import { getSemanticStatusLabel } from '@/lib/semantic-status'
 
 export type CubeFocusFilter = 'all' | 'attention' | 'unbound' | 'undomained' | 'recent'
 export type CubeStatusFilter = 'all' | 'draft' | 'active' | 'deprecated'
-export type CubeBindingFilter = 'all' | 'bound' | 'unbound'
-export type CubeDomainFilter = 'all' | 'in_domain' | 'out_domain'
+export type CubeTypeFilter = 'all' | 'fact' | 'dimension'
+export type CubeDomainFilter = 'all' | 'in_domain' | 'out_domain' | 'assigned' | 'unassigned'
+export type CubeSortOption = 'priority' | 'updated_desc' | 'name_asc'
 
 export function inferCubeCategory(item: CubeSummary) {
   if (item.type === 'dimension') return '维度模型'
@@ -49,6 +50,25 @@ export function getCubeSourceLabel(item: CubeSummary) {
   return '未绑定数据源'
 }
 
+export function getCubeOwnerLabel(item: CubeSummary) {
+  const owner = (item as CubeSummary & { owner?: string | null }).owner
+  return owner?.trim() || '未指定'
+}
+
+export function getCubeVersionLabel(item: CubeSummary) {
+  const hash = item.state_summary?.definition_hash?.trim()
+  if (hash) return `#${hash.slice(0, 8)}`
+  return (item.status || '').toLowerCase() === 'draft' ? '草稿' : '已发布'
+}
+
+export function getCubeViewCountLabel(item: CubeSummary & { view_count?: number | null }) {
+  const count = item.view_count
+  if (typeof count === 'number' && Number.isFinite(count)) {
+    return `${count} 个`
+  }
+  return '0 个'
+}
+
 export function getCubePublishLabel(item: CubeSummary) {
   const status = item.state_summary?.publish_status
   if (!status) {
@@ -91,14 +111,14 @@ export function getCubeAttentionReasons(item: CubeSummary) {
     reasons.push('未绑定数据源')
   }
   if (!isCubeInDomain(item)) {
-    reasons.push('未归属领域')
+    reasons.push('未纳入领域')
   }
   if ((item.status || '').toLowerCase() === 'draft') {
-    reasons.push('草稿待发布')
+    reasons.push('待发布')
   }
   const syncStatus = (item.state_summary?.sync_status || item.sync_status || '').toLowerCase()
   if (syncStatus === 'warn') {
-    reasons.push('同步待检查')
+    reasons.push('待检查')
   }
   if (syncStatus === 'error') {
     reasons.push('同步异常')
@@ -148,14 +168,17 @@ export function matchesCubeStatus(item: CubeSummary, status: CubeStatusFilter) {
   return (item.status || '').toLowerCase() === status
 }
 
-export function matchesCubeBinding(item: CubeSummary, binding: CubeBindingFilter) {
-  if (binding === 'all') return true
-  return binding === 'bound' ? isCubeSourceBound(item) : !isCubeSourceBound(item)
+export function matchesCubeType(item: CubeSummary, type: CubeTypeFilter) {
+  if (type === 'all') return true
+  const inferredType = item.type || (inferCubeCategory(item) === '事实模型' ? 'fact' : 'dimension')
+  return inferredType === type
 }
 
 export function matchesCubeDomain(item: CubeSummary, domain: CubeDomainFilter) {
   if (domain === 'all') return true
-  return domain === 'in_domain' ? isCubeInDomain(item) : !isCubeInDomain(item)
+  return domain === 'in_domain' || domain === 'assigned'
+    ? isCubeInDomain(item)
+    : !isCubeInDomain(item)
 }
 
 export function matchesCubeQuery(item: CubeSummary, query: string) {
@@ -189,11 +212,7 @@ export function buildCubePreviewActions(item: CubeSummary | CubeDetail | null) {
   if (!item) return []
   return [
     {
-      label: '打开定义',
-      href: `/semantic/cubes/${item.name}`,
-    },
-    {
-      label: '继续设计',
+      label: '编辑定义',
       href: `/semantic/cubes/${item.name}/edit`,
     },
   ]
