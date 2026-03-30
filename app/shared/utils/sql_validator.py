@@ -208,23 +208,17 @@ def extract_table_names(sql: str) -> List[str]:
         parsed = sqlparse.parse(sql)
         if not parsed:
             return []
-        
-        stmt = parsed[0]
+
+        pattern = re.compile(
+            r'\b(?:FROM|JOIN)\s+([`"]?[a-zA-Z_][a-zA-Z0-9_\.]*[`"]?)',
+            flags=re.IGNORECASE,
+        )
         tables = []
-        
-        # 简单提取：查找 FROM 和 JOIN 后的标识符
-        from_seen = False
-        for token in stmt.flatten():
-            if token.ttype is Keyword and token.value.upper() in ('FROM', 'JOIN'):
-                from_seen = True
-            elif from_seen:
-                if token.ttype is None and not token.is_whitespace:
-                    # 可能是表名
-                    table_name = token.value.strip('`"\'')
-                    if table_name and not table_name.upper() in ('SELECT', 'WHERE', 'ON', 'AS'):
-                        tables.append(table_name)
-                        from_seen = False
-        
-        return list(set(tables))  # 去重
+        for match in pattern.finditer(sql):
+            table_name = match.group(1).strip('`"\'')
+            if table_name:
+                tables.append(table_name)
+
+        return list(dict.fromkeys(tables))
     except Exception:
         return []

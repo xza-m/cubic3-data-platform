@@ -19,7 +19,7 @@ from app.domain.semantic.entities import (
     ViewCubeRef,
     ViewDefinition,
 )
-from app.domain.semantic.join_graph import JoinGraph
+from app.domain.semantic.join_graph import JoinGraph, JoinPathNotFoundError, JoinPathTooDeepError
 from app.domain.semantic.ports.cube_repository import ICubeRepository
 from app.domain.semantic.ports.domain_repository import IDomainRepository
 from app.domain.semantic.ports.recipe_repository import IRecipeRepository
@@ -62,11 +62,16 @@ class SemanticDefinitionService:
 
     def list_cubes(self) -> List[Dict[str, Any]]:
         cubes = self._cube_repo.list_all()
+        projection_index = self._build_cube_domain_projection_index(cubes)
         result = []
         now = datetime.utcnow()
         for cube in cubes:
             state_summary = self._build_cube_state_summary(cube, now=now)
-            domain_id, domain_name = self._resolve_cube_domain(cube)
+            projection = projection_index.get(
+                cube.name,
+                {"domain_ids": [], "domains": [], "domain_count": 0},
+            )
+            domain_id, domain_name = self._select_primary_domain(cube, projection["domains"])
             result.append({
                 "name": cube.name,
                 "title": cube.title,
@@ -80,6 +85,9 @@ class SemanticDefinitionService:
                 "status": cube.status,
                 "domain_id": domain_id,
                 "domain_name": domain_name,
+                "domain_ids": projection["domain_ids"],
+                "domains": projection["domains"],
+                "domain_count": projection["domain_count"],
                 "source_id": cube.source_id,
                 "source_database": cube.source_database,
                 "source_schema": cube.source_schema,
@@ -95,7 +103,11 @@ class SemanticDefinitionService:
 
         self._sync_cube_registry(cube)
         diagnostics = self.validate_cube(cube)
-        domain_id, domain_name = self._resolve_cube_domain(cube)
+        projection = self._build_cube_domain_projection_index([cube]).get(
+            cube.name,
+            {"domain_ids": [], "domains": [], "domain_count": 0},
+        )
+        domain_id, domain_name = self._select_primary_domain(cube, projection["domains"])
         dims = self._build_dimensions(cube, diagnostics)
         measures = self._metric_semantics_service.build_metric_map(cube.measures)
         segments = {k: {"title": s.title} for k, s in cube.segments.items()}
@@ -122,6 +134,9 @@ class SemanticDefinitionService:
             "status": cube.status,
             "domain_id": domain_id,
             "domain_name": domain_name,
+            "domain_ids": projection["domain_ids"],
+            "domains": projection["domains"],
+            "domain_count": projection["domain_count"],
             "source_id": cube.source_id,
             "source_database": cube.source_database,
             "source_schema": cube.source_schema,
@@ -147,16 +162,67 @@ class SemanticDefinitionService:
         return result
 
     def _resolve_cube_domain(self, cube: CubeDefinition) -> Tuple[Optional[str], Optional[str]]:
-        if self._domain_repo is None:
-            return cube.domain_id, None
-        if cube.domain_id:
-            domain = self._domain_repo.get(cube.domain_id) or self._domain_repo.get_by_code(cube.domain_id)
-            if domain is not None:
-                return domain.id or domain.code, domain.name
-        for domain in self._domain_repo.list_all():
-            if cube.name in domain.cubes:
-                return domain.id or domain.code, domain.name
-        return cube.domain_id, None
+        projection = self._build_cube_domain_projection_index([cube]).get(
+            cube.name,
+            {"domains": []},
+        )
+        return self._select_primary_domain(cube, projection["domains"])
+
+    def list_view_summaries(self, public_only: bool = True) -> List[Dict[str, Any]]:
+        result: List[Dict[str, Any]] = []
+        for view in self.list_views(public_only=public_only):
+            summary = self._build_view_state_summary(view)
+            publish_status = summary.get("publish_status", "unpublished")
+            status = "active" if publish_status == "published" else "draft"
+            cubes = sorted(
+                {
+                    cube_name
+                    for ref in view.cubes
+                    for cube_name in [ref.join_path.split(".", 1)[0].strip()]
+                    if cube_name
+                }
+            )
+            result.append(
+                {
+                    "name": view.name,
+                    "title": view.title,
+                    "description": view.description or "",
+                    "public": view.public,
+                    "cube_count": len(view.cubes),
+                    "cubes": cubes,
+                    "status": status,
+                    "state_summary": {
+                        **summary,
+                        "object_type": "view",
+                        "status": status,
+                    },
+                    "publish_summary": {
+                        "publish_status": publish_status,
+                        "last_published_at": summary.get("last_published_at"),
+                    },
+                }
+            )
+        return result
+
+    def list_recipe_summaries(self) -> List[Dict[str, Any]]:
+        result: List[Dict[str, Any]] = []
+        for recipe in self._recipe_repo.list_all():
+            related_cubes = sorted(recipe.extract_cube_names())
+            status = "active" if len(recipe.examples) > 0 else "draft"
+            result.append(
+                {
+                    "name": recipe.name,
+                    "title": recipe.title,
+                    "tags": recipe.tags,
+                    "example_count": len(recipe.examples),
+                    "related_cubes": related_cubes,
+                    "state_summary": {
+                        "object_type": "recipe",
+                        "status": status,
+                    },
+                }
+            )
+        return result
 
     def list_views(self, public_only: bool = True) -> List[ViewDefinition]:
         views = self._view_repo.list_all()
@@ -350,7 +416,10 @@ class SemanticDefinitionService:
 
         graph = self._get_join_graph()
         if len(waypoints) >= 2 and graph is not None:
-            graph.find_path_through(waypoints)
+            try:
+                graph.find_path_through(waypoints)
+            except (JoinPathNotFoundError, JoinPathTooDeepError) as exc:
+                raise CompilationError(str(exc)) from exc
 
         terminal_cube = self._cube_repo.get(waypoints[-1])
         if terminal_cube is None:
@@ -481,6 +550,52 @@ class SemanticDefinitionService:
             return default
         entry = self._registry_repo.get("view", view.name)
         return entry.to_summary() if entry else default
+
+    def _build_cube_domain_projection_index(self, cubes: List[CubeDefinition]) -> Dict[str, Dict[str, Any]]:
+        mapping: Dict[str, Dict[str, Any]] = {
+            cube.name: {
+                "domain_ids": [],
+                "domains": [],
+                "domain_count": 0,
+            }
+            for cube in cubes
+        }
+        if self._domain_repo is None or not cubes:
+            return mapping
+
+        cube_names = set(mapping.keys())
+        for domain in self._domain_repo.list_all():
+            domain_payload = {
+                "id": domain.id or domain.code,
+                "code": domain.code,
+                "name": domain.name,
+            }
+            seen: set[str] = set()
+            for cube_name in domain.cubes:
+                if cube_name not in cube_names or cube_name in seen:
+                    continue
+                seen.add(cube_name)
+                mapping[cube_name]["domains"].append(domain_payload)
+
+        for payload in mapping.values():
+            payload["domains"] = sorted(payload["domains"], key=lambda item: item["code"])
+            payload["domain_ids"] = [item["id"] for item in payload["domains"]]
+            payload["domain_count"] = len(payload["domains"])
+        return mapping
+
+    def _select_primary_domain(
+        self,
+        cube: CubeDefinition,
+        domains: List[Dict[str, Any]],
+    ) -> Tuple[Optional[str], Optional[str]]:
+        if self._domain_repo is not None and cube.domain_id:
+            domain = self._domain_repo.get(cube.domain_id) or self._domain_repo.get_by_code(cube.domain_id)
+            if domain is not None:
+                return domain.id or domain.code, domain.name
+        if domains:
+            primary = sorted(domains, key=lambda item: item["code"])[0]
+            return primary["id"], primary["name"]
+        return cube.domain_id, None
 
     @staticmethod
     def _definition_hash(payload: Dict[str, Any]) -> str:

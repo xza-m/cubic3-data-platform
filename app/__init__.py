@@ -21,6 +21,7 @@ from .interfaces.api.v1.sql_lab import bp as sql_lab_v1_bp
 from .interfaces.api.v1.queries import bp as queries_v1_bp
 from .interfaces.api.v1.auth import bp as auth_v1_bp
 from .interfaces.api.v1.feishu import bp as feishu_v1_bp
+from .interfaces.api.v1.dashboard import create_dashboard_blueprint
 # 注意: superset_v1_bp 已废弃，改用「应用中心 + 配置中心」
 
 # 应用中心 API v1
@@ -125,6 +126,7 @@ def create_app(role: str = "web") -> Flask:
         app.register_blueprint(channels_v1_bp)
         app.register_blueprint(subscriptions_v1_bp)
         app.register_blueprint(app_instance_subscriptions_bp)
+        app.register_blueprint(create_dashboard_blueprint(container))
         app.register_blueprint(create_semantic_blueprint(
             semantic_service=container.semantic_service(),
             publish_service=container.view_publish_service(),

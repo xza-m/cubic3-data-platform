@@ -76,6 +76,87 @@ class DataSource(db.Model):
     # ========================================================================
     # 业务方法
     # ========================================================================
+
+    CATALOG_SYNC_PENDING = 'pending'
+    CATALOG_SYNC_SYNCING = 'syncing'
+    CATALOG_SYNC_SYNCED = 'synced'
+    CATALOG_SYNC_FAILED = 'failed'
+
+    def _ensure_extra_config(self) -> Dict[str, Any]:
+        """确保 extra_config 为可写字典。"""
+        if not isinstance(self.extra_config, dict):
+            self.extra_config = {}
+        return self.extra_config
+
+    def get_catalog_sync_summary(self) -> Dict[str, Any]:
+        """返回目录同步摘要，并补齐缺省字段。"""
+        summary = {
+            'status': self.CATALOG_SYNC_PENDING,
+            'last_run_at': None,
+            'last_error': None,
+            'tracked_databases': [],
+            'database_count': 0,
+        }
+        extra_config = self.extra_config if isinstance(self.extra_config, dict) else {}
+        raw = extra_config.get('catalog_sync') or {}
+        summary.update(raw)
+        summary['tracked_databases'] = list(summary.get('tracked_databases') or [])
+        summary['database_count'] = int(summary.get('database_count') or len(summary['tracked_databases']))
+        return summary
+
+    def initialize_catalog_sync(self):
+        """初始化目录同步摘要。"""
+        extra_config = self._ensure_extra_config()
+        extra_config['catalog_sync'] = self.get_catalog_sync_summary()
+        self.extra_config = extra_config
+        self.updated_at = utcnow()
+
+    def _set_catalog_sync_summary(
+        self,
+        *,
+        status: str,
+        tracked_databases: List[str] | None = None,
+        last_error: str | None = None,
+        update_last_run: bool = False,
+    ) -> Dict[str, Any]:
+        extra_config = self._ensure_extra_config()
+        summary = self.get_catalog_sync_summary()
+        summary['status'] = status
+        if tracked_databases is not None:
+            normalized = sorted({name for name in tracked_databases if name})
+            summary['tracked_databases'] = normalized
+            summary['database_count'] = len(normalized)
+        if update_last_run:
+            summary['last_run_at'] = utcnow().isoformat()
+        summary['last_error'] = last_error
+        extra_config['catalog_sync'] = summary
+        self.extra_config = extra_config
+        self.updated_at = utcnow()
+        return summary
+
+    def mark_catalog_sync_syncing(self) -> Dict[str, Any]:
+        """标记目录同步进行中。"""
+        return self._set_catalog_sync_summary(
+            status=self.CATALOG_SYNC_SYNCING,
+            last_error=None,
+        )
+
+    def mark_catalog_sync_synced(self, tracked_databases: List[str]) -> Dict[str, Any]:
+        """标记目录同步成功。"""
+        return self._set_catalog_sync_summary(
+            status=self.CATALOG_SYNC_SYNCED,
+            tracked_databases=tracked_databases,
+            last_error=None,
+            update_last_run=True,
+        )
+
+    def mark_catalog_sync_failed(self, error: str) -> Dict[str, Any]:
+        """标记目录同步失败。"""
+        return self._set_catalog_sync_summary(
+            status=self.CATALOG_SYNC_FAILED,
+            last_error=error,
+            update_last_run=True,
+        )
     
     def mark_test_success(self):
         """标记连接测试成功"""
@@ -171,13 +252,16 @@ class DataSource(db.Model):
         Returns:
             字典表示
         """
+        extra_config = self._ensure_extra_config().copy()
+        extra_config['catalog_sync'] = self.get_catalog_sync_summary()
+
         return {
             'id': self.id,
             'name': self.name,
             'source_type': self.source_type,
             'description': self.description,
             'connection_config': self.get_masked_config() if mask_sensitive else self.connection_config,
-            'extra_config': self.extra_config,
+            'extra_config': extra_config,
             'is_active': self.is_active,
             'connection_status': self.connection_status,
             'last_test_at': self.last_test_at.isoformat() if self.last_test_at else None,

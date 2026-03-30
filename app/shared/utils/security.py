@@ -40,11 +40,11 @@ def escape_sql_value(value: Any) -> str:
     if value is None:
         return "NULL"
     
-    if isinstance(value, (int, float)):
-        return str(value)
-    
     if isinstance(value, bool):
         return "TRUE" if value else "FALSE"
+    
+    if isinstance(value, (int, float)):
+        return str(value)
     
     if isinstance(value, str):
         # 检查危险关键字

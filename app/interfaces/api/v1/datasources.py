@@ -24,11 +24,40 @@ from app.interfaces.api.middleware.auth import require_auth, optional_auth
 from app.shared.response import success, created, bad_request
 from app.shared.utils.logger import get_logger
 from app.di.utils import get_app_container
+from app.infrastructure.tasks.jobs.datasource_catalog_sync_job import execute_datasource_catalog_sync_job
 
 logger = get_logger(__name__)
 
 # 创建 Blueprint
 bp = Blueprint('datasources_api_v1', __name__, url_prefix='/api/v1/data-center/datasources')
+
+
+def _should_auto_sync_catalog(source_type: str) -> bool:
+    return source_type in {'postgresql', 'maxcompute'}
+
+
+def _enqueue_catalog_sync(datasource_id: int) -> str | None:
+    """投递目录同步任务，失败时返回 None，由调用方决定是否降级。"""
+    container = get_app_container()
+    try:
+        job = container.task_queue().enqueue(
+            execute_datasource_catalog_sync_job,
+            datasource_id,
+            job_timeout=1800,
+            result_ttl=86400,
+            failure_ttl=604800,
+        )
+        return job.id
+    except Exception:
+        logger.warning("enqueue_datasource_catalog_sync_failed", datasource_id=datasource_id, exc_info=True)
+        return None
+
+
+def _get_datasource_or_raise(datasource_id: int):
+    """复用现有查询处理器校验数据源存在性。"""
+    container = get_app_container()
+    handler = container.get_datasource_handler()
+    return handler.handle(GetDatasourceQuery(datasource_id=datasource_id))
 
 
 # ============================================================================
@@ -149,8 +178,15 @@ def create_datasource():
     
     # 4. 执行命令
     datasource = handler.handle(command)
-    
-    return created(data=datasource.to_dict(mask_sensitive=True), message='数据源创建成功')
+    job_id = None
+    if _should_auto_sync_catalog(datasource.source_type):
+        job_id = _enqueue_catalog_sync(datasource.id)
+
+    payload = datasource.to_dict(mask_sensitive=True)
+    if job_id:
+        payload['catalog_sync_job'] = {'job_id': job_id, 'status': 'queued'}
+
+    return created(data=payload, message='数据源创建成功')
 
 
 @bp.route('/<int:datasource_id>', methods=['PUT'])
@@ -199,6 +235,22 @@ def delete_datasource(datasource_id):
     handler.handle(command)
     
     return success(message='数据源删除成功')
+
+
+@bp.route('/<int:datasource_id>/sync-catalog', methods=['POST'])
+@require_auth
+def sync_datasource_catalog(datasource_id):
+    """手动触发数据源目录同步。"""
+    _get_datasource_or_raise(datasource_id)
+
+    job_id = _enqueue_catalog_sync(datasource_id)
+    if not job_id:
+        return bad_request(message='目录同步触发失败，请稍后重试')
+
+    return success(
+        data={'job_id': job_id, 'status': 'queued'},
+        message='目录同步已触发',
+    )
 
 
 @bp.route('/<int:datasource_id>/test', methods=['POST'])

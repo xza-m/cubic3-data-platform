@@ -2,13 +2,162 @@
 数据源适配器单元测试
 Mock 外部驱动，测试 PostgreSQL、MySQL、ClickHouse、MaxCompute 适配器
 """
+import builtins
+from types import SimpleNamespace
 import pytest
 from unittest.mock import MagicMock, patch
 
+from app.infrastructure.adapters.datasources.base_adapter import DataSourceAdapter
+from app.infrastructure.adapters.datasources.factory import AdapterFactory
 from app.infrastructure.adapters.datasources.postgresql_adapter import PostgreSQLAdapter
 from app.infrastructure.adapters.datasources.mysql_adapter import MySQLAdapter
 from app.infrastructure.adapters.datasources.clickhouse_adapter import ClickHouseAdapter
 from app.infrastructure.adapters.datasources.maxcompute_adapter import MaxComputeAdapter
+
+
+class DummyAdapter(DataSourceAdapter):
+    """用于覆盖基类公共行为的测试适配器。"""
+
+    def __init__(self, config=None):
+        super().__init__(config or {})
+        self.closed = False
+        self.raise_on_close = False
+
+    def test_connection(self):
+        return {'success': True}
+
+    def list_databases(self):
+        return ['default']
+
+    def list_tables(self, database: str):
+        return []
+
+    def get_table_schema(self, database: str, table: str):
+        return {'table_name': table}
+
+    def execute_query(self, sql: str, limit: int = 100):
+        return {'rows': []}
+
+    def execute_query_stream(self, sql: str, batch_size: int = 1000):
+        yield {'rows': []}
+
+    def _close_connection(self):
+        self.closed = True
+        if self.raise_on_close:
+            raise RuntimeError('close failed')
+
+
+# =============================================================================
+# DataSourceAdapter / AdapterFactory
+# =============================================================================
+
+class TestDataSourceAdapterBase:
+    """基类公共行为测试"""
+
+    def test_list_schemas_defaults_to_empty_list(self):
+        adapter = DummyAdapter()
+        assert adapter.list_schemas('db') == []
+
+    def test_close_calls_subclass_close_and_clears_connection(self):
+        adapter = DummyAdapter()
+        adapter.connection = object()
+
+        adapter.close()
+
+        assert adapter.closed is True
+        assert adapter.connection is None
+
+    def test_close_swallows_close_errors_and_clears_connection(self):
+        adapter = DummyAdapter()
+        adapter.connection = object()
+        adapter.raise_on_close = True
+
+        adapter.close()
+
+        assert adapter.closed is True
+        assert adapter.connection is None
+
+    def test_context_manager_closes_adapter(self):
+        adapter = DummyAdapter()
+        adapter.connection = object()
+
+        with adapter as entered:
+            assert entered is adapter
+
+        assert adapter.closed is True
+        assert adapter.connection is None
+
+    def test_abstract_contract_methods_are_directly_invokable_for_contract_coverage(self):
+        proxy = SimpleNamespace()
+
+        assert DataSourceAdapter.__dict__['test_connection'](proxy) is None
+        assert DataSourceAdapter.__dict__['list_databases'](proxy) is None
+        assert DataSourceAdapter.__dict__['list_tables'](proxy, 'db') is None
+        assert DataSourceAdapter.__dict__['get_table_schema'](proxy, 'db', 'table') is None
+        assert DataSourceAdapter.__dict__['execute_query'](proxy, 'SELECT 1') is None
+        assert DataSourceAdapter.__dict__['execute_query_stream'](proxy, 'SELECT 1') is None
+        assert DataSourceAdapter.__dict__['_close_connection'](proxy) is None
+
+
+class TestAdapterFactory:
+    """工厂和字段映射测试"""
+
+    def test_normalize_connection_config_handles_empty_config(self):
+        assert AdapterFactory._normalize_connection_config('maxcompute', {}) == {}
+        assert AdapterFactory._normalize_connection_config('maxcompute', None) is None
+
+    def test_normalize_connection_config_maps_maxcompute_keys(self):
+        config = {
+            'access_key_id': 'ak',
+            'access_key_secret': 'sk',
+            'endpoint': 'ep',
+        }
+
+        normalized = AdapterFactory._normalize_connection_config('maxcompute', config)
+
+        assert normalized == {
+            'access_id': 'ak',
+            'access_key': 'sk',
+            'endpoint': 'ep',
+        }
+        assert config['access_key_id'] == 'ak'
+
+    def test_create_adapter_returns_normalized_instance(self):
+        adapter = AdapterFactory.create_adapter('maxcompute', {
+            'access_key_id': 'ak',
+            'access_key_secret': 'sk',
+            'project': 'demo',
+            'endpoint': 'ep',
+            'access_id': 'legacy',
+        })
+
+        assert isinstance(adapter, MaxComputeAdapter)
+        assert adapter.config['access_id'] == 'ak'
+        assert adapter.config['access_key'] == 'sk'
+
+    def test_create_adapter_raises_for_unknown_type(self):
+        with pytest.raises(ValueError, match='不支持的数据源类型'):
+            AdapterFactory.create_adapter('oracle', {'host': 'localhost'})
+
+    def test_get_supported_types_contains_registered_adapters(self):
+        supported = AdapterFactory.get_supported_types()
+        assert {'maxcompute', 'clickhouse', 'postgresql', 'mysql'}.issubset(set(supported))
+
+    def test_register_adapter_rejects_non_adapter_class(self):
+        with pytest.raises(TypeError, match='必须继承自 DataSourceAdapter'):
+            AdapterFactory.register_adapter('invalid', object)
+
+    def test_register_adapter_accepts_custom_adapter(self):
+        class CustomAdapter(DummyAdapter):
+            pass
+
+        AdapterFactory.register_adapter('custom_test', CustomAdapter)
+        try:
+            adapter = AdapterFactory.create_adapter('custom_test', {'token': 'demo'})
+            assert isinstance(adapter, CustomAdapter)
+            assert adapter.config['token'] == 'demo'
+        finally:
+            AdapterFactory._adapters.pop('custom_test', None)
 
 
 # =============================================================================
@@ -148,6 +297,77 @@ class TestPostgreSQLAdapter:
         assert schema['columns'][0]['name'] == 'id'
         assert schema['columns'][0]['type'] == 'integer'
 
+    @patch('app.infrastructure.adapters.datasources.postgresql_adapter.psycopg2.connect')
+    def test_list_databases_includes_current_database_when_missing(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [('analytics',)]
+        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        adapter = PostgreSQLAdapter({'host': 'h', 'user': 'u', 'password': 'p', 'database': 'warehouse'})
+        assert adapter.list_databases() == ['warehouse', 'analytics']
+
+    @patch('app.infrastructure.adapters.datasources.postgresql_adapter.psycopg2.connect')
+    def test_list_schemas_returns_filtered_names(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [('mart',), ('ods',)]
+        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        adapter = PostgreSQLAdapter({'host': 'h', 'user': 'u', 'password': 'p', 'database': 'warehouse'})
+        assert adapter.list_schemas('warehouse') == ['mart', 'ods']
+
+    @patch('app.infrastructure.adapters.datasources.postgresql_adapter.prepare_readonly_sql')
+    @patch('app.infrastructure.adapters.datasources.postgresql_adapter.psycopg2.connect')
+    def test_execute_query_stream_batches_rows(self, mock_connect, mock_prepare):
+        mock_prepare.return_value = 'SELECT * FROM demo'
+        mock_conn = MagicMock()
+        stream_cursor = MagicMock()
+        stream_cursor.description = [('id',), ('name',)]
+        stream_cursor.fetchmany.side_effect = [
+            [(1, 'a'), (2, 'b')],
+            [(3, 'c')],
+            [],
+        ]
+        stream_cursor.__enter__ = MagicMock(return_value=stream_cursor)
+        stream_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value = stream_cursor
+        mock_connect.return_value = mock_conn
+
+        adapter = PostgreSQLAdapter({'host': 'h', 'user': 'u', 'password': 'p', 'database': 'db'})
+        batches = list(adapter.execute_query_stream('SELECT * FROM demo', batch_size=2))
+
+        assert batches == [
+            {'columns': ['id', 'name'], 'rows': [[1, 'a'], [2, 'b']], 'batch_size': 2},
+            {'columns': ['id', 'name'], 'rows': [[3, 'c']], 'batch_size': 1},
+        ]
+
+    def test_batch_get_pg_type_names_returns_empty_dict_on_error(self):
+        conn = MagicMock()
+        cursor = MagicMock()
+        cursor.execute.side_effect = RuntimeError('boom')
+        cursor.__enter__ = MagicMock(return_value=cursor)
+        cursor.__exit__ = MagicMock(return_value=False)
+        conn.cursor.return_value = cursor
+        description = [MagicMock(type_code=23)]
+
+        adapter = PostgreSQLAdapter({'host': 'h'})
+        assert adapter._batch_get_pg_type_names(conn, description) == {}
+
+    def test_close_connection_closes_existing_connection(self):
+        adapter = PostgreSQLAdapter({'host': 'h'})
+        adapter.connection = MagicMock()
+
+        adapter._close_connection()
+
+        adapter.connection.close.assert_called_once()
+
 
 # =============================================================================
 # MySQLAdapter
@@ -268,6 +488,52 @@ class TestMySQLAdapter:
         assert schema['columns'][0]['name'] == 'id'
         assert schema['columns'][0]['is_partition'] is True
 
+    @patch('app.infrastructure.adapters.datasources.mysql_adapter.pymysql.connect')
+    def test_list_databases_includes_current_database_when_missing(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [('analytics',)]
+        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        adapter = MySQLAdapter({'host': 'h', 'user': 'u', 'password': 'p', 'database': 'warehouse'})
+        assert adapter.list_databases() == ['warehouse', 'analytics']
+
+    @patch('app.infrastructure.adapters.datasources.mysql_adapter.prepare_readonly_sql')
+    @patch('app.infrastructure.adapters.datasources.mysql_adapter.pymysql.connect')
+    def test_execute_query_stream_batches_rows(self, mock_connect, mock_prepare):
+        mock_prepare.return_value = 'SELECT * FROM demo'
+        mock_conn = MagicMock()
+        stream_cursor = MagicMock()
+        stream_cursor.description = [('id',), ('name',)]
+        stream_cursor.fetchmany.side_effect = [
+            [(1, 'a'), (2, 'b')],
+            [(3, 'c')],
+            [],
+        ]
+        stream_cursor.__enter__ = MagicMock(return_value=stream_cursor)
+        stream_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value = stream_cursor
+        mock_connect.return_value = mock_conn
+
+        adapter = MySQLAdapter({'host': 'h', 'user': 'u', 'password': 'p', 'database': 'db'})
+        batches = list(adapter.execute_query_stream('SELECT * FROM demo', batch_size=2))
+
+        assert batches == [
+            {'columns': ['id', 'name'], 'rows': [(1, 'a'), (2, 'b')], 'batch_size': 2},
+            {'columns': ['id', 'name'], 'rows': [(3, 'c')], 'batch_size': 1},
+        ]
+
+    def test_close_connection_closes_existing_connection(self):
+        adapter = MySQLAdapter({'host': 'h'})
+        adapter.connection = MagicMock()
+
+        adapter._close_connection()
+
+        adapter.connection.close.assert_called_once()
+
 
 # =============================================================================
 # ClickHouseAdapter
@@ -368,6 +634,99 @@ class TestClickHouseAdapter:
         assert len(schema['columns']) == 2
         assert schema['columns'][0]['name'] == 'id'
         assert schema['row_count'] == 1000
+
+    def test_list_databases(self):
+        mock_client = MagicMock()
+        mock_client.execute.return_value = [('default',), ('analytics',)]
+        adapter = ClickHouseAdapter({'host': 'h'})
+        adapter._get_client = MagicMock(return_value=mock_client)
+
+        assert adapter.list_databases() == ['default', 'analytics']
+
+    def test_execute_query_stream_batches_rows(self):
+        mock_client = MagicMock()
+        mock_client.execute.return_value = (
+            [(1, 'a'), (2, 'b'), (3, 'c')],
+            [('id', 'UInt64'), ('name', 'String')],
+        )
+        adapter = ClickHouseAdapter({'host': 'h'})
+        adapter._get_client = MagicMock(return_value=mock_client)
+
+        batches = list(adapter.execute_query_stream('SELECT * FROM demo', batch_size=2))
+
+        assert batches == [
+            {'columns': ['id', 'name'], 'rows': [(1, 'a'), (2, 'b')], 'batch_size': 2},
+            {'columns': ['id', 'name'], 'rows': [(3, 'c')], 'batch_size': 1},
+        ]
+
+    def test_close_connection_disconnects_client(self):
+        adapter = ClickHouseAdapter({'host': 'h'})
+        adapter.client = MagicMock()
+
+        adapter._close_connection()
+
+        adapter.client = None
+
+    def test_get_client_raises_install_hint_when_driver_missing(self):
+        adapter = ClickHouseAdapter({'host': 'h'})
+        original_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == 'clickhouse_driver':
+                raise ImportError('missing')
+            return original_import(name, *args, **kwargs)
+
+        with patch('builtins.__import__', side_effect=fake_import):
+            with pytest.raises(ImportError, match='clickhouse-driver'):
+                adapter._get_client()
+
+    def test_list_databases_wraps_underlying_error(self):
+        adapter = ClickHouseAdapter({'host': 'h'})
+        adapter._get_client = MagicMock(side_effect=RuntimeError('boom'))
+
+        with pytest.raises(Exception, match='获取数据库列表失败: boom'):
+            adapter.list_databases()
+
+    def test_list_tables_ignores_broken_comment_parse(self):
+        mock_client = MagicMock()
+        mock_client.execute.return_value = [
+            ('events', 'MergeTree', 1000, 1024, 'COMMENT broken'),
+        ]
+        adapter = ClickHouseAdapter({'host': 'h'})
+        adapter._get_client = MagicMock(return_value=mock_client)
+
+        tables = adapter.list_tables('default')
+
+        assert tables == [{
+            'table_name': 'events',
+            'comment': '',
+            'row_count': 1000,
+            'size': 1024,
+            'engine': 'MergeTree',
+        }]
+
+    def test_get_table_schema_wraps_error(self):
+        adapter = ClickHouseAdapter({'host': 'h'})
+        adapter._get_client = MagicMock(side_effect=RuntimeError('schema boom'))
+
+        with pytest.raises(Exception, match='获取表Schema失败: schema boom'):
+            adapter.get_table_schema('default', 'events')
+
+    def test_execute_query_stream_wraps_error(self):
+        adapter = ClickHouseAdapter({'host': 'h'})
+        adapter._get_client = MagicMock(side_effect=RuntimeError('stream boom'))
+
+        with pytest.raises(Exception, match='流式查询失败: stream boom'):
+            list(adapter.execute_query_stream('SELECT * FROM demo', batch_size=2))
+
+    def test_close_connection_swallows_disconnect_error(self):
+        adapter = ClickHouseAdapter({'host': 'h'})
+        adapter.client = MagicMock()
+        adapter.client.disconnect.side_effect = RuntimeError('disconnect failed')
+
+        adapter._close_connection()
+
+        assert adapter.client is None
 
 
 # =============================================================================
@@ -498,3 +857,90 @@ class TestMaxComputeAdapter:
         assert len(schema['columns']) == 1
         assert schema['columns'][0]['name'] == 'id'
         assert schema['row_count'] == 100
+
+    def test_get_odps_client_uses_secret_access_key_fallback(self):
+        created = {}
+
+        class FakeODPS:
+            def __init__(self, **kwargs):
+                created.update(kwargs)
+
+        with patch.dict('sys.modules', {'odps': MagicMock(ODPS=FakeODPS)}):
+            adapter = MaxComputeAdapter({
+                'access_id': 'id',
+                'secret_access_key': 'secret',
+                'endpoint': 'ep',
+                'project': 'proj',
+            })
+            client = adapter._get_odps_client()
+
+        assert isinstance(client, FakeODPS)
+        assert created['secret_access_key'] == 'secret'
+
+    def test_get_odps_client_raises_when_access_key_missing(self):
+        with patch.dict('sys.modules', {'odps': MagicMock(ODPS=MagicMock())}):
+            adapter = MaxComputeAdapter({
+                'access_id': 'id',
+                'endpoint': 'ep',
+                'project': 'proj',
+            })
+            with pytest.raises(ValueError, match='缺少必需配置: access_key'):
+                adapter._get_odps_client()
+
+    @patch('app.infrastructure.adapters.datasources.maxcompute_adapter.prepare_readonly_sql')
+    def test_execute_query_stream_batches_rows(self, mock_prepare):
+        mock_prepare.return_value = 'SELECT * FROM demo'
+        mock_reader = MagicMock()
+        mock_reader.schema.columns = [MagicMock(name='id'), MagicMock(name='name')]
+        mock_reader.schema.columns[0].name = 'id'
+        mock_reader.schema.columns[1].name = 'name'
+        mock_reader.__iter__ = lambda self: iter([[1, 'a'], [2, 'b'], [3, 'c']])
+        mock_reader.__enter__ = MagicMock(return_value=mock_reader)
+        mock_reader.__exit__ = MagicMock(return_value=False)
+        mock_instance = MagicMock()
+        mock_instance.wait_for_success = MagicMock()
+        mock_instance.open_reader.return_value = mock_reader
+        mock_odps = MagicMock()
+        mock_odps.execute_sql.return_value = mock_instance
+
+        adapter = MaxComputeAdapter({'access_id': 'id', 'access_key': 'key', 'endpoint': 'ep', 'project': 'proj'})
+        adapter._get_odps_client = MagicMock(return_value=mock_odps)
+        batches = list(adapter.execute_query_stream('SELECT * FROM demo', batch_size=2))
+
+        assert batches == [
+            {'columns': ['id', 'name'], 'rows': [[1, 'a'], [2, 'b']], 'batch_size': 2},
+            {'columns': ['id', 'name'], 'rows': [[3, 'c']], 'batch_size': 1},
+        ]
+
+    def test_get_partitions_returns_partition_names(self):
+        mock_partition = MagicMock()
+        mock_partition.name = 'dt=2026-03-25'
+        mock_table = MagicMock()
+        mock_table.schema.partitions = [MagicMock(name='dt')]
+        mock_table.partitions = [mock_partition]
+        mock_odps = MagicMock()
+        mock_odps.get_table.return_value = mock_table
+
+        adapter = MaxComputeAdapter({'access_id': 'id', 'access_key': 'key', 'endpoint': 'ep', 'project': 'proj'})
+        adapter._get_odps_client = MagicMock(return_value=mock_odps)
+
+        assert adapter.get_partitions('demo') == ['dt=2026-03-25']
+
+    def test_get_partitions_returns_empty_list_when_table_not_partitioned(self):
+        mock_table = MagicMock()
+        mock_table.schema.partitions = []
+        mock_odps = MagicMock()
+        mock_odps.get_table.return_value = mock_table
+
+        adapter = MaxComputeAdapter({'access_id': 'id', 'access_key': 'key', 'endpoint': 'ep', 'project': 'proj'})
+        adapter._get_odps_client = MagicMock(return_value=mock_odps)
+
+        assert adapter.get_partitions('demo') == []
+
+    def test_close_connection_resets_odps_client(self):
+        adapter = MaxComputeAdapter({'access_id': 'id', 'access_key': 'key', 'endpoint': 'ep', 'project': 'proj'})
+        adapter.odps = object()
+
+        adapter._close_connection()
+
+        assert adapter.odps is None

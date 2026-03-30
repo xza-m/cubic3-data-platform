@@ -327,7 +327,7 @@ class QueryCompiler:
         resolved = sql_expr.replace("{CUBE}", cube_name)
         if "{CUBE}" not in sql_expr and "{" not in sql_expr:
             resolved = re.sub(
-                r"\b([A-Za-z_][\w]*)\b(?=\s*(=|!=|<>|>|<|>=|<=|IN\b|NOT\s+IN\b|LIKE\b|IS\b))",
+                r"(?<!\.)\b([A-Za-z_][\w]*)\b(?=\s*(=|!=|<>|>|<|>=|<=|IN\b|NOT\s+IN\b|LIKE\b|IS\b))",
                 lambda match: (
                     match.group(1)
                     if "." in match.group(1)

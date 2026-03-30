@@ -94,6 +94,7 @@ from app.application.agent.services.knowledge_service import KnowledgeService
 from app.application.agent.services.prompt_builder import PromptBuilder
 from app.application.agent.services.tool_registry import ToolRegistry
 from app.application.agent.services.agent_loop_service import AgentLoopService
+from app.application.services.dashboard.overview_service import DashboardOverviewService
 
 # Application - Semantic Layer
 from app.application.semantic.metric_semantics_service import MetricSemanticsService
@@ -501,7 +502,7 @@ class Container(containers.DeclarativeContainer):
         GetStatisticsHandler,
         query_repository=query_repository
     )
-    
+
     # ========================================================================
     # Query 模块 - Template Repository & Handlers
     # ========================================================================
@@ -695,12 +696,18 @@ class Container(containers.DeclarativeContainer):
     sync_schema_handler = providers.Factory(
         SyncSchemaHandler,
         dataset_repository=dataset_repository,
-        datasource_repository=datasource_repository
+        task_queue=task_queue,
     )
     
     get_dataset_statistics_handler = providers.Factory(
         GetDatasetStatisticsHandler,
         engine=db_engine
+    )
+
+    dashboard_overview_service = providers.Factory(
+        DashboardOverviewService,
+        session=db_session,
+        semantic_definition_service=semantic_definition_service,
     )
     
     # ========================================================================

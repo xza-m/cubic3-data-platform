@@ -1,0 +1,52 @@
+name: order_01
+title: Playwright Cube 草稿 1774325263886
+description: 基于 public.order_01 自动生成的 Cube 草稿
+table: public.order_01
+source_id: 7
+source_database: shop_db
+source_schema: public
+data_source: postgresql
+status: draft
+grain: order_id
+entity_key: order_id
+default_filters: []
+dimensions:
+  dt:
+    title: Dt
+    type: time
+    sql: '{CUBE}.dt'
+    primary_key: false
+  order_id:
+    title: Order Id
+    type: number
+    sql: '{CUBE}.order_id'
+    primary_key: true
+  price:
+    title: Price
+    type: number
+    sql: '{CUBE}.price'
+    primary_key: false
+measures:
+  sum_order_id:
+    title: Order Id 合计
+    type: sum
+    sql: '{CUBE}.order_id'
+    description: 自动生成的 order_id 合计指标
+    certified: false
+    non_additive: false
+  sum_price:
+    title: Price 合计
+    type: sum
+    sql: '{CUBE}.price'
+    description: 自动生成的 price 合计指标
+    certified: false
+    non_additive: false
+  total_count:
+    title: 总数
+    type: count
+    sql: '{CUBE}.order_id'
+    description: 自动生成的记录总数指标
+    certified: true
+    non_additive: false
+segments: {}
+joins: {}

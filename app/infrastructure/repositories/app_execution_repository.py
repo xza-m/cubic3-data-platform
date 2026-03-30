@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
 from app.domain.entities import AppExecution
+from app.domain.entities.app_instance import AppInstance
 from app.domain.ports.repositories.app_execution_repository_port import IAppExecutionRepository
 
 
@@ -55,6 +56,7 @@ class AppExecutionRepository(IAppExecutionRepository):
     
     def find_all(
         self,
+        app_code: Optional[str] = None,
         instance_id: Optional[int] = None,
         status: Optional[str] = None,
         trigger_type: Optional[str] = None,
@@ -67,6 +69,7 @@ class AppExecutionRepository(IAppExecutionRepository):
         分页查询执行记录列表
         
         Args:
+            app_code: 应用编码筛选
             instance_id: 实例ID筛选
             status: 状态筛选
             trigger_type: 触发类型筛选
@@ -79,6 +82,8 @@ class AppExecutionRepository(IAppExecutionRepository):
             (executions, total) 执行记录列表和总数
         """
         query = self.session.query(AppExecution)
+        if app_code:
+            query = query.join(AppInstance, AppExecution.instance_id == AppInstance.id).filter(AppInstance.app_code == app_code)
         
         if instance_id:
             query = query.filter_by(instance_id=instance_id)

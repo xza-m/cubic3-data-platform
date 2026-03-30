@@ -35,7 +35,11 @@ class ExecuteSQLPreviewHandler:
         # 1. 获取数据源
         datasource = self.datasource_repository.find_by_id(command.source_id)
         if not datasource:
-            raise ApplicationException(f"数据源不存在: {command.source_id}")
+            raise ApplicationException(
+                f"数据源不存在: {command.source_id}",
+                code='DATASOURCE_NOT_FOUND',
+                details={'reason_code': 'object_not_found', 'source_id': command.source_id},
+            )
         
         # 2. SQL 安全性验证
         self._validate_sql(command.sql_query)
@@ -114,14 +118,20 @@ class ExecuteSQLPreviewHandler:
             
         except Exception as e:
             execution_time_ms = int((time.time() - start_time) * 1000)
+            error_message = str(e)
+            reason_code = 'query_timeout' if 'timeout' in error_message.lower() else 'schema_fetch_failed'
             logger.error(
-                f"SQL preview failed: {str(e)}",
+                f"SQL preview failed: {error_message}",
                 extra={
                     'source_id': command.source_id,
                     'execution_time_ms': execution_time_ms
                 }
             )
-            raise ApplicationException(f"SQL 执行失败: {str(e)}")
+            raise ApplicationException(
+                f"SQL 执行失败: {error_message}",
+                code='SQL_PREVIEW_FAILED',
+                details={'reason_code': reason_code, 'source_id': command.source_id},
+            )
     
     def _validate_sql(self, sql: str):
         """

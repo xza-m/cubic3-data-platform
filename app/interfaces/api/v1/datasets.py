@@ -176,7 +176,7 @@ def create_datasets_blueprint(container):
         handler = container.sync_schema_handler()
         result = handler.handle(command)
 
-        return success(data=result, message='元数据同步成功')
+        return success(data=result, message='元数据同步已触发')
 
     @bp.route('/preview', methods=['POST'])
     @optional_auth

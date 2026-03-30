@@ -5,6 +5,7 @@ Send Message Handler 单元测试
 """
 import pytest
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 
 from app.application.conversation.handlers.send_message_handler import SendMessageHandler
 from app.application.conversation.commands.send_message import SendMessageCommand
@@ -202,3 +203,110 @@ class TestSendMessageHandlerLegacyLlm:
         assert "ai_message" in result
         assert result["ai_message"].get("error") == "LLM 服务不可用"
         assert "抱歉" in result["ai_message"].get("content", "")
+
+
+class TestSendMessageHandlerAgent:
+    def test_agent_success_returns_channel_response(self, handler, command, mock_repos):
+        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
+
+        conversation = MagicMock()
+        conversation.id = 1
+        conversation.user_id = "user_123"
+        conversation.dataset_id = 10
+        conv_repo.find_by_id.return_value = conversation
+
+        user_message = MagicMock()
+        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "查询销售额"}
+        msg_repo.create.return_value = user_message
+
+        container = MagicMock()
+        adapter = MagicMock()
+        channel_instance = MagicMock()
+        channel_instance.to_agent_request.return_value = ("req", {"table": "sales"}, adapter)
+        channel_instance.deliver_response.return_value = {"mode": "agent", "ok": True}
+        agent_service = MagicMock()
+        agent_service.run.return_value = SimpleNamespace(text="答复", sql="SELECT 1", usage={"tokens": 3})
+        log_entry = MagicMock()
+        mock_db = SimpleNamespace(session=MagicMock())
+
+        with patch("app.di.container.get_container", return_value=container):
+            with patch("app.application.agent.agent_factory.get_data_agent_service", return_value=agent_service):
+                with patch("app.interfaces.channels.datachat_channel.DataChatChannel", return_value=channel_instance):
+                    with patch("app.domain.entities.agent_query_log.AgentQueryLog", return_value=log_entry):
+                        with patch("app.extensions.db", mock_db):
+                            with patch("time.monotonic", side_effect=[1.0, 1.25]):
+                                result = handler.handle(command)
+
+        assert result == {"mode": "agent", "ok": True}
+        agent_service.run.assert_called_once_with("req", adapter=adapter, schema_info={"table": "sales"})
+        log_entry.mark_success.assert_called_once()
+        adapter.close.assert_called_once()
+        llm_service.generate_sql.assert_not_called()
+
+    def test_agent_failure_falls_back_to_legacy_llm(self, handler, command, mock_repos):
+        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
+
+        conversation = MagicMock()
+        conversation.id = 1
+        conversation.user_id = "user_123"
+        conversation.dataset_id = 10
+        conversation.updated_at = None
+        conv_repo.find_by_id.return_value = conversation
+
+        user_message = MagicMock()
+        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "查询"}
+        ai_message = MagicMock()
+        ai_message.to_dict.return_value = {"id": 2, "role": "assistant", "content": "已回退到传统 LLM"}
+        msg_repo.create.side_effect = [user_message, ai_message]
+
+        dataset = MagicMock()
+        dataset.physical_table = "sales"
+        dataset.source = MagicMock()
+        dataset.source.source_type = "mysql"
+        dataset.source.connection_config = {}
+        dataset.fields = MagicMock()
+        dataset.fields.all.return_value = [MagicMock(physical_name="amount", data_type="decimal", description="金额")]
+        dataset_repo.find_by_id.return_value = dataset
+
+        legacy_adapter = MagicMock()
+        llm_service.generate_sql.return_value = {
+            "sql": "SELECT amount FROM sales",
+            "explanation": "已回退到传统 LLM",
+        }
+
+        container = MagicMock()
+        agent_adapter = MagicMock()
+        channel_instance = MagicMock()
+        channel_instance.to_agent_request.return_value = ("req", {"table": "sales"}, agent_adapter)
+        agent_service = MagicMock()
+        agent_service.run.side_effect = RuntimeError("agent down")
+        log_entry = MagicMock()
+        mock_db = SimpleNamespace(session=MagicMock())
+
+        with patch("app.di.container.get_container", return_value=container):
+            with patch("app.application.agent.agent_factory.get_data_agent_service", return_value=agent_service):
+                with patch("app.interfaces.channels.datachat_channel.DataChatChannel", return_value=channel_instance):
+                    with patch("app.domain.entities.agent_query_log.AgentQueryLog", return_value=log_entry):
+                        with patch("app.extensions.db", mock_db):
+                            with patch("time.monotonic", side_effect=[2.0, 2.4]):
+                                with patch("app.application.conversation.handlers.send_message_handler.logger") as mock_logger:
+                                    with patch(
+                                        "app.infrastructure.adapters.datasources.factory.AdapterFactory.create_adapter",
+                                        return_value=legacy_adapter,
+                                    ):
+                                        result = handler.handle(command)
+
+        assert result["ai_message"]["content"] == "已回退到传统 LLM"
+        log_entry.mark_error.assert_called_once()
+        agent_adapter.close.assert_called_once()
+        legacy_adapter.execute_query.assert_called_once_with("SELECT amount FROM sales LIMIT 1000")
+        mock_logger.warning.assert_called_once()
+
+    def test_execute_query_rejects_non_select(self, handler):
+        dataset = MagicMock()
+        dataset.source = MagicMock()
+        dataset.source.source_type = "mysql"
+        dataset.source.connection_config = {}
+
+        with pytest.raises(ApplicationException, match="仅支持 SELECT 查询"):
+            handler._execute_query(dataset, "DELETE FROM sales")

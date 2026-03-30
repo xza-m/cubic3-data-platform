@@ -254,7 +254,7 @@ def _handle_p2p_agent(event: dict, full_data: dict):
     # 授权校验
     allowed_users = config.get("allowed_user_ids", [])
     if allowed_users and open_id not in allowed_users:
-        logger.info("用户不在 CUBIC3 白名单中", open_id=open_id)
+        logger.info("用户不在 CUBIC3 白名单中: open_id=%s", open_id)
         return success(data={"status": "ok"})
 
     # 频率限制（每分钟 10 次）
@@ -310,7 +310,7 @@ def _handle_p2p_agent(event: dict, full_data: dict):
             with app_obj.app_context():
                 _run_feishu_agent(event, config)
         except Exception as e:
-            logger.error("CUBIC3 P2P 处理异常", error=str(e), exc_info=True)
+            logger.error("CUBIC3 P2P 处理异常: %s", e, exc_info=True)
 
     thread = threading.Thread(target=async_agent_task)
     thread.daemon = True
@@ -360,7 +360,7 @@ def _run_feishu_agent(event: dict, config: dict):
         try:
             card_message_id = channel.send_thinking_card(chat_id)
         except Exception as e:
-            logger.warning("发送思考卡片失败", error=str(e))
+            logger.warning("发送思考卡片失败: %s", e)
 
     # 创建 AgentService
     agent_service = get_data_agent_service(
@@ -405,7 +405,7 @@ def _run_feishu_agent(event: dict, config: dict):
         duration = int((time.monotonic() - t0) * 1000)
         log_entry.mark_error(str(e), duration=duration)
         db.session.commit()
-        logger.error("CUBIC3 执行异常", error=str(e), exc_info=True)
+        logger.error("CUBIC3 执行异常: %s", e, exc_info=True)
         if chat_id:
             feishu_client.send_text_message(chat_id, "抱歉，处理您的问题时遇到了错误。")
         return

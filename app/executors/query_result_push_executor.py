@@ -57,7 +57,10 @@ class QueryResultPushExecutor(AppExecutor):
             
             # 2. 执行 SQL 查询
             result.add_log("正在执行 SQL 查询...")
-            adapter = DataSourceAdapterFactory.create_adapter(datasource)
+            adapter = DataSourceAdapterFactory.create_adapter(
+                datasource.source_type,
+                datasource.connection_config or {},
+            )
             query_result = adapter.execute_query(sql_query)
             
             rows = query_result.get('rows', [])

@@ -26,3 +26,8 @@ class TestDatasetAPI:
             headers={'X-User-Id': 'test'},
         )
         assert response.status_code != 404
+
+    def test_sync_schema_route_exists(self, client):
+        """元数据同步路由已注册（非 404）"""
+        response = client.post(f'{self.BASE}/1/sync-schema', headers={'X-User-Id': 'test_user'})
+        assert response.status_code != 404

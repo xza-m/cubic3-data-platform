@@ -20,6 +20,7 @@ def _get_service():
 @require_auth
 def list_executions():
     """查询执行记录列表"""
+    app_code = request.args.get('app_code')
     instance_id = request.args.get('instance_id', type=int)
     status = request.args.get('status')
     trigger_type = request.args.get('trigger_type')
@@ -35,6 +36,7 @@ def list_executions():
 
     service = _get_service()
     result = service.list_executions(
+        app_code=app_code,
         instance_id=instance_id,
         status=status,
         trigger_type=trigger_type,

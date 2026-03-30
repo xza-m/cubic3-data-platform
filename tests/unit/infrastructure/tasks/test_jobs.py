@@ -336,3 +336,170 @@ class TestExecuteExtractionJob:
 
             with pytest.raises(ValueError, match='not found'):
                 execute_extraction_job(999)
+
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_current_job')
+    def test_missing_task_marks_run_failed(self, mock_get_job, mock_get_session, app):
+        """执行记录缺少 task 时标记失败并抛错"""
+        run = MagicMock(spec=ExtractionRun)
+        run.id = 1
+        run.task = None
+        run.mark_as_failed = MagicMock()
+
+        mock_get_job.return_value = MagicMock(id='job-1')
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = run
+        mock_get_session.return_value = mock_session
+
+        with app.app_context():
+            from app.infrastructure.tasks.jobs.extraction_job import execute_extraction_job
+
+            with pytest.raises(ValueError, match='Task for run 1 not found'):
+                execute_extraction_job(1)
+
+        run.mark_as_failed.assert_called_once_with('Task for run 1 not found')
+        mock_session.commit.assert_called_once()
+
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_current_job')
+    def test_missing_dataset_marks_run_failed_and_updates_task(self, mock_get_job, mock_get_session, app):
+        """task 缺少 dataset 时标记失败并更新任务最后执行信息"""
+        run = MagicMock(spec=ExtractionRun)
+        run.id = 1
+        run.mark_as_failed = MagicMock()
+        run.status = TaskStatus.FAILED.value
+        run.end_time = None
+
+        task = MagicMock(spec=ExtractionTask)
+        task.id = 100
+        task.dataset = None
+        task.update_last_run_info = MagicMock()
+        run.task = task
+
+        mock_get_job.return_value = MagicMock(id='job-1')
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = run
+        mock_get_session.return_value = mock_session
+
+        with app.app_context():
+            from app.infrastructure.tasks.jobs.extraction_job import execute_extraction_job
+
+            with pytest.raises(ValueError, match='Dataset for task 100 not found'):
+                execute_extraction_job(1)
+
+        run.mark_as_failed.assert_called_once_with('Dataset for task 100 not found')
+        task.update_last_run_info.assert_called_once_with(run.status, run.end_time)
+        mock_session.commit.assert_called_once()
+
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_current_job')
+    def test_missing_datasource_marks_run_failed_and_updates_task(self, mock_get_job, mock_get_session, app):
+        """dataset 缺少 datasource 时标记失败并更新任务最后执行信息"""
+        run = MagicMock(spec=ExtractionRun)
+        run.id = 1
+        run.mark_as_failed = MagicMock()
+        run.status = TaskStatus.FAILED.value
+        run.end_time = None
+
+        task = MagicMock(spec=ExtractionTask)
+        task.id = 100
+        task.update_last_run_info = MagicMock()
+
+        dataset = MagicMock(spec=Dataset)
+        dataset.id = 200
+        dataset.source = None
+
+        run.task = task
+        task.dataset = dataset
+
+        mock_get_job.return_value = MagicMock(id='job-1')
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = run
+        mock_get_session.return_value = mock_session
+
+        with app.app_context():
+            from app.infrastructure.tasks.jobs.extraction_job import execute_extraction_job
+
+            with pytest.raises(ValueError, match='DataSource for dataset 200 not found'):
+                execute_extraction_job(1)
+
+        run.mark_as_failed.assert_called_once_with('DataSource for dataset 200 not found')
+        task.update_last_run_info.assert_called_once_with(run.status, run.end_time)
+        mock_session.commit.assert_called_once()
+
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_current_job')
+    def test_file_dataset_missing_path_marks_run_failed(self, mock_get_job, mock_get_session, app, mock_run_chain):
+        """文件数据集缺少 file_path 时标记失败并抛错"""
+        run, task, dataset, datasource = mock_run_chain
+        dataset.dataset_type = DatasetType.FILE.value
+        dataset.file_metadata = {}
+        run.status = TaskStatus.FAILED.value
+
+        mock_get_job.return_value = MagicMock(id='job-1')
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = run
+        mock_get_session.return_value = mock_session
+
+        with app.app_context():
+            from app.infrastructure.tasks.jobs.extraction_job import execute_extraction_job
+
+            with pytest.raises(ValueError, match='文件数据集缺少 file_path'):
+                execute_extraction_job(1)
+
+        run.mark_as_failed.assert_called_once_with('文件数据集缺少 file_path')
+        task.update_last_run_info.assert_called_once_with(run.status, run.end_time)
+        assert mock_session.commit.call_count == 2
+
+    @pytest.mark.parametrize('send_notification_side_effect', [None, RuntimeError('notify failed')])
+    @patch('app.infrastructure.tasks.jobs.extraction_job.FileDeliveryService')
+    @patch('app.infrastructure.tasks.jobs.extraction_job.AdapterFactory')
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.extraction_job.get_current_job')
+    def test_oss_delivery_notification_paths(
+        self,
+        mock_get_job,
+        mock_get_session,
+        mock_adapter_factory,
+        mock_file_service_cls,
+        send_notification_side_effect,
+        mock_run_chain,
+        app,
+    ):
+        """OSS 交付会发送通知；通知失败不应影响任务成功"""
+        run, task, dataset, datasource = mock_run_chain
+        task.subscription_config = {'feishu_chat_id': 'oc_test'}
+
+        mock_get_job.return_value = MagicMock(id='job-1')
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = run
+        mock_get_session.return_value = mock_session
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute_query.return_value = {
+            'columns': ['col1'],
+            'data': [[1]],
+        }
+        mock_adapter_factory.create_adapter.return_value = mock_adapter
+
+        mock_file_service = MagicMock()
+        mock_file_service.save_query_result.return_value = {
+            'file_path': '/tmp/out.csv',
+            'file_size_mb': 0.01,
+        }
+        mock_file_service.deliver_file.return_value = {
+            'method': 'oss',
+            'download_url': 'https://example.com/out.csv',
+            'expires_at': '48小时',
+        }
+        mock_file_service.send_notification.side_effect = send_notification_side_effect
+        mock_file_service_cls.return_value = mock_file_service
+
+        with app.app_context():
+            from app.infrastructure.tasks.jobs.extraction_job import execute_extraction_job
+
+            result = execute_extraction_job(1)
+
+        assert result['status'] == 'success'
+        run.mark_as_success.assert_called_once()
+        mock_file_service.send_notification.assert_called_once()

@@ -1,6 +1,8 @@
 """Phase 1.3 — JoinGraph + Compiler 单元测试
 
 覆盖 PRD 6.11 测试用例矩阵中的核心场景"""
+import types
+
 import pytest
 
 from app.domain.semantic.compiler import (
@@ -146,6 +148,54 @@ class TestJoinGraph:
         g = JoinGraph(cubes)
         with pytest.raises(JoinPathTooDeepError):
             g.find_path("cube_0", "cube_4")
+
+    def test_helper_paths_cover_single_waypoint_direct_edge_depth_and_visited_skip(self, graph):
+        assert graph.resolve_join_paths({"student"}) == []
+        assert graph.find_path_through(["student"]) == []
+        assert graph._find_direct_edge("student", "school") is None
+        assert graph.get_cube("student").name == "student"
+
+        with pytest.raises(JoinPathNotFoundError):
+            graph.find_path_through(["answer_records", "school"])
+
+        cubes = []
+        for i in range(5):
+            name = f"path_cube_{i}"
+            joins = {}
+            if i < 4:
+                joins["next"] = JoinDef(cube=f"path_cube_{i+1}", type="left", sql=f"{{CUBE}}.id = {{path_cube_{i+1}}}.id")
+            cubes.append(_make_cube(name, f"path_table_{i}", joins=joins))
+        deep_graph = JoinGraph(cubes)
+        with pytest.raises(JoinPathTooDeepError):
+            deep_graph.find_path_through([cube.name for cube in cubes])
+
+        mid = _make_cube(
+            "mid",
+            "dim_mid",
+            joins={"leaf": JoinDef(cube="leaf", type="left", sql="{CUBE}.id = {leaf}.id")},
+        )
+        left = _make_cube(
+            "left",
+            "dim_left",
+            joins={"mid": JoinDef(cube="mid", type="left", sql="{CUBE}.id = {mid}.id")},
+        )
+        right = _make_cube(
+            "right",
+            "dim_right",
+            joins={"mid": JoinDef(cube="mid", type="left", sql="{CUBE}.id = {mid}.id")},
+        )
+        root = _make_cube(
+            "root",
+            "dim_root",
+            joins={
+                "left": JoinDef(cube="left", type="left", sql="{CUBE}.id = {left}.id"),
+                "right": JoinDef(cube="right", type="left", sql="{CUBE}.id = {right}.id"),
+            },
+        )
+        leaf = _make_cube("leaf", "dim_leaf")
+        ambiguous_graph = JoinGraph([root, left, right, mid, leaf])
+        path = ambiguous_graph.find_path("root", "leaf")
+        assert [edge.target for edge in path] == ["left", "mid", "leaf"]
 
 
 # ── Compiler 基础测试 ──
@@ -493,6 +543,120 @@ class TestCompilerErrors:
         compiler = QueryCompiler(JoinGraph([cube]), dialect=MaxComputeDialect())
         with pytest.raises(CompilationError, match="grain='missing_dimension'"):
             compiler.compile(QueryDSL(measures=["orders_contract.cnt"]))
+
+    def test_helper_paths_cover_dimension_only_filters_dates_and_measure_variants(self, compiler):
+        dsl = QueryDSL(dimensions=["answer_records.subject_name"], limit=10)
+        result = compiler.compile(dsl)
+        assert result.primary_cube == "answer_records"
+        assert "GROUP BY" in result.sql
+
+        numeric_filter_sql = compiler.compile(
+            QueryDSL(
+                measures=["answer_records.total_count"],
+                filters=[FilterDef(dimension="answer_records.answer_result", operator="equals", values=[1])],
+            )
+        ).sql
+        assert "answer_records.answer_result = 1" in numeric_filter_sql
+
+        non_partition_range_sql = compiler.compile(
+            QueryDSL(
+                measures=["answer_records.total_count"],
+                time_dimensions=[TimeDimensionDef(
+                    dimension="student.user_name",
+                    date_range=["2026-02-21", "2026-02-27"],
+                )],
+            )
+        ).sql
+        assert "student.user_name >= '2026-02-21'" in non_partition_range_sql
+        assert "student.user_name <= '2026-02-27'" in non_partition_range_sql
+
+        with pytest.raises(CompilationError, match="expected 'cube.field'"):
+            compiler._parse_ref("broken")
+
+        assert compiler._resolve_col("status = 1 AND student.user_id = 2", "answer_records") == (
+            "answer_records.status = 1 AND student.user_id = 2"
+        )
+
+        time_lax_cube = _make_cube(
+            "time_lax",
+            "fact_time_lax",
+            partition=PartitionDef(field="ds", format="yyyyMMdd", max_range_days=0),
+        )
+        QueryCompiler(JoinGraph([time_lax_cube]), dialect=MaxComputeDialect())._validate_time_range(
+            time_lax_cube,
+            ["2026-01-01"],
+        )
+
+        invalid_date_cube = _make_cube(
+            "invalid_date_cube",
+            "fact_invalid_date",
+            partition=PartitionDef(field="ds", format="yyyyMMdd", max_range_days=7),
+        )
+        invalid_date_compiler = QueryCompiler(JoinGraph([invalid_date_cube]), dialect=MaxComputeDialect())
+        with pytest.raises(CompilationError, match="expected YYYY-MM-DD"):
+            invalid_date_compiler._validate_time_range(invalid_date_cube, ["2026/01/01", "2026-01-02"])
+        with pytest.raises(CompilationError, match="earlier than start date"):
+            invalid_date_compiler._validate_time_range(invalid_date_cube, ["2026-01-03", "2026-01-02"])
+
+        metric_cube = _make_cube(
+            "metric_cube",
+            "fact_metric_cube",
+            measures={
+                "distinct_users": MeasureDef(title="去重用户", type="count_distinct", sql="{CUBE}.user_id"),
+                "avg_score": MeasureDef(title="平均分", type="avg", sql="{CUBE}.score"),
+                "min_score": MeasureDef(title="最低分", type="min", sql="{CUBE}.score"),
+                "max_score": MeasureDef(title="最高分", type="max", sql="{CUBE}.score"),
+                "raw_metric": MeasureDef(title="原值", type="number", sql="{CUBE}.score"),
+            },
+        )
+        metric_cube.measures["broken_metric"] = types.SimpleNamespace(type="median", sql="{CUBE}.score")
+        metric_compiler = QueryCompiler(JoinGraph([metric_cube]), dialect=MaxComputeDialect())
+        metric_cubes = {"metric_cube": metric_cube}
+
+        assert metric_compiler._resolve_measure_expr("metric_cube.distinct_users", metric_cubes) == "COUNT(DISTINCT metric_cube.user_id)"
+        assert metric_compiler._resolve_measure_expr("metric_cube.avg_score", metric_cubes) == "AVG(metric_cube.score)"
+        assert metric_compiler._resolve_measure_expr("metric_cube.min_score", metric_cubes) == "MIN(metric_cube.score)"
+        assert metric_compiler._resolve_measure_expr("metric_cube.max_score", metric_cubes) == "MAX(metric_cube.score)"
+        assert metric_compiler._resolve_measure_expr("metric_cube.raw_metric", metric_cubes) == "metric_cube.score"
+        with pytest.raises(CompilationError, match="Unsupported measure type"):
+            metric_compiler._resolve_measure_expr("metric_cube.broken_metric", metric_cubes)
+
+        contract_cube = _make_cube("contract_cube", "fact_contract_cube")
+        contract_cube.entity_key = "missing_entity"
+        contract_compiler = QueryCompiler(JoinGraph([contract_cube]), dialect=MaxComputeDialect())
+        with pytest.raises(CompilationError, match="entity_key='missing_entity'"):
+            contract_compiler.compile(QueryDSL(measures=["contract_cube.cnt"]))
+
+    def test_helper_paths_cover_unknown_operator_latest_partition_edge_loading_and_wrap_agg(self, compiler):
+        with pytest.raises(CompilationError, match="Unknown filter operator"):
+            compiler.compile(
+                QueryDSL(
+                    measures=["answer_records.total_count"],
+                    filters=[FilterDef(dimension="answer_records.subject_name", operator="weird", values=["x"])],
+                )
+            )
+
+        latest_cube = _make_cube(
+            "latest_orders",
+            "fact_latest_orders",
+            partition=PartitionDef(field="ds", format="yyyyMMdd", latest_expr="MAX_PT('fact_latest_orders')"),
+        )
+        latest_compiler = QueryCompiler(JoinGraph([latest_cube]), dialect=MaxComputeDialect())
+        latest_sql = latest_compiler.compile(QueryDSL(measures=["latest_orders.cnt"])).sql
+        assert "latest_orders.ds = MAX_PT('fact_latest_orders')" in latest_sql
+
+        ghost_edge = JoinDef(cube="ghost", type="left", sql="{CUBE}.student_id = {ghost}.id")
+        with pytest.raises(UnknownCubeError):
+            QueryCompiler(JoinGraph([ANSWER]), dialect=MaxComputeDialect())._ensure_edge_cubes_loaded(
+                [type("Edge", (), {"source": "answer_records", "target": "ghost", "join_def": ghost_edge})()],
+                {"answer_records": ANSWER},
+            )
+
+        assert compiler._wrap_agg("count_distinct", "score") == "COUNT(DISTINCT score)"
+        assert compiler._wrap_agg("avg", "score") == "AVG(score)"
+        assert compiler._wrap_agg("min", "score") == "MIN(score)"
+        assert compiler._wrap_agg("max", "score") == "MAX(score)"
+        assert compiler._wrap_agg("unknown", "score") == "score"
 
 
 # ── Dialect 测试 ──

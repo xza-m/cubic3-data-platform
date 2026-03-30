@@ -38,6 +38,10 @@ class TestDatasourcesRoutes:
         )
         assert r.status_code != 404
 
+    def test_datasources_sync_catalog_post(self, client):
+        r = client.post('/api/v1/data-center/datasources/1/sync-catalog', headers=AUTH_HEADERS)
+        assert r.status_code != 404
+
 
 class TestDatasetsRoutes:
     """数据集 API"""
@@ -57,6 +61,10 @@ class TestDatasetsRoutes:
             },
             headers=AUTH_HEADERS,
         )
+        assert r.status_code != 404
+
+    def test_datasets_sync_schema_post(self, client):
+        r = client.post('/api/v1/data-center/datasets/1/sync-schema', headers=AUTH_HEADERS)
         assert r.status_code != 404
 
 

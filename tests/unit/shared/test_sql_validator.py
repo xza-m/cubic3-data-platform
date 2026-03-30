@@ -2,6 +2,8 @@
 SQL 校验工具单元测试
 """
 import pytest
+from unittest.mock import MagicMock, patch
+
 from app.shared.utils.sql_validator import (
     validate_sql_query,
     prepare_readonly_sql,
@@ -62,6 +64,32 @@ class TestValidateSqlQuery:
         ok, errs = validate_sql_query("GRANT ALL ON users TO admin")
         assert ok is False
 
+    def test_comment_only_sql_is_rejected(self):
+        ok, errs = validate_sql_query("-- only comment")
+        assert ok is False
+        assert any("无法解析 SQL 语句" in err or "移除注释后" in err for err in errs)
+
+    def test_dangerous_keyword_inside_string_literal_is_allowed(self):
+        ok, errs = validate_sql_query("SELECT 'DROP TABLE users' AS sql_text")
+        assert ok is True
+        assert errs == []
+
+    def test_parse_exception_is_reported(self):
+        with patch("app.shared.utils.sql_validator.sqlparse.parse", side_effect=RuntimeError("bad parse")):
+            ok, errs = validate_sql_query("SELECT 1")
+
+        assert ok is False
+        assert errs == ["SQL 解析错误: bad parse"]
+
+    def test_sql_with_only_comments_after_parse_is_rejected(self):
+        stmt = MagicMock()
+        stmt.token_first.side_effect = [object(), None]
+        with patch("app.shared.utils.sql_validator.sqlparse.parse", return_value=[stmt]):
+            ok, errs = validate_sql_query("/* comment */")
+
+        assert ok is False
+        assert errs == ["SQL 语句为空（移除注释后）"]
+
 
 class TestPrepareReadonlySql:
     def test_basic_select(self):
@@ -91,6 +119,10 @@ class TestPrepareReadonlySql:
     def test_no_limit_param(self):
         result = prepare_readonly_sql("SELECT 1", limit=None)
         assert "LIMIT" not in result
+
+    def test_limit_is_normalized_when_non_numeric(self):
+        result = prepare_readonly_sql("SELECT id FROM t", limit="oops")
+        assert result.endswith(f"LIMIT {DEFAULT_QUERY_LIMIT}")
 
 
 class TestNormalizeLimit:
@@ -123,14 +155,25 @@ class TestFormatSql:
         result = format_sql(original)
         assert result == original
 
+    def test_formatter_exception_returns_original(self):
+        with patch("app.shared.utils.sql_validator.sqlparse.format", side_effect=RuntimeError("boom")):
+            assert format_sql("select 1") == "select 1"
+
 
 class TestExtractTableNames:
     def test_returns_list(self):
         result = extract_table_names("SELECT id FROM users")
         assert isinstance(result, list)
+        assert "users" in result
 
     def test_empty_sql(self):
         assert extract_table_names("") == []
 
     def test_invalid_sql(self):
         assert extract_table_names(None) == []
+
+    def test_extracts_joined_table_names_without_duplicates(self):
+        result = extract_table_names(
+            "SELECT * FROM users u JOIN orders o ON u.id = o.user_id JOIN users uu ON uu.id = o.user_id"
+        )
+        assert sorted(result) == ["orders", "users"]

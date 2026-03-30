@@ -54,10 +54,24 @@ def _make_view(name="v_sales", title="销售视图", cubes=None):
 @pytest.fixture
 def mock_semantic_service():
     svc = MagicMock()
-    svc.list_cubes.return_value = [{"name": "orders", "title": "订单", "state_summary": {"sync_status": "ok"}}]
+    svc.list_cubes.return_value = [{
+        "name": "orders",
+        "title": "订单",
+        "domain_id": "academic",
+        "domain_name": "学业域",
+        "domain_ids": ["academic"],
+        "domains": [{"id": "academic", "code": "academic", "name": "学业域"}],
+        "domain_count": 1,
+        "state_summary": {"sync_status": "ok"},
+    }]
     svc.describe_cube.return_value = {
         "name": "orders",
         "title": "订单",
+        "domain_id": "academic",
+        "domain_name": "学业域",
+        "domain_ids": ["academic"],
+        "domains": [{"id": "academic", "code": "academic", "name": "学业域"}],
+        "domain_count": 1,
         "dimensions": {},
         "measures": {},
         "diagnostics": [],
@@ -69,6 +83,32 @@ def mock_semantic_service():
         "publish_summary": {"publish_status": "unpublished"},
         "drift_summary": {"last_drift_status": "unknown"},
     }
+    svc.list_view_summaries.return_value = [
+        {
+            "name": "v_sales",
+            "title": "销售视图",
+            "description": "销售综合视图",
+            "public": True,
+            "cube_count": 1,
+            "cubes": ["orders"],
+            "status": "active",
+            "state_summary": {"object_type": "view", "status": "active"},
+            "publish_summary": {
+                "publish_status": "unpublished",
+                "last_published_at": None,
+            },
+        }
+    ]
+    svc.list_recipe_summaries.return_value = [
+        {
+            "name": "orders_recipe",
+            "title": "订单问法",
+            "tags": ["orders"],
+            "example_count": 1,
+            "related_cubes": ["orders"],
+            "state_summary": {"object_type": "recipe", "status": "active"},
+        }
+    ]
     svc._view_repo.list_all.return_value = [_make_view()]
     svc._view_repo.get.return_value = _make_view()
     svc._cube_repo.list_all.return_value = [_make_cube()]
@@ -309,12 +349,14 @@ class TestCubesEndpoint:
         assert data["code"] == 0
         assert "cubes" in data["data"]
         assert data["data"]["total"] == 1
+        assert data["data"]["cubes"][0]["domain_ids"] == ["academic"]
 
     def test_describe_cube_returns_200(self, semantic_client):
         resp = semantic_client.get("/api/v1/semantic/cubes/orders")
         assert resp.status_code == 200
         data = resp.get_json()
         assert data["data"]["name"] == "orders"
+        assert data["data"]["domain_count"] == 1
 
     def test_describe_cube_not_found(self, semantic_client, mock_semantic_service):
         mock_semantic_service.describe_cube.return_value = {"error": "not found"}
@@ -449,6 +491,8 @@ class TestViewsEndpoint:
         data = resp.get_json()
         assert data["data"]["total"] == 1
         assert data["data"]["views"][0]["name"] == "v_sales"
+        assert data["data"]["views"][0]["publish_summary"]["publish_status"] == "unpublished"
+        assert data["data"]["views"][0]["state_summary"]["object_type"] == "view"
 
     def test_describe_view_returns_200(self, semantic_client):
         resp = semantic_client.get("/api/v1/semantic/views/v_sales")
@@ -604,4 +648,6 @@ class TestRecipesEndpoint:
         resp = semantic_client.get("/api/v1/semantic/recipes")
         assert resp.status_code == 200
         data = resp.get_json()
-        assert data["data"]["total"] == 0
+        assert data["data"]["total"] == 1
+        assert data["data"]["recipes"][0]["related_cubes"] == ["orders"]
+        assert data["data"]["recipes"][0]["state_summary"]["object_type"] == "recipe"

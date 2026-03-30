@@ -59,7 +59,10 @@ def create_task():
         data = request.get_json()
         schema = CreateTaskRequest(**data)
     except PydanticValidationError as e:
-        return bad_request(message='请求参数验证失败', details=e.errors())
+        return bad_request(
+            message='请求参数验证失败',
+            details=e.errors(include_context=False, include_input=False, include_url=False),
+        )
     
     # 2. 构建命令
     command = CreateTaskCommand(

@@ -21,6 +21,23 @@ class TableCacheService:
     
     def __init__(self, session: Session):
         self.session = session
+
+    @staticmethod
+    def _cache_now() -> datetime:
+        """返回用于缓存比较的 UTC 时间（无时区）。
+
+        `datasource_table_cache` 当前使用 `DateTime`（无 timezone）字段存储时间。
+        历史数据和 ORM 读取出来的值可能是 naive datetime；这里统一把当前时间
+        也转换为 naive UTC，避免在比较时触发 aware/naive 混用错误。
+        """
+        return utcnow().replace(tzinfo=None)
+
+    @staticmethod
+    def _normalize_cache_datetime(value: datetime | None) -> datetime | None:
+        """将缓存字段统一转换为无时区 UTC datetime。"""
+        if value is None:
+            return None
+        return value.replace(tzinfo=None) if value.tzinfo is not None else value
     
     def get_cached_tables(self, datasource_id: int, database: str, force_refresh: bool = False) -> Tuple[List[Dict[str, Any]], bool]:
         """
@@ -35,14 +52,16 @@ class TableCacheService:
             (tables: List, from_cache: bool) - 表列表和是否来自缓存的标识
         """
         if not force_refresh:
+            now = self._cache_now()
             cache = self.session.query(DataSourceTableCache).filter_by(
                 datasource_id=datasource_id,
                 database_name=database
             ).first()
             
-            if cache and cache.expires_at > utcnow():
+            cache_expires_at = self._normalize_cache_datetime(cache.expires_at) if cache else None
+            if cache and cache_expires_at and cache_expires_at > now:
                 try:
-                    cache.last_access_at = utcnow()
+                    cache.last_access_at = now
                     cache.access_count = (cache.access_count or 0) + 1
                     self.session.commit()
                 except Exception as e:
@@ -76,7 +95,7 @@ class TableCacheService:
     def save_cache(self, datasource_id: int, database: str, tables: List[Dict[str, Any]]):
         """保存表列表到缓存"""
         try:
-            now = utcnow()
+            now = self._cache_now()
             expires_at = now + timedelta(hours=self.CACHE_TTL_HOURS)
             
             cache = self.session.query(DataSourceTableCache).filter_by(
@@ -113,8 +132,9 @@ class TableCacheService:
     def refresh_expired_caches(self) -> int:
         """刷新所有过期的缓存（定时任务调用）"""
         try:
+            now = self._cache_now()
             expired_caches = self.session.query(DataSourceTableCache).filter(
-                DataSourceTableCache.expires_at <= utcnow()
+                DataSourceTableCache.expires_at <= now
             ).all()
             
             logger.info(f"Found {len(expired_caches)} expired caches to refresh")
@@ -167,9 +187,10 @@ class TableCacheService:
     def get_cache_stats(self) -> Dict[str, Any]:
         """获取缓存统计信息"""
         try:
+            now = self._cache_now()
             total = self.session.query(DataSourceTableCache).count()
             expired = self.session.query(DataSourceTableCache).filter(
-                DataSourceTableCache.expires_at <= utcnow()
+                DataSourceTableCache.expires_at <= now
             ).count()
             valid = total - expired
             

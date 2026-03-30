@@ -14,6 +14,16 @@ def _json_scalar(value):
     return None
 
 
+def _extract_view_cube_name(ref):
+    """兼容 ViewCubeRef 和旧测试里的字符串引用。"""
+    if isinstance(ref, str):
+        return ref.strip() or None
+    join_path = getattr(ref, "join_path", None)
+    if not isinstance(join_path, str) or not join_path.strip():
+        return None
+    return join_path.split(">", 1)[0].split(".", 1)[0].strip() or None
+
+
 def _default_query_adapter_getter():
     from app.executors.schema_drift_executor import SchemaDriftExecutor
 
@@ -355,17 +365,28 @@ def create_semantic_blueprint(
     def list_views():
         include_private = request.args.get("include_private", "").lower() == "true"
         keyword = (request.args.get("q") or "").strip()
-        views = semantic_service.list_views(public_only=not include_private)
-        data = [
-            {
-                "name": v.name,
-                "title": v.title,
-                "description": v.description or "",
-                "public": v.public,
-                "cube_count": len(v.cubes),
-            }
-            for v in views
-        ]
+        list_view_summaries = getattr(semantic_service, "list_view_summaries", None)
+        candidate = list_view_summaries(public_only=not include_private) if callable(list_view_summaries) else None
+        if isinstance(candidate, list):
+            data = candidate
+        else:
+            views = semantic_service.list_views(public_only=not include_private)
+            data = [
+                {
+                    "name": v.name,
+                    "title": v.title,
+                    "description": v.description or "",
+                    "public": v.public,
+                    "cube_count": len(v.cubes),
+                    "cubes": [
+                        cube_name
+                        for ref in v.cubes
+                        for cube_name in [_extract_view_cube_name(ref)]
+                        if cube_name
+                    ],
+                }
+                for v in views
+            ]
         filtered = [
             view for view in data
             if _contains_keyword(view, keyword, ["name", "title", "description"])
@@ -411,17 +432,22 @@ def create_semantic_blueprint(
 
     @bp.route('/recipes', methods=['GET'])
     def list_recipes():
-        recipes = semantic_service._recipe_repo.list_all()
-        data = [
-            {
-                "name": r.name,
-                "title": r.title,
-                "tags": r.tags,
-                "example_count": len(r.examples),
-                "related_cubes": list(r.extract_cube_names()),
-            }
-            for r in recipes
-        ]
+        list_recipe_summaries = getattr(semantic_service, "list_recipe_summaries", None)
+        candidate = list_recipe_summaries() if callable(list_recipe_summaries) else None
+        if isinstance(candidate, list):
+            data = candidate
+        else:
+            recipes = semantic_service._recipe_repo.list_all()
+            data = [
+                {
+                    "name": r.name,
+                    "title": r.title,
+                    "tags": r.tags,
+                    "example_count": len(r.examples),
+                    "related_cubes": list(r.extract_cube_names()),
+                }
+                for r in recipes
+            ]
         return success(data={"recipes": data, "total": len(data)})
 
     # ── DSL 编译预览 ──
