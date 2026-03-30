@@ -1,8 +1,16 @@
+---
+doc_type: historical-note
+status: archived
+source_of_truth: historical
+owner: engineering
+last_reviewed: 2026-03-24
+---
+
 # 元数据同步功能 - 快速开始
 
 > [!WARNING]
 > 本文档基于旧版元数据同步实现，包含的部分接口和流程已不再对应当前主线代码。
-> 当前实现请优先参考 `../README.md`、`TECH_STACK_AND_ARCHITECTURE.md`、`QUICK_START.md` 和 `DOC_ALIGNMENT_REPORT.md`。
+> 当前实现请优先参考 `../../../README.md`、`../../TECH_STACK_AND_ARCHITECTURE.md`、`../../QUICK_START.md` 和 `../../DOC_ALIGNMENT_REPORT.md`。
 > 当前数据中心主入口为 `/api/v1/data-center/datasources`、`/api/v1/data-center/datasets`，数据集结构刷新能力由现有数据集流程承载。
 
 ## ✅ 已完成的工作
@@ -300,8 +308,8 @@ def incremental_sync(dataset_id):
 | 文档 | 说明 |
 |------|------|
 | [METADATA_SYNC_GUIDE.md](METADATA_SYNC_GUIDE.md) | 完整使用指南 |
-| [DATA_SERVICE_PLATFORM.md](DATA_SERVICE_PLATFORM.md) | 数据导出平台文档 |
-| [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md) | 系统集成指南 |
+| [DATA_SERVICE_PLATFORM.md](../2026-01/DATA_SERVICE_PLATFORM.md) | 历史数据导出平台文档 |
+| [STARTUP_GUIDE.md](../../STARTUP_GUIDE.md) | 当前系统启动与集成说明 |
 
 ---
 

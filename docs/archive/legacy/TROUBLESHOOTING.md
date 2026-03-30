@@ -1,4 +1,15 @@
+---
+doc_type: historical-note
+status: archived
+source_of_truth: historical
+owner: engineering
+last_reviewed: 2026-03-24
+---
+
 # 数据集注册界面故障排查指南
+
+> 状态：历史问题排查记录，针对旧版数据集注册界面。
+> 不作为当前实现基线；若需判断当前启动和页面行为，请优先阅读 `../../QUICK_START.md`、`../../STARTUP_GUIDE.md` 与当前代码。
 
 ## 问题：数据集注册界面为空
 

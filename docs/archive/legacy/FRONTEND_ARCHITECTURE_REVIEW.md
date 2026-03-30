@@ -1,8 +1,16 @@
+---
+doc_type: historical-note
+status: archived
+source_of_truth: historical
+owner: frontend
+last_reviewed: 2026-03-24
+---
+
 # 前端架构审查报告 - shadcn/ui 迁移
 
 > [!WARNING]
 > 本文档是一次历史迁移审查记录，不作为当前前端技术栈或完成度的基线说明。
-> 当前前端请优先参考 `../frontend/README.md`、`TECH_STACK_AND_ARCHITECTURE.md` 和 `DOC_ALIGNMENT_REPORT.md`。
+> 当前前端请优先参考 `../../../frontend/README.md`、`../../TECH_STACK_AND_ARCHITECTURE.md` 和 `../../DOC_ALIGNMENT_REPORT.md`。
 
 **审查日期**: 2026-01-29  
 **审查人**: AI Assistant  

@@ -1,31 +1,38 @@
-## 1. Information Architecture
-- [ ] 1.1 冻结语义中心一级导航，只保留“语义模型管理 / 领域目录 / 领域建模 / 开发者工具”
-- [ ] 1.2 移除独立“领域管理”工作区概念与残留文案
-- [ ] 1.3 移除旧关系画布导航曝光，保留必要兼容跳转
-- [ ] 1.4 统一页面文案，明确 `Cube / View` 属于同一类语义模型
+## 1. 共享抽象与基线
+- [x] 1.1 在前端定义 `SemanticObjectSummary`、`SemanticGovernanceState`、`SemanticStructureSummary`、`WorkbenchContextItem`
+- [x] 1.2 为语义中心建立统一的 view model hooks：`useCubeInventory`、`useCubeStudio`、`useDomainGovernance`、`useDomainCanvas`、`useSemanticDevTools`
+- [x] 1.3 将 `SemanticPageHeader / ContextBar / Surface / Inspector / IssueList / PreviewPanel` 固定为语义中心标准工作台壳
+- [x] 1.4 将本提案中的字段清单与组件清单落为开发参考文档并与实现同步
 
-## 2. Semantic Model Management
-- [ ] 2.1 将列表页调整为统一语义模型列表，使用 `kind` 区分 `cube/view`
-- [ ] 2.2 收敛详情页职责，移除跳转到领域画布的主路径
-- [ ] 2.3 保持 Studio 为独立建模页，不纳入 DevTools
-- [ ] 2.4 允许新建语义模型时不强制选择 `domain_id`
+## 2. Overview / Inventory 类型页面
+- [x] 2.1 收敛 `Overview`，只保留模块职责与整体状态
+- [x] 2.2 收敛 `CubeList`，固定为 `Inventory` 页面：轻页头、单层筛选、对象列表、条件预览
+- [x] 2.3 收敛 `DomainList`，固定为目录治理型 `Inventory` 页面：目录 rail、治理列表、条件摘要
+- [x] 2.4 统一三者的页头文案、上下文条和状态语言
 
-## 3. Domain Catalog
-- [ ] 3.1 设计并实现轻量 `catalog -> domain` 数据模型
-- [ ] 3.2 为现有 domain 数据提供默认 catalog 迁移策略
-- [ ] 3.3 将领域目录重构为 catalog 式入口，支持在目录页查看和管理单领域
-- [ ] 3.4 保留独立“领域建模”入口，承接新建领域与继续建模
+## 3. Studio 类型页面
+- [x] 3.1 将 `CubeStudio` 固定为唯一单模型定义工作台
+- [x] 3.2 明确 `CubeStudio` 只承载基础定义、来源、结构、规则、校验和生命周期动作
+- [x] 3.3 从页面和文案层彻底去除 `Join / 领域发布 / DSL 调试` 责任
 
-## 4. Domain Canvas
-- [ ] 4.1 收敛领域画布职责为“领域关系建模”，弱化对单模型管理的承载
-- [ ] 4.2 调整领域画布布局为中心画布优先，侧栏改为可折叠或抽屉化
+## 4. Canvas 类型页面
+- [x] 4.1 将 `DomainModelingEntry` 固定为领域草稿入口，而不是治理页或画布页
+- [x] 4.2 将 `DomainCanvas` 固定为关系建模页：左资源库、中画布、右 Inspector
+- [x] 4.3 统一 `DomainCanvas` 的 Inspector 三态：领域摘要 / Cube 摘要 / Join 设置
+- [x] 4.4 明确画布页只承载关系建模、Join 编辑和发布前检查
 
-## 5. Drift Experience
-- [ ] 5.1 在模型详情中统一展示 Drift 摘要、最近检测时间和状态定义
-- [ ] 5.2 在 Drift 检测页补齐“检测中 / 成功 / 失败 / 最近一次执行结果”反馈
-- [ ] 5.3 明确前端文案中的 Drift 定义，包括缺列、多列、类型不匹配、Join 引用失效等
+## 5. Developer Workbench 类型页面
+- [x] 5.1 将 `DevTools` 固定为定义文件、编译调试、Schema 同步三 tab 工作台
+- [x] 5.2 将 `Cube / View / Domain / Catalog` 的资源树切换统一到单一资源树入口
+- [x] 5.3 对 `Domain / Catalog` 的不可编辑态提供稳定空状态和返回主模块的动作
 
-## 6. Verification
-- [ ] 6.1 校验关键路由和跳转链路不再互相回流
-- [ ] 6.2 校验移动端与桌面端下目录页和画布页的可用性
-- [ ] 6.3 补充语义中心 IA 调整后的关键前端验收用例
+## 6. View / Recipe 挂载策略
+- [x] 6.1 明确 `View` 的主要挂载位置：`Cube` 预览/详情、`DevTools`、发布状态区
+- [x] 6.2 明确 `Recipe` 的主要挂载位置：对象详情区或工具页，不新增一级导航
+- [x] 6.3 清理残留的“资源即一级页面”设计倾向
+
+## 7. 文档与验收
+- [x] 7.1 根据本提案补充页面字段清单与组件清单文档
+- [x] 7.2 为每个页面类型补充最小验收标准：页头、上下文条、主任务区、条件 Inspector
+- [x] 7.3 校验路由、跳转和职责边界，不允许页面再次混入不属于自己的任务
+- [x] 7.4 执行 `openspec validate refactor-semantic-center-ia --strict`

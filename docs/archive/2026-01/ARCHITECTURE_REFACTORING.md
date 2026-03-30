@@ -170,7 +170,7 @@
 ### Phase 8: 迁移与清理 ✅ (已完成)
 
 **完成内容**:
-- ✅ 创建迁移指南（`docs/MIGRATION_GUIDE.md`）
+- ✅ 创建迁移指南（`docs/archive/legacy/MIGRATION_GUIDE.md`）
 - ✅ 更新 README.md
 - ✅ 新旧架构并行运行（向后兼容）
 

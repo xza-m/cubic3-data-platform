@@ -341,6 +341,6 @@ A: 修改 `frontend/vite.config.ts` 中的 proxy 配置。
 ## 相关文档
 
 - [架构重构记录](./ARCHITECTURE_REFACTORING.md)
-- [迁移指南](./MIGRATION_GUIDE.md)
-- [快速参考](../QUICK_REFERENCE.md)
-- [故障排查](./TROUBLESHOOTING.md)
+- [迁移指南](../legacy/MIGRATION_GUIDE.md)
+- [快速开始](../../QUICK_START.md)
+- [故障排查](../legacy/TROUBLESHOOTING.md)

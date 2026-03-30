@@ -1,8 +1,16 @@
+---
+doc_type: historical-note
+status: archived
+source_of_truth: historical
+owner: engineering
+last_reviewed: 2026-03-24
+---
+
 # 元数据同步与数据集注册完整指南
 
 > [!WARNING]
 > 本文档描述的是旧版“元数据同步”方案，不作为当前 API、页面入口和启动方式的基线说明。
-> 当前请优先参考 `../README.md`、`TECH_STACK_AND_ARCHITECTURE.md`、`QUICK_START.md` 和 `DOC_ALIGNMENT_REPORT.md`。
+> 当前请优先参考 `../../../README.md`、`../../TECH_STACK_AND_ARCHITECTURE.md`、`../../QUICK_START.md` 和 `../../DOC_ALIGNMENT_REPORT.md`。
 > 当前主线代码中的数据中心能力集中在 `/api/v1/data-center/*`，请以现有实现为准。
 
 ## 📋 概述
@@ -374,7 +382,7 @@ is_mobile = all(re.match(mobile_pattern, str(v)) for v in sample_data)
 | `schema/metadata_sync_extension.sql` | 数据库扩展 DDL |
 | `app/services/metadata_sync.py` | 核心同步服务 |
 | `app/routes/metadata_sync.py` | API 路由 |
-| `docs/METADATA_SYNC_GUIDE.md` | 本文档 |
+| `docs/archive/legacy/METADATA_SYNC_GUIDE.md` | 本文档 |
 
 ---
 

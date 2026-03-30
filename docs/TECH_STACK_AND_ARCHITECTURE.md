@@ -1,3 +1,11 @@
+---
+doc_type: baseline
+status: current
+source_of_truth: primary
+owner: engineering
+last_reviewed: 2026-03-28
+---
+
 # 技术栈与架构说明
 
 本文档描述 `cubic3-data-platform` 当前代码实现对应的技术栈、部署形态与模块分层，作为架构基线文档使用。
@@ -41,6 +49,7 @@ graph LR
 - 开发模式通常走 `Browser -> Vite -> /api 代理 -> Nginx/Flask`
 - Docker 模式通常走 `Browser -> Nginx -> Flask`
 - `frontend/dist` 是 Nginx 托管前端的静态产物，需先执行 `npm run build`
+- `APScheduler` 注册在 Web 进程中，RQ Worker 只消费长耗时任务
 
 ## 3. 技术栈
 
@@ -155,12 +164,26 @@ frontend/src/
 
 - `/dashboard`
 - `/data-center/*`
-- `/queries/*`
+- `/queries`
 - `/data-chat`
 - `/apps` / `/executions`
 - `/config/*`
-- `/semantic/*`
+- `/semantic/workbench`
+- `/semantic/cubes`
+- `/semantic/domains`
+- `/semantic/modeling`
 - `/login`
+
+说明：
+
+- 首页工作台不再由前端拼装多组统计请求，统一消费 `/api/v1/dashboard/overview`
+- 查询分析旧子页和语义中心旧别名路由只保留兼容重定向，不再作为主 IA
+
+其中数据中心当前基线为：
+
+- 数据源：`PostgreSQL`、`MaxCompute`
+- 数据集注册：`physical / virtual / file`
+- 文件数据集：`CSV / XLS / XLSX`
 
 ## 6. 当前接口分区
 
@@ -171,6 +194,7 @@ frontend/src/
 - `/api/v1/auth`
 - `/api/v1/data-center/datasources`
 - `/api/v1/data-center/datasets`
+- `/api/v1/dashboard`
 - `/api/v1/extraction`
 - `/api/v1/queries`
 - `/api/v1/sql_lab`
@@ -188,6 +212,7 @@ frontend/src/
 
 - 健康检查路径是 `/health`，不是 `/api/v1/health`
 - 数据中心 API 使用 `/api/v1/data-center/*`
+- 首页工作台聚合 API 使用 `/api/v1/dashboard/overview`
 - 登录页通过 `/api/v1/auth/login` 和 `/api/v1/auth/feishu/*`
 
 ## 7. 语义层落地方式
@@ -207,6 +232,15 @@ frontend/src/
 - `knowledge`
 - `answer_records`
 - `study_sessions`
+
+当前语义对象边界同时固定为：
+
+- `Cube` 与 `Domain` 是正式建模对象，领域编排和对象治理围绕这两类对象展开。
+- `Domain.cubes[]` 与领域画布是 `Cube <-> Domain` 关系的唯一真相；同一个 Cube 可以被多个领域引用。
+- `Cube.domain_id` 仅保留为兼容投影字段，用于列表和详情摘要，不反向驱动领域关系持久化。
+- `View` 在工作台和摘要接口层按“特殊 Cube”收敛，继续走详情、编译与物化链路，但不升格为一级导航。
+- `Recipe` 保持轻量消费对象，主要通过详情和 `DevTools` 提供示例与上下文，不进入正式建模工作流。
+- 当前不支持“同一领域内重复实例化同一个 Cube 且使用不同 Join 条件”的高级建模能力。
 
 所以它既是一个通用数据平台，也是一个带有教育分析语义资产沉淀的业务平台。
 
@@ -228,6 +262,12 @@ frontend/src/
 1. `flask --app wsgi.py run`
 2. `cd frontend && npm run dev`
 3. `python run_worker.py`
+
+职责分工：
+
+- Web 进程：提供 API，初始化 `APScheduler`，注册固定周期目录同步等调度入口
+- RQ Worker：消费目录同步、数据集同步、提取执行等长耗时任务
+- Docker / 本地环境的目标都是“支撑联调与验证”，不是一键部署收口
 
 默认 Vite 端口是 `3000`，不是 `5173`。
 

@@ -1,78 +1,65 @@
 ## ADDED Requirements
-### Requirement: Semantic Center SHALL Freeze Primary Navigation And Page Responsibilities
-The semantic center SHALL expose stable primary navigation and SHALL keep semantic model management, domain cataloging, domain relationship modeling, and developer tools as separate page responsibilities.
+### Requirement: Semantic Center SHALL Map Backend Capability Domains To Stable Frontend Responsibilities
+The semantic center SHALL organize frontend pages around stable backend capability domains instead of mirroring individual API endpoints.
 
-#### Scenario: Navigate semantic center primary entry points
-- **WHEN** a user enters the semantic center
-- **THEN** they SHALL see primary navigation for semantic model management, domain catalog, domain modeling, and developer tools
-- **AND** the platform SHALL NOT expose a separate legacy global relation canvas entry as an independent responsibility
+#### Scenario: Map capability domains
+- **WHEN** the semantic center is designed or extended
+- **THEN** frontend responsibilities SHALL be grouped into definition, modeling, runtime, and governance domains
+- **AND** a new page SHALL NOT be created only because a new endpoint exists
 
-#### Scenario: Domain canvas stays focused on domain modeling
-- **WHEN** a user opens a domain canvas
-- **THEN** the page SHALL focus on domain-level cube relationship modeling
-- **AND** the page SHALL NOT treat cube detail viewing or cube editing as its primary workflow
+#### Scenario: Keep page responsibilities stable
+- **WHEN** a developer adds semantic center functionality
+- **THEN** they SHALL place it in an existing page responsibility whenever possible
+- **AND** they SHALL justify any new page type against the capability-domain model
 
-### Requirement: Semantic Models SHALL Be Managed As One Unified Object Family
-The platform SHALL manage `Cube` and `View` through one unified semantic model entry and SHALL distinguish them by `kind` instead of splitting them into separate primary management pages.
+### Requirement: Semantic Center SHALL Use Five Workbench Page Types
+The semantic center SHALL use five stable page types: `Overview`, `Inventory`, `Studio`, `Canvas`, and `Developer Workbench`.
 
-#### Scenario: Filter semantic models by kind
-- **WHEN** a user opens the semantic model list
-- **THEN** they SHALL be able to view all semantic models together
-- **AND** they SHALL be able to filter between `cube`, `view`, or all kinds
+#### Scenario: Assign routes to page types
+- **WHEN** a semantic center route is implemented
+- **THEN** it SHALL map to exactly one of the five page types
+- **AND** it SHALL follow that page type's default hierarchy of header, context, main task area, and conditional inspector
 
-#### Scenario: View remains a special semantic model
-- **WHEN** a user views or edits a `View`
-- **THEN** the page SHALL render `View`-specific metadata and controls
-- **AND** the user SHALL remain within the unified semantic model management flow
+#### Scenario: Avoid mixed page responsibilities
+- **WHEN** a page already belongs to one page type
+- **THEN** it SHALL NOT absorb unrelated responsibilities from another page type
+- **AND** the UI SHALL keep modeling, governance, inventory, and developer tasks separated
 
-### Requirement: Semantic Model Studio SHALL Stay Independent From Developer Tools
-The platform SHALL keep semantic model creation and editing in a dedicated studio workflow and SHALL NOT merge it into developer tools tabs.
+### Requirement: Cube SHALL Stay The Primary Inventory Entry
+The semantic center SHALL keep `Cube` as the primary inventory and modeling entry, while exposing `View` and `Recipe` as secondary semantic surfaces.
 
-#### Scenario: Open semantic model studio
-- **WHEN** a user creates or edits a semantic model
-- **THEN** the platform SHALL open a dedicated studio page
-- **AND** the page SHALL focus on model definition, source binding, and lifecycle operations
+#### Scenario: Open semantic inventory
+- **WHEN** a user enters the primary semantic inventory
+- **THEN** the page SHALL prioritize `Cube` triage, filtering, and editing
+- **AND** `View` metadata MAY appear as related information, preview content, or tooling context
 
-#### Scenario: Create model without binding a domain first
-- **WHEN** a user creates a new semantic model
-- **THEN** `domain_id` MAY be empty during initial creation
-- **AND** the model MAY be assigned to a domain later
+#### Scenario: Expose view and recipe without new primary navigation
+- **WHEN** the system needs to expose `View` or `Recipe` capabilities
+- **THEN** it SHALL attach them to existing semantic pages such as detail panels or developer tools
+- **AND** it SHALL NOT add separate first-level navigation entries for them in the same phase
 
-### Requirement: Domain Entry SHALL Support Catalog-Style Organization
-The platform SHALL provide a catalog-style domain entry based on a lightweight two-layer `catalog -> domain` model and SHALL support single-domain lifecycle management inside the directory context.
+### Requirement: Domain Entry SHALL Split Governance From Relationship Modeling
+The semantic center SHALL treat domain catalog governance and domain relationship modeling as separate page responsibilities.
 
-#### Scenario: Browse domain catalog
+#### Scenario: Browse domain catalogs
 - **WHEN** a user opens the domain entry page
-- **THEN** they SHALL be able to browse domains through a catalog and domain structure instead of a flat card grid
-- **AND** the structure SHALL support future category expansion without changing the primary navigation model
+- **THEN** the page SHALL focus on catalog governance, domain selection, and governance signals
+- **AND** it SHALL NOT act as the primary relation-editing workspace
 
-#### Scenario: Manage one domain from the catalog
-- **WHEN** a user selects one domain inside the directory
-- **THEN** they SHALL be able to view and edit the domain's basic information and lifecycle status in the directory detail pane
-- **AND** they SHALL NOT need a separate standalone "domain management" workspace for single-domain operations
+#### Scenario: Open a domain canvas
+- **WHEN** a user opens a domain canvas
+- **THEN** the page SHALL focus on cube relationships, Join editing, and publish checks
+- **AND** it SHALL NOT act as a catalog governance or single-cube editing page
 
-#### Scenario: Avoid recursive catalog overdesign
-- **WHEN** the platform introduces the first version of domain cataloging
-- **THEN** it SHALL use a lightweight two-layer `catalog -> domain` model
-- **AND** it SHALL NOT require recursive multi-level catalog trees, catalog-level publishing, or complex catalog permissions in the same phase
+### Requirement: Developer Tools SHALL Aggregate Definition, Runtime, And Governance Support
+The semantic center SHALL provide one developer workbench that aggregates definition-file editing, compile debug, and schema-sync support.
 
-### Requirement: Domain Canvas SHALL Prioritize Modeling Space
-The domain canvas SHALL prioritize central modeling space over permanent side panels.
+#### Scenario: Switch developer tabs
+- **WHEN** a user opens developer tools
+- **THEN** they SHALL access definition files, compile debug, and schema sync from one workbench
+- **AND** resource switching SHALL keep the current object context visible
 
-#### Scenario: View domain canvas on desktop
-- **WHEN** a user opens a domain canvas on desktop
-- **THEN** the central modeling surface SHALL be the dominant visual region
-- **AND** supporting cube library or detail panels SHALL be collapsible, drawer-based, or otherwise non-dominant
-
-### Requirement: Schema Drift Experience SHALL Be Explicit And Observable
-The platform SHALL present a clear definition of schema drift and SHALL provide visible feedback for drift detection actions and outcomes.
-
-#### Scenario: Read drift summary from model detail
-- **WHEN** a user views a semantic model detail page
-- **THEN** the page SHALL show the latest drift status and last checked time
-- **AND** the page SHALL explain that drift includes missing columns, extra physical columns, type mismatches, and invalid join references
-
-#### Scenario: Trigger drift detection
-- **WHEN** a user runs schema drift detection
-- **THEN** the UI SHALL show pending, success, or failure feedback
-- **AND** the user SHALL be able to understand what was checked and what the result means
+#### Scenario: Unsupported inline editing
+- **WHEN** a selected semantic object does not support inline file editing
+- **THEN** the workbench SHALL explain the limitation in product language
+- **AND** it SHALL direct the user back to the appropriate semantic page type

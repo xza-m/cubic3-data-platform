@@ -361,10 +361,10 @@ WHERE ds = '20240101'
 
 - [Filter Builder 技术设计](./FILTER_BUILDER_DESIGN.md)
 - [Filter Builder 完成文档](./FILTER_BUILDER_COMPLETE.md)
-- [Phase 1 完成报告](./DATA_EXTRACTION_PH1_COMPLETE.md)
+- [Phase 1 完成报告](./DATA_EXTRACTION_PHASE1_COMPLETE.md)
 - [Phase 2 完成报告](./DATA_EXTRACTION_PHASE2_COMPLETE.md)
 - [Phase 3 完成报告](./DATA_EXTRACTION_PHASE3_COMPLETE.md)
-- [API 参考文档](./API_REFERENCE.md)
+- [当前提取 API 实现](../../../app/interfaces/api/v1/extraction.py)
 
 ## 🎯 总结
 
@@ -393,4 +393,3 @@ Phase 4 成功实现了数据提取功能的核心交互层，为用户提供了
 **版本**：v1.0.0  
 **状态**：✅ 生产就绪  
 **开发者**：AI Assistant
-

@@ -1,3 +1,11 @@
+---
+doc_type: baseline
+status: current
+source_of_truth: primary
+owner: engineering
+last_reviewed: 2026-03-28
+---
+
 # 项目启动指南
 
 本文档提供当前实现下的完整启动方式、端口说明和排障建议。
@@ -18,6 +26,18 @@
 - Superset
 - 阿里云 OSS
 
+建议首次进入仓库先执行：
+
+```bash
+make setup
+```
+
+Phase 1 当前验证通过的主链路基线为：
+
+- 数据源：`PostgreSQL`、`MaxCompute`
+- 数据集：`physical`、`virtual`、`file`
+- 文件数据集格式：`CSV / XLS / XLSX`
+
 ## 2. 当前服务与端口
 
 | 服务 | 默认端口 | 说明 |
@@ -27,6 +47,17 @@
 | Flask API | 5000 | 后端服务 |
 | Redis | 6379 | 队列与缓存 |
 | PostgreSQL | 5432 | 元数据数据库 |
+
+当前前端主入口：
+
+- `/dashboard`：首页工作台，读取 `/api/v1/dashboard/overview`
+- `/queries`：查询分析中心主工作台
+- `/semantic/workbench`：语义工作台主入口
+
+说明：
+
+- `/queries/editor` 等旧查询子页只保留兼容重定向
+- `/semantic/tools`、`/semantic/overview` 等旧语义入口只保留兼容重定向
 
 ## 3. 启动模式
 
@@ -42,7 +73,7 @@
 
 ```bash
 cp env.sample .env
-cd frontend && npm install && npm run build && cd ..
+cd frontend && npm run build && cd ..
 docker compose up --build -d
 ```
 
@@ -51,6 +82,7 @@ docker compose up --build -d
 - `docker-compose.yml` 当前没有独立的前端构建阶段
 - Nginx 会直接读取宿主机的 `frontend/dist`
 - 如果前端代码刚改过而未重新构建，Nginx 会继续提供旧资源
+- 当前交付口径是“容器可支撑联调与验证”，不是一键安装器或云原生收口
 
 验证：
 
@@ -71,7 +103,6 @@ curl http://localhost:81/health
 #### 终端 1：后端
 
 ```bash
-pip install -r requirements.txt
 flask --app wsgi.py db upgrade
 flask --app wsgi.py run
 ```
@@ -80,7 +111,6 @@ flask --app wsgi.py run
 
 ```bash
 cd frontend
-npm install
 VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 ```
 
@@ -89,6 +119,11 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 ```bash
 python run_worker.py
 ```
+
+说明：
+
+- Web 进程会自动启动 `APScheduler`
+- `python run_worker.py` 负责消费 RQ 队列中的目录同步、数据集同步等长耗时任务
 
 ### 模式 C：Docker 后端 + 本地前端
 
@@ -102,7 +137,6 @@ python run_worker.py
 ```bash
 docker compose up -d backend redis postgres rq_worker
 cd frontend
-npm install
 VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 ```
 
@@ -144,6 +178,7 @@ python run_worker.py
 
 - 会加载 `create_app(role="worker")`
 - 与当前后端依赖装配保持一致
+- 负责执行目录同步、数据集元数据刷新等后台任务
 
 ### Shell 脚本 Worker
 
@@ -169,28 +204,64 @@ python -m app.infrastructure.tasks.rq_worker
 
 ## 6. 验证与测试
 
-### 后端
+仓库根目录的验证入口按四层组织，失败信号固定如下：
+
+- `make lint`：层 1，静态检查
+- `make typecheck`：层 2，类型与接口检查
+- `make test`：层 3，自动化测试
+- `make smoke`：层 4，运行验证
+
+### 通用入口
 
 ```bash
-pytest
+make lint
+make typecheck
+make test
+make smoke
+make verify
+make verify-detect
+make verify-changed
+make docs-impact
+make verify-backend
+make verify-frontend
+make verify-docs
 ```
 
-### 前端
+如果你的改动集中在数据中心 Phase 1 主链路，优先补跑：
 
 ```bash
-cd frontend
-npm run test:unit
-npm run test:e2e
-npm run verify:ui
+make typecheck-frontend
+make test-regression-platform-data
+PYTHONPATH=. python -m pytest --no-cov tests/integration/test_api_routes_smoke.py
+```
+
+### 分层下钻
+
+```bash
+make test-unit
+make test-integration
+make test-regression
 ```
 
 ### 语义中心
 
 ```bash
-cd frontend
-npm run verify:semantic-layout
-DOMAIN_SMOKE_BASE_URL=http://127.0.0.1:3000 npm run verify:semantic
+make verify-semantic
+make semantic-layout
+make smoke-semantic
 ```
+
+### Coverage 专项验证
+
+```bash
+make coverage
+make coverage-backend
+make coverage-frontend
+```
+
+后端 coverage 当前门槛按 [后端覆盖率看板](quality/backend-coverage.md) 维护；当前 `pytest.ini` 基线为 `--cov-fail-under=95`。  
+`make coverage-backend` 还会自动校验二级模块 `>=95%` 和核心模块 `100%` 守护。
+前端 coverage 当前目标按 [前端覆盖率看板](quality/frontend-coverage.md) 维护；`make coverage-frontend` 会自动校验总 coverage `>=90%` 和核心功能与实体页 `100%` 守护。
 
 ## 7. 常用日志命令
 

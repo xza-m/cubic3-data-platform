@@ -525,10 +525,10 @@ docker exec bi_gateway_backend flask routes | grep queries
 
 ## 📚 相关文档
 
-- [查询中心功能文档](./readme.md#查询中心)
-- [项目上下文](../openspec/project.md)
-- [重构迁移计划](../.cursor/plans/查询中心重构迁移计划_2d2bf213.plan.md)
-- [PRD 产品设计文档](./prd/query_center_prd.md)
+- [查询中心功能文档（旧版总览）](./readme-old.md)
+- [项目上下文](../../../openspec/project.md)
+- 重构迁移计划：原 `.cursor` 计划文件未保留在当前仓库
+- [PRD 产品设计文档](../../prd/query_center_prd.md)
 
 ---
 

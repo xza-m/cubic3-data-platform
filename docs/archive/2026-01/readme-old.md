@@ -587,7 +587,7 @@ const tasks = (data?.data as any)?.items || []
 - API 返回：`is_active` (true/false)
 - 前端使用：`is_enabled` (错误)
 
-**修复位置**：[`frontend/src/pages/GlassExtractionTasks.tsx`](frontend/src/pages/GlassExtractionTasks.tsx)
+**修复位置**：[`frontend/src/pages/ExtractionTasks.tsx`](../../../frontend/src/pages/ExtractionTasks.tsx)
 - 第 121 行：统计启用任务数 - `t.is_enabled` → `t.is_active`
 - 第 242 行：显示任务状态 - `task.is_enabled` → `task.is_active`
 
@@ -619,7 +619,7 @@ previewResult.columns → undefined  // 实际是 previewResult.data.columns
 previewResult.data → {sql, columns, data}  // 这是对象不是数组
 ```
 
-**修复方案**：[`frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx`](frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx)
+**修复方案**：[`frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx`](../../../frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx)
 
 ```typescript
 // 第 42 行修改
@@ -696,7 +696,7 @@ previewResult.data → [...] ✓（数组）
 
 ### 修复方案
 
-**修改文件**：[`frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx`](frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx)
+**修改文件**：[`frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx`](../../../frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx)
 
 **方案**：使用 `InputNumber` 组件替代 `Input type="number"`
 
@@ -769,13 +769,13 @@ import { Table, Form, Input, InputNumber, message, Spin } from 'antd'
 #### 1. 后端实现
 
 **新增文件**：
-- [`app/application/extraction/handlers/update_task_handler.py`](app/application/extraction/handlers/update_task_handler.py) - 更新任务命令处理器
-- [`app/application/extraction/handlers/delete_task_handler.py`](app/application/extraction/handlers/delete_task_handler.py) - 删除任务命令处理器
+- [`app/application/extraction/handlers/update_task_handler.py`](../../../app/application/extraction/handlers/update_task_handler.py) - 更新任务命令处理器
+- [`app/application/extraction/handlers/delete_task_handler.py`](../../../app/application/extraction/handlers/delete_task_handler.py) - 删除任务命令处理器
 
 **修改文件**：
-- [`app/domain/events/extraction_events.py`](app/domain/events/extraction_events.py) - 添加 `TaskUpdated` 事件
-- [`app/di/container.py`](app/di/container.py) - 注册新的 Handler 到 DI 容器
-- [`app/interfaces/api/v1/extraction.py`](app/interfaces/api/v1/extraction.py) - 添加更新和删除 API 端点
+- [`app/domain/events/extraction_events.py`](../../../app/domain/events/extraction_events.py) - 添加 `TaskUpdated` 事件
+- [`app/di/container.py`](../../../app/di/container.py) - 注册新的 Handler 到 DI 容器
+- [`app/interfaces/api/v1/extraction.py`](../../../app/interfaces/api/v1/extraction.py) - 添加更新和删除 API 端点
 
 **新增 API 端点**：
 
@@ -809,8 +809,8 @@ DELETE /api/v1/extraction/tasks/<task_id>
 #### 2. 前端实现
 
 **修改文件**：
-- [`frontend/src/api/extraction.ts`](frontend/src/api/extraction.ts) - 添加 `updateTask` API 函数
-- [`frontend/src/pages/GlassExtractionTasks.tsx`](frontend/src/pages/GlassExtractionTasks.tsx) - 实现编辑和删除功能
+- [`frontend/src/api/extraction.ts`](../../../frontend/src/api/extraction.ts) - 添加 `updateTask` API 函数
+- [`frontend/src/pages/ExtractionTasks.tsx`](../../../frontend/src/pages/ExtractionTasks.tsx) - 实现编辑和删除功能
 
 **编辑功能**：
 - 添加编辑模态框，支持修改任务名称、行数限制、任务状态（启用/禁用）
@@ -991,9 +991,9 @@ curl -X DELETE http://localhost:81/api/v1/extraction/tasks/999 \
 | > 300MB | OSS链接 | 上传到OSS，生成24小时预签名URL |
 
 **实现文件**：
-- [`app/infrastructure/adapters/file_delivery/file_delivery_service.py`](app/infrastructure/adapters/file_delivery/file_delivery_service.py) - 完整的文件交付服务
-- [`app/infrastructure/tasks/jobs/extraction_job.py`](app/infrastructure/tasks/jobs/extraction_job.py) - 异步任务执行，包含文件保存和交付
-- [`app/interfaces/api/v1/extraction.py`](app/interfaces/api/v1/extraction.py) - 新增runs列表和文件下载接口
+- [`app/infrastructure/adapters/file_delivery/file_delivery_service.py`](../../../app/infrastructure/adapters/file_delivery/file_delivery_service.py) - 完整的文件交付服务
+- [`app/infrastructure/tasks/jobs/extraction_job.py`](../../../app/infrastructure/tasks/jobs/extraction_job.py) - 异步任务执行，包含文件保存和交付
+- [`app/interfaces/api/v1/extraction.py`](../../../app/interfaces/api/v1/extraction.py) - 新增runs列表和文件下载接口
 
 **新增API端点**：
 
@@ -1033,7 +1033,7 @@ GET /api/v1/extraction/runs/<run_id>/download
 #### 3. OSS支持（可选）
 
 **依赖安装**：
-- 已添加到 [`requirements.txt`](requirements.txt): `oss2==2.18.4`
+- 已添加到 [`requirements.txt`](../../../requirements.txt): `oss2==2.18.4`
 - 已在Docker镜像中安装
 
 **配置项**（在 `.env` 中）：
@@ -1052,7 +1052,7 @@ OSS_BUCKET_NAME=your-bucket-name
 
 #### 4. 前端执行历史页面
 
-**新增页面**：[`frontend/src/pages/ExtractionRuns.tsx`](frontend/src/pages/ExtractionRuns.tsx)
+**新增页面**：[`frontend/src/pages/ExtractionRuns.tsx`](../../../frontend/src/pages/ExtractionRuns.tsx)
 
 **功能特性**：
 - 显示所有执行记录（分页）
@@ -1064,7 +1064,7 @@ OSS_BUCKET_NAME=your-bucket-name
 **路由**：`http://localhost:81/extraction/runs`
 
 **任务列表集成**：
-- 在 [`GlassExtractionTasks.tsx`](frontend/src/pages/GlassExtractionTasks.tsx) 中添加"执行历史"按钮（时钟图标）
+- 在 [`frontend/src/pages/ExtractionTasks.tsx`](../../../frontend/src/pages/ExtractionTasks.tsx) 中添加"执行历史"按钮（时钟图标）
 - 点击跳转到该任务的执行历史
 
 #### 5. Superset订阅功能（保留原有实现）

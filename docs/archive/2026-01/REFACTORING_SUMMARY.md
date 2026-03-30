@@ -114,7 +114,7 @@
 47. Docker Compose：`docker-compose.yml`（已更新）
 48. 依赖：`requirements.txt`（已更新）
 49. 启动脚本：`start_new_arch.sh`
-50. 迁移指南：`docs/MIGRATION_GUIDE.md`
+50. 迁移指南：`docs/archive/legacy/MIGRATION_GUIDE.md`
 51. 架构文档：`docs/ARCHITECTURE_REFACTORING.md`
 
 ---
@@ -250,9 +250,9 @@ rq-dashboard --redis-url redis://localhost:6379/0
 ## 参考文档
 
 - [架构重构记录](./ARCHITECTURE_REFACTORING.md)
-- [迁移指南](./MIGRATION_GUIDE.md)
-- [快速开始](./QUICK_START.md)
-- [故障排查](./TROUBLESHOOTING.md)
+- [迁移指南](../legacy/MIGRATION_GUIDE.md)
+- [快速开始](../../QUICK_START.md)
+- [故障排查](../legacy/TROUBLESHOOTING.md)
 
 ---
 

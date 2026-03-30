@@ -1,8 +1,16 @@
+---
+doc_type: historical-note
+status: archived
+source_of_truth: historical
+owner: engineering
+last_reviewed: 2026-03-24
+---
+
 # 架构迁移指南
 
 > [!WARNING]
 > 本文档记录的是历史迁移过程，不作为当前实现基线。
-> 当前请优先参考 `../README.md`、`TECH_STACK_AND_ARCHITECTURE.md`、`QUICK_START.md`、`STARTUP_GUIDE.md` 与 `DOC_ALIGNMENT_REPORT.md`。
+> 当前请优先参考 `../../../README.md`、`../../TECH_STACK_AND_ARCHITECTURE.md`、`../../QUICK_START.md`、`../../STARTUP_GUIDE.md` 与 `../../DOC_ALIGNMENT_REPORT.md`。
 
 **更新时间**: 2026-01-25  
 **适用版本**: v2.0+
@@ -515,17 +523,17 @@ class CreateDatasetHandler:
 
 ## 📚 参考资源
 
-- **架构文档**: [TECH_STACK_AND_ARCHITECTURE.md](TECH_STACK_AND_ARCHITECTURE.md)
-- **数据库架构**: [DATABASE_ARCHITECTURE.md](../DATABASE_ARCHITECTURE.md)
+- **架构文档**: [TECH_STACK_AND_ARCHITECTURE.md](../../TECH_STACK_AND_ARCHITECTURE.md)
+- **数据库架构**: 当前仓库无独立数据库架构文档，请以 `../../TECH_STACK_AND_ARCHITECTURE.md` 和当前代码为准
 - **API 文档**: http://localhost/api/docs
-- **开发指南**: [AGENTS.md](../AGENTS.md)
-- **架构清理总结**: [ARCHITECTURE_CLEANUP_SUMMARY.md](../ARCHITECTURE_CLEANUP_SUMMARY.md)
+- **开发指南**: [AGENTS.md](../../../AGENTS.md)
+- **架构清理总结**: [ARCHITECTURE_CLEANUP_SUMMARY.md](../2026-01/ARCHITECTURE_CLEANUP_SUMMARY.md)
 
 ---
 
 ## 🎯 下一步
 
-1. **学习新架构**: 阅读 [TECH_STACK_AND_ARCHITECTURE.md](TECH_STACK_AND_ARCHITECTURE.md)
+1. **学习新架构**: 阅读 [TECH_STACK_AND_ARCHITECTURE.md](../../TECH_STACK_AND_ARCHITECTURE.md)
 2. **查看示例**: 参考已迁移的模块（Datasource, Dataset, Extraction）
 3. **开始迁移**: 从简单的模块开始（如 Notification）
 4. **测试验证**: 编写单元测试和集成测试

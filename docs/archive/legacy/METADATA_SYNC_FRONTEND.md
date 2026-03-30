@@ -1,8 +1,16 @@
+---
+doc_type: historical-note
+status: archived
+source_of_truth: historical
+owner: frontend
+last_reviewed: 2026-03-24
+---
+
 # 元数据同步 - 前端界面使用指南
 
 > [!WARNING]
 > 本文档基于旧版前端流程编写，页面命名、路由入口和组件形态与当前 React SPA 已不完全一致。
-> 当前前端请优先参考 `../frontend/README.md`、`TECH_STACK_AND_ARCHITECTURE.md` 和 `DOC_ALIGNMENT_REPORT.md`。
+> 当前前端请优先参考 `../../../frontend/README.md`、`../../TECH_STACK_AND_ARCHITECTURE.md` 和 `../../DOC_ALIGNMENT_REPORT.md`。
 
 ## ✅ 已完成的前端集成
 

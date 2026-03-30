@@ -218,12 +218,12 @@ open http://localhost
 
 ## 相关文档
 
-- [API 迁移完成总结](./docs/API_MIGRATION_COMPLETE.md)
-- [架构重构记录](./docs/ARCHITECTURE_REFACTORING.md)
-- [迁移指南](./docs/MIGRATION_GUIDE.md)
-- [前后端分离部署](./docs/FRONTEND_DEPLOYMENT.md)
-- [技术栈说明](./docs/TECH_STACK_AND_ARCHITECTURE.md)
-- [快速参考](./QUICK_REFERENCE.md)
+- [API 迁移完成总结](./API_MIGRATION_COMPLETE.md)
+- [架构重构记录](./ARCHITECTURE_REFACTORING.md)
+- [迁移指南](../legacy/MIGRATION_GUIDE.md)
+- [前后端分离部署](./FRONTEND_DEPLOYMENT.md)
+- [技术栈说明](../../TECH_STACK_AND_ARCHITECTURE.md)
+- [快速开始](../../QUICK_START.md)
 
 ---
 

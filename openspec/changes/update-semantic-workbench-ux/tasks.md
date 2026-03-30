@@ -53,3 +53,9 @@
 - [x] 9.2 压缩领域建模页顶部重复条带，减少对画布垂直空间的挤压
 - [x] 9.3 收紧 DevTools 的页级上下文层级，并补足 YAML 编辑器加载态
 - [x] 9.4 更新语义中心视觉快照基线，修正 `cube-browse` 与 `devtools-browse` 在空环境下的 smoke 夹具
+
+## 10. 标准化回推
+- [x] 10.1 将 `Cube 管理页` 已验证有效的工作台模式整理为语义中心标准方案
+- [x] 10.2 将标准方案写回 OpenSpec 设计文档，固定“轻页头 / 单条上下文 / 主工作面板 / 条件显示 Inspector”的默认层级
+- [x] 10.3 将该标准应用到 `Overview`、`DomainList`、`DomainModelingEntry`、`DevTools`
+- [x] 10.4 对 `CubeStudio`、`DomainCanvas` 补齐一致的上下文条与页头节奏，不改动核心工作流

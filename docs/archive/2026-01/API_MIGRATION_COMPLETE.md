@@ -282,6 +282,6 @@ curl http://localhost/api/v1/extraction/tasks
 ## 相关文档
 
 - [架构重构记录](./ARCHITECTURE_REFACTORING.md)
-- [迁移指南](./MIGRATION_GUIDE.md)
+- [迁移指南](../legacy/MIGRATION_GUIDE.md)
 - [前后端分离部署](./FRONTEND_DEPLOYMENT.md)
-- [快速参考](../QUICK_REFERENCE.md)
+- [快速开始](../../QUICK_START.md)

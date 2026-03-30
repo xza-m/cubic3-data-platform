@@ -1,5 +1,8 @@
 # 语义层建设 PRD
 
+> 状态：高价值设计文档，部分能力已落地，部分章节仍属规划或演进目标。
+> 使用时请同时对照当前语义中心实现、相关架构/ADR 文档和现有 API/前端代码。
+
 ## 一、背景与目标
 
 ### 1.1 现状问题
@@ -52,6 +55,13 @@
 | **Enum** | 字段的枚举值说明，帮助 LLM 理解业务含义 | 数据字典 |
 | **View** | 基于多个 Cube 的策展层，挑选维度/指标并指定 JOIN 路径暴露给特定消费者 | Cube.js View / 虚拟数据集的语义上位替代 |
 | **Recipe** | 查询配方，包含典型业务问题和对应的标准 DSL，系统自动从 DSL 中提取关联的 Cube/View 并构建反向索引，作为 Few-shot 示例注入 LLM | Cursor Skill 中的示例 / dbt Metrics 的 example queries |
+
+> 当前实现基线（2026-03）
+> - `Cube` / `Domain` 是正式建模对象。
+> - `Domain.cubes[]` / 领域画布是对象关系真相，`Cube.domain_id` 仅作为兼容投影字段保留。
+> - `View` 在当前工作台按“特殊 Cube”收敛到列表、详情、编译与物化链路。
+> - `Recipe` 继续保持轻量消费对象，主要服务查询示例和上下文注入。
+> - “同一领域内重复实例化同一个 Cube 且使用不同 Join 条件”不属于当前范围。
 
 ### 2.2 Dimension 类型
 
@@ -446,6 +456,8 @@ View 是 Cube 之上的**策展层**，用于：
 | **访问控制** | `public: false` 可隐藏底层 Cube，仅通过 View 对外暴露（P2） |
 | **虚拟数据集桥接** | View 可物化为虚拟数据集（`datasets` 表），供数据提取任务消费 |
 
+当前工作台实现里，`View` 仍然是独立 YAML 对象，但在导航、摘要和详情体验上按“特殊 Cube”处理，优先复用 `Inventory / Detail / DevTools` 这套工作台模型，而不是再扩张一套独立建模入口。
+
 **View 与虚拟数据集的关系**：
 
 ```
@@ -622,6 +634,8 @@ class MaterializeViewHandler:
 ### 3C.1 Recipe 定位
 
 Recipe（查询配方）是语义层的 **Few-shot 示例集**，解决 LLM 构造 DSL 不准确的核心问题。每个 Recipe 包含若干"自然语言问题 → 标准 DSL"的配对，系统从 DSL 中自动提取引用的 Cube/View 名称并构建反向索引，在 `describe_cube` 返回时自动附带匹配的 Recipe。
+
+当前实现中，`Recipe` 的目标仍然是“轻量消费对象”，因此重点放在状态摘要、关联 Cube 索引和 `DevTools` 消费，不进入正式建模或领域编排流。
 
 | 作用 | 说明 |
 |------|------|
