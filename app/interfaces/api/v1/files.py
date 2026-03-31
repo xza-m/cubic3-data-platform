@@ -19,8 +19,9 @@ DEFAULT_ALLOWED_EXTENSIONS = {'csv', 'xls', 'xlsx'}
 
 def allowed_file(filename):
     """检查文件扩展名是否允许"""
-    configured = set(current_app.config.get('ALLOWED_EXTENSIONS', DEFAULT_ALLOWED_EXTENSIONS) or DEFAULT_ALLOWED_EXTENSIONS)
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in (configured | DEFAULT_ALLOWED_EXTENSIONS)
+    configured = current_app.config.get('ALLOWED_EXTENSIONS')
+    allowed_extensions = set(configured) if configured is not None else set(DEFAULT_ALLOWED_EXTENSIONS)
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
 
 def generate_unique_filename(original_filename):

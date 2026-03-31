@@ -503,3 +503,52 @@ class TestExecuteExtractionJob:
         assert result['status'] == 'success'
         run.mark_as_success.assert_called_once()
         mock_file_service.send_notification.assert_called_once()
+
+
+class TestExecuteDatasourceCatalogSyncJob:
+    """execute_datasource_catalog_sync_job 测试"""
+
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.TableCacheService')
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.AdapterFactory')
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.get_current_job')
+    def test_sync_uses_latest_database_list_without_keeping_deleted_entries(
+        self,
+        mock_get_job,
+        mock_get_session,
+        mock_adapter_factory,
+        mock_table_cache_service,
+    ):
+        mock_get_job.return_value = MagicMock(id='job-99')
+
+        datasource = MagicMock(spec=DataSource)
+        datasource.id = 7
+        datasource.source_type = 'postgresql'
+        datasource.connection_config = {'host': 'localhost'}
+        datasource.get_catalog_sync_summary.return_value = {
+          'status': 'synced',
+          'tracked_databases': ['legacy_db', 'dw'],
+          'database_count': 2,
+        }
+        datasource.mark_catalog_sync_syncing = MagicMock()
+        datasource.mark_catalog_sync_synced = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = datasource
+        mock_get_session.return_value = mock_session
+
+        mock_adapter = MagicMock()
+        mock_adapter.list_databases.return_value = ['dw', 'ads']
+        mock_adapter_factory.create_adapter.return_value = mock_adapter
+
+        cache_service = MagicMock()
+        mock_table_cache_service.return_value = cache_service
+
+        from app.infrastructure.tasks.jobs.datasource_catalog_sync_job import execute_datasource_catalog_sync_job
+
+        execute_datasource_catalog_sync_job(7)
+
+        datasource.mark_catalog_sync_synced.assert_called_once_with(['ads', 'dw'])
+        cache_service.prune_datasource_caches.assert_called_once_with(7, ['ads', 'dw'])
+        cache_service.get_cached_tables.assert_any_call(7, 'dw', force_refresh=True)
+        cache_service.get_cached_tables.assert_any_call(7, 'ads', force_refresh=True)

@@ -13,7 +13,9 @@ const dashboardMocks = vi.hoisted(() => ({
   getTemplates: vi.fn(),
   getHistories: vi.fn(),
   executeQuery: vi.fn(),
+  getQuery: vi.fn(),
   createQuery: vi.fn(),
+  updateQuery: vi.fn(),
   applyTemplate: vi.fn(),
   toast: vi.fn(),
   formatSql: vi.fn((sql: string) => `FORMATTED ${sql}`),
@@ -29,7 +31,9 @@ vi.mock('../../api/queries', () => ({
   getTemplates: dashboardMocks.getTemplates,
   getHistories: dashboardMocks.getHistories,
   executeQuery: dashboardMocks.executeQuery,
+  getQuery: dashboardMocks.getQuery,
   createQuery: dashboardMocks.createQuery,
+  updateQuery: dashboardMocks.updateQuery,
   applyTemplate: dashboardMocks.applyTemplate,
 }))
 
@@ -248,7 +252,22 @@ describe('QueryCenter Dashboard page', () => {
         table_name: 'orders',
       },
     })
+    dashboardMocks.getQuery.mockImplementation(async (id: number) => ({
+      id,
+      query_code: `Q-${id}`,
+      query_name: '教学查询',
+      source_id: 1,
+      sql_query: 'SELECT 1',
+      description: '历史保存的查询',
+      tags: [],
+      is_favorite: false,
+      execute_count: 3,
+      created_by: 'tester',
+      created_at: '2026-03-28T06:00:00Z',
+      updated_at: '2026-03-28T08:00:00Z',
+    }))
     dashboardMocks.createQuery.mockResolvedValue({ id: 9, query_code: 'Q-9', query_name: '营收查询' })
+    dashboardMocks.updateQuery.mockResolvedValue({ id: 18, query_name: '教学查询' })
     dashboardMocks.applyTemplate.mockResolvedValue({
       sql_query: 'SELECT * FROM orders LIMIT 100',
       template_name: '近 30 天订单营收',
@@ -314,16 +333,31 @@ describe('QueryCenter Dashboard page', () => {
         source_id: 1,
       }))
     })
+    expect(dashboardMocks.updateQuery).not.toHaveBeenCalled()
   })
 
   it('兼容旧入口重定向传入的查询参数', async () => {
-    renderPage('/queries?legacy=history&sql=SELECT%202&sourceId=1&queryId=18&name=%E6%95%99%E5%AD%A6%E6%9F%A5%E8%AF%A2')
+    const user = userEvent.setup()
+
+    renderPage('/queries?legacy=history&sql=SELECT%202&source_id=1&id=18&name=%E6%95%99%E5%AD%A6%E6%9F%A5%E8%AF%A2')
 
     await screen.findByTestId('query-center-dashboard-layout')
 
     expect((screen.getByLabelText('sql-editor') as HTMLTextAreaElement).value).toContain('SELECT 2')
     await waitFor(() => {
       expect(screen.getAllByText('PostgreSQL - 主库').length).toBeGreaterThan(0)
+    })
+
+    await user.click(screen.getAllByRole('button', { name: '保存' })[0])
+    expect(await screen.findByDisplayValue('教学查询')).toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: '保存' })[1])
+
+    await waitFor(() => {
+      expect(dashboardMocks.updateQuery).toHaveBeenCalledWith(18, expect.objectContaining({
+        query_name: '教学查询',
+        sql_query: 'SELECT 2',
+        source_id: 1,
+      }))
     })
   })
 

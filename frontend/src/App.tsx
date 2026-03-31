@@ -16,7 +16,12 @@ const ExtractionTaskConfig = lazy(() => import('./pages/ExtractionTaskConfig'))
 const ExtractionRuns = lazy(() => import('./pages/ExtractionRuns'))
 const DataChat = lazy(() => import('./pages/DataChat'))
 const QueryCenterDashboard = lazy(() => import('./pages/QueryCenter/Dashboard'))
+const MyQueries = lazy(() => import('./pages/QueryCenter/MyQueries'))
+const QueryHistory = lazy(() => import('./pages/QueryCenter/History'))
+const VisualBuilder = lazy(() => import('./pages/QueryCenter/VisualBuilder'))
+const ScheduledQueries = lazy(() => import('./pages/QueryCenter/ScheduledQueries'))
 const AppMarket = lazy(() => import('./pages/AppCenter/AppMarket'))
+const AppDetail = lazy(() => import('./pages/AppCenter/AppDetail'))
 const ExecutionMonitor = lazy(() => import('./pages/AppCenter/ExecutionMonitor'))
 const Channels = lazy(() => import('./pages/ConfigCenter/Channels'))
 const Subscriptions = lazy(() => import('./pages/ConfigCenter/Subscriptions'))
@@ -88,7 +93,7 @@ function RedirectLegacyQueryRoute({ legacy }: { legacy: string }) {
     params.append(key, value)
   })
   const search = params.toString()
-  return <Navigate to={{ pathname: '/queries', search: search ? `?${search}` : '' }} replace />
+  return <Navigate to={{ pathname: '/queries', search: search ? `?${search}` : '' }} state={location.state} replace />
 }
 
 function App() {
@@ -121,15 +126,15 @@ function App() {
             <Route path="data-chat" element={<DataChat />} />
             <Route path="queries" element={<QueryCenterDashboard />} />
             <Route path="queries/editor" element={<RedirectLegacyQueryRoute legacy="editor" />} />
-            <Route path="queries/visual" element={<RedirectLegacyQueryRoute legacy="visual" />} />
-            <Route path="queries/my" element={<RedirectLegacyQueryRoute legacy="my" />} />
-            <Route path="queries/history" element={<RedirectLegacyQueryRoute legacy="history" />} />
+            <Route path="queries/visual" element={<VisualBuilder />} />
+            <Route path="queries/my" element={<MyQueries />} />
+            <Route path="queries/history" element={<QueryHistory />} />
             <Route path="queries/templates" element={<RedirectLegacyQueryRoute legacy="templates" />} />
-            <Route path="queries/scheduled" element={<RedirectLegacyQueryRoute legacy="scheduled" />} />
+            <Route path="queries/scheduled" element={<ScheduledQueries />} />
 
             {/* 应用中心 */}
             <Route path="apps" element={<AppMarket />} />
-            <Route path="apps/:code" element={<Navigate to="/apps" replace />} />
+            <Route path="apps/:code" element={<AppDetail />} />
             <Route path="executions" element={<ExecutionMonitor />} />
 
             {/* 配置中心 */}

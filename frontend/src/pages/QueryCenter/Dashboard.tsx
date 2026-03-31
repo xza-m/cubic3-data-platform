@@ -23,9 +23,12 @@ import {
   applyTemplate,
   createQuery,
   executeQuery,
+  getQuery,
   getHistories,
   getTemplates,
+  updateQuery,
   type CreateQueryRequest,
+  type UpdateQueryRequest,
 } from '../../api/queries'
 import type { DataSource } from '@/types'
 import {
@@ -161,6 +164,7 @@ export default function QueryCenterDashboard() {
   const [templateCollapsed, setTemplateCollapsed] = useState(true)
   const [saveModalVisible, setSaveModalVisible] = useState(false)
   const [saveFormData, setSaveFormData] = useState({ query_name: '', description: '' })
+  const [activeQueryId, setActiveQueryId] = useState<number>()
   const [legacyView, setLegacyView] = useState<LegacyQueryView | null>(null)
 
   const { data: datasourcesData } = useQuery({
@@ -189,6 +193,11 @@ export default function QueryCenterDashboard() {
   const { data: historiesData } = useQuery({
     queryKey: ['query-histories', { sourceId: selectedSource }],
     queryFn: () => getHistories({ page: 1, page_size: 5, source_id: selectedSource }),
+  })
+  const { data: queryDetail } = useQuery({
+    queryKey: ['query-detail', activeQueryId],
+    queryFn: () => getQuery(activeQueryId!),
+    enabled: Boolean(activeQueryId),
   })
 
   const templates = templatesData?.items || []
@@ -221,21 +230,26 @@ export default function QueryCenterDashboard() {
 
   useEffect(() => {
     const state = location.state as
-      | { sql?: string; sourceId?: number; name?: string; queryId?: number }
+      | { sql?: string; sourceId?: number; source_id?: number; name?: string; queryId?: number; id?: number }
       | null
       | undefined
 
     const searchParams = new URLSearchParams(location.search)
     const nextLegacyView = parseLegacyQueryView(searchParams.get('legacy'))
-    const sourceIdFromSearch = searchParams.get('sourceId')
+    const sourceIdFromSearch = searchParams.get('sourceId') || searchParams.get('source_id')
     const normalizedSourceId = sourceIdFromSearch ? Number(sourceIdFromSearch) : undefined
 
     const nextSql = state?.sql ?? searchParams.get('sql') ?? undefined
-    const nextSourceId = state?.sourceId ?? (Number.isFinite(normalizedSourceId) ? normalizedSourceId : undefined)
+    const nextSourceId =
+      state?.sourceId
+      ?? state?.source_id
+      ?? (Number.isFinite(normalizedSourceId) ? normalizedSourceId : undefined)
     const nextName = state?.name ?? searchParams.get('name') ?? ''
-    const nextQueryId = state?.queryId ?? (searchParams.get('queryId') ? Number(searchParams.get('queryId')) : undefined)
+    const searchQueryId = searchParams.get('queryId') || searchParams.get('id')
+    const nextQueryId = state?.queryId ?? state?.id ?? (searchQueryId ? Number(searchQueryId) : undefined)
 
     setLegacyView(nextLegacyView)
+    setActiveQueryId(nextQueryId)
 
     if (nextLegacyView === 'templates' || nextLegacyView === 'history') {
       setTemplateCollapsed(false)
@@ -264,6 +278,37 @@ export default function QueryCenterDashboard() {
       }))
     }
   }, [location.state, location.search])
+
+  useEffect(() => {
+    if (!queryDetail) return
+
+    const state = location.state as
+      | { sql?: string; sourceId?: number; source_id?: number; name?: string }
+      | null
+      | undefined
+    const searchParams = new URLSearchParams(location.search)
+    const hasSqlFromRoute = Boolean(state?.sql || searchParams.get('sql'))
+    const hasSourceFromRoute = Boolean(
+      state?.sourceId
+      || state?.source_id
+      || searchParams.get('sourceId')
+      || searchParams.get('source_id'),
+    )
+    const hasNameFromRoute = Boolean(state?.name || searchParams.get('name'))
+
+    if (!hasSqlFromRoute) {
+      setSql(queryDetail.sql_query)
+    }
+
+    if (!hasSourceFromRoute) {
+      setSelectedSource(queryDetail.source_id)
+    }
+
+    setSaveFormData((previous) => ({
+      query_name: hasNameFromRoute ? previous.query_name || queryDetail.query_name : queryDetail.query_name,
+      description: previous.description || queryDetail.description || '',
+    }))
+  }, [queryDetail, location.state, location.search])
 
   const templateCategories = useMemo(() => {
     const categories = new Set<string>()
@@ -331,12 +376,24 @@ export default function QueryCenterDashboard() {
   }
 
   const saveMutation = useMutation({
-    mutationFn: (data: CreateQueryRequest) => createQuery(data),
-    onSuccess: () => {
-      toast({ title: '查询已保存' })
+    mutationFn: ({
+      queryId,
+      payload,
+    }: {
+      queryId?: number
+      payload: CreateQueryRequest & UpdateQueryRequest
+    }) => (queryId ? updateQuery(queryId, payload) : createQuery(payload)),
+    onSuccess: (_result, variables) => {
+      toast({ title: variables.queryId ? '查询已更新' : '查询已保存' })
       queryClient.invalidateQueries({ queryKey: ['queries'] })
+      if (variables.queryId) {
+        queryClient.invalidateQueries({ queryKey: ['query-detail', variables.queryId] })
+      }
       setSaveModalVisible(false)
-      setSaveFormData({ query_name: '', description: '' })
+      if (!variables.queryId) {
+        setSaveFormData({ query_name: '', description: '' })
+        setActiveQueryId(undefined)
+      }
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } }; message?: string }
@@ -359,10 +416,13 @@ export default function QueryCenterDashboard() {
     }
 
     saveMutation.mutate({
-      query_name: saveFormData.query_name,
-      description: saveFormData.description,
-      sql_query: sql,
-      source_id: selectedSource,
+      queryId: activeQueryId,
+      payload: {
+        query_name: saveFormData.query_name,
+        description: saveFormData.description,
+        sql_query: sql,
+        source_id: selectedSource,
+      },
     })
   }
 

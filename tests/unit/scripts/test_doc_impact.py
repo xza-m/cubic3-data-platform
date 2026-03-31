@@ -42,6 +42,20 @@ def test_workflow_change_passes_with_testing_doc():
     assert not payload["errors"]
 
 
+def test_scheduler_runtime_change_requires_runtime_doc():
+    result = run_doc_impact("app/infrastructure/scheduler.py")
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["errors"]
+
+
+def test_entrypoint_runtime_change_requires_runtime_doc():
+    result = run_doc_impact("entrypoint.sh")
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["errors"]
+
+
 def test_architecture_boundary_only_warns():
     result = run_doc_impact("app/di/container.py")
     assert result.returncode == 0

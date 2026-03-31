@@ -22,6 +22,41 @@ def test_yaml_catalog_repository_roundtrip(tmp_path):
     assert repo.list_all()[0].name == "学习分析"
 
 
+def test_yaml_catalog_repository_ignores_playwright_fixtures(tmp_path):
+    catalogs_dir = tmp_path / "catalogs"
+    catalogs_dir.mkdir()
+    (catalogs_dir / "learning.yml").write_text(
+        yaml.dump(
+            {
+                "code": "learning",
+                "name": "学习分析",
+                "description": "学业和学习行为领域目录",
+                "status": "active",
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (catalogs_dir / "playwright_catalog_1773801359162.yml").write_text(
+        yaml.dump(
+            {
+                "code": "playwright",
+                "name": "调试目录",
+                "description": "不应被运行时加载",
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    repo = YamlCatalogRepository(str(catalogs_dir))
+
+    catalogs = repo.list_all()
+    assert [catalog.code for catalog in catalogs] == ["learning"]
+
+
 def test_yaml_catalog_repository_handles_missing_dir_and_delete_edges(tmp_path):
     repo = YamlCatalogRepository(str(tmp_path / "missing_catalogs"))
 
@@ -98,6 +133,44 @@ def test_yaml_domain_repository_handles_id_lookup_reload_and_delete_edges(tmp_pa
     assert repo.delete("domain-1") is True
     assert repo.get("domain-1") is None
     assert repo.delete("domain-1") is False
+
+
+def test_yaml_domain_repository_ignores_runtime_debug_fixtures(tmp_path):
+    domains_dir = tmp_path / "domains"
+    domains_dir.mkdir()
+    (domains_dir / "domain_academic.yml").write_text(
+        yaml.dump(
+            {
+                "code": "academic",
+                "name": "学业分析域",
+                "catalog_code": "learning",
+                "cubes": ["answer_records"],
+                "joins": [],
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (domains_dir / "domain_playwright_1773801359162.yml").write_text(
+        yaml.dump(
+            {
+                "code": "playwright",
+                "name": "调试域",
+                "catalog_code": "learning",
+                "cubes": [],
+                "joins": [],
+            },
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+    repo = YamlDomainRepository(str(domains_dir))
+
+    domains = repo.list_all()
+    assert [domain.code for domain in domains] == ["academic"]
 
 
 def test_yaml_domain_repository_invalid_yaml_raises(tmp_path):

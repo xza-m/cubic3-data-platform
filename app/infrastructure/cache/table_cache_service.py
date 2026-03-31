@@ -183,6 +183,31 @@ class TableCacheService:
             logger.error(f"Failed to clear caches for datasource {datasource_id}: {e}")
             self.session.rollback()
             return 0
+
+    def prune_datasource_caches(self, datasource_id: int, active_databases: List[str]) -> int:
+        """删除当前同步结果中已消失数据库的残留缓存。"""
+        normalized = sorted({database for database in active_databases if database})
+
+        try:
+            query = self.session.query(DataSourceTableCache).filter_by(datasource_id=datasource_id)
+            if normalized:
+                deleted = query.filter(
+                    ~DataSourceTableCache.database_name.in_(normalized)
+                ).delete(synchronize_session=False)
+            else:
+                deleted = query.delete(synchronize_session=False)
+
+            self.session.commit()
+            logger.info(
+                "Pruned %s stale caches for datasource %s",
+                deleted,
+                datasource_id,
+            )
+            return deleted
+        except Exception as e:
+            logger.error(f"Failed to prune stale caches for datasource {datasource_id}: {e}")
+            self.session.rollback()
+            return 0
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """获取缓存统计信息"""

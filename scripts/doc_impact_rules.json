@@ -28,11 +28,17 @@
       "description": "启动方式、运行拓扑或本地环境变化后，必须同步更新启动与运行文档。",
       "patterns": [
         "docker-compose.yml",
+        "Dockerfile",
         "env.sample",
         "deploy.sh",
+        "entrypoint.sh",
         "wsgi.py",
         "run_worker.py",
-        "start_rq_worker.sh"
+        "start_rq_worker.sh",
+        "app/infrastructure/scheduler.py",
+        "app/application/services/app_center/scheduler_service.py",
+        "app/infrastructure/tasks/rq_worker.py",
+        "app/infrastructure/tasks/task_queue.py"
       ],
       "required_any_docs": [
         "docs/runbooks/local-dev.md",

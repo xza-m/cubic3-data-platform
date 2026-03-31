@@ -38,14 +38,14 @@ def execute_datasource_catalog_sync_job(datasource_id: int):
             datasource.connection_config,
         )
         databases = list(adapter.list_databases() or [])
-        tracked = set(datasource.get_catalog_sync_summary().get('tracked_databases') or [])
-        tracked.update(databases)
+        tracked = sorted({database for database in databases if database})
 
         cache_service = TableCacheService(session=session)
-        for database in databases:
+        cache_service.prune_datasource_caches(datasource.id, tracked)
+        for database in tracked:
             cache_service.get_cached_tables(datasource.id, database, force_refresh=True)
 
-        datasource.mark_catalog_sync_synced(sorted(tracked))
+        datasource.mark_catalog_sync_synced(tracked)
         session.commit()
         return {
             'datasource_id': datasource.id,

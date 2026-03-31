@@ -77,6 +77,16 @@ class TestYamlCubeRepository:
         assert cubes[0].name == "test_cube"
         assert cubes[0].table == "test_table"
 
+    def test_runtime_loader_ignores_playwright_fixtures(self, tmp_path):
+        cubes_dir = str(tmp_path / "cubes")
+        _write_yml(cubes_dir, "test_cube", CUBE_DATA)
+        _write_yml(cubes_dir, "playwright_cube_1774702941350", {**CUBE_DATA, "name": "playwright_cube_1774702941350"})
+
+        repo = YamlCubeRepository(cubes_dir)
+
+        cubes = repo.list_all()
+        assert [cube.name for cube in cubes] == ["test_cube"]
+
     def test_get_existing(self, tmp_path):
         cubes_dir = str(tmp_path / "cubes")
         _write_yml(cubes_dir, "test_cube", CUBE_DATA)

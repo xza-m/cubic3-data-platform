@@ -31,8 +31,28 @@ vi.mock('./pages/AppCenter/AppMarket', () => ({
   default: () => <div>应用市场页</div>,
 }))
 
+vi.mock('./pages/AppCenter/AppDetail', () => ({
+  default: () => <div>应用详情页</div>,
+}))
+
 vi.mock('./pages/QueryCenter/Dashboard', () => ({
   default: () => <div>查询分析仪表盘</div>,
+}))
+
+vi.mock('./pages/QueryCenter/MyQueries', () => ({
+  default: () => <div>我的查询页</div>,
+}))
+
+vi.mock('./pages/QueryCenter/History', () => ({
+  default: () => <div>查询历史页</div>,
+}))
+
+vi.mock('./pages/QueryCenter/VisualBuilder', () => ({
+  default: () => <div>可视化查询页</div>,
+}))
+
+vi.mock('./pages/QueryCenter/ScheduledQueries', () => ({
+  default: () => <div>定时查询页</div>,
 }))
 
 vi.mock('./pages/Login', () => ({
@@ -133,7 +153,7 @@ describe('App routes', () => {
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/queries')
   })
 
-  it('旧查询子路由会收口到 /queries 并保留兼容意图参数', async () => {
+  it('旧查询编辑入口会继续落到主工作台并保留兼容参数', async () => {
     const firstRender = renderApp('/queries/editor?folder=teaching')
     expect(await screen.findByText('查询分析仪表盘')).toBeInTheDocument()
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/queries?legacy=editor&folder=teaching')
@@ -144,11 +164,32 @@ describe('App routes', () => {
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/queries?legacy=templates&category=ops')
   })
 
-  it('应用详情旧深链会回到应用市场', async () => {
+  it('旧查询列表与调度入口保留独立工作区', async () => {
+    const myQueriesRender = renderApp('/queries/my')
+    expect(await screen.findByText('我的查询页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/queries/my')
+    myQueriesRender.unmount()
+
+    const historyRender = renderApp('/queries/history?source_id=1')
+    expect(await screen.findByText('查询历史页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/queries/history?source_id=1')
+    historyRender.unmount()
+
+    const visualRender = renderApp('/queries/visual')
+    expect(await screen.findByText('可视化查询页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/queries/visual')
+    visualRender.unmount()
+
+    renderApp('/queries/scheduled')
+    expect(await screen.findByText('定时查询页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/queries/scheduled')
+  })
+
+  it('应用详情深链保留独立详情页', async () => {
     renderApp('/apps/daily-report')
 
-    expect(await screen.findByText('应用市场页')).toBeInTheDocument()
-    expect(screen.getByTestId('location-probe')).toHaveTextContent('/apps')
+    expect(await screen.findByText('应用详情页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/apps/daily-report')
   })
 
   it('旧版领域画布路由会重定向到新画布路径', async () => {

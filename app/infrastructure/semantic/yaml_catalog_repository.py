@@ -8,6 +8,7 @@ import yaml
 
 from app.domain.semantic.entities import CatalogDefinition
 from app.domain.semantic.ports.catalog_repository import ICatalogRepository
+from app.infrastructure.semantic.runtime_yaml_filter import should_ignore_runtime_yaml
 
 
 class YamlCatalogRepository(ICatalogRepository):
@@ -24,6 +25,8 @@ class YamlCatalogRepository(ICatalogRepository):
             self._loaded = True
             return
         for fp in sorted(self._dir.glob("*.yml")):
+            if should_ignore_runtime_yaml(fp):
+                continue
             try:
                 raw = yaml.safe_load(fp.read_text(encoding="utf-8"))
                 if raw:

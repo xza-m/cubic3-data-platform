@@ -190,12 +190,44 @@ describe('ExtractionTaskConfig page', () => {
           filters: [{ field: 'score', operator: '>', value: 80 }],
           groups: [],
         },
+        task_type: 'manual',
       })
     })
     expect(extractionConfigMocks.toast).toHaveBeenCalledWith({ title: '任务创建成功' })
 
     await waitFor(() => {
       expect(extractionConfigMocks.navigate).toHaveBeenCalledWith('/extraction-tasks')
+    })
+  })
+
+  it('定时查询模式会带上 scheduled 类型并返回查询中心工作区', async () => {
+    const user = userEvent.setup()
+
+    renderPage('/extraction/config?taskType=scheduled&dataset=42')
+
+    expect(screen.getByText('创建定时查询')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.click(screen.getByRole('button', { name: '应用过滤条件' }))
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.click(screen.getByRole('button', { name: '保存任务' }))
+
+    await waitFor(() => {
+      expect(extractionConfigMocks.createTask.mock.calls[0]?.[0]).toEqual({
+        task_name: '高分学员导出',
+        dataset_id: 42,
+        selected_fields: [],
+        filter_conditions: {
+          logic: 'AND',
+          filters: [{ field: 'score', operator: '>', value: 80 }],
+          groups: [],
+        },
+        task_type: 'scheduled',
+      })
+    })
+    expect(extractionConfigMocks.toast).toHaveBeenCalledWith({ title: '定时查询创建成功' })
+
+    await waitFor(() => {
+      expect(extractionConfigMocks.navigate).toHaveBeenCalledWith('/queries/scheduled')
     })
   })
 

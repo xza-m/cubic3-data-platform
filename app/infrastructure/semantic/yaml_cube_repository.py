@@ -9,6 +9,7 @@ import yaml
 
 from app.domain.semantic.entities import CubeDefinition
 from app.domain.semantic.ports.cube_repository import ICubeRepository
+from app.infrastructure.semantic.runtime_yaml_filter import should_ignore_runtime_yaml
 
 
 class YamlCubeRepository(ICubeRepository):
@@ -26,6 +27,8 @@ class YamlCubeRepository(ICubeRepository):
             self._loaded = True
             return
         for fp in sorted(self._dir.glob("*.yml")):
+            if should_ignore_runtime_yaml(fp):
+                continue
             try:
                 raw = yaml.safe_load(fp.read_text(encoding="utf-8"))
                 if raw:
