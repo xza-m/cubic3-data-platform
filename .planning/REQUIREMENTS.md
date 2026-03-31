@@ -9,26 +9,26 @@
 
 ### 数据接入与数据集
 
-- [ ] **DATA-01**: 用户可以在内网环境下接入至少一种异构数据源并完成连接校验
-- [ ] **DATA-02**: 用户可以对已接入数据源执行元数据同步，并看到最新的表结构结果
-- [ ] **DATA-03**: 用户可以创建、查看和维护数据集，并在界面中看到关键元数据信息
-- [ ] **DATA-04**: 用户可以对数据集进行查询预览，并获得稳定可返回的预览结果
-- [ ] **DATA-05**: 当数据接入、同步或预览失败时，用户可以看到明确的失败原因
+- [x] **DATA-01**: 用户可以在内网环境下接入至少一种异构数据源并完成连接校验
+- [x] **DATA-02**: 用户可以对已接入数据源执行元数据同步，并看到最新的表结构结果
+- [x] **DATA-03**: 用户可以创建、查看和维护数据集，并在界面中看到关键元数据信息
+- [x] **DATA-04**: 用户可以对数据集进行查询预览，并获得稳定可返回的预览结果
+- [x] **DATA-05**: 当数据接入、同步或预览失败时，用户可以看到明确的失败原因
 
 ### 语义对象生命周期
 
-- [ ] **SEM-01**: 用户可以创建和保存 `Cube` 草稿，并继续编辑已有 `Cube`
-- [ ] **SEM-02**: 用户可以创建和维护 `View`，并查看其与语义对象的关联信息
-- [ ] **SEM-03**: 用户可以创建和维护 `Domain`，并把语义对象归属到对应领域
-- [ ] **SEM-04**: 用户可以创建和维护 `Recipe`，并让其与查询语义对象形成可消费关系
-- [ ] **SEM-05**: `Cube / View / Domain / Recipe` 至少具备清晰、可流转、可感知的生命周期状态
+- [x] **SEM-01**: 用户可以创建和保存 `Cube` 草稿，并继续编辑已有 `Cube`
+- [x] **SEM-02**: 用户可以创建和维护 `View`，并查看其与语义对象的关联信息
+- [x] **SEM-03**: 用户可以创建和维护 `Domain`，并把语义对象归属到对应领域
+- [x] **SEM-04**: 用户可以创建和维护 `Recipe`，并让其与查询语义对象形成可消费关系
+- [x] **SEM-05**: `Cube / View / Domain / Recipe` 至少具备清晰、可流转、可感知的生命周期状态
 
 ### 领域设计与领域目录
 
-- [ ] **DOM-01**: 用户可以在领域目录中查看领域对象列表、状态和基础描述信息
-- [ ] **DOM-02**: 用户可以在领域设计流程中维护领域与语义对象之间的组织关系
-- [ ] **DOM-03**: 用户可以在领域目录中搜索、筛选或定位目标语义资产
-- [ ] **DOM-04**: 用户可以从领域目录进入对应领域或语义对象的治理与建模入口
+- [x] **DOM-01**: 用户可以在领域目录中查看领域对象列表、状态和基础描述信息
+- [x] **DOM-02**: 用户可以在领域设计流程中维护领域与语义对象之间的组织关系
+- [x] **DOM-03**: 用户可以在领域目录中搜索、筛选或定位目标语义资产
+- [x] **DOM-04**: 用户可以从领域目录进入对应领域或语义对象的治理与建模入口
 
 ### 语义运行闭环
 
@@ -62,7 +62,7 @@
 
 ### 部署与生产可用
 
-- [ ] **OPS-01**: 平台可以通过当前单机 Docker 方式在内网环境中完成部署
+- [x] **OPS-01**: 平台可以通过当前单机 Docker 方式在内网环境中完成部署
 - [ ] **OPS-02**: 核心链路在部署后可实际运行，包括数据接入、语义中心、查询能力和应用实例
 - [ ] **OPS-03**: 平台内部主要页面与功能流在目标内网环境下保持基本顺滑和稳定
 
@@ -108,20 +108,20 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase 1 | Pending |
-| DATA-02 | Phase 1 | Pending |
-| DATA-03 | Phase 1 | Pending |
-| DATA-04 | Phase 1 | Pending |
-| DATA-05 | Phase 1 | Pending |
-| SEM-01 | Phase 2 | Pending |
-| SEM-02 | Phase 2 | Pending |
-| SEM-03 | Phase 2 | Pending |
-| SEM-04 | Phase 2 | Pending |
-| SEM-05 | Phase 2 | Pending |
-| DOM-01 | Phase 2 | Pending |
-| DOM-02 | Phase 2 | Pending |
-| DOM-03 | Phase 2 | Pending |
-| DOM-04 | Phase 2 | Pending |
+| DATA-01 | Phase 1 | Completed |
+| DATA-02 | Phase 1 | Completed |
+| DATA-03 | Phase 1 | Completed |
+| DATA-04 | Phase 1 | Completed |
+| DATA-05 | Phase 1 | Completed |
+| SEM-01 | Phase 2 | Completed |
+| SEM-02 | Phase 2 | Completed |
+| SEM-03 | Phase 2 | Completed |
+| SEM-04 | Phase 2 | Completed |
+| SEM-05 | Phase 2 | Completed |
+| DOM-01 | Phase 2 | Completed |
+| DOM-02 | Phase 2 | Completed |
+| DOM-03 | Phase 2 | Completed |
+| DOM-04 | Phase 2 | Completed |
 | RUN-01 | Phase 3 | Pending |
 | RUN-02 | Phase 3 | Pending |
 | RUN-03 | Phase 3 | Pending |
@@ -140,7 +140,7 @@
 | AIQ-02 | Phase 5 | Pending |
 | DAG-01 | Phase 6 | Pending |
 | DAG-02 | Phase 6 | Pending |
-| OPS-01 | Phase 1 | Pending |
+| OPS-01 | Phase 1 | Completed |
 | OPS-02 | Phase 6 | Pending |
 | OPS-03 | Phase 6 | Pending |
 
@@ -151,4 +151,4 @@
 
 ---
 *Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 after roadmap creation*
+*Last updated: 2026-03-26 after Phase 2 execution*

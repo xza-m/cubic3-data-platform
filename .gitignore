@@ -157,6 +157,7 @@ dmypy.json
 # Local Tooling & Agent State
 # ============================================================================
 .agent/
+.planning/debug/
 .backup/
 .claude/
 .pip-packages/
@@ -164,6 +165,8 @@ dmypy.json
 .spec-workflow/
 .impeccable.md
 backups/
+images/
+output/
 
 # ============================================================================
 # Generated Semantic Test Fixtures
