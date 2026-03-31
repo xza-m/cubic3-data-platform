@@ -1,0 +1,26 @@
+---
+doc_type: adr-index
+status: maintained
+source_of_truth: secondary
+owner: engineering
+last_reviewed: 2026-03-24
+---
+
+# ADR 目录
+
+本目录保存当前仍有效的架构决策记录（ADR, Architecture Decision Record）。
+
+## 使用规则
+
+- 只保留仍有效、仍能指导当前实现的决策
+- 失效决策不要硬删，应明确标记被替代或转入历史归档
+- 新 ADR 应聚焦“为何这样做”和“带来什么约束”，不要写成实施日志
+
+## 当前 ADR
+
+- [ADR-001 平台主线采用 React SPA + Flask API + 分层后端 + RQ 异步任务](ADR-001-platform-baseline.md)
+- [ADR-002 语义定义采用 YAML 文件仓储作为主承载](ADR-002-semantic-assets-in-yaml.md)
+- [ADR-003 异步任务与领域事件统一基于 RQ + Redis 执行](ADR-003-rq-for-tasks-and-events.md)
+- [ADR-004 语义中心采用固定的工作台页面模型，而非资源优先导航](ADR-004-semantic-workbench-page-model.md)
+- [ADR-005 HTTP API 采用按业务域分组的 `/api/v1` 契约边界](ADR-005-domain-oriented-api-boundary.md)
+- [ADR-006 应用中心与配置中心保持职责分离，通过实例与订阅关联](ADR-006-app-center-config-center-separation.md)

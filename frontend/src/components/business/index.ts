@@ -15,6 +15,11 @@ export { PageCard } from './PageCard'
 export { PageModal } from './PageModal'
 export { PageDrawer } from './PageDrawer'
 export { PageTabs, PageTabsContent, PageTabsList, PageTabsTrigger } from './PageTabs'
+export { DataCenterPageShell } from './DataCenterPageShell'
+export { CapabilityGateCard } from './CapabilityGateCard'
+export { AsyncTaskNotice } from './AsyncTaskNotice'
+export { PreviewPanel } from './PreviewPanel'
+export { RegisterFlowShell } from './RegisterFlowShell'
 
 // Data Display
 export { DataTable, type DataTableColumn, type DataTableProps } from './DataTable'

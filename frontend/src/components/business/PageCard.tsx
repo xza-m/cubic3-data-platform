@@ -32,11 +32,11 @@ export function PageCard({
   return (
     <Card className={cn("w-full", className)}>
       {(title || description || headerAction) && (
-        <CardHeader>
+        <CardHeader className="space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              {title && <CardTitle>{title}</CardTitle>}
-              {description && <CardDescription>{description}</CardDescription>}
+              {title && <CardTitle className="font-workbench-display text-[1.125rem] font-semibold leading-[1.2] tracking-[-0.02em]">{title}</CardTitle>}
+              {description && <CardDescription className="mt-1 text-[0.9375rem] leading-6">{description}</CardDescription>}
             </div>
             {headerAction && <div>{headerAction}</div>}
           </div>

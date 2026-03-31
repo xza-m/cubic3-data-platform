@@ -13,8 +13,9 @@ export function DomainGraphLegend({
   return (
     <div className="absolute right-4 top-4 z-10 flex flex-wrap items-center gap-2">
       <div className="rounded-full border border-[hsl(var(--workbench-outline))] bg-white/92 px-3 py-2 text-xs text-[hsl(var(--workbench-muted-foreground))] shadow-sm">
+        <span className="mr-2 inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[hsl(var(--semantic-warn))]" />缺失</span>
         <span className="mr-2 inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[hsl(var(--semantic-error))]" />冲突</span>
-        <span className="mr-2 inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[hsl(var(--semantic-warn))]" />待补字段</span>
+        <span className="mr-2 inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[hsl(var(--semantic-ok))]" />正常</span>
         <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[hsl(var(--workbench-accent))]" />当前焦点</span>
       </div>
 

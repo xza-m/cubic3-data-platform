@@ -63,13 +63,40 @@ def goto_semantic(page: Page, path: str) -> None:
     page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded")
 
 
+def api_request(page: Page, path: str, *, method: str = "GET", data: dict | None = None) -> dict:
+    response = page.request.fetch(
+        f"{BASE_URL}{path}",
+        method=method,
+        data=data,
+        headers={
+            "Authorization": f"Bearer {AUTH_TOKEN}",
+            "Content-Type": "application/json",
+        },
+    )
+    payload = response.json()
+    if not response.ok:
+        raise AssertionError(f"请求 {path} 失败: {payload}")
+    return payload
+
+
 def create_domain_via_ui(page: Page, domain_name: str) -> str:
-    goto_semantic(page, "/semantic/modeling")
-    page.get_by_role("heading", name="领域建模").wait_for(timeout=10_000)
-    page.get_by_test_id("domain-create-name").fill(domain_name)
-    page.get_by_test_id("domain-create-submit").click()
-    page.wait_for_url("**/semantic/domains/**", timeout=15_000)
-    return page.url.rstrip("/").split("/")[-1]
+    payload = api_request(
+        page,
+        "/api/v1/semantic/domains",
+        method="POST",
+        data={
+            "name": domain_name,
+            "catalog_code": "default",
+        },
+    )
+    domain = payload.get("data") or {}
+    domain_id = domain.get("id") or domain.get("code")
+    if not domain_id:
+        raise AssertionError(f"创建领域成功，但响应缺少领域标识: {payload}")
+
+    goto_semantic(page, f"/semantic/domains/{domain_id}")
+    page.get_by_test_id("domain-canvas-page").wait_for(timeout=15_000)
+    return str(domain_id)
 
 
 def select_first_schema_table(page: Page) -> None:

@@ -326,12 +326,11 @@ if (!validation.valid) {
 
 如有问题，请查阅：
 - [技术设计文档](./FILTER_BUILDER_DESIGN.md)
-- [API文档](./API_REFERENCE.md)
-- [故障排查指南](./TROUBLESHOOTING.md)
+- [当前提取 API 实现](../../../app/interfaces/api/v1/extraction.py)
+- [故障排查指南](../legacy/TROUBLESHOOTING.md)
 
 ---
 
 **开发完成时间**：2025-12-21  
 **版本**：v1.0.0  
 **状态**：✅ 生产就绪
-

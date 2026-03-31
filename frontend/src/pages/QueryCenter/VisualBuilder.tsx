@@ -1,466 +1,238 @@
-/**
- * 可视化查询构建器 - Migrated to shadcn/ui
- */
-import { useState, useMemo } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import {
-  Group,
-  ArrowUpDown,
-  Eye,
-  Code,
-  Play,
-  Plus,
-  Trash2
-} from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useLocation, useNavigate } from 'react-router-dom'
+import type { ColumnDef } from '@tanstack/react-table'
+import { Code2, PlayCircle, Wand2 } from 'lucide-react'
 import { getDataSources } from '../../api/datasources'
 import { executeQuery } from '../../api/queries'
-import FilterBuilder from '../../components/FilterBuilder/FilterBuilder'
-import { generateSQLFromConfig, validateVisualQueryConfig, type VisualQueryConfig } from '../../utils/visualQueryGenerator'
-import type { FieldMeta } from '../../types/filter'
-import type { QueryResultData } from '@/types'
-import { FormButton, FormSelect, DataTable, useToast } from '@/components/business'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
-import { ColumnDef } from '@tanstack/react-table'
-import { cn } from '@/lib/utils'
+import { DataTable, FormButton, FormSelect, useToast } from '@/components/business'
+
+const TABLE_FIELDS: Record<string, string[]> = {
+  lesson_progress: ['lesson_name', 'student_count', 'progress_ratio', 'dt'],
+  lesson_activity: ['class_name', 'active_students', 'avg_duration', 'dt'],
+  answer_records: ['question_id', 'student_id', 'correct_rate', 'dt'],
+}
+
+const TABLE_OPTIONS = [
+  { value: 'lesson_progress', label: 'lesson_progress' },
+  { value: 'lesson_activity', label: 'lesson_activity' },
+  { value: 'answer_records', label: 'answer_records' },
+]
 
 export default function VisualBuilder() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { toast } = useToast()
-  const [config, setConfig] = useState<VisualQueryConfig>({
-    sourceId: undefined,
-    table: '',
-    fields: [],
-    filters: { logic: 'AND', filters: [{ field: '', operator: '', value: null }], groups: [] },
-    groupBy: [],
-    aggregations: [],
-    orderBy: [],
-    limit: 100
+  const initialParams = useMemo(() => new URLSearchParams(location.search), [location.search])
+  const initialSourceId = initialParams.get('source_id') || initialParams.get('sourceId')
+  const [selectedSource, setSelectedSource] = useState<number | undefined>(
+    initialSourceId ? Number(initialSourceId) : undefined,
+  )
+  const [selectedTable, setSelectedTable] = useState('lesson_progress')
+  const [selectedFields, setSelectedFields] = useState<string[]>(['lesson_name'])
+  const [result, setResult] = useState<{ columns: string[]; data: unknown[][] } | null>(null)
+
+  const { data } = useQuery({
+    queryKey: ['visual-builder-datasources'],
+    queryFn: () => getDataSources({ page: 1, page_size: 100 }),
   })
-  
-  const [availableFields] = useState<FieldMeta[]>([])
-  const [results, setResults] = useState<QueryResultData | null>(null)
-  
-  // 获取数据源列表
-  const { data: datasourcesData } = useQuery({
-    queryKey: ['datasources'],
-    queryFn: () => getDataSources({ page: 1, page_size: 100 })
-  })
-  
-  const datasources = datasourcesData?.data?.items || []
-  
-  // 生成 SQL
-  const generatedSQL = useMemo(() => {
-    if (!config.table) return ''
-    return generateSQLFromConfig(config, availableFields)
-  }, [config, availableFields])
-  
-  // 执行查询
-  const executeMutation = useMutation({
-    mutationFn: executeQuery,
-    onSuccess: (data) => {
-      setResults(data.data)
-      toast({ title: `查询成功: ${data.data.row_count} 行` })
-    },
-    onError: (error: unknown) => {
-      const err = error as Error
-      toast({ title: '查询执行失败', description: err.message, variant: 'destructive' })
+
+  const datasources = data?.data?.items || []
+  const datasourceOptions = datasources.map((datasource: { id: number; name: string; source_type: string }) => ({
+    value: String(datasource.id),
+    label: `${datasource.name} (${datasource.source_type})`,
+  }))
+
+  useEffect(() => {
+    if (!selectedSource && datasources.length > 0) {
+      setSelectedSource(datasources[0].id)
     }
-  })
-  
-  const handleExecute = () => {
-    const validation = validateVisualQueryConfig(config)
-    if (!validation.valid) {
-      toast({ title: '配置错误', description: validation.errors[0], variant: 'destructive' })
+  }, [datasources, selectedSource])
+
+  useEffect(() => {
+    if (!selectedSource || datasources.length === 0) {
       return
     }
-    
-    if (!config.sourceId) {
+
+    const hasCurrentSource = datasources.some((datasource: { id: number }) => datasource.id === selectedSource)
+    if (!hasCurrentSource) {
+      setSelectedSource(datasources[0].id)
+    }
+  }, [datasources, selectedSource])
+
+  const availableFields = TABLE_FIELDS[selectedTable] || []
+  const sql = useMemo(() => {
+    const fields = selectedFields.length ? selectedFields.join(', ') : '*'
+    return [`SELECT ${fields}`, `FROM ${selectedTable}`, 'LIMIT 100'].join('\n')
+  }, [selectedFields, selectedTable])
+
+  const executeMutation = useMutation({
+    mutationFn: executeQuery,
+    onSuccess: (response) => {
+      setResult({
+        columns: response.data.columns,
+        data: response.data.data,
+      })
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : '查询执行失败'
+      toast({ title: '查询执行失败', description: message, variant: 'destructive' })
+    },
+  })
+
+  const resultColumns = useMemo<ColumnDef<Record<string, unknown>>[]>(
+    () =>
+      (result?.columns || []).map((column) => ({
+        accessorKey: column,
+        header: column,
+      })),
+    [result],
+  )
+
+  const resultRows = useMemo(
+    () =>
+      (result?.data || []).map((row) =>
+        result?.columns.reduce<Record<string, unknown>>((record, column, index) => {
+          record[column] = row[index]
+          return record
+        }, {}) || {},
+      ),
+    [result],
+  )
+
+  const handleToggleField = (field: string) => {
+    setSelectedFields((previous) =>
+      previous.includes(field)
+        ? previous.filter((item) => item !== field)
+        : [...previous, field],
+    )
+  }
+
+  const handleExecute = async () => {
+    if (!selectedSource) {
       toast({ title: '请先选择数据源', variant: 'warning' })
       return
     }
-    
-    executeMutation.mutate({
-      source_id: config.sourceId,
-      sql_query: generatedSQL,
-      limit: config.limit
+
+    if (!selectedTable) {
+      toast({ title: '请先选择数据表', variant: 'warning' })
+      return
+    }
+
+    await executeMutation.mutateAsync({
+      source_id: selectedSource,
+      sql_query: sql,
+      limit: 100,
     })
   }
-  
+
   const handleSwitchToEditor = () => {
-    navigate(`/queries/editor`, {
-      state: { sql: generatedSQL, sourceId: config.sourceId }
-    })
-  }
-  
-  // 添加聚合函数
-  const handleAddAggregation = () => {
-    setConfig({
-      ...config,
-      aggregations: [
-        ...config.aggregations,
-        { func: 'COUNT', field: '', alias: `agg_${config.aggregations.length + 1}` }
-      ]
-    })
-  }
-  
-  // 添加排序
-  const handleAddOrderBy = () => {
-    setConfig({
-      ...config,
-      orderBy: [
-        ...config.orderBy,
-        { field: '', direction: 'DESC' }
-      ]
+    const params = new URLSearchParams()
+    params.set('sql', sql)
+    if (selectedSource) {
+      params.set('sourceId', String(selectedSource))
+      params.set('source_id', String(selectedSource))
+    }
+
+    navigate({
+      pathname: '/queries/editor',
+      search: `?${params.toString()}`,
     })
   }
 
-  // 构建结果表格列
-  const resultColumns: ColumnDef<Record<string, unknown>>[] = results?.columns?.map((col: string) => ({
-    accessorKey: col,
-    header: col,
-  })) || []
-
-  // 构建结果数据
-  const resultData = results?.data?.map((row: unknown[], index: number) => {
-    const obj: Record<string, unknown> = { id: index }
-    results.columns.forEach((col: string, i: number) => {
-      obj[col] = row[i]
-    })
-    return obj
-  }) || []
-  
   return (
-    <div className="h-full flex flex-col">
-      {/* 页面标题 */}
-      <div className="px-6 py-4 bg-white border-b border-gray-200">
-        <h1 className="text-2xl font-bold text-gray-900">可视化查询构建器</h1>
-        <p className="text-sm text-gray-500 mt-1">无需编写 SQL，通过可视化方式构建查询</p>
+    <div className="flex h-full flex-col bg-[#F8FAFC]">
+      <div className="border-b border-[#E2E8F0] bg-white px-8 py-6">
+        <h1 className="text-2xl font-semibold text-[#0F172A]">可视化查询构建器</h1>
+        <p className="mt-2 text-sm text-[#64748B]">无需编写 SQL，通过可视化方式构建查询。</p>
       </div>
-      
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto p-6 space-y-6">
-          {/* Step 1: 选择数据源和表 */}
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold">
-                1
-              </div>
-              <h2 className="text-lg font-semibold text-gray-900">选择数据源和表</h2>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>数据源</Label>
-                <FormSelect
-                  placeholder="选择数据源"
-                  value={config.sourceId?.toString() || ''}
-                  onValueChange={(value) => setConfig({ ...config, sourceId: Number(value), table: '', fields: [] })}
-                  options={datasources.map((ds: { id: number; name: string; source_type: string }) => ({
-                    value: ds.id.toString(),
-                    label: `${ds.name} (${ds.source_type})`
-                  }))}
-                  className="mt-1"
-                />
-              </div>
-              
-              <div>
-                <Label>数据表</Label>
-                <FormSelect
-                  placeholder="选择数据表"
-                  value={config.table}
-                  onValueChange={(value) => setConfig({ ...config, table: value })}
-                  disabled={!config.sourceId}
-                  options={[
-                    { value: 'users', label: 'users (示例)' },
-                    { value: 'orders', label: 'orders (示例)' },
-                    { value: 'products', label: 'products (示例)' }
-                  ]}
-                  className="mt-1"
-                />
-              </div>
-            </div>
+
+      <div className="grid flex-1 gap-6 overflow-auto px-8 py-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <section className="space-y-5 rounded-3xl border border-[#E2E8F0] bg-white p-6">
+          <div>
+            <div className="text-sm font-medium text-[#0F172A]">数据源</div>
+            <FormSelect
+              value={selectedSource ? String(selectedSource) : ''}
+              onValueChange={(value) => setSelectedSource(value ? Number(value) : undefined)}
+              options={datasourceOptions}
+              placeholder="选择数据源"
+              className="mt-2"
+            />
           </div>
-          
-          {/* Step 2: 选择字段 */}
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold">
-                2
-              </div>
-              <h2 className="text-lg font-semibold text-gray-900">选择字段</h2>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-3">
-              {['id', 'user_id', 'user_name', 'email', 'created_at', 'updated_at', 'status', 'amount', 'count'].map((field) => (
-                <div key={field} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={field}
-                    checked={config.fields.includes(field)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setConfig({ ...config, fields: [...config.fields, field] })
-                      } else {
-                        setConfig({ ...config, fields: config.fields.filter(f => f !== field) })
-                      }
-                    }}
+
+          <div>
+            <div className="text-sm font-medium text-[#0F172A]">数据表</div>
+            <FormSelect
+              value={selectedTable}
+              onValueChange={(value) => {
+                setSelectedTable(value)
+                setSelectedFields(TABLE_FIELDS[value]?.slice(0, 1) || [])
+              }}
+              options={TABLE_OPTIONS}
+              placeholder="选择数据表"
+              className="mt-2"
+            />
+          </div>
+
+          <div>
+            <div className="text-sm font-medium text-[#0F172A]">字段</div>
+            <div className="mt-3 grid gap-2">
+              {availableFields.map((field) => (
+                <label
+                  key={field}
+                  className="flex items-center gap-2 rounded-2xl border border-[#E2E8F0] px-3 py-2 text-sm text-[#334155]"
+                >
+                  <input
+                    aria-label={`field-${field}`}
+                    type="checkbox"
+                    checked={selectedFields.includes(field)}
+                    onChange={() => handleToggleField(field)}
                   />
-                  <label htmlFor={field} className="text-sm font-medium cursor-pointer">
-                    {field}
-                  </label>
-                </div>
+                  <span>{field}</span>
+                </label>
               ))}
             </div>
           </div>
-          
-          {/* Step 3: 筛选条件 */}
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold">
-                3
-              </div>
-              <h2 className="text-lg font-semibold text-gray-900">筛选条件</h2>
-            </div>
-            
-            <FilterBuilder
-              fields={availableFields}
-              value={config.filters}
-              onChange={(filters) => setConfig({ ...config, filters })}
-            />
+
+          <div className="flex flex-col gap-3">
+            <FormButton loading={executeMutation.isPending} onClick={handleExecute}>
+              <PlayCircle className="mr-2 h-4 w-4" />
+              执行查询
+            </FormButton>
+            <FormButton
+              variant="outline"
+              onClick={handleSwitchToEditor}
+            >
+              <Code2 className="mr-2 h-4 w-4" />
+              切换到 SQL 编辑器
+            </FormButton>
           </div>
-          
-          {/* Step 4: 分组与聚合 */}
-          <Accordion
-            type="single"
-            collapsible
-            className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl"
-          >
-            <AccordionItem value="grouping" className="border-none">
-              <AccordionTrigger className="px-6 py-4 hover:no-underline">
-                <div className="flex items-center gap-2">
-                  <Group className="w-5 h-5 text-gray-500" />
-                  <span className="font-semibold">分组与聚合（可选）</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-6 pb-6">
-                <div className="space-y-4">
-                  <div>
-                    <Label>分组字段</Label>
-                    <FormSelect
-                      placeholder="选择分组字段"
-                      value={config.groupBy[0] || ''}
-                      onValueChange={(val) => setConfig({ ...config, groupBy: val ? [val] : [] })}
-                      options={config.fields.map(f => ({ value: f, label: f }))}
-                      className="mt-1"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label>聚合函数</Label>
-                    {config.aggregations.map((agg, index) => (
-                      <div key={index} className="flex items-center gap-2 mb-2">
-                        <FormSelect
-                          value={agg.func}
-                          onValueChange={(func) => {
-                            const newAggs = [...config.aggregations]
-                            newAggs[index] = { ...agg, func: func as 'COUNT' | 'SUM' | 'AVG' | 'MAX' | 'MIN' }
-                            setConfig({ ...config, aggregations: newAggs })
-                          }}
-                          options={[
-                            { value: 'COUNT', label: 'COUNT' },
-                            { value: 'SUM', label: 'SUM' },
-                            { value: 'AVG', label: 'AVG' },
-                            { value: 'MAX', label: 'MAX' },
-                            { value: 'MIN', label: 'MIN' }
-                          ]}
-                          className="w-[120px]"
-                        />
-                        <FormSelect
-                          placeholder="选择字段"
-                          value={agg.field}
-                          onValueChange={(field) => {
-                            const newAggs = [...config.aggregations]
-                            newAggs[index] = { ...agg, field }
-                            setConfig({ ...config, aggregations: newAggs })
-                          }}
-                          options={config.fields.map(f => ({ value: f, label: f }))}
-                          className="flex-1"
-                        />
-                        <span className="text-gray-500">AS</span>
-                        <Input
-                          value={agg.alias}
-                          onChange={(e) => {
-                            const newAggs = [...config.aggregations]
-                            newAggs[index] = { ...agg, alias: e.target.value }
-                            setConfig({ ...config, aggregations: newAggs })
-                          }}
-                          className="w-[150px]"
-                        />
-                        <FormButton
-                          variant="destructive"
-                          size="icon"
-                          onClick={() => {
-                            setConfig({
-                              ...config,
-                              aggregations: config.aggregations.filter((_, i) => i !== index)
-                            })
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </FormButton>
-                      </div>
-                    ))}
-                    <FormButton
-                      variant="outline"
-                      onClick={handleAddAggregation}
-                      className="w-full"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      添加聚合函数
-                    </FormButton>
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-          
-          {/* Step 5: 排序与限制 */}
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <ArrowUpDown className="w-5 h-5 text-gray-500" />
-              <h2 className="text-lg font-semibold text-gray-900">排序与限制</h2>
+        </section>
+
+        <section className="space-y-5">
+          <div className="rounded-3xl border border-[#E2E8F0] bg-white p-6">
+            <div className="flex items-center gap-2 text-sm font-medium text-[#0F172A]">
+              <Wand2 className="h-4 w-4 text-[#2563EB]" />
+              生成 SQL
             </div>
-            
-            <div className="space-y-4">
-              <div>
-                <Label>排序</Label>
-                {config.orderBy.map((order, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-2">
-                    <FormSelect
-                      placeholder="选择字段"
-                      value={order.field}
-                      onValueChange={(field) => {
-                        const newOrders = [...config.orderBy]
-                        newOrders[index] = { ...order, field }
-                        setConfig({ ...config, orderBy: newOrders })
-                      }}
-                      options={config.fields.map(f => ({ value: f, label: f }))}
-                      className="flex-1"
-                    />
-                    <FormSelect
-                      value={order.direction}
-                      onValueChange={(direction) => {
-                        const newOrders = [...config.orderBy]
-                        newOrders[index] = { ...order, direction: direction as 'ASC' | 'DESC' }
-                        setConfig({ ...config, orderBy: newOrders })
-                      }}
-                      options={[
-                        { value: 'ASC', label: '升序' },
-                        { value: 'DESC', label: '降序' }
-                      ]}
-                      className="w-[120px]"
-                    />
-                    <FormButton
-                      variant="destructive"
-                      size="icon"
-                      onClick={() => {
-                        setConfig({
-                          ...config,
-                          orderBy: config.orderBy.filter((_, i) => i !== index)
-                        })
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </FormButton>
-                  </div>
-                ))}
-                <FormButton
-                  variant="outline"
-                  onClick={handleAddOrderBy}
-                  className="w-full"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  添加排序
-                </FormButton>
-              </div>
-              
-              <div>
-                <Label htmlFor="limit">限制行数</Label>
-                <Input
-                  id="limit"
-                  type="number"
-                  value={config.limit}
-                  onChange={(e) => setConfig({ ...config, limit: Number(e.target.value) || 100 })}
-                  min={1}
-                  max={10000}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* SQL 预览 */}
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Code className="w-5 h-5 text-gray-500" />
-                <h2 className="text-lg font-semibold text-gray-900">生成的 SQL</h2>
-              </div>
-              
-              <div className="flex gap-2">
-                <FormButton
-                  variant="outline"
-                  onClick={handleSwitchToEditor}
-                >
-                  <Code className="w-4 h-4 mr-2" />
-                  切换到 SQL 编辑器
-                </FormButton>
-                <FormButton
-                  onClick={handleExecute}
-                  loading={executeMutation.isPending}
-                  className="bg-gradient-to-r from-blue-500 to-purple-500"
-                >
-                  <Play className="w-4 h-4 mr-2" />
-                  运行查询
-                </FormButton>
-              </div>
-            </div>
-            
-            <pre className="bg-gray-50 p-4 rounded-lg font-mono text-sm text-gray-700 overflow-x-auto border border-gray-200">
-              {generatedSQL || '-- 请配置查询条件'}
+            <pre className="mt-4 overflow-auto rounded-2xl bg-[#0F172A] p-5 text-xs leading-6 text-[#E2E8F0]">
+              {sql}
             </pre>
           </div>
-          
-          {/* 结果展示 */}
-          {results && (
-            <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-gray-500" />
-                  <h2 className="text-lg font-semibold text-gray-900">查询结果</h2>
+
+          <div className="rounded-3xl border border-[#E2E8F0] bg-white p-6">
+            <div className="text-sm font-medium text-[#0F172A]">查询结果</div>
+            <div className="mt-4">
+              {result ? (
+                <DataTable data={resultRows} columns={resultColumns} />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[#CBD5E1] px-6 py-12 text-center text-sm text-[#64748B]">
+                  选择数据源并执行查询后，这里会展示结果集。
                 </div>
-                <span className="text-sm text-gray-500">
-                  {results.row_count} 行 · 耗时 {(results.execution_time_ms / 1000).toFixed(2)}s
-                </span>
-              </div>
-              
-              <DataTable
-                columns={resultColumns}
-                data={resultData}
-                pageSize={20}
-                showPagination={true}
-              />
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        </section>
       </div>
     </div>
   )

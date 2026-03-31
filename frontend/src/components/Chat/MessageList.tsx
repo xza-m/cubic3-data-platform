@@ -1,8 +1,5 @@
-/**
- * 消息列表组件 - Migrated to shadcn/ui
- */
 import { useEffect, useRef } from 'react'
-import { User, Bot, Code, AlertCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, Bot, Code, Loader2, User } from 'lucide-react'
 import { format } from 'date-fns'
 import ChartVisualization from './ChartVisualization'
 import type { Message } from '../../api/conversations'
@@ -20,57 +17,45 @@ export default function MessageList({ messages, loading }: MessageListProps) {
   }, [messages])
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+    <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
       {messages.map((message) => (
-        <div
-          key={message.id}
-          className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-        >
-          {message.role === 'assistant' && (
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-              <Bot className="w-5 h-5 text-white" />
+        <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          {message.role === 'assistant' ? (
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[0.9rem] bg-slate-900 text-white">
+              <Bot className="h-5 w-5" />
             </div>
-          )}
+          ) : null}
 
           <div className={`max-w-3xl ${message.role === 'user' ? 'order-first' : ''}`}>
-            {/* 用户消息 */}
-            {message.role === 'user' && (
-              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-lg">
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                <div className="text-xs opacity-80 mt-1">
+            {message.role === 'user' ? (
+              <div className="rounded-2xl rounded-tr-sm border border-slate-900 bg-slate-900 px-4 py-3 text-white">
+                <p className="text-[0.9375rem] leading-7 whitespace-pre-wrap">{message.content}</p>
+                <div className="mt-1 tabular-nums text-[0.75rem] leading-4 text-slate-300">
                   {format(new Date(message.created_at), 'HH:mm')}
                 </div>
               </div>
-            )}
-
-            {/* AI 消息 */}
-            {message.role === 'assistant' && (
+            ) : (
               <div className="space-y-3">
-                {/* 文本回复 */}
-                {message.content && (
-                  <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm border border-gray-200">
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.content}</p>
-                    <div className="text-xs text-gray-400 mt-1">
+                {message.content ? (
+                  <div className="rounded-2xl rounded-tl-sm border border-[hsl(var(--workbench-outline))] bg-white px-4 py-3 shadow-[0_8px_20px_rgba(15,23,42,0.03)]">
+                    <p className="text-[0.9375rem] leading-7 text-[hsl(var(--workbench-ink))] whitespace-pre-wrap">{message.content}</p>
+                    <div className="mt-1 tabular-nums text-[0.75rem] leading-4 text-[hsl(var(--workbench-muted-foreground))]">
                       {format(new Date(message.created_at), 'HH:mm')}
                     </div>
                   </div>
-                )}
+                ) : null}
 
-                {/* SQL 代码块 */}
-                {message.generated_sql && (
-                  <div className="bg-gray-900 rounded-xl p-4 overflow-x-auto">
-                    <div className="flex items-center gap-2 text-gray-400 text-xs mb-2">
-                      <Code className="w-3 h-3" />
+                {message.generated_sql ? (
+                  <div className="overflow-x-auto rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-slate-950 p-4">
+                    <div className="mb-2 flex items-center gap-2 text-[0.75rem] leading-4 text-slate-400">
+                      <Code className="h-3 w-3" />
                       <span>生成的 SQL</span>
                     </div>
-                    <pre className="text-sm text-gray-100 font-mono">
-                      {message.generated_sql}
-                    </pre>
+                    <pre className="font-workbench-mono text-[0.875rem] leading-6 text-slate-100">{message.generated_sql}</pre>
                   </div>
-                )}
+                ) : null}
 
-                {/* 查询结果可视化 */}
-                {message.query_result && message.visualization_config && (
+                {message.query_result && message.visualization_config ? (
                   <ChartVisualization
                     data={message.query_result.data}
                     config={{
@@ -78,43 +63,42 @@ export default function MessageList({ messages, loading }: MessageListProps) {
                       ...message.visualization_config.config,
                     }}
                   />
-                )}
+                ) : null}
 
-                {/* 错误信息 */}
-                {message.error && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                {message.error ? (
+                  <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--semantic-error))]/20 bg-[hsl(var(--semantic-error))]/8 p-4">
                     <div className="flex items-start gap-2">
-                      <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                      <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-[hsl(var(--semantic-error))]" />
                       <div>
-                        <div className="text-sm font-medium text-red-800 mb-1">处理失败</div>
-                        <div className="text-sm text-red-600">{message.error}</div>
+                        <div className="mb-1 text-[0.9375rem] font-medium leading-5 text-[hsl(var(--semantic-error))]">处理失败</div>
+                        <div className="text-[0.875rem] leading-6 text-[hsl(var(--workbench-ink))]">{message.error}</div>
                       </div>
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             )}
           </div>
 
-          {message.role === 'user' && (
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
-              <User className="w-5 h-5 text-white" />
+          {message.role === 'user' ? (
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[0.9rem] border border-[hsl(var(--workbench-outline))] bg-white text-[hsl(var(--workbench-muted-foreground))]">
+              <User className="h-5 w-5" />
             </div>
-          )}
+          ) : null}
         </div>
       ))}
 
-      {loading && (
+      {loading ? (
         <div className="flex gap-3 justify-start">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-            <Bot className="w-5 h-5 text-white" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-[0.9rem] bg-slate-900 text-white">
+            <Bot className="h-5 w-5" />
           </div>
-          <div className="bg-white rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm border border-gray-200 flex items-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-            <span className="text-sm text-gray-500">正在思考...</span>
+          <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-[hsl(var(--workbench-outline))] bg-white px-4 py-3">
+            <Loader2 className="h-4 w-4 animate-spin text-[hsl(var(--workbench-accent))]" />
+            <span className="text-[0.9375rem] leading-5 text-[hsl(var(--workbench-muted-foreground))]">正在思考...</span>
           </div>
         </div>
-      )}
+      ) : null}
 
       <div ref={bottomRef} />
     </div>

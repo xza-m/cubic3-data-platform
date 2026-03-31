@@ -1,9 +1,10 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { CubeSummary, DomainCanvasData } from '@/api/semantic'
 import type { SemanticPageStatus, SemanticValidationSummary } from '@/components/Semantic/workbench'
+import type { JoinEdgeData } from '@/components/Semantic/joinEdgeTypes'
 import { getSemanticStatusLabel } from '@/lib/semantic-status'
 
-export function serializeDomainGraph(nodes: Node[], edges: Edge[]) {
+export function serializeDomainGraph(nodes: Node[], edges: Array<Edge<JoinEdgeData>>) {
   return JSON.stringify({
     nodes: [...nodes]
       .map((node) => node.id)
@@ -13,12 +14,12 @@ export function serializeDomainGraph(nodes: Node[], edges: Edge[]) {
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        relationship: String((edge.data as any)?.relationship || ''),
-        joinType: String((edge.data as any)?.join_type || ''),
-        aggregationStrategy: String((edge.data as any)?.aggregation_strategy || ''),
-        sourceField: String((edge.data as any)?.source_field || ''),
-        targetField: String((edge.data as any)?.target_field || ''),
-        description: String((edge.data as any)?.description || ''),
+        relationship: String(edge.data?.relationship || ''),
+        joinType: String(edge.data?.join_type || ''),
+        aggregationStrategy: String(edge.data?.aggregation_strategy || ''),
+        sourceField: String(edge.data?.source_field || ''),
+        targetField: String(edge.data?.target_field || ''),
+        description: String(edge.data?.description || ''),
       }))
       .sort((a, b) => `${a.source}:${a.target}`.localeCompare(`${b.source}:${b.target}`)),
   })
@@ -27,7 +28,7 @@ export function serializeDomainGraph(nodes: Node[], edges: Edge[]) {
 export function buildDomainValidationSummary(
   domain: DomainCanvasData['domain'] | undefined,
   nodes: Node[],
-  edges: Edge[],
+  edges: Array<Edge<JoinEdgeData>>,
   libraryCubes: CubeSummary[],
   hasDirtyChanges: boolean,
   isPublishing: boolean,
@@ -48,10 +49,10 @@ export function buildDomainValidationSummary(
   }
 
   for (const edge of edges) {
-    const sourceField = String((edge.data as any)?.source_field || '')
-    const targetField = String((edge.data as any)?.target_field || '')
-    const relationship = String((edge.data as any)?.relationship || 'N:1')
-    const aggregationStrategy = String((edge.data as any)?.aggregation_strategy || 'none')
+    const sourceField = String(edge.data?.source_field || '')
+    const targetField = String(edge.data?.target_field || '')
+    const relationship = String(edge.data?.relationship || 'N:1')
+    const aggregationStrategy = String(edge.data?.aggregation_strategy || 'none')
     if (!sourceField || !targetField) {
       blockers.push(`Join ${edge.source} -> ${edge.target} 缺少字段绑定。`)
     }

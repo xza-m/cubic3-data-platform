@@ -1,266 +1,839 @@
-/**
- * 查询中心首页
- */
-import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { 
-  Code, 
-  FileText, 
-  History, 
-  TrendingUp,
-  Clock,
-  Star,
-  Database,
-  Play
+import { useEffect, useMemo, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import Editor from '@monaco-editor/react'
+import {
+  ChevronDown,
+  Clock3,
+  FileText,
+  Inbox,
+  Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Play,
+  Save,
+  PanelRightClose,
+  PanelRightOpen,
+  Search,
+  Sparkles,
 } from 'lucide-react'
-import { getQueries, getHistories, getStatistics } from '../../api/queries'
+import { useLocation } from 'react-router-dom'
+import { format } from 'sql-formatter'
+import { getDataSourceDatabases, getDataSources, previewTableData } from '../../api/datasources'
+import {
+  applyTemplate,
+  createQuery,
+  executeQuery,
+  getQuery,
+  getHistories,
+  getTemplates,
+  updateQuery,
+  type CreateQueryRequest,
+  type UpdateQueryRequest,
+} from '../../api/queries'
+import type { DataSource } from '@/types'
+import {
+  DataTable,
+  FormButton,
+  FormInput,
+  FormSelect,
+  PageModal,
+  SchemaBrowser,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+  useToast,
+} from '@/components/business'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
+import type { ColumnDef } from '@tanstack/react-table'
+
+interface QueryResults {
+  columns: string[]
+  data: Record<string, unknown>[]
+  row_count?: number
+  execution_time_ms?: number
+}
+
+type LegacyQueryView = 'editor' | 'visual' | 'my' | 'history' | 'templates' | 'scheduled'
+
+const LEGACY_QUERY_VIEW_COPY: Record<LegacyQueryView, { title: string; description: string }> = {
+  editor: {
+    title: '兼容入口：SQL 编辑器',
+    description: '旧版 SQL 编辑器已并入当前工作台，保留 SQL 与数据源上下文继续执行。',
+  },
+  visual: {
+    title: '兼容入口：可视化查询',
+    description: '旧版可视化查询入口已收口到当前工作台，已自动切换到可视化结果视图。',
+  },
+  my: {
+    title: '兼容入口：我的查询',
+    description: '旧版“我的查询”已并入当前工作台，可继续使用保存查询与最近执行能力。',
+  },
+  history: {
+    title: '兼容入口：查询历史',
+    description: '旧版查询历史已收口到当前工作台，已自动展开右侧最近执行区域。',
+  },
+  templates: {
+    title: '兼容入口：查询模板',
+    description: '旧版模板库已收口到当前工作台，已自动展开右侧模版库。',
+  },
+  scheduled: {
+    title: '兼容入口：定时查询',
+    description: '旧版定时查询已迁移到统一工作台，后续请结合提取任务链路继续配置。',
+  },
+}
+
+const parseLegacyQueryView = (value: string | null): LegacyQueryView | null => {
+  if (!value) return null
+  return value in LEGACY_QUERY_VIEW_COPY ? value as LegacyQueryView : null
+}
+
+const DEFAULT_SQL = `SELECT
+  o.order_id,
+  o.status,
+  c.name AS customer_name,
+  SUM(o.total_amount) AS revenue
+FROM public.orders o
+LEFT JOIN public.customers c ON o.user_id = c.id
+WHERE o.created_at >= CURRENT_DATE - INTERVAL '30 day'
+GROUP BY o.order_id, o.status, c.name
+LIMIT 100`
+
+const normalizeQueryColumns = (columns: unknown): string[] => {
+  if (!Array.isArray(columns)) return []
+  return columns.map((column) => {
+    if (typeof column === 'string') return column
+    if (typeof column === 'object' && column !== null && 'name' in column) {
+      return String((column as { name: unknown }).name)
+    }
+    return String(column ?? '')
+  })
+}
+
+const normalizeQueryRows = (columns: string[], rows: unknown): Record<string, unknown>[] => {
+  if (!Array.isArray(rows)) return []
+
+  return rows.map((row) => {
+    if (Array.isArray(row)) {
+      return columns.reduce<Record<string, unknown>>((acc, column, index) => {
+        acc[column] = row[index]
+        return acc
+      }, {})
+    }
+
+    return typeof row === 'object' && row !== null ? row as Record<string, unknown> : {}
+  })
+}
+
+const buildQueryResults = ({
+  columns,
+  rows,
+  rowCount,
+  executionTimeMs,
+}: {
+  columns: unknown
+  rows: unknown
+  rowCount?: number
+  executionTimeMs?: number
+}): QueryResults => {
+  const normalizedColumns = normalizeQueryColumns(columns)
+  return {
+    columns: normalizedColumns,
+    data: normalizeQueryRows(normalizedColumns, rows),
+    row_count: rowCount,
+    execution_time_ms: executionTimeMs,
+  }
+}
 
 export default function QueryCenterDashboard() {
-  const navigate = useNavigate()
-  
-  // 获取最近查询
-  const { data: recentQueries } = useQuery({
-    queryKey: ['queries', 'recent'],
-    queryFn: () => getQueries({ page: 1, page_size: 5 })
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const location = useLocation()
+  const [selectedSource, setSelectedSource] = useState<number>()
+  const [selectedDatabase, setSelectedDatabase] = useState<string>()
+  const [sql, setSql] = useState(DEFAULT_SQL)
+  const [executing, setExecuting] = useState(false)
+  const [results, setResults] = useState<QueryResults>()
+  const [resultView, setResultView] = useState<'result' | 'visual'>('result')
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [templateCategory, setTemplateCategory] = useState<string>('__all__')
+  const [schemaCollapsed, setSchemaCollapsed] = useState(false)
+  const [templateCollapsed, setTemplateCollapsed] = useState(true)
+  const [saveModalVisible, setSaveModalVisible] = useState(false)
+  const [saveFormData, setSaveFormData] = useState({ query_name: '', description: '' })
+  const [activeQueryId, setActiveQueryId] = useState<number>()
+  const [legacyView, setLegacyView] = useState<LegacyQueryView | null>(null)
+
+  const { data: datasourcesData } = useQuery({
+    queryKey: ['datasources'],
+    queryFn: () => getDataSources({ page: 1, page_size: 100 }),
   })
-  
-  // 获取查询历史
-  const { data: recentHistories } = useQuery({
-    queryKey: ['histories', 'recent'],
-    queryFn: () => getHistories({ page: 1, page_size: 5 })
-  })
-  
-  // 获取统计数据
-  const { data: stats } = useQuery({
-    queryKey: ['queries', 'statistics'],
-    queryFn: getStatistics
-  })
-  
-  const quickStartCards = [
-    {
-      title: '新建查询',
-      description: '创建一个新的SQL查询',
-      icon: Code,
-      color: 'from-blue-500 to-cyan-500',
-      action: () => navigate('/queries/editor')
-    },
-    {
-      title: '使用模板',
-      description: '从模板快速开始',
-      icon: FileText,
-      color: 'from-purple-500 to-pink-500',
-      action: () => navigate('/queries/templates')
-    },
-    {
-      title: '查看历史',
-      description: '查看最近执行的查询',
-      icon: History,
-      color: 'from-emerald-500 to-teal-500',
-      action: () => navigate('/queries/history')
+
+  const datasources = datasourcesData?.data?.items || []
+
+  useEffect(() => {
+    if (!selectedSource && datasources.length > 0) {
+      setSelectedSource(datasources[0].id)
     }
-  ]
-  
+  }, [datasources, selectedSource])
+
+  const { data: templatesData } = useQuery({
+    queryKey: ['templates', { category: templateCategory === '__all__' ? undefined : templateCategory, search: templateSearch }],
+    queryFn: () => getTemplates({
+      page: 1,
+      page_size: 20,
+      category: templateCategory === '__all__' ? undefined : templateCategory,
+      search: templateSearch || undefined,
+    }),
+  })
+
+  const { data: historiesData } = useQuery({
+    queryKey: ['query-histories', { sourceId: selectedSource }],
+    queryFn: () => getHistories({ page: 1, page_size: 5, source_id: selectedSource }),
+  })
+  const { data: queryDetail } = useQuery({
+    queryKey: ['query-detail', activeQueryId],
+    queryFn: () => getQuery(activeQueryId!),
+    enabled: Boolean(activeQueryId),
+  })
+
+  const templates = templatesData?.items || []
+  const recentHistories = historiesData?.items || []
+  const { data: databasesData } = useQuery({
+    queryKey: ['datasource-databases', selectedSource],
+    queryFn: () => getDataSourceDatabases(selectedSource!),
+    enabled: Boolean(selectedSource),
+  })
+  const databaseOptions = Array.isArray(databasesData?.data) ? databasesData.data : []
+  const selectedDatasource = datasources.find((item: DataSource) => item.id === selectedSource)
+  const datasourceSelectOptions = datasources.map((item: DataSource) => ({
+    value: String(item.id),
+    label: item.name,
+  }))
+  const databaseSelectOptions = databaseOptions.map((database) => ({
+    value: database,
+    label: database,
+  }))
+
+  useEffect(() => {
+    if (!databaseOptions.length) {
+      setSelectedDatabase(undefined)
+      return
+    }
+    if (!selectedDatabase || !databaseOptions.includes(selectedDatabase)) {
+      setSelectedDatabase(databaseOptions[0])
+    }
+  }, [databaseOptions, selectedDatabase])
+
+  useEffect(() => {
+    const state = location.state as
+      | { sql?: string; sourceId?: number; source_id?: number; name?: string; queryId?: number; id?: number }
+      | null
+      | undefined
+
+    const searchParams = new URLSearchParams(location.search)
+    const nextLegacyView = parseLegacyQueryView(searchParams.get('legacy'))
+    const sourceIdFromSearch = searchParams.get('sourceId') || searchParams.get('source_id')
+    const normalizedSourceId = sourceIdFromSearch ? Number(sourceIdFromSearch) : undefined
+
+    const nextSql = state?.sql ?? searchParams.get('sql') ?? undefined
+    const nextSourceId =
+      state?.sourceId
+      ?? state?.source_id
+      ?? (Number.isFinite(normalizedSourceId) ? normalizedSourceId : undefined)
+    const nextName = state?.name ?? searchParams.get('name') ?? ''
+    const searchQueryId = searchParams.get('queryId') || searchParams.get('id')
+    const nextQueryId = state?.queryId ?? state?.id ?? (searchQueryId ? Number(searchQueryId) : undefined)
+
+    setLegacyView(nextLegacyView)
+    setActiveQueryId(nextQueryId)
+
+    if (nextLegacyView === 'templates' || nextLegacyView === 'history') {
+      setTemplateCollapsed(false)
+    } else if (nextLegacyView === 'editor') {
+      setTemplateCollapsed(true)
+    }
+
+    if (nextLegacyView === 'visual') {
+      setResultView('visual')
+    } else if (nextLegacyView) {
+      setResultView('result')
+    }
+
+    if (nextSql) {
+      setSql(nextSql)
+    }
+
+    if (nextSourceId) {
+      setSelectedSource(nextSourceId)
+    }
+
+    if (nextName || nextQueryId) {
+      setSaveFormData((previous) => ({
+        ...previous,
+        query_name: nextName || previous.query_name,
+      }))
+    }
+  }, [location.state, location.search])
+
+  useEffect(() => {
+    if (!queryDetail) return
+
+    const state = location.state as
+      | { sql?: string; sourceId?: number; source_id?: number; name?: string }
+      | null
+      | undefined
+    const searchParams = new URLSearchParams(location.search)
+    const hasSqlFromRoute = Boolean(state?.sql || searchParams.get('sql'))
+    const hasSourceFromRoute = Boolean(
+      state?.sourceId
+      || state?.source_id
+      || searchParams.get('sourceId')
+      || searchParams.get('source_id'),
+    )
+    const hasNameFromRoute = Boolean(state?.name || searchParams.get('name'))
+
+    if (!hasSqlFromRoute) {
+      setSql(queryDetail.sql_query)
+    }
+
+    if (!hasSourceFromRoute) {
+      setSelectedSource(queryDetail.source_id)
+    }
+
+    setSaveFormData((previous) => ({
+      query_name: hasNameFromRoute ? previous.query_name || queryDetail.query_name : queryDetail.query_name,
+      description: previous.description || queryDetail.description || '',
+    }))
+  }, [queryDetail, location.state, location.search])
+
+  const templateCategories = useMemo(() => {
+    const categories = new Set<string>()
+    templates.forEach((template) => {
+      if (template.category) categories.add(template.category)
+    })
+
+    return [
+      { value: '__all__', label: '全部模版' },
+      ...Array.from(categories).map((category) => ({ value: category, label: category })),
+    ]
+  }, [templates])
+
+  const handleFormatSql = () => {
+    try {
+      setSql(format(sql, { language: 'sql', tabWidth: 2, keywordCase: 'upper' }))
+      toast({ title: 'SQL 已美化' })
+    } catch (error) {
+      toast({
+        title: 'SQL 美化失败',
+        description: (error as Error).message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleExecute = async () => {
+    if (!selectedSource) {
+      toast({ title: '请先选择数据源', variant: 'warning' })
+      return
+    }
+
+    if (!sql.trim()) {
+      toast({ title: '请输入 SQL 查询', variant: 'warning' })
+      return
+    }
+
+    setExecuting(true)
+    try {
+      const result = await executeQuery({ source_id: selectedSource, sql_query: sql, limit: 1000 })
+      const payload = result.data
+      const normalized = buildQueryResults({
+        columns: payload?.columns,
+        rows: payload?.data,
+        rowCount: payload?.row_count,
+        executionTimeMs: payload?.execution_time_ms,
+      })
+      setResults(normalized)
+      setResultView('result')
+      queryClient.invalidateQueries({ queryKey: ['query-histories'] })
+      toast({
+        title: '查询成功',
+        description: `返回 ${normalized.row_count || normalized.data.length} 行，耗时 ${normalized.execution_time_ms || 0}ms`,
+      })
+    } catch (error) {
+      const err = error as { response?: { data?: { message?: string } }; message?: string }
+      toast({
+        title: '查询失败',
+        description: err.response?.data?.message || err.message,
+        variant: 'destructive',
+      })
+    } finally {
+      setExecuting(false)
+    }
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: ({
+      queryId,
+      payload,
+    }: {
+      queryId?: number
+      payload: CreateQueryRequest & UpdateQueryRequest
+    }) => (queryId ? updateQuery(queryId, payload) : createQuery(payload)),
+    onSuccess: (_result, variables) => {
+      toast({ title: variables.queryId ? '查询已更新' : '查询已保存' })
+      queryClient.invalidateQueries({ queryKey: ['queries'] })
+      if (variables.queryId) {
+        queryClient.invalidateQueries({ queryKey: ['query-detail', variables.queryId] })
+      }
+      setSaveModalVisible(false)
+      if (!variables.queryId) {
+        setSaveFormData({ query_name: '', description: '' })
+        setActiveQueryId(undefined)
+      }
+    },
+    onError: (error: unknown) => {
+      const err = error as { response?: { data?: { message?: string } }; message?: string }
+      toast({
+        title: '保存失败',
+        description: err.response?.data?.message || err.message,
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const handleSaveQuery = () => {
+    if (!selectedSource) {
+      toast({ title: '请先选择数据源', variant: 'warning' })
+      return
+    }
+    if (!saveFormData.query_name.trim()) {
+      toast({ title: '请输入查询名称', variant: 'warning' })
+      return
+    }
+
+    saveMutation.mutate({
+      queryId: activeQueryId,
+      payload: {
+        query_name: saveFormData.query_name,
+        description: saveFormData.description,
+        sql_query: sql,
+        source_id: selectedSource,
+      },
+    })
+  }
+
+  const handleUseTemplate = async (templateId: number, hasParameters: boolean) => {
+    if (hasParameters) {
+      toast({ title: '带参数模板请先进入模板管理页使用', variant: 'warning' })
+      return
+    }
+
+    try {
+      const result = await applyTemplate(templateId, {})
+      setSql(result.sql_query)
+      toast({ title: '模板已加载', description: result.template_name })
+    } catch (error) {
+      toast({
+        title: '加载模板失败',
+        description: (error as Error).message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const insertText = (text: string) => {
+    setSql((prev) => `${prev}${prev.endsWith('\n') || !prev ? '' : '\n'}${text}`)
+  }
+
+  const handlePreviewTable = async (database: string, table: string) => {
+    if (!selectedSource) return
+    try {
+      const result = await previewTableData(selectedSource, database, table)
+      const payload = result.data
+      setResults(buildQueryResults({
+        columns: payload.columns,
+        rows: payload.data,
+        rowCount: payload.row_count,
+      }))
+      setResultView('result')
+      toast({ title: `预览 ${table}`, description: `返回 ${payload.row_count} 行样例数据` })
+    } catch (error) {
+      toast({
+        title: '表预览失败',
+        description: (error as Error).message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const resultColumns: ColumnDef<Record<string, unknown>>[] = results?.columns.map((column) => ({
+    accessorKey: column,
+    header: column,
+  })) || []
+
+  const resultData = results?.data.map((row, index) => ({ id: index, ...row })) || []
+
   return (
-    <div className="space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">查询中心</h1>
-          <p className="mt-1 text-sm text-gray-500">交互式数据探索与分析平台</p>
-        </div>
-      </div>
-      
-      {/* 快速开始 */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">快速开始</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {quickStartCards.map((card, index) => {
-            const Icon = card.icon
-            return (
-              <button
-                key={index}
-                onClick={card.action}
-                className="group relative bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6 text-left hover:shadow-2xl transition-all duration-300 hover:-translate-y-1"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{card.title}</h3>
-                    <p className="text-sm text-gray-500">{card.description}</p>
-                  </div>
-                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${card.color} flex items-center justify-center ml-4 group-hover:scale-110 transition-transform flex-shrink-0`}>
-                    <Icon className="w-6 h-6 text-white" />
-                  </div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-      
-      {/* 统计卡片 */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">我的统计</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">本周查询</p>
-                <p className="mt-1 text-3xl font-bold text-gray-900">{stats?.query_count_week || 0}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">保存的查询</p>
-                <p className="mt-1 text-3xl font-bold text-gray-900">{stats?.saved_queries_count || 0}</p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                <Star className="w-6 h-6 text-white" />
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">平均耗时</p>
-                <p className="mt-1 text-3xl font-bold text-gray-900">
-                  {stats?.avg_execution_time_ms ? `${(stats.avg_execution_time_ms / 1000).toFixed(2)}s` : '0s'}
-                </p>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                <Clock className="w-6 h-6 text-white" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      {/* 最近使用的查询 */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">最近使用的查询</h2>
+    <div className="flex h-full overflow-hidden bg-[#F8FAFC]" data-testid="query-center-dashboard-layout">
+      <section className={cn(
+        'flex shrink-0 flex-col border-r border-slate-200 bg-white transition-all duration-200 ease-in-out',
+        schemaCollapsed ? 'w-[56px]' : 'w-[240px]',
+      )}>
+        <div className="flex h-11 items-center justify-between border-b border-slate-200 px-3">
           <button
-            onClick={() => navigate('/queries/my')}
-            className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+            type="button"
+            onClick={() => setSchemaCollapsed((current) => !current)}
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
+            aria-label={schemaCollapsed ? '展开结构树' : '折叠结构树'}
           >
-            查看
+            {schemaCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
           </button>
+          {!schemaCollapsed ? (
+            <div className="min-w-0 flex-1 pl-2">
+              <FormSelect
+                value={selectedSource ? String(selectedSource) : undefined}
+                onValueChange={(value) => setSelectedSource(value ? Number(value) : undefined)}
+                options={datasourceSelectOptions}
+                placeholder="选择数据源"
+                className="h-[34px] rounded-xl border-slate-200 bg-white text-sm"
+              />
+            </div>
+          ) : null}
         </div>
-        
-        <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
-          {recentQueries && recentQueries.items.length > 0 ? (
-            <div className="divide-y divide-gray-100">
-              {recentQueries.items.map((query) => (
-                <div
-                  key={query.id}
-                  className="p-4 hover:bg-gray-50/50 cursor-pointer transition-colors group"
-                  onClick={() => navigate(`/queries/editor?id=${query.id}`)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Database className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                        <h3 className="font-semibold text-gray-900 truncate">{query.query_name}</h3>
-                        {query.is_favorite && <Star className="w-4 h-4 text-yellow-500 fill-yellow-500 flex-shrink-0" />}
+        {schemaCollapsed ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <span className="text-[11px] tracking-[0.16em] text-slate-400 [writing-mode:vertical-lr]">数据库结构</span>
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="border-b border-slate-200 px-3 py-2">
+              <FormSelect
+                value={selectedDatabase}
+                onValueChange={setSelectedDatabase}
+                options={databaseSelectOptions}
+                placeholder="选择数据库"
+                className="h-9 rounded-xl border-slate-200 bg-white text-sm"
+                disabled={!selectedDatasource || databaseSelectOptions.length === 0}
+              />
+            </div>
+            <SchemaBrowser
+              datasourceId={selectedSource}
+              sourceType={datasources.find((item: DataSource) => item.id === selectedSource)?.source_type}
+              title="数据库结构"
+              showTitle={false}
+              showSearch={false}
+              compactTree={true}
+              activeDatabase={selectedDatabase}
+              hideDatabaseLevel={true}
+              showStatusBar={false}
+              collapsible={false}
+              onInsert={insertText}
+              onDoubleClick={(_node, qualifiedName) => insertText(qualifiedName)}
+              onPreview={handlePreviewTable}
+              className="border-l-0"
+            />
+          </div>
+        )}
+      </section>
+
+      <section className="flex min-w-0 flex-1 flex-col">
+        {legacyView ? (
+          <div
+            data-testid="query-center-legacy-context"
+            className="border-b border-blue-100 bg-blue-50/80 px-4 py-3 text-sm"
+          >
+            <div className="font-medium text-blue-900">{LEGACY_QUERY_VIEW_COPY[legacyView].title}</div>
+            <div className="mt-1 text-xs text-blue-700">{LEGACY_QUERY_VIEW_COPY[legacyView].description}</div>
+          </div>
+        ) : null}
+        <div className="flex h-11 items-center justify-between border-b border-slate-200 bg-white px-3">
+          <div className="flex items-center gap-2">
+            <FormButton onClick={handleExecute} disabled={executing} loading={executing} className="h-[30px] rounded-lg bg-blue-600 px-3 text-xs font-medium">
+              <Play className="mr-1.5 h-3.5 w-3.5" />
+              运行
+            </FormButton>
+            <FormButton variant="outline" onClick={handleFormatSql} className="h-[30px] rounded-md border-0 bg-slate-100 px-3 text-xs text-slate-700">
+              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+              SQL 美化
+            </FormButton>
+            <FormButton variant="outline" onClick={() => setSaveModalVisible(true)} className="h-[30px] rounded-md border-0 bg-slate-100 px-3 text-xs text-slate-700">
+              <Save className="mr-1.5 h-3.5 w-3.5" />
+              保存
+            </FormButton>
+            <div className="inline-flex h-[30px] items-center rounded-md bg-slate-100 px-3 text-xs text-slate-700">
+              <FileText className="mr-1.5 h-3.5 w-3.5" />
+              模版
+            </div>
+          </div>
+          <div className="inline-flex h-[30px] items-center rounded-md bg-slate-100 px-3 font-mono text-[11px] text-slate-700">
+            LIMIT 1000
+            <ChevronDown className="ml-1.5 h-3.5 w-3.5 text-slate-500" />
+          </div>
+        </div>
+
+        <div className="flex min-h-0 flex-[1_1_70%] flex-col border-b border-slate-200 bg-[#1E293B]">
+          <div className="min-h-[430px] flex-1">
+            <Editor
+              height="100%"
+              defaultLanguage="sql"
+              value={sql}
+              onChange={(value) => setSql(value || '')}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                wordWrap: 'on',
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-[1_1_30%] bg-white">
+          <div className="flex h-9 items-end border-b border-slate-200 px-3">
+            <button
+              type="button"
+              onClick={() => setResultView('result')}
+              className={cn(
+                'flex h-9 items-center border-b-2 px-3 text-xs',
+                resultView === 'result'
+                  ? 'border-blue-600 font-medium text-blue-600'
+                  : 'border-transparent text-slate-500',
+              )}
+            >
+              结果
+            </button>
+            <button
+              type="button"
+              onClick={() => setResultView('visual')}
+              className={cn(
+                'flex h-9 items-center border-b-2 px-3 text-xs',
+                resultView === 'visual'
+                  ? 'border-blue-600 font-medium text-blue-600'
+                  : 'border-transparent text-slate-500',
+              )}
+            >
+              可视化
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {executing ? (
+              <div className="flex h-full items-center justify-center text-slate-500">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                正在执行查询...
+              </div>
+            ) : resultView === 'visual' ? (
+              <div className="flex h-full items-center justify-center px-6">
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-6 py-8 text-center">
+                  <p className="text-sm font-medium text-slate-900">可视化视图待接入</p>
+                  <p className="mt-2 text-xs text-slate-500">当前先保留结果视图联调，后续再补图表渲染能力。</p>
+                </div>
+              </div>
+            ) : results ? (
+              <div className="flex h-full flex-col">
+                <div className="flex h-9 items-center justify-between border-b border-slate-200 bg-slate-50 px-4 text-xs text-slate-500">
+                  <div className="flex items-center gap-4">
+                    <span>返回 {results.row_count || resultData.length} 行</span>
+                    <span>耗时 {results.execution_time_ms || 0}ms</span>
+                  </div>
+                  <span>{datasources.find((item) => item.id === selectedSource)?.name || '未选择数据源'}</span>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <DataTable columns={resultColumns} data={resultData} pageSize={10} showPagination={true} />
+                </div>
+              </div>
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-center">
+                  <Inbox className="mx-auto mb-3 h-10 w-10 text-slate-300" />
+                  <p className="text-sm text-slate-500">运行 SQL 或预览表后，结果会显示在这里。</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <aside
+        className={cn(
+          'flex shrink-0 flex-col border-l border-slate-200 bg-white transition-all duration-200 ease-in-out',
+          templateCollapsed ? 'w-[56px]' : 'w-[320px]',
+        )}
+      >
+        {templateCollapsed ? (
+          <div className="flex h-full flex-col">
+            <div className="flex h-11 items-center justify-center border-b border-slate-200">
+              <button
+                type="button"
+                aria-label="展开模版库"
+                onClick={() => setTemplateCollapsed(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
+              >
+                <PanelRightOpen className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center">
+              <span className="text-[11px] tracking-[0.16em] text-slate-400 [writing-mode:vertical-lr]">
+                模版库
+              </span>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="border-b border-slate-200 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-900">模版库</h2>
+                <div className="flex items-center gap-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="rounded-md bg-slate-100 px-2 py-1 text-[11px] text-slate-500">
+                          {templates.length} 条
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent><p>当前按搜索条件返回的模版数量</p></TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <button
+                    type="button"
+                    aria-label="折叠模版库"
+                    onClick={() => setTemplateCollapsed(true)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
+                  >
+                    <PanelRightClose className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <FormInput
+                    value={templateSearch}
+                    onChange={(event) => setTemplateSearch(event.target.value)}
+                    placeholder="搜索模版..."
+                    className="h-9 pl-9 text-sm"
+                  />
+                </div>
+                <FormSelect
+                  value={templateCategory}
+                  onValueChange={setTemplateCategory}
+                  placeholder="选择分类"
+                  options={templateCategories}
+                />
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              <div className="space-y-3">
+                {templates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => handleUseTemplate(template.id, (template.parameters?.length || 0) > 0)}
+                    className="w-full rounded-xl border border-slate-200 p-3 text-left transition-colors hover:border-blue-200 hover:bg-slate-50"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-slate-900">{template.template_name}</span>
+                          {template.category ? (
+                            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600">
+                              {template.category}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                          {template.template_description || '无描述'}
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-500 font-mono truncate">{query.sql_query}</p>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                        <span>执行 {query.execute_count} 次</span>
-                        {query.last_executed_at && (
-                          <span>{new Date(query.last_executed_at).toLocaleString()}</span>
-                        )}
+                      <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] text-slate-500">
+                        使用模版
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400">
+                      <span>ID:{template.id} · SQL</span>
+                      <span>{template.use_count} 次使用</span>
+                    </div>
+                  </button>
+                ))}
+                {templates.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">
+                    当前筛选条件下暂无模版
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-6 border-t border-slate-200 pt-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <Clock3 className="h-4 w-4 text-slate-500" />
+                  最近执行
+                </div>
+                <div className="space-y-2">
+                  {recentHistories.slice(0, 3).map((history) => (
+                    <div key={history.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                      <div className="truncate text-xs font-medium text-slate-800">{history.datasource_name || '查询结果'}</div>
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                        <span>{history.status}</span>
+                        <span>{history.execution_time_ms}ms</span>
                       </div>
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        navigate(`/queries/editor?id=${query.id}`)
-                      }}
-                      className="ml-4 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <Play className="w-4 h-4" />
-                    </button>
-                  </div>
+                  ))}
+                  {recentHistories.length === 0 ? (
+                    <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                      暂无执行历史
+                    </div>
+                  ) : null}
                 </div>
-              ))}
+              </div>
             </div>
-          ) : (
-            <div className="p-8 text-center text-gray-400">
-              <Code className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>暂无查询记录</p>
-            </div>
-          )}
+          </>
+        )}
+      </aside>
+
+      <PageModal
+        open={saveModalVisible}
+        onClose={() => setSaveModalVisible(false)}
+        title="保存查询"
+        width="520px"
+        footer={(
+          <div className="flex justify-end gap-3">
+            <FormButton variant="outline" onClick={() => setSaveModalVisible(false)}>
+              取消
+            </FormButton>
+            <FormButton onClick={handleSaveQuery} loading={saveMutation.isPending}>
+              保存
+            </FormButton>
+          </div>
+        )}
+      >
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="query-name">查询名称</Label>
+            <Input
+              id="query-name"
+              value={saveFormData.query_name}
+              onChange={(event) => setSaveFormData((prev) => ({ ...prev, query_name: event.target.value }))}
+              placeholder="例如：本月订单营收汇总"
+            />
+          </div>
+          <div>
+            <Label htmlFor="query-description">描述</Label>
+            <Textarea
+              id="query-description"
+              value={saveFormData.description}
+              onChange={(event) => setSaveFormData((prev) => ({ ...prev, description: event.target.value }))}
+              placeholder="补充这条查询的用途、口径或使用说明"
+              rows={4}
+            />
+          </div>
         </div>
-      </div>
-      
-      {/* 查询历史 */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">最近执行</h2>
-          <button
-            onClick={() => navigate('/queries/history')}
-            className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-          >
-            查看
-          </button>
-        </div>
-        
-        <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl overflow-hidden">
-          {recentHistories && recentHistories.items.length > 0 ? (
-            <table className="w-full">
-              <thead className="bg-gray-50/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">时间</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SQL</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">耗时</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">结果</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {recentHistories.items.map((history) => (
-                  <tr key={history.id} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {new Date(history.executed_at).toLocaleTimeString()}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 font-mono max-w-md truncate">
-                      {history.sql_query}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {(history.execution_time_ms / 1000).toFixed(2)}s
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {history.result_rows} 行
-                    </td>
-                    <td className="px-6 py-4">
-                      {history.status === 'success' ? (
-                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-emerald-50 text-emerald-700">
-                          成功
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-50 text-red-700">
-                          失败
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="p-8 text-center text-gray-400">
-              <History className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>暂无执行历史</p>
-            </div>
-          )}
-        </div>
-      </div>
+      </PageModal>
     </div>
   )
 }

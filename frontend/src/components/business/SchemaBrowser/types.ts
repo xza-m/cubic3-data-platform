@@ -63,6 +63,18 @@ export interface SchemaBrowserProps extends SchemaBrowserCallbacks {
     collapsible?: boolean
     /** 面板标题 */
     title?: string
+    /** 是否显示标题栏 */
+    showTitle?: boolean
+    /** 是否显示搜索与过滤 */
+    showSearch?: boolean
+    /** 紧凑树样式 */
+    compactTree?: boolean
+    /** 当前选中的数据库 */
+    activeDatabase?: string
+    /** 隐藏 database 层，直接展示 schema/table/field */
+    hideDatabaseLevel?: boolean
+    /** 是否显示底部状态栏 */
+    showStatusBar?: boolean
     /** 自定义 className */
     className?: string
 }

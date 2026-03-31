@@ -2,8 +2,7 @@
 RQ Worker 启动脚本
 """
 import os
-import sys
-from rq import Worker, Queue, Connection
+from rq import Worker
 from redis import Redis
 import logging
 
@@ -33,11 +32,9 @@ def start_worker(redis_url: str = None, queues: list = None):
     logger.info(f"Listening to queues: {queues}")
     
     redis_conn = Redis.from_url(redis_url)
-    
-    with Connection(redis_conn):
-        worker = Worker(queues, connection=redis_conn)
-        logger.info("RQ Worker started successfully")
-        worker.work()
+    worker = Worker(queues, connection=redis_conn)
+    logger.info("RQ Worker started successfully")
+    worker.work()
 
 
 if __name__ == '__main__':

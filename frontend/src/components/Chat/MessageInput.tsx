@@ -1,7 +1,4 @@
-/**
- * 消息输入框组件 - Migrated to shadcn/ui
- */
-import { useState, KeyboardEvent } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { Send } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
 import { FormButton } from '@/components/business'
@@ -23,32 +20,31 @@ export default function MessageInput({ onSend, loading, disabled }: MessageInput
     }
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
       handleSend()
     }
   }
 
   return (
-    <div className="flex gap-3 items-end">
+    <div className="flex items-end gap-3">
       <Textarea
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="输入您的问题...（Shift+Enter 换行，Enter 发送）&#10;例如：最近7天的总销售额是多少？"
+        placeholder={'输入问题后发送。支持 Shift+Enter 换行。'}
         disabled={disabled || loading}
-        className="flex-1 min-h-[80px] max-h-[200px] resize-none rounded-xl px-4 py-3"
+        className="min-h-[88px] max-h-[220px] flex-1 resize-none rounded-[var(--workbench-radius)] border-[hsl(var(--workbench-outline))] bg-white px-4 py-3 text-[0.9375rem] leading-7"
         rows={2}
       />
       <FormButton
-        size="lg"
         onClick={handleSend}
         loading={loading}
         disabled={disabled || !value.trim()}
-        className="h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500"
+        className="h-11 rounded-[var(--workbench-radius-sm)] px-4"
       >
-        <Send className="w-4 h-4 mr-2" />
+        <Send className="mr-2 h-4 w-4" />
         发送
       </FormButton>
     </div>

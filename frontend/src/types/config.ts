@@ -35,9 +35,13 @@ export interface UpdateChannelRequest {
 export interface Subscription {
     id: number
     name: string
+    description?: string
     app_instance_id: number
     channel_id: number
-    event_filter: EventFilter
+    event_types?: string[]
+    filter_conditions?: Record<string, any>
+    delivery_config?: Record<string, any>
+    event_filter?: EventFilter
     enabled: boolean
     created_at: string
     updated_at: string

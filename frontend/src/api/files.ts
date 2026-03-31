@@ -9,13 +9,17 @@ export interface FileUploadResponse {
   file_path: string
   file_size: number
   row_count: number
+  preview_limit?: number
+  sample_rows?: Record<string, unknown>[]
+  sample_columns?: string[]
   columns: Array<{
     name: string
     type: string
     sample_values: (string | number | boolean | null)[]
   }>
   fields?: Array<{  // 统一字段名为 fields（与物理表一致）
-    field_name: string
+    field_name?: string
+    physical_name?: string
     data_type: string
     business_type: string
     sensitivity_level: string
@@ -39,9 +43,9 @@ export interface FileUploadResponse {
 }
 
 /**
- * 上传 CSV 文件
+ * 上传 CSV / Excel 文件
  */
-export const uploadCSVFile = async (file: File): Promise<FileUploadResponse> => {
+export const uploadTabularFile = async (file: File): Promise<FileUploadResponse> => {
   const formData = new FormData()
   formData.append('file', file)
   
@@ -52,3 +56,5 @@ export const uploadCSVFile = async (file: File): Promise<FileUploadResponse> => 
   })
   return response.data
 }
+
+export const uploadCSVFile = uploadTabularFile

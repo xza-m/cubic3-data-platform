@@ -51,5 +51,5 @@ def check_rate_limit(
         return current <= max_requests, info
 
     except Exception as e:
-        logger.warning("频率限制检查失败，默认放行: %s", e)
+        logger.warning("频率限制检查失败，默认放行", error=str(e))
         return True, {"current": 0, "limit": max_requests, "retry_after": 0}

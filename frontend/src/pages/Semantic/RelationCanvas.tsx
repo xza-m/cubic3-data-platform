@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,6 +11,7 @@ import {
   useEdgesState,
   type Edge,
   type Node,
+  type ReactFlowInstance,
 } from '@xyflow/react'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { ArrowRight, Layout, PlusCircle, Save, Wand2 } from 'lucide-react'
@@ -29,7 +30,7 @@ import {
 import { getDataSources } from '@/api/datasources'
 import { CubeNode } from '@/components/Semantic/CubeNode'
 import { JoinEdge } from '@/components/Semantic/JoinEdge'
-import { SyncStatusBadge } from '@/components/Semantic/SyncStatusBadge'
+import { SyncStatusBadge, type SyncStatus } from '@/components/Semantic/SyncStatusBadge'
 import { SchemaBrowser, useToast } from '@/components/business'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,6 +47,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
@@ -65,6 +67,50 @@ interface SelectedTable {
   schema?: string
   table: string
   comment?: string
+}
+
+export function buildCreateCubeDraftRequest(
+  selectedSource?: string,
+  selectedTable?: SelectedTable | null,
+) {
+  if (!selectedSource || !selectedTable) {
+    throw new Error('请先选择数据源和物理表')
+  }
+
+  return {
+    source_id: Number(selectedSource),
+    database: selectedTable.database,
+    schema: selectedTable.schema,
+    table: selectedTable.table,
+  }
+}
+
+export function notifyCreateCubeFailure({
+  toast,
+  error,
+}: {
+  toast: (payload: { title: string; description: string; variant: 'destructive' }) => void
+  error: unknown
+}) {
+  toast({ title: '创建 Cube 失败', description: (error as Error).message, variant: 'destructive' })
+}
+
+export function resolveSelectedCubeId({
+  name,
+  draft,
+  isCreateRoute,
+}: {
+  name?: string
+  draft: CubeDraftPayload | null
+  isCreateRoute: boolean
+}) {
+  if (name) {
+    return name
+  }
+  if (!draft && !isCreateRoute) {
+    return null
+  }
+  return undefined
 }
 
 async function layoutGraph(
@@ -117,6 +163,10 @@ function panelTitle(
   return cube?.title || 'Cube 详情'
 }
 
+function toSyncStatus(value: string | undefined): SyncStatus {
+  return value === 'ok' || value === 'warn' || value === 'error' ? value : undefined
+}
+
 export default function RelationCanvas() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
@@ -134,10 +184,11 @@ export default function RelationCanvas() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
+  const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null)
 
   const isCreateRoute = location.pathname.endsWith('/semantic/cubes/new')
   const isEditMode = location.pathname.endsWith('/edit')
-  const openPanel = Boolean(draft || selectedCubeId || isCreateRoute || name)
+  const openPanel = Boolean(draft || selectedCubeId || name)
 
   const { data: graphData, isLoading } = useQuery({
     queryKey: ['semantic', 'graph'],
@@ -240,34 +291,57 @@ export default function RelationCanvas() {
     }))
   }, [filteredGraphData])
 
-  useEffect(() => {
-    if (rawNodes.length === 0) return
-    layoutGraph(rawNodes, rawEdges).then(({ nodes: ln, edges: le }) => {
-      setNodes(ln)
-      setEdges(le)
+  const fitCanvas = useCallback(() => {
+    if (!reactFlowRef.current?.viewportInitialized) {
+      return
+    }
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        void reactFlowRef.current?.fitView({
+          padding: 0.12,
+          duration: 0,
+          includeHiddenNodes: false,
+        })
+      })
     })
-  }, [rawNodes, rawEdges, setNodes, setEdges])
+  }, [])
+
+  const applyLayout = useCallback(async () => {
+    if (rawNodes.length === 0) {
+      setNodes([])
+      setEdges([])
+      return
+    }
+
+    const { nodes: layoutedNodes, edges: layoutedEdges } = await layoutGraph(rawNodes, rawEdges)
+    setNodes(layoutedNodes)
+    setEdges(layoutedEdges)
+  }, [rawEdges, rawNodes, setEdges, setNodes])
 
   useEffect(() => {
-    if (name) {
-      setSelectedCubeId(name)
-    } else if (!draft && !isCreateRoute) {
-      setSelectedCubeId(null)
+    void applyLayout()
+  }, [applyLayout])
+
+  useEffect(() => {
+    if (nodes.length === 0) {
+      return
+    }
+
+    fitCanvas()
+  }, [fitCanvas, nodes])
+
+  useEffect(() => {
+    const nextSelectedCubeId = resolveSelectedCubeId({ name, draft, isCreateRoute })
+    if (nextSelectedCubeId !== undefined) {
+      setSelectedCubeId(nextSelectedCubeId)
     }
   }, [name, draft, isCreateRoute])
 
   const createDraftMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedSource || !selectedTable) {
-        throw new Error('请先选择数据源和物理表')
-      }
       return (
-        await createCubeDraftFromTable({
-          source_id: Number(selectedSource),
-          database: selectedTable.database,
-          schema: selectedTable.schema,
-          table: selectedTable.table,
-        })
+        await createCubeDraftFromTable(buildCreateCubeDraftRequest(selectedSource, selectedTable))
       ).data
     },
     onSuccess: (payload) => {
@@ -288,7 +362,7 @@ export default function RelationCanvas() {
       navigate(`/semantic/cubes/${payload.name}`)
     },
     onError: (err) => {
-      toast({ title: '创建 Cube 失败', description: (err as Error).message, variant: 'destructive' })
+      notifyCreateCubeFailure({ toast, error: err })
     },
   })
 
@@ -341,6 +415,16 @@ export default function RelationCanvas() {
   )
 
   const selectedDataSource = datasources.find((item) => String(item.id) === selectedSource)
+  const pageTitle = isCreateRoute
+    ? '新建 Cube'
+    : isEditMode
+      ? '编辑 Cube'
+      : cubeDetail?.title || name || 'Cube 关系画布'
+  const pageDescription = isCreateRoute
+    ? '从数据源和物理表生成 Cube 草稿，并补充基础定义。'
+    : isEditMode
+      ? '维护 Cube 基础信息、状态与来源绑定。'
+      : '查看当前 Cube 的来源、字段规模与同步状态。'
 
   const handleSchemaSelect = useCallback((node: TreeNode) => {
     if (node.type !== 'table' && node.type !== 'view') {
@@ -360,7 +444,7 @@ export default function RelationCanvas() {
     setDraft(null)
     setSelectedCubeId(null)
     if (isCreateRoute || isEditMode) {
-      navigate('/semantic/canvas')
+      navigate('/semantic/cubes')
     }
   }
 
@@ -391,16 +475,14 @@ export default function RelationCanvas() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Cube 建模画布</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            基于现有数据源创建、维护和观察 Cube 生命周期。
-          </p>
+          <h1 className="text-2xl font-bold">{pageTitle}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{pageDescription}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate('/semantic/cubes')}>
             返回索引页
           </Button>
-          <Button variant="outline" size="sm" onClick={() => rawNodes.length > 0 && layoutGraph(rawNodes, rawEdges).then(({ nodes: ln, edges: le }) => { setNodes(ln); setEdges(le) })}>
+          <Button variant="outline" size="sm" onClick={() => void applyLayout()}>
             <Layout className="w-4 h-4 mr-1.5" aria-hidden="true" />
             自动布局
           </Button>
@@ -444,6 +526,7 @@ export default function RelationCanvas() {
             )}
             <Button
               className="w-full"
+              data-testid="cube-generate-draft"
               disabled={!selectedSource || !selectedTable || createDraftMutation.isPending}
               onClick={() => createDraftMutation.mutate()}
             >
@@ -469,9 +552,12 @@ export default function RelationCanvas() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onNodeClick={onNodeClick}
+            onInit={(instance) => {
+              reactFlowRef.current = instance
+              fitCanvas()
+            }}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            fitView
             minZoom={0.3}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
@@ -487,6 +573,13 @@ export default function RelationCanvas() {
         <SheetContent className="w-[420px] sm:max-w-[420px] overflow-y-auto" aria-label="Cube 建模侧边栏">
           <SheetHeader>
             <SheetTitle>{panelTitle(draft, cubeDetail, isEditMode)}</SheetTitle>
+            <SheetDescription>
+              {draft
+                ? '补充草稿名称、标题与说明，然后保存为语义中心中的 Draft Cube。'
+                : isEditMode
+                  ? '更新当前 Cube 的基础信息、生命周期状态和来源绑定。'
+                  : '查看当前 Cube 的字段规模、来源绑定和最近同步状态。'}
+            </SheetDescription>
           </SheetHeader>
 
           {draft ? (
@@ -494,11 +587,19 @@ export default function RelationCanvas() {
               <div className="grid gap-3">
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">Cube 名称</div>
-                  <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                  <Input
+                    value={draft.name}
+                    data-testid="cube-draft-name"
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  />
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">显示名称</div>
-                  <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+                  <Input
+                    value={draft.title}
+                    data-testid="cube-draft-title"
+                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  />
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground mb-1">说明</div>
@@ -524,7 +625,12 @@ export default function RelationCanvas() {
                   <Badge variant="outline">{getSemanticStatusLabel(draft.status || 'draft')}</Badge>
                 </div>
               </div>
-              <Button className="w-full" onClick={handleCreateFromDraft} disabled={createCubeMutation.isPending}>
+              <Button
+                className="w-full"
+                data-testid="cube-banner-save-draft"
+                onClick={handleCreateFromDraft}
+                disabled={createCubeMutation.isPending}
+              >
                 <PlusCircle className="w-4 h-4 mr-1.5" aria-hidden="true" />
                 创建 Draft Cube
               </Button>
@@ -533,7 +639,7 @@ export default function RelationCanvas() {
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-2">
                 <Badge variant="outline">{getSemanticStatusLabel(cubeDetail.status || 'active')}</Badge>
-                <SyncStatusBadge status={cubeDetail.state_summary?.sync_status as any} />
+                <SyncStatusBadge status={toSyncStatus(cubeDetail.state_summary?.sync_status)} />
               </div>
               <div className="grid gap-3">
                 <div>

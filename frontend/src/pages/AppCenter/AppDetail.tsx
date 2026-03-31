@@ -1,27 +1,24 @@
-/**
- * 应用详情页面
- */
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, BookOpen } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, BookOpen, Plus } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import { 
-  PageTabs, 
-  PageTabsContent, 
-  PageTabsList, 
-  PageTabsTrigger,
-  FormButton,
-  Badge,
-  Skeleton,
-  useToast 
-} from '@/components/business'
-import InstanceTable from '../../components/AppCenter/InstanceTable'
-import ConfigDrawer from '../../components/AppCenter/ConfigDrawer'
 import {
+  Badge,
+  FormButton,
+  PageTabs,
+  PageTabsContent,
+  PageTabsList,
+  PageTabsTrigger,
+  Skeleton,
+  useToast,
+} from '@/components/business'
+import ConfigDrawer from '../../components/AppCenter/ConfigDrawer'
+import InstanceTable from '../../components/AppCenter/InstanceTable'
+import {
+  createInstance,
   getApp,
   getInstances,
-  createInstance,
   updateInstance,
   type AppInstance,
   type CreateInstanceInput,
@@ -33,103 +30,82 @@ export default function AppDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
-
   const [activeTab, setActiveTab] = useState('overview')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editingInstance, setEditingInstance] = useState<AppInstance | null>(null)
   const [page, setPage] = useState(1)
   const pageSize = 10
 
-  // 获取应用详情
   const { data: app, isLoading: appLoading } = useQuery({
     queryKey: ['app', code],
     queryFn: () => getApp(code!),
-    enabled: !!code,
+    enabled: Boolean(code),
   })
 
-  // 获取实例列表
   const { data: instancesData, isLoading: instancesLoading } = useQuery({
-    queryKey: ['app-instances', code, page],
+    queryKey: ['app-instances', code, page, pageSize],
     queryFn: () =>
       getInstances({
         app_code: code,
         page,
         page_size: pageSize,
       }),
-    enabled: !!code,
+    enabled: Boolean(code),
   })
 
-  // 创建实例 mutation
   const createMutation = useMutation({
     mutationFn: createInstance,
-    onSuccess: () => {
-      toast({ title: "创建成功" })
-      queryClient.invalidateQueries({ queryKey: ['app-instances'] })
-      queryClient.invalidateQueries({ queryKey: ['apps'] })
+    onSuccess: async () => {
+      toast({ title: '创建成功' })
+      await queryClient.invalidateQueries({ queryKey: ['app-instances'] })
+      await queryClient.invalidateQueries({ queryKey: ['apps'] })
       setDrawerOpen(false)
     },
     onError: (error: unknown) => {
-      const err = error as { response?: { data?: { message?: string } }; message?: string }
-      toast({ 
-        title: "创建失败", 
-        description: err.response?.data?.message || '创建失败',
-        variant: "destructive" 
-      })
+      const message = error instanceof Error ? error.message : '创建失败'
+      toast({ title: '创建失败', description: message, variant: 'destructive' })
     },
   })
 
-  // 更新实例 mutation
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: UpdateInstanceInput }) => updateInstance(id, data),
-    onSuccess: () => {
-      toast({ title: "更新成功" })
-      queryClient.invalidateQueries({ queryKey: ['app-instances'] })
+    onSuccess: async () => {
+      toast({ title: '更新成功' })
+      await queryClient.invalidateQueries({ queryKey: ['app-instances'] })
       setDrawerOpen(false)
       setEditingInstance(null)
     },
     onError: (error: unknown) => {
-      const err = error as { response?: { data?: { message?: string } }; message?: string }
-      toast({ 
-        title: "更新失败", 
-        description: err.response?.data?.message || '更新失败',
-        variant: "destructive" 
-      })
+      const message = error instanceof Error ? error.message : '更新失败'
+      toast({ title: '更新失败', description: message, variant: 'destructive' })
     },
   })
-
-  const handleCreateClick = () => {
-    setEditingInstance(null)
-    setDrawerOpen(true)
-  }
-
-  const handleEditClick = (instance: AppInstance) => {
-    setEditingInstance(instance)
-    setDrawerOpen(true)
-  }
 
   const handleSubmit = async (data: CreateInstanceInput | UpdateInstanceInput) => {
     if (editingInstance) {
       await updateMutation.mutateAsync({ id: editingInstance.id, data })
-    } else {
-      await createMutation.mutateAsync(data as CreateInstanceInput)
+      return
     }
+
+    await createMutation.mutateAsync(data as CreateInstanceInput)
   }
 
   if (appLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-28 w-full" />
+        <Skeleton className="h-96 w-full" />
       </div>
     )
   }
 
   if (!app) {
     return (
-      <div className="flex flex-col items-center justify-center py-16">
-        <div className="text-center">
-          <p className="text-lg font-medium text-gray-900 mb-4">应用不存在</p>
-          <FormButton onClick={() => navigate('/apps')}>
+      <div className="flex min-h-[320px] items-center justify-center rounded-3xl border border-dashed border-[#CBD5E1] bg-white px-6 py-12 text-center">
+        <div>
+          <h1 className="text-lg font-medium text-[#0F172A]">应用不存在</h1>
+          <p className="mt-2 text-sm text-[#64748B]">当前深链没有命中应用定义，可以返回应用市场重新选择。</p>
+          <FormButton className="mt-5" onClick={() => navigate('/apps')}>
             返回应用市场
           </FormButton>
         </div>
@@ -139,22 +115,17 @@ export default function AppDetail() {
 
   return (
     <div className="space-y-6">
-      {/* 返回按钮 + 标题 */}
       <div className="flex items-center gap-4">
-        <FormButton 
-          variant="ghost" 
-          icon={<ArrowLeft className="w-4 h-4" />} 
-          onClick={() => navigate('/apps')}
-        >
+        <FormButton variant="ghost" onClick={() => navigate('/apps')}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
           返回
         </FormButton>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{app.name}</h1>
-          <p className="text-sm text-gray-500 mt-1">{app.description}</p>
+          <h1 className="text-2xl font-bold text-[#0F172A]">{app.name}</h1>
+          <p className="mt-1 text-sm text-[#64748B]">{app.description}</p>
         </div>
       </div>
 
-      {/* Tabs */}
       <PageTabs value={activeTab} onValueChange={setActiveTab}>
         <PageTabsList>
           <PageTabsTrigger value="overview">概览</PageTabsTrigger>
@@ -165,50 +136,46 @@ export default function AppDetail() {
         </PageTabsList>
 
         <PageTabsContent value="overview">
-          <div className="space-y-6">
-            {/* 应用信息卡片 */}
-            <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{app.name}</h2>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="default">{app.category}</Badge>
-                    <Badge variant={app.enabled ? 'secondary' : 'outline'}>
-                      {app.enabled ? '已启用' : '未启用'}
-                    </Badge>
-                    <span className="text-sm text-gray-500">v{app.version}</span>
-                  </div>
-                </div>
-              </div>
+          <div className="rounded-3xl border border-[#E2E8F0] bg-white p-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>{app.category}</Badge>
+              <Badge variant={app.enabled ? 'secondary' : 'outline'}>
+                {app.enabled ? '已启用' : '未启用'}
+              </Badge>
+              <span className="text-sm text-[#64748B]">v{app.version}</span>
+            </div>
+            <div className="prose prose-sm mt-4 max-w-none text-[#334155]">
+              <ReactMarkdown>{app.description}</ReactMarkdown>
+            </div>
 
-              <div className="prose prose-sm max-w-none">
-                <ReactMarkdown>{app.description}</ReactMarkdown>
+            <div className="mt-6 grid gap-4 border-t border-[#E2E8F0] pt-6 sm:grid-cols-3">
+              <div>
+                <div className="text-sm text-[#64748B]">实例数量</div>
+                <div className="mt-1 text-2xl font-semibold text-[#0F172A]">{app.instance_count || 0}</div>
               </div>
-
-              {/* 统计信息 */}
-              <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t">
-                <div>
-                  <p className="text-sm text-gray-500">实例数量</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{app.instance_count || 0}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">作者</p>
-                  <p className="text-lg font-medium text-gray-900 mt-1">{app.author}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">版本</p>
-                  <p className="text-lg font-medium text-gray-900 mt-1">{app.version}</p>
-                </div>
+              <div>
+                <div className="text-sm text-[#64748B]">作者</div>
+                <div className="mt-1 text-lg font-medium text-[#0F172A]">{app.author}</div>
+              </div>
+              <div>
+                <div className="text-sm text-[#64748B]">版本</div>
+                <div className="mt-1 text-lg font-medium text-[#0F172A]">{app.version}</div>
               </div>
             </div>
           </div>
         </PageTabsContent>
 
         <PageTabsContent value="instances">
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm text-gray-500">管理此应用的所有实例</p>
-              <FormButton icon={<Plus className="w-4 h-4" />} onClick={handleCreateClick}>
+          <div className="space-y-4 rounded-3xl border border-[#E2E8F0] bg-white p-6">
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm text-[#64748B]">管理当前应用的实例配置与执行入口。</p>
+              <FormButton
+                onClick={() => {
+                  setEditingInstance(null)
+                  setDrawerOpen(true)
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
                 创建实例
               </FormButton>
             </div>
@@ -219,45 +186,32 @@ export default function AppDetail() {
               total={instancesData?.total}
               page={page}
               pageSize={pageSize}
-              onPageChange={(newPage) => setPage(newPage)}
-              onEdit={handleEditClick}
+              onPageChange={(nextPage) => setPage(nextPage)}
+              onEdit={(instance) => {
+                setEditingInstance(instance)
+                setDrawerOpen(true)
+              }}
             />
           </div>
         </PageTabsContent>
 
         <PageTabsContent value="config">
-          <div className="bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <BookOpen className="w-5 h-5 text-blue-500" />
-              <h3 className="text-lg font-semibold text-gray-900">配置说明</h3>
+          <div className="rounded-3xl border border-[#E2E8F0] bg-white p-6">
+            <div className="flex items-center gap-2 text-sm font-medium text-[#0F172A]">
+              <BookOpen className="h-4 w-4 text-[#2563EB]" />
+              配置说明
             </div>
-
             {app.config_schema ? (
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">配置项</h4>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <pre className="text-sm font-mono text-gray-700 whitespace-pre-wrap overflow-auto">
-                      {JSON.stringify(app.config_schema, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-medium text-gray-900 mb-2">示例配置</h4>
-                  <p className="text-sm text-gray-600">
-                    请参考 JSON Schema 定义填写配置参数。创建实例时可使用表单模式或代码模式编辑。
-                  </p>
-                </div>
-              </div>
+              <pre className="mt-4 overflow-auto rounded-2xl bg-[#0F172A] p-5 text-xs leading-6 text-[#E2E8F0]">
+                {JSON.stringify(app.config_schema, null, 2)}
+              </pre>
             ) : (
-              <p className="text-sm text-gray-500">暂无配置说明</p>
+              <p className="mt-4 text-sm text-[#64748B]">当前应用暂无额外配置说明。</p>
             )}
           </div>
         </PageTabsContent>
       </PageTabs>
 
-      {/* 配置抽屉 */}
       <ConfigDrawer
         open={drawerOpen}
         app={app}

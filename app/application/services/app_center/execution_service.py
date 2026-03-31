@@ -171,6 +171,7 @@ class ExecutionService:
     
     def list_executions(
         self,
+        app_code: Optional[str] = None,
         instance_id: Optional[int] = None,
         status: Optional[str] = None,
         trigger_type: Optional[str] = None,
@@ -183,6 +184,7 @@ class ExecutionService:
         查询执行记录列表
         
         Args:
+            app_code: 应用编码筛选
             instance_id: 实例 ID 筛选
             status: 执行状态筛选
             trigger_type: 触发类型筛选
@@ -195,6 +197,7 @@ class ExecutionService:
             分页结果
         """
         executions, total = self.app_execution_repository.find_all(
+            app_code=app_code,
             instance_id=instance_id,
             status=status,
             trigger_type=trigger_type,

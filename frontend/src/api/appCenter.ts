@@ -122,6 +122,7 @@ export interface UpdateInstanceInput {
 }
 
 export interface GetExecutionsParams {
+  app_code?: string
   instance_id?: number
   status?: string
   trigger_type?: string

@@ -24,7 +24,8 @@ def main() -> int:
 
     try:
         create_domain_via_ui(page, domain_name)
-        page.get_by_role("heading", name="领域设计").wait_for(timeout=10_000)
+        page.get_by_test_id("domain-canvas-page").wait_for(timeout=10_000)
+        page.get_by_text("Cube 资源库", exact=True).wait_for(timeout=10_000)
         cubes = page.locator('[data-testid^="domain-library-cube-"]')
         cube_count = cubes.count()
         if cube_count == 0:
@@ -36,11 +37,11 @@ def main() -> int:
         drag_library_cube_to_canvas(page, drag_index)
 
         published = False
-        for _ in range(min(3, cube_count)):
+        for _ in range(cube_count):
             with page.expect_response(
                 lambda response: response.url.endswith("/publish") and response.request.method == "POST"
             ) as response_info:
-                page.get_by_test_id("publish-domain-button").click()
+                page.get_by_role("button", name="保存").click()
 
             response = response_info.value
             payload = response.json()
@@ -63,7 +64,7 @@ def main() -> int:
         if not published:
             raise AssertionError("领域发布未成功完成")
 
-        page.get_by_text("活跃", exact=True).first.wait_for(timeout=10_000)
+        page.get_by_text("领域 YAML 发布成功", exact=False).wait_for(timeout=10_000)
         assert_no_error_toast(page, "发布失败")
         print(f"PASS: 已发布领域并激活 -> {domain_name}")
         return 0

@@ -1,5 +1,6 @@
 /**
- * 数据集管理页面 - Migrated to shadcn/ui
+ * 数据集管理页面
+ * 基于 uiv2.pen 设计稿 (PGvGl)
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -9,9 +10,6 @@ import {
   Plus,
   Edit2,
   Trash2,
-  CheckCircle,
-  Clock,
-  AlertCircle,
   Search,
   RefreshCw,
   Database,
@@ -23,7 +21,8 @@ import {
 import { getDatasets, deleteDataset, getDatasetStatistics, syncDatasetSchema } from '../api/datasets'
 import type { Dataset } from '@/types'
 import {
-  FormButton,
+  CapabilityGateCard,
+  DataCenterPageShell,
   useToast,
   AlertDialog,
   AlertDialogAction,
@@ -40,7 +39,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
 export default function Datasets() {
@@ -49,8 +47,9 @@ export default function Datasets() {
   const { toast } = useToast()
   const [searchText, setSearchText] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize] = useState(10)
   const [datasetToDelete, setDatasetToDelete] = useState<Dataset | null>(null)
+  const [syncingDatasetIds, setSyncingDatasetIds] = useState<number[]>([])
 
   const { data: listData, isLoading } = useQuery({
     queryKey: ['datasets', currentPage, pageSize, searchText],
@@ -76,27 +75,35 @@ export default function Datasets() {
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } }; message?: string }
-      toast({ 
-        title: '删除失败', 
+      toast({
+        title: '删除失败',
         description: err.response?.data?.message || err.message,
-        variant: 'destructive' 
+        variant: 'destructive'
       })
     }
   })
 
   const syncMutation = useMutation({
     mutationFn: syncDatasetSchema,
+    onMutate: async (datasetId) => {
+      setSyncingDatasetIds((currentIds) =>
+        currentIds.includes(datasetId) ? currentIds : [...currentIds, datasetId],
+      )
+    },
     onSuccess: () => {
       toast({ title: '元数据同步已触发', description: '正在刷新数据集元数据...' })
       queryClient.invalidateQueries({ queryKey: ['datasets'] })
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } }; message?: string }
-      toast({ 
-        title: '同步失败', 
+      toast({
+        title: '同步失败',
         description: err.response?.data?.message || err.message,
-        variant: 'destructive' 
+        variant: 'destructive'
       })
+    },
+    onSettled: (_data, _error, datasetId) => {
+      setSyncingDatasetIds((currentIds) => currentIds.filter((id) => id !== datasetId))
     }
   })
 
@@ -110,270 +117,254 @@ export default function Datasets() {
   }
 
   const statsList = [
-    { label: '总数据集', value: stats.total, icon: Table2, gradient: 'from-emerald-500 to-emerald-600' },
-    { label: '已同步', value: stats.synced, icon: CheckCircle, gradient: 'from-cyan-500 to-cyan-600' },
-    { label: '同步失败', value: stats.failed, icon: AlertCircle, gradient: 'from-rose-500 to-rose-600' }
+    { label: '总数据集', value: stats.total, color: 'text-[#0F172A]' },
+    { label: '已同步', value: stats.synced, color: 'text-[#10B981]' },
+    { label: '同步失败', value: stats.failed, color: 'text-[#94A3B8]' },
   ]
 
-  const getSyncStatus = (status: string) => {
+  const getSyncStatusStyle = (status: string) => {
     const config: Record<string, { color: string; label: string }> = {
-      synced: { color: 'bg-emerald-50 text-emerald-700', label: '已同步' },
-      syncing: { color: 'bg-blue-50 text-blue-700', label: '同步中' },
-      failed: { color: 'bg-red-50 text-red-700', label: '失败' }
+      synced: { color: 'text-[#10B981]', label: '已同步' },
+      syncing: { color: 'text-[#2563EB]', label: '同步中' },
+      failed: { color: 'text-[#EF4444]', label: '失败' },
     }
-    return config[status] || { color: 'bg-gray-100 text-gray-600', label: status }
+    return config[status] || { color: 'text-[#94A3B8]', label: status }
   }
 
   const totalPages = Math.ceil(total / pageSize)
+  const governanceCards = [
+    { title: '血缘分析', reason: '血缘关系识别依赖后端真实链路计算能力，当前阶段仅保留入口。' },
+    { title: '影响分析', reason: '下游影响范围尚未接入真实任务和订阅关系，暂不开放操作。' },
+    { title: '质量评分', reason: '质量评分依赖真实治理规则与监控结果回传，当前阶段仅显示禁用态。' },
+  ]
+  const tableColumnsClass = 'grid grid-cols-[minmax(260px,2.1fr)_minmax(260px,1.7fr)_120px_minmax(120px,0.9fr)_120px] gap-4'
 
   return (
-    <div className="space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-            <Table2 className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">数据集管理</h1>
-            <p className="text-gray-500 text-sm">管理注册的数据集和字段元信息</p>
-          </div>
-        </div>
+    <DataCenterPageShell
+      title="数据集管理"
+      description="管理注册的数据集和字段元信息"
+      className="px-10 py-8"
+      actions={(
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <FormButton className="bg-gradient-to-r from-emerald-500 to-teal-500">
-              <Plus className="w-5 h-5 mr-2" />
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded-lg bg-[#2563EB] px-5 py-2.5 text-sm font-medium text-white shadow-[0_2px_8px_#2563EB30] cursor-pointer"
+            >
               注册数据集
-              <ChevronDown className="w-4 h-4 ml-2" />
-            </FormButton>
+              <ChevronDown className="h-4 w-4" />
+            </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={5}>
             <DropdownMenuItem onClick={() => navigate('/data-center/datasets/register/table')}>
-              <Database className="w-4 h-4 mr-2" />
+              <Database className="mr-2 h-4 w-4" />
               物理表数据集
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate('/queries/editor')}>
-              <Code className="w-4 h-4 mr-2" />
+            <DropdownMenuItem onClick={() => navigate('/queries')}>
+              <Code className="mr-2 h-4 w-4" />
               SQL 虚拟数据集
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/data-center/datasets/register/file')}>
-              <FileText className="w-4 h-4 mr-2" />
-              CSV 文件数据集
+              <FileText className="mr-2 h-4 w-4" />
+              CSV / Excel 文件数据集
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+      )}
+    >
 
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statsList.map((stat, index) => {
-          const Icon = stat.icon
-          return (
-            <div key={index} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm text-gray-500 font-medium mb-1">{stat.label}</div>
-                  <div className="text-3xl font-bold text-gray-900">{stat.value}</div>
-                </div>
-                <div className={cn("w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg", stat.gradient)}>
-                  <Icon className="w-6 h-6 text-white" />
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* 搜索和筛选 */}
-      <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="搜索数据集名称或编码..."
-              value={searchText}
-              onChange={(e) => {
-                setSearchText(e.target.value)
-                setCurrentPage(1)
-              }}
-              className="h-11 pl-12 pr-4 bg-gray-50"
-            />
+      {/* Stat Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        {statsList.map((stat) => (
+          <div
+            key={stat.label}
+            className="relative overflow-hidden rounded-xl bg-white p-5 shadow-[0_4px_20px_#0F172A08]"
+          >
+            <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-gradient-to-b from-[#2563EB] to-[#3B82F6]" />
+            <span className={`text-[28px] font-semibold ${stat.color}`}>{stat.value}</span>
+            <p className="mt-2 text-[13px] text-[#64748B]">{stat.label}</p>
           </div>
-        </div>
+        ))}
       </div>
 
-      {/* 数据集列表 */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* Search */}
+      <div className="flex items-center gap-2.5 rounded-lg bg-[#F1F5F9] px-4 py-3">
+        <Search className="h-[18px] w-[18px] text-[#94A3B8]" />
+        <input
+          type="text"
+          placeholder="搜索数据集名称或编码..."
+          value={searchText}
+          onChange={(e) => {
+            setSearchText(e.target.value)
+            setCurrentPage(1)
+          }}
+          className="flex-1 bg-transparent text-sm text-[#0F172A] placeholder-[#94A3B8] outline-none"
+        />
+      </div>
+
+      {/* Table */}
+      <div className="overflow-hidden rounded-xl bg-white shadow-[0_2px_24px_#0F172A08]">
         {isLoading ? (
-          <div className="p-16 text-center">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400 mx-auto mb-4" />
-            <span className="text-gray-500">正在加载数据集...</span>
+          <div className="flex items-center justify-center py-32">
+            <Loader2 className="h-8 w-8 animate-spin text-[#94A3B8]" />
           </div>
         ) : datasets.length === 0 ? (
-          <div className="p-16 text-center">
-            <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-5">
-              <Table2 className="w-10 h-10 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">暂无数据集</h3>
-            <p className="text-gray-500 mb-6">从已连接的数据源注册您的第一个数据集</p>
-            <FormButton onClick={() => navigate('/data-center/datasets/register')} className="bg-gradient-to-r from-emerald-500 to-teal-500">
-              <Plus className="w-5 h-5 mr-2" />
+          <div className="flex flex-col items-center justify-center py-32">
+            <Table2 className="h-12 w-12 text-[#E2E8F0] mb-4" />
+            <h3 className="text-base font-semibold text-[#0F172A] mb-2">暂无数据集</h3>
+            <p className="text-sm text-[#64748B] mb-6">从已连接的数据源注册您的第一个数据集</p>
+            <button
+              type="button"
+              onClick={() => navigate('/data-center/datasets/register/table')}
+              className="flex items-center gap-1.5 rounded-lg bg-[#2563EB] px-4 py-2 text-sm text-white cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
               注册数据集
-            </FormButton>
+            </button>
           </div>
         ) : (
           <>
-            <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">数据集</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">物理表</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">同步状态</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">负责人</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {datasets.map((ds: Dataset) => {
-                const syncStatus = getSyncStatus(ds.sync_status)
-                return (
-                  <tr key={ds.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center",
-                          ds.dataset_type === 'virtual' ? 'bg-gradient-to-br from-indigo-500 to-purple-500' :
-                          ds.dataset_type === 'file' ? 'bg-gradient-to-br from-blue-500 to-cyan-500' :
-                          'bg-gradient-to-br from-emerald-500 to-teal-500'
-                        )}>
-                          {ds.dataset_type === 'virtual' ? <Code className="w-5 h-5 text-white" /> :
-                           ds.dataset_type === 'file' ? <FileText className="w-5 h-5 text-white" /> :
-                           <Table2 className="w-5 h-5 text-white" />}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-gray-900">{ds.dataset_name}</span>
-                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                              ID: {ds.id}
-                            </span>
-                            <span className={cn(
-                              "px-2 py-0.5 rounded text-xs font-medium",
-                              ds.dataset_type === 'virtual' ? 'bg-indigo-50 text-indigo-700' :
-                              ds.dataset_type === 'file' ? 'bg-blue-50 text-blue-700' :
-                              'bg-emerald-50 text-emerald-700'
-                            )}>
-                              {ds.dataset_type === 'virtual' ? 'SQL' : ds.dataset_type === 'file' ? '文件' : '物理表'}
-                            </span>
-                          </div>
-                          {ds.description && (
-                            <div className="text-xs text-gray-500 mt-1">{ds.description}</div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-600 font-mono bg-gray-50 px-2 py-1 rounded">
-                        {ds.physical_table || ds.dataset_type === 'virtual' ? 'SQL查询' : ds.dataset_type === 'file' ? ds.file_metadata?.file_name : '-'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn("inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold", syncStatus.color)}>
-                        {syncStatus.label}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {ds.owner || '-'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-1">
-                        <FormButton
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => syncMutation.mutate(ds.id)}
-                          disabled={syncMutation.isPending}
-                          className="w-9 h-9"
-                          title="同步元数据"
-                        >
-                          <RefreshCw className={cn("w-4 h-4", syncMutation.isPending && "animate-spin")} />
-                        </FormButton>
-                        <FormButton
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => navigate(`/data-center/datasets/${ds.id}`)}
-                          className="w-9 h-9"
-                          title="编辑"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </FormButton>
-                        <FormButton
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDatasetToDelete(ds)}
-                          className="w-9 h-9 hover:text-red-600 hover:bg-red-50"
-                          title="删除"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </FormButton>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            </table>
-            
-            {/* Custom Pagination */}
-            <div className="p-4 border-t border-gray-100 flex items-center justify-between">
-              <div className="text-sm text-gray-500">
-                共 {total} 条
-              </div>
+            {/* Table Header */}
+            <div className={`${tableColumnsClass} items-center border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3.5`}>
+              <span className="min-w-0 text-xs font-semibold text-[#64748B]">数据集</span>
+              <span className="min-w-0 text-xs font-semibold text-[#64748B]">物理表</span>
+              <span className="text-xs font-semibold text-[#64748B]">同步状态</span>
+              <span className="text-xs font-semibold text-[#64748B]">负责人</span>
+              <span className="text-xs font-semibold text-[#64748B]">操作</span>
+            </div>
+
+            {/* Table Rows */}
+            {datasets.map((ds: Dataset, i: number) => {
+              const syncStyle = getSyncStatusStyle(ds.sync_status)
+              const typeLabel = ds.dataset_type === 'virtual' ? 'SQL' : ds.dataset_type === 'file' ? '文件' : '物理表'
+              const syncReason = ds.sync_status === 'failed' ? (ds.sync_error || '同步失败，后端未返回具体原因') : null
+              const isCurrentRowSyncing = syncingDatasetIds.includes(ds.id)
+              return (
+                <div
+                  key={ds.id}
+                  className={`${tableColumnsClass} items-start px-5 py-4 ${i < datasets.length - 1 ? 'border-b border-[#F1F5F9]' : ''}`}
+                >
+                  {/* Dataset info */}
+                  <div className="min-w-0 pr-4">
+                    <span className="block truncate text-[13px] font-medium text-[#0F172A]" title={ds.dataset_name}>
+                      {ds.dataset_name}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-[#94A3B8]">ID:{ds.id} · {typeLabel}</span>
+                    {syncReason ? <span className="mt-1 block truncate text-xs text-[#EF4444]" title={syncReason}>{syncReason}</span> : null}
+                  </div>
+
+                  {/* Physical table */}
+                  <span
+                    className="block min-w-0 truncate pr-4 text-[13px] text-[#64748B]"
+                    title={
+                      ds.physical_table ||
+                      (ds.dataset_type === 'virtual'
+                        ? '视图'
+                        : ds.dataset_type === 'file'
+                          ? ds.file_metadata?.file_name || '-'
+                          : '-')
+                    }
+                  >
+                    {ds.physical_table || (ds.dataset_type === 'virtual' ? '视图' : ds.dataset_type === 'file' ? ds.file_metadata?.file_name : '-')}
+                  </span>
+
+                  {/* Sync status */}
+                  <span className={`block min-w-0 truncate text-[13px] font-medium ${syncStyle.color}`}>
+                    {syncStyle.label}
+                  </span>
+
+                  {/* Owner */}
+                  <span className="block min-w-0 truncate pr-4 text-[13px] text-[#64748B]" title={ds.owner || '-'}>
+                    {ds.owner || '-'}
+                  </span>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-3 self-center">
+                    <button
+                      type="button"
+                      onClick={() => syncMutation.mutate(ds.id)}
+                      disabled={isCurrentRowSyncing}
+                      className="text-[#94A3B8] hover:text-[#2563EB] disabled:opacity-50 cursor-pointer"
+                      title="同步元数据"
+                    >
+                      <RefreshCw className={cn("h-4 w-4", isCurrentRowSyncing && "animate-spin")} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/data-center/datasets/${ds.id}`)}
+                      className="text-[#94A3B8] hover:text-[#64748B] cursor-pointer"
+                      title="编辑"
+                    >
+                      <Edit2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDatasetToDelete(ds)}
+                      className="text-[#94A3B8] hover:text-[#EF4444] cursor-pointer"
+                      title="删除"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Pagination */}
+            <div className="flex items-center justify-between border-t border-[#E2E8F0] px-5 py-3">
+              <span className="text-xs text-[#94A3B8]">共 {total} 条</span>
               <div className="flex items-center gap-2">
-                <FormButton
-                  variant="outline"
-                  size="sm"
+                <button
+                  type="button"
                   onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage === 1}
+                  className="rounded-md border border-[#E2E8F0] px-3 py-1 text-xs text-[#64748B] disabled:opacity-50 cursor-pointer"
                 >
                   上一页
-                </FormButton>
-                <span className="text-sm text-gray-600">
+                </button>
+                <span className="text-xs text-[#64748B]">
                   第 {currentPage} / {totalPages} 页
                 </span>
-                <FormButton
-                  variant="outline"
-                  size="sm"
+                <button
+                  type="button"
                   onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage === totalPages}
+                  className="rounded-md border border-[#E2E8F0] px-3 py-1 text-xs text-[#64748B] disabled:opacity-50 cursor-pointer"
                 >
                   下一页
-                </FormButton>
+                </button>
               </div>
             </div>
           </>
         )}
       </div>
 
-      {/* 删除确认对话框 */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {governanceCards.map((card) => (
+          <CapabilityGateCard key={card.title} title={card.title} reason={card.reason} />
+        ))}
+      </div>
+
+      {/* Delete Dialog */}
       <AlertDialog open={!!datasetToDelete} onOpenChange={(open) => !open && setDatasetToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除数据集 "{datasetToDelete?.dataset_name}" 吗？此操作无法撤销。
+              确定要删除数据集 &ldquo;{datasetToDelete?.dataset_name}&rdquo; 吗？此操作无法撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={() => datasetToDelete && deleteMutation.mutate(datasetToDelete.id)}
-              className="bg-red-500 hover:bg-red-600"
+              className="bg-[#EF4444] hover:bg-[#DC2626]"
             >
               确定删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </DataCenterPageShell>
   )
 }

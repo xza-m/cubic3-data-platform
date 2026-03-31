@@ -1,13 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { GitBranch, PlusCircle } from 'lucide-react'
-import {
-  createDomain,
-  listDomainCatalogs,
-  listDomains,
-  type DomainSummary,
-} from '@/api/semantic'
+import { createDomain } from '@/api/semantic'
 import { CatalogEditorDialog } from '@/components/Semantic/CatalogEditorDialog'
 import { useToast } from '@/components/business'
 import { Badge } from '@/components/ui/badge'
@@ -22,15 +17,9 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SemanticPageHeader, SemanticPageShell, SemanticSurface } from '@/components/Semantic/workbench'
+import { SemanticWorkbenchContextBar } from '@/components/Semantic/SemanticWorkbenchContextBar'
+import { useDomainModelingEntry } from '@/hooks/semantic-ia'
 import { getSemanticStatusLabel } from '@/lib/semantic-status'
-
-function sortByRecent(domains: DomainSummary[]) {
-  return [...domains].sort((a, b) => {
-    const at = Date.parse(a.state_summary?.updated_at || a.state_summary?.last_published_at || '') || 0
-    const bt = Date.parse(b.state_summary?.updated_at || b.state_summary?.last_published_at || '') || 0
-    return bt - at
-  })
-}
 
 export default function DomainModelingEntry() {
   const navigate = useNavigate()
@@ -40,17 +29,13 @@ export default function DomainModelingEntry() {
   const [catalogCode, setCatalogCode] = useState('default')
   const [catalogDialogOpen, setCatalogDialogOpen] = useState(false)
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['semantic', 'domains'],
-    queryFn: async () => (await listDomains()).data,
-  })
-
-  const { data: catalogData } = useQuery({
-    queryKey: ['semantic', 'catalogs'],
-    queryFn: async () => (await listDomainCatalogs()).data,
-  })
-
-  const catalogs = catalogData?.catalogs ?? []
+  const {
+    catalogs,
+    draftDomains,
+    publishedDomains,
+    contextBarItems,
+    isLoading,
+  } = useDomainModelingEntry()
 
   const createMutation = useMutation({
     mutationFn: async () => (await createDomain({ name: name.trim(), catalog_code: catalogCode || 'default' })).data,
@@ -68,16 +53,6 @@ export default function DomainModelingEntry() {
     },
   })
 
-  const domains: DomainSummary[] = data?.domains ?? []
-  const draftDomains = useMemo(
-    () => sortByRecent(domains.filter((domain) => domain.status === 'draft')).slice(0, 6),
-    [domains],
-  )
-  const publishedDomains = useMemo(
-    () => sortByRecent(domains.filter((domain) => domain.status === 'active')).slice(0, 6),
-    [domains],
-  )
-
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -91,15 +66,8 @@ export default function DomainModelingEntry() {
     <SemanticPageShell>
       <SemanticPageHeader
         title="领域建模"
-        description="左侧创建新领域，右侧继续草稿或已发布领域，避免在目录页和画布之间反复跳转。"
-        status="ready"
-        eyebrow="Domain Modeling"
-        meta={
-          <>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{catalogs.length} 个目录</Badge>
-            <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">{domains.length} 个领域</Badge>
-          </>
-        }
+        description="创建领域草稿，并查看已有领域的建模状态。"
+        eyebrow={null}
         actions={
           <Button variant="outline" asChild className="h-10 rounded-full border-[hsl(var(--workbench-outline))] bg-white/84 px-4">
             <Link to="/semantic/domains">返回领域目录</Link>
@@ -107,16 +75,18 @@ export default function DomainModelingEntry() {
         }
       />
 
+      <SemanticWorkbenchContextBar
+        items={contextBarItems}
+        testId="domain-modeling-entry-context-bar"
+      />
+
       <SemanticSurface bodyClassName="p-0">
         <div className="grid xl:grid-cols-[400px_minmax(0,1fr)]">
           <aside className="border-b border-[hsl(var(--workbench-outline))] bg-[rgba(249,251,254,0.86)] p-6 xl:border-b-0 xl:border-r">
             <div className="space-y-1">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-                Create
-              </div>
-              <h2 className="text-[1.12rem] font-semibold text-[hsl(var(--workbench-ink))]">新建领域并进入画布</h2>
+              <h2 className="text-[1.12rem] font-semibold text-[hsl(var(--workbench-ink))]">新建领域草稿</h2>
               <p className="text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                先选目录，再创建领域。创建成功后直接进入画布，不在当前页堆积额外流程。
+                设置目录并创建新的领域草稿。
               </p>
             </div>
 
@@ -183,18 +153,8 @@ export default function DomainModelingEntry() {
           <section className="space-y-0">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-6 py-4">
               <div className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-                  Continue
-                </div>
-                <div className="text-[1.02rem] font-semibold text-[hsl(var(--workbench-ink))]">继续已有领域</div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">
-                  {draftDomains.length} 个草稿
-                </Badge>
-                <Badge variant="outline" className="border-transparent bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">
-                  {publishedDomains.length} 个已发布
-                </Badge>
+                <div className="text-[1.02rem] font-semibold text-[hsl(var(--workbench-ink))]">已有领域</div>
+                <p className="text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">查看草稿领域和已发布领域。</p>
               </div>
             </div>
 
@@ -202,9 +162,9 @@ export default function DomainModelingEntry() {
               <div className="border-b border-[hsl(var(--workbench-outline))] p-6 xl:border-b-0 xl:border-r">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">继续草稿建模</div>
+                    <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">草稿领域</div>
                     <p className="mt-1 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                      优先返回最近编辑过的草稿领域，避免用户重新从目录页兜一圈。
+                      显示最近更新的草稿领域。
                     </p>
                   </div>
                 </div>
@@ -240,9 +200,9 @@ export default function DomainModelingEntry() {
 
               <div className="p-6">
                 <div className="mb-4">
-                  <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">从已发布领域继续调整</div>
+                  <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">已发布领域</div>
                   <p className="mt-1 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                    用于增补关系、补充说明或做边界微调，不需要重新新建领域。
+                    显示近期已发布的领域。
                   </p>
                 </div>
                 <div className="space-y-2">

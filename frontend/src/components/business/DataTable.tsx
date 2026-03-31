@@ -226,7 +226,7 @@ export function DataTable<T = Record<string, unknown>>({
               {normalizedColumns.map((column) => (
                 <TableHead
                   key={column.key}
-                  className="h-10 px-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]"
+                  className="h-10 px-4 text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]"
                   style={{ width: column.width, textAlign: column.align }}
                 >
                   {column.title}
@@ -237,7 +237,7 @@ export function DataTable<T = Record<string, unknown>>({
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={normalizedColumns.length} className="py-10 text-center text-[hsl(var(--workbench-muted-foreground))]">
+                <TableCell colSpan={normalizedColumns.length} className="py-10 text-center text-[0.9375rem] leading-6 text-[hsl(var(--workbench-muted-foreground))]">
                   {emptyText}
                 </TableCell>
               </TableRow>
@@ -255,7 +255,7 @@ export function DataTable<T = Record<string, unknown>>({
                     {normalizedColumns.map((column) => (
                       <TableCell
                         key={column.key}
-                        className="px-4 py-3 align-top"
+                        className="px-4 py-3 align-top text-[0.9375rem] leading-6 text-[hsl(var(--workbench-ink))]"
                         style={{ textAlign: column.align }}
                       >
                         {getCellValue(record, column, index)}
@@ -271,12 +271,12 @@ export function DataTable<T = Record<string, unknown>>({
 
       {shouldShowPagination && (
         <div className="flex flex-col gap-3 border-t border-[hsl(var(--workbench-outline))] pt-3 md:flex-row md:items-center md:justify-between">
-          <div className="text-sm text-[hsl(var(--workbench-muted-foreground))]">
+          <div className="text-[0.875rem] leading-5 text-[hsl(var(--workbench-muted-foreground))] tabular-nums">
             共 {pagination?.total || data.length} 条
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             {pageSizeOptions.length ? (
-              <div className="flex items-center gap-2 text-sm text-[hsl(var(--workbench-muted-foreground))]">
+              <div className="flex items-center gap-2 text-[0.875rem] leading-5 text-[hsl(var(--workbench-muted-foreground))]">
                 <span>每页</span>
                 <Select
                   value={String(pagination?.pageSize || pageSize)}
@@ -306,7 +306,7 @@ export function DataTable<T = Record<string, unknown>>({
               <ChevronLeft className="h-4 w-4" />
               上一页
             </Button>
-            <div className="text-sm text-[hsl(var(--workbench-muted-foreground))]">
+            <div className="text-[0.875rem] leading-5 text-[hsl(var(--workbench-muted-foreground))] tabular-nums">
               第 {currentPageNumber} / {totalPages} 页
             </div>
             <Button

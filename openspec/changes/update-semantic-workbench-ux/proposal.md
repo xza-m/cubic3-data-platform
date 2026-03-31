@@ -58,6 +58,11 @@
   - 已压缩 `DomainCanvas` 顶部条带，移除重复上下文层级，把更多垂直空间还给画布
   - 已收紧 `DevTools` 的对象上下文表达，移除页级重复信息，并补足 `YamlEditor` 的加载态
   - 已更新语义中心视觉快照基线，并补强 `cube-browse` / `devtools-browse` smoke 夹具，使空环境也能完成回归
+- `Phase 6 / Semantic Page Standard`: 已完成
+  - 已将 `Cube 管理页` 收敛出的“轻页头 + 单条上下文 + 主工作面板 + 条件显示预览/Inspector”模式整理为语义中心标准
+  - 已将该模式回写到 OpenSpec 设计文档，作为后续语义页默认实现规范
+  - 已按该标准统一 `Overview / DomainList / DomainModelingEntry / DevTools`，并为 `CubeStudio / DomainCanvas` 补齐一致的上下文条与页头节奏
+  - 已去除语义页内重复的 badge 云、英文眉标题和多层解释性 UI，收敛为单一工作台层级
 
 ## Impact
 - Affected specs: `semantic-modeling`, `frontend-ui`

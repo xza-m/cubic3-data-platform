@@ -1,5 +1,4 @@
-import { Blocks, Eye, PlusCircle, Search } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { FilterX, Search } from 'lucide-react'
 import { SemanticFilterChips, SemanticToolbar, SemanticToolbarGroup } from '@/components/Semantic/SemanticToolbar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,160 +9,135 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
 import type {
-  CubeBindingFilter,
   CubeDomainFilter,
   CubeFocusFilter,
+  CubeSortOption,
   CubeStatusFilter,
+  CubeTypeFilter,
 } from './cubeListUtils'
 
-type ObjectKind = 'cube' | 'view'
-
 interface CubeToolbarProps {
-  kind: ObjectKind
   query: string
-  total: number
   focus: CubeFocusFilter
   status: CubeStatusFilter
-  binding: CubeBindingFilter
+  cubeType: CubeTypeFilter
   domain: CubeDomainFilter
-  focusCounts: Record<CubeFocusFilter, number>
-  onKindChange: (value: ObjectKind) => void
+  sort: CubeSortOption
   onQueryChange: (value: string) => void
   onFocusChange: (value: CubeFocusFilter) => void
   onStatusChange: (value: CubeStatusFilter) => void
-  onBindingChange: (value: CubeBindingFilter) => void
+  onCubeTypeChange: (value: CubeTypeFilter) => void
   onDomainChange: (value: CubeDomainFilter) => void
+  onSortChange: (value: CubeSortOption) => void
+  onResetFilters: () => void
 }
 
 export function CubeToolbar({
-  kind,
   query,
-  total,
   focus,
   status,
-  binding,
+  cubeType,
   domain,
-  focusCounts,
-  onKindChange,
+  sort,
   onQueryChange,
   onFocusChange,
   onStatusChange,
-  onBindingChange,
+  onCubeTypeChange,
   onDomainChange,
+  onSortChange,
+  onResetFilters,
 }: CubeToolbarProps) {
   return (
-    <SemanticToolbar>
-      <div className="space-y-3">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <SemanticToolbarGroup>
-            <div className="flex rounded-full border border-[hsl(var(--workbench-outline))] bg-white/94 p-1">
-              {([
-                { value: 'cube', label: 'Cube', icon: Blocks },
-                { value: 'view', label: 'View', icon: Eye },
-              ] as const).map((item) => {
-                const Icon = item.icon
-                const active = kind === item.value
-                return (
-                  <button
-                    key={item.value}
-                    type="button"
-                    onClick={() => onKindChange(item.value)}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all',
-                      active
-                        ? 'bg-[hsl(var(--workbench-accent))] text-white'
-                        : 'text-[hsl(var(--workbench-muted-foreground))] hover:text-[hsl(var(--workbench-ink))]',
-                    )}
-                    data-testid={`cube-toolbar-kind-${item.value}`}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {item.label}
-                  </button>
-                )
-              })}
-            </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--workbench-outline))] bg-white/88 px-3 py-1.5 text-xs text-[hsl(var(--workbench-muted-foreground))]">
-              {kind === 'cube' ? `${total} 个模型` : `${total} 个 View`}
-            </span>
-          </SemanticToolbarGroup>
+    <SemanticToolbar className="px-4 py-2.5">
+      <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="relative min-w-0 flex-1 basis-[14rem] xl:max-w-[18rem]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[hsl(var(--workbench-muted-foreground))]" />
+            <Input
+              name="semantic_object_search"
+              autoComplete="off"
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="搜索标题、名称或编码"
+              className="h-8 rounded-[var(--workbench-radius-sm)] border-[hsl(var(--workbench-outline))] bg-white pl-8 text-[12px]"
+              data-testid="cube-management-search"
+            />
+          </div>
 
-          <SemanticToolbarGroup className="w-full justify-end xl:w-auto">
-            <div className="relative min-w-0 flex-1 xl:w-[22rem]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(var(--workbench-muted-foreground))]" />
-              <Input
-                name="semantic_object_search"
-                autoComplete="off"
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder={kind === 'cube' ? '搜索 Cube、领域或来源绑定…' : '搜索 View 名称或说明…'}
-                className="h-10 rounded-xl border-[hsl(var(--workbench-outline))] bg-white pl-9"
-                data-testid="cube-management-search"
-              />
-            </div>
-            {kind === 'cube' ? (
-              <Button asChild className="h-10 rounded-xl px-4">
-                <Link to="/semantic/cubes/new">
-                  <PlusCircle className="mr-1.5 h-4 w-4" />
-                  新建 Cube
-                </Link>
-              </Button>
-            ) : null}
-          </SemanticToolbarGroup>
+          <SemanticFilterChips
+            value={focus}
+            onChange={onFocusChange}
+            size="compact"
+            className="flex-nowrap gap-1 overflow-x-auto pb-0.5"
+            items={[
+              { value: 'all', label: '全部' },
+              { value: 'attention', label: '待处理' },
+              { value: 'unbound', label: '未绑定' },
+              { value: 'undomained', label: '未纳域' },
+              { value: 'recent', label: '最近更新' },
+            ]}
+          />
         </div>
 
-        {kind === 'cube' ? (
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <SemanticFilterChips
-              value={focus}
-              onChange={onFocusChange}
-              items={[
-                { value: 'all', label: '全部', count: focusCounts.all },
-                { value: 'attention', label: '待处理', count: focusCounts.attention },
-                { value: 'unbound', label: '未绑定', count: focusCounts.unbound },
-                { value: 'undomained', label: '未归域', count: focusCounts.undomained },
-                { value: 'recent', label: '最近变更', count: focusCounts.recent },
-              ]}
-            />
+        <SemanticToolbarGroup className="gap-1.5 overflow-x-auto pb-0.5 xl:flex-nowrap xl:justify-end xl:pb-0">
+          <Select value={cubeType} onValueChange={(value) => onCubeTypeChange(value as CubeTypeFilter)}>
+            <SelectTrigger className="h-8 min-w-[98px] shrink-0 rounded-[var(--workbench-radius-sm)] border-[hsl(var(--workbench-outline))] bg-white/92 px-2 text-[11px]">
+              <SelectValue placeholder="类型" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部类型</SelectItem>
+              <SelectItem value="fact">事实模型</SelectItem>
+              <SelectItem value="dimension">维度模型</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <SemanticToolbarGroup className="xl:justify-end">
-              <Select value={status} onValueChange={(value) => onStatusChange(value as CubeStatusFilter)}>
-                <SelectTrigger className="h-10 min-w-[110px] rounded-xl border-[hsl(var(--workbench-outline))] bg-white/92">
-                  <SelectValue placeholder="状态" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部状态</SelectItem>
-                  <SelectItem value="draft">草稿</SelectItem>
-                  <SelectItem value="active">活跃</SelectItem>
-                  <SelectItem value="deprecated">弃用</SelectItem>
-                </SelectContent>
-              </Select>
+          <Select value={status} onValueChange={(value) => onStatusChange(value as CubeStatusFilter)}>
+            <SelectTrigger className="h-8 min-w-[96px] shrink-0 rounded-[var(--workbench-radius-sm)] border-[hsl(var(--workbench-outline))] bg-white/92 px-2 text-[11px]">
+              <SelectValue placeholder="状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="draft">草稿</SelectItem>
+              <SelectItem value="active">已发布</SelectItem>
+              <SelectItem value="deprecated">已废弃</SelectItem>
+            </SelectContent>
+          </Select>
 
-              <Select value={binding} onValueChange={(value) => onBindingChange(value as CubeBindingFilter)}>
-                <SelectTrigger className="h-10 min-w-[130px] rounded-xl border-[hsl(var(--workbench-outline))] bg-white/92">
-                  <SelectValue placeholder="来源绑定" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部绑定</SelectItem>
-                  <SelectItem value="bound">已绑定</SelectItem>
-                  <SelectItem value="unbound">未绑定</SelectItem>
-                </SelectContent>
-              </Select>
+          <Select value={domain} onValueChange={(value) => onDomainChange(value as CubeDomainFilter)}>
+            <SelectTrigger className="h-8 min-w-[102px] shrink-0 rounded-[var(--workbench-radius-sm)] border-[hsl(var(--workbench-outline))] bg-white/92 px-2 text-[11px]">
+              <SelectValue placeholder="领域" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部领域</SelectItem>
+              <SelectItem value="in_domain">已纳入领域</SelectItem>
+              <SelectItem value="out_domain">未纳入领域</SelectItem>
+            </SelectContent>
+          </Select>
 
-              <Select value={domain} onValueChange={(value) => onDomainChange(value as CubeDomainFilter)}>
-                <SelectTrigger className="h-10 min-w-[120px] rounded-xl border-[hsl(var(--workbench-outline))] bg-white/92">
-                  <SelectValue placeholder="领域归属" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">全部领域</SelectItem>
-                  <SelectItem value="in_domain">已归域</SelectItem>
-                  <SelectItem value="out_domain">未归域</SelectItem>
-                </SelectContent>
-              </Select>
-            </SemanticToolbarGroup>
-          </div>
-        ) : null}
+          <Select value={sort} onValueChange={(value) => onSortChange(value as CubeSortOption)}>
+            <SelectTrigger className="h-8 min-w-[110px] shrink-0 rounded-[var(--workbench-radius-sm)] border-[hsl(var(--workbench-outline))] bg-white/92 px-2 text-[11px]">
+              <SelectValue placeholder="排序" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="priority">待处理优先</SelectItem>
+              <SelectItem value="updated_desc">最近更新</SelectItem>
+              <SelectItem value="name_asc">名称</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onResetFilters}
+            className="h-8 w-8 shrink-0 rounded-lg p-0 text-[hsl(var(--workbench-muted-foreground))]"
+            aria-label="清空筛选"
+            title="清空筛选"
+          >
+            <FilterX className="h-3.5 w-3.5" />
+          </Button>
+        </SemanticToolbarGroup>
       </div>
     </SemanticToolbar>
   )

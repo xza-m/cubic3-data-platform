@@ -8,14 +8,11 @@ import type { Channel, ChannelType } from '@/types/config'
 import { CHANNEL_TYPE_OPTIONS } from '@/types/config'
 import { getChannels, deleteChannel, toggleChannel } from '@/api/channels'
 import ChannelForm from './ChannelForm'
-import { 
+import {
   DataTable,
   FormButton,
-  FormSelect,
-  Badge,
   useToast
 } from '@/components/business'
-import { Switch } from '@/components/ui/switch'
 import { 
   Tooltip,
   TooltipContent,
@@ -125,12 +122,18 @@ export default function Channels() {
         queryClient.invalidateQueries({ queryKey: ['channels'] })
     }
 
-    const getTypeTag = (type: ChannelType) => {
+    const getTypeText = (type: ChannelType) => {
         const option = CHANNEL_TYPE_OPTIONS.find(o => o.value === type)
+        const colorMap: Record<ChannelType, string> = {
+            feishu: 'text-blue-600',
+            webhook: 'text-violet-600',
+            email: 'text-amber-600',
+            oss: 'text-emerald-600',
+        }
         return (
-            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+            <span className={`text-sm font-medium ${colorMap[type] || 'text-slate-600'}`}>
                 {option?.label || type}
-            </Badge>
+            </span>
         )
     }
 
@@ -145,25 +148,21 @@ export default function Channels() {
             key: 'channel_type',
             title: '类型',
             dataIndex: 'channel_type',
-            render: (type: ChannelType) => getTypeTag(type)
+            render: (type: ChannelType) => getTypeText(type)
         },
         {
             key: 'enabled',
             title: '状态',
             dataIndex: 'enabled',
             render: (enabled: boolean, record: Channel) => (
-                <div className="flex items-center gap-2">
-                    <Switch
-                        checked={enabled}
-                        onCheckedChange={(checked: boolean) => 
-                            toggleMutation.mutate({ id: record.id, enabled: checked })
-                        }
-                        disabled={toggleMutation.isPending}
-                    />
-                    <span className="text-sm text-gray-500">
-                        {enabled ? '启用' : '禁用'}
-                    </span>
-                </div>
+                <button
+                    type="button"
+                    onClick={() => toggleMutation.mutate({ id: record.id, enabled: !enabled })}
+                    disabled={toggleMutation.isPending}
+                    className={`text-sm font-medium ${enabled ? 'text-emerald-600' : 'text-slate-500'}`}
+                >
+                    {enabled ? '启用' : '禁用'}
+                </button>
             )
         },
         {
@@ -228,95 +227,83 @@ export default function Channels() {
     ]
 
     return (
-        <div className="space-y-4 md:space-y-6 p-4 md:p-0">
+        <div className="flex h-full flex-col gap-6 p-8 px-10">
             {/* 页面标题 */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div className="flex-1 min-w-0">
-                    <h2 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1 truncate">
-                        渠道管理
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 hidden sm:block">
-                        管理消息推送渠道（飞书、Webhook、邮件等）
-                    </p>
+            <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1">
+                    <h1 className="text-xl font-bold text-slate-900">渠道管理</h1>
+                    <p className="text-sm text-slate-500">管理消息推送渠道（飞书、Webhook、邮件等）</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <FormButton
-                        variant="outline"
-                        size="sm"
+                    <button
                         onClick={() => refetch()}
-                        loading={isLoading}
-                        className="hidden sm:flex"
+                        disabled={isLoading}
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-[13px] font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50"
                     >
-                        <RefreshCw className="h-4 w-4 mr-2" />
+                        <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
                         刷新
-                    </FormButton>
-                    <FormButton
-                        variant="outline"
-                        size="sm"
-                        onClick={() => refetch()}
-                        loading={isLoading}
-                        className="sm:hidden"
+                    </button>
+                    <button
+                        onClick={handleCreate}
+                        className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(37,99,235,0.19)] hover:bg-blue-700"
                     >
-                        <RefreshCw className="h-4 w-4" />
-                    </FormButton>
-                    <FormButton onClick={handleCreate}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        <span className="hidden sm:inline">创建渠道</span>
-                        <span className="sm:hidden">创建</span>
-                    </FormButton>
+                        <Plus className="h-3.5 w-3.5" />
+                        创建渠道
+                    </button>
                 </div>
             </div>
 
             {/* 筛选栏 */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm">
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="relative w-full sm:w-64">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="搜索渠道名称"
-                            value={searchText}
-                            onChange={(e) => setSearchText(e.target.value)}
-                            className="w-full h-11 pl-12 pr-4 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 transition-all"
-                        />
-                    </div>
-                    <FormSelect
-                        placeholder="渠道类型"
-                        value={typeFilter || '__all__'}
-                        onValueChange={(val: string) => setTypeFilter(val === '__all__' ? '' : val as ChannelType)}
-                        options={[
-                            { label: '全部类型', value: '__all__' },
-                            ...CHANNEL_TYPE_OPTIONS.map(o => ({ value: o.value, label: o.label }))
-                        ]}
-                        className="w-full sm:w-40"
+            <div className="flex items-center gap-3">
+                <div className="flex w-[280px] items-center gap-2 rounded-lg bg-slate-100 px-3.5 py-2">
+                    <Search className="h-3.5 w-3.5 text-slate-400" />
+                    <input
+                        type="text"
+                        placeholder="搜索渠道名称"
+                        value={searchText}
+                        onChange={(e) => setSearchText(e.target.value)}
+                        className="w-full bg-transparent text-[13px] text-slate-900 placeholder:text-slate-400 outline-none"
                     />
                 </div>
+                <select
+                    value={typeFilter || ''}
+                    onChange={(e) => setTypeFilter(e.target.value as ChannelType | '')}
+                    className="flex items-center gap-2 rounded-lg bg-slate-100 px-3.5 py-2 text-[13px] text-slate-500 outline-none"
+                >
+                    <option value="">全部类型</option>
+                    {CHANNEL_TYPE_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                </select>
             </div>
 
             {/* 渠道列表 */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div className="flex-1 overflow-hidden">
                 {isLoading ? (
-                    <div className="p-8 space-y-4">
+                    <div className="space-y-4 rounded-xl bg-white p-8 shadow-[0_2px_24px_rgba(15,23,42,0.03)]">
                         <Skeleton className="h-12 w-full" />
                         <Skeleton className="h-12 w-full" />
                         <Skeleton className="h-12 w-full" />
                     </div>
                 ) : filteredChannels.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-64 py-8">
-                        <Inbox className="h-16 w-16 text-gray-300 mb-4" />
-                        <p className="text-lg font-medium text-gray-600 mb-2">
+                    <div className="flex h-64 flex-col items-center justify-center rounded-xl bg-white py-8 shadow-[0_2px_24px_rgba(15,23,42,0.03)]">
+                        <Inbox className="h-16 w-16 text-slate-200 mb-4" />
+                        <p className="text-base font-medium text-slate-600 mb-2">
                             {searchText || typeFilter ? '未找到匹配的渠道' : '还没有渠道'}
                         </p>
-                        <p className="text-sm text-gray-400 mb-4">
+                        <p className="text-sm text-slate-400 mb-4">
                             {searchText || typeFilter
                                 ? '尝试调整筛选条件'
                                 : '创建第一个推送渠道，开始接收消息通知'}
                         </p>
                         {!searchText && !typeFilter && (
-                            <FormButton onClick={handleCreate}>
-                                <Plus className="h-4 w-4 mr-2" />
+                            <button
+                                onClick={handleCreate}
+                                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(37,99,235,0.19)]"
+                            >
+                                <Plus className="h-3.5 w-3.5" />
                                 创建渠道
-                            </FormButton>
+                            </button>
                         )}
                     </div>
                 ) : (

@@ -117,9 +117,9 @@ export default function InstanceTable({
       width: 200,
       render: (_, record) => (
         <div>
-          <div className="font-medium text-gray-900">{record.name}</div>
+          <div className="text-[0.9375rem] font-semibold leading-6 text-gray-900">{record.name}</div>
           {record.description && (
-            <div className="text-xs text-gray-500 mt-1">{record.description}</div>
+            <div className="mt-1 line-clamp-2 text-[0.8125rem] leading-5 text-gray-500">{record.description}</div>
           )}
         </div>
       ),
@@ -152,10 +152,12 @@ export default function InstanceTable({
         record.next_execution_at ? (
           <div className="flex items-center gap-1 text-gray-600">
             <Clock className="w-3 h-3" />
-            <span className="text-xs">{format(new Date(record.next_execution_at), 'yyyy-MM-dd HH:mm')}</span>
+            <span className="text-[0.8125rem] leading-5 [font-variant-numeric:tabular-nums]">
+              {format(new Date(record.next_execution_at), 'yyyy-MM-dd HH:mm')}
+            </span>
           </div>
         ) : (
-          <span className="text-xs text-gray-400">-</span>
+          <span className="text-[0.8125rem] leading-5 text-gray-400">-</span>
         ),
     },
     {
@@ -164,11 +166,19 @@ export default function InstanceTable({
       width: 100,
       render: (_, record) =>
         record.success_rate !== undefined ? (
-          <span className={record.success_rate >= 80 ? 'text-green-600' : record.success_rate >= 50 ? 'text-yellow-600' : 'text-red-600'}>
+          <span
+            className={
+              record.success_rate >= 80
+                ? 'text-[0.875rem] font-medium leading-5 text-green-600 [font-variant-numeric:tabular-nums]'
+                : record.success_rate >= 50
+                  ? 'text-[0.875rem] font-medium leading-5 text-yellow-600 [font-variant-numeric:tabular-nums]'
+                  : 'text-[0.875rem] font-medium leading-5 text-red-600 [font-variant-numeric:tabular-nums]'
+            }
+          >
             {record.success_rate.toFixed(1)}%
           </span>
         ) : (
-          <span className="text-xs text-gray-400">-</span>
+          <span className="text-[0.8125rem] leading-5 text-gray-400">-</span>
         ),
     },
     {

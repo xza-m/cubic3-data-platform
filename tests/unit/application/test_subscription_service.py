@@ -117,6 +117,23 @@ class TestSubscriptionService:
 
         assert '应用实例' in str(exc_info.value)
 
+    def test_create_subscription_channel_not_found(self):
+        from app.shared.exceptions import NotFoundError
+
+        service, _, mock_inst_repo, mock_chan_repo = _make_service()
+        mock_inst_repo.find_by_id.return_value = MagicMock(spec=AppInstance)
+        mock_chan_repo.find_by_id.return_value = None
+
+        with pytest.raises(NotFoundError) as exc_info:
+            service.create_subscription(
+                name='测试',
+                app_instance_id=1,
+                channel_id=999,
+                event_types=['app.execution.completed'],
+            )
+
+        assert '渠道' in str(exc_info.value)
+
     def test_update_subscription(self):
         """测试更新订阅"""
         service, mock_sub_repo, _, _ = _make_service()
@@ -147,6 +164,33 @@ class TestSubscriptionService:
 
         assert result['name'] == '新名称'
         assert 'app.execution.started' in result['event_types']
+        mock_sub_repo.commit.assert_called_once()
+
+    def test_update_subscription_not_found(self):
+        from app.shared.exceptions import NotFoundError
+
+        service, mock_sub_repo, _, _ = _make_service()
+        mock_sub_repo.find_by_id.return_value = None
+
+        with pytest.raises(NotFoundError):
+            service.update_subscription(subscription_id=1, name='missing')
+
+    def test_update_subscription_rejects_invalid_event_types(self):
+        from app.shared.exceptions import ValidationError
+
+        service, mock_sub_repo, _, _ = _make_service()
+        mock_sub_repo.find_by_id.return_value = Subscription(
+            name='原名称',
+            app_instance_id=1,
+            channel_id=1,
+            event_types=['app.execution.completed'],
+        )
+
+        with pytest.raises(ValidationError, match='不支持的事件类型'):
+            service.update_subscription(subscription_id=1, event_types=['unknown'])
+
+        with pytest.raises(ValidationError, match='至少需要订阅一个事件类型'):
+            service.update_subscription(subscription_id=1, event_types=[])
 
     def test_delete_subscription(self):
         """测试删除订阅"""
@@ -165,6 +209,37 @@ class TestSubscriptionService:
 
         assert result is True
         mock_sub_repo.delete.assert_called_once_with(existing)
+
+    def test_get_subscription_and_list_subscriptions(self):
+        from app.application.services.config.subscription_service import SubscriptionService
+
+        service, mock_sub_repo, _, _ = _make_service()
+        subscription = Subscription(
+            name='测试',
+            app_instance_id=1,
+            channel_id=1,
+            event_types=['app.execution.completed'],
+        )
+        subscription.id = 1
+        mock_sub_repo.find_by_id_with_relations.return_value = subscription
+        mock_sub_repo.find_all.return_value = ([subscription], 21)
+
+        detail = service.get_subscription(1)
+        listing = service.list_subscriptions(page=2, page_size=10)
+
+        assert detail['id'] == 1
+        assert listing['total'] == 21
+        assert listing['pages'] == 3
+        assert listing['page'] == 2
+
+    def test_get_subscription_not_found(self):
+        from app.shared.exceptions import NotFoundError
+
+        service, mock_sub_repo, _, _ = _make_service()
+        mock_sub_repo.find_by_id_with_relations.return_value = None
+
+        with pytest.raises(NotFoundError):
+            service.get_subscription(99)
 
     def test_find_matching_subscriptions(self):
         """测试查找匹配的订阅"""
@@ -218,6 +293,49 @@ class TestSubscriptionService:
 
         assert len(result) == 1
         assert result[0]['app_instance_id'] == 1
+
+    def test_find_matching_subscriptions_filters_non_matching_rules(self):
+        service, mock_sub_repo, _, _ = _make_service()
+        matched = MagicMock(spec=Subscription)
+        matched.matches_event.return_value = True
+        skipped = MagicMock(spec=Subscription)
+        skipped.matches_event.return_value = False
+        mock_sub_repo.find_matching_subscriptions.return_value = [matched, skipped]
+
+        result = service.find_matching_subscriptions(
+            event_type='app.execution.completed',
+            event_data={'app_code': 'test_app'},
+        )
+
+        assert result == [matched]
+
+    def test_enable_and_disable_subscription(self):
+        service, mock_sub_repo, _, _ = _make_service()
+        subscription = Subscription(
+            name='测试',
+            app_instance_id=1,
+            channel_id=1,
+            event_types=['app.execution.completed'],
+            enabled=False,
+        )
+        subscription.id = 1
+        mock_sub_repo.find_by_id.return_value = subscription
+
+        enabled = service.enable_subscription(1)
+        disabled = service.disable_subscription(1)
+
+        assert enabled['enabled'] is True
+        assert disabled['enabled'] is False
+        assert mock_sub_repo.commit.call_count == 2
+
+    def test_enable_subscription_not_found(self):
+        from app.shared.exceptions import NotFoundError
+
+        service, mock_sub_repo, _, _ = _make_service()
+        mock_sub_repo.find_by_id.return_value = None
+
+        with pytest.raises(NotFoundError):
+            service.enable_subscription(1)
 
     def test_supported_event_types(self):
         """测试支持的事件类型列表"""

@@ -1,6 +1,3 @@
-/**
- * 对话列表组件 - Migrated to shadcn/ui
- */
 import { Plus, MessageSquare, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
@@ -31,61 +28,64 @@ export default function ConversationList({
   currentId,
   onSelect,
   onNew,
-  onDelete
+  onDelete,
 }: ConversationListProps) {
   return (
-    <div className="w-80 bg-white border-r border-gray-200 flex flex-col h-full">
-      {/* 头部 */}
-      <div className="p-4 border-b border-gray-200">
-        <FormButton
-          size="lg"
-          onClick={onNew}
-          className="w-full h-12 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500"
-        >
-          <Plus className="w-4 h-4 mr-2" />
+    <div className="flex h-full min-h-0 flex-col border-r border-[hsl(var(--workbench-outline))] bg-[rgba(255,255,255,0.94)]">
+      <div className="border-b border-[hsl(var(--workbench-outline))] p-4">
+        <div className="mb-3 space-y-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">
+            会话
+          </div>
+          <div className="text-[0.95rem] font-semibold text-[hsl(var(--workbench-ink))]">当前数据问答</div>
+        </div>
+        <FormButton onClick={onNew} className="h-11 w-full rounded-[var(--workbench-radius-sm)]">
+          <Plus className="mr-2 h-4 w-4" />
           新建对话
         </FormButton>
       </div>
 
-      {/* 对话列表 */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      <div className="flex-1 space-y-2 overflow-y-auto p-4">
         {conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center mt-20 text-center">
-            <MessageSquare className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-sm text-gray-500">暂无对话</p>
+          <div className="mt-20 flex flex-col items-center justify-center text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]">
+              <MessageSquare className="h-6 w-6" />
+            </div>
+            <p className="text-sm text-[hsl(var(--workbench-muted-foreground))]">暂无对话</p>
           </div>
         ) : (
           conversations.map((conv) => (
             <div
               key={conv.id}
+              data-testid={`conversation-row-${conv.id}`}
               onClick={() => onSelect(conv.id)}
-              className={`group relative p-4 rounded-xl cursor-pointer transition-all ${
+              className={`group relative cursor-pointer rounded-[var(--workbench-radius-sm)] border p-4 transition-colors ${
                 currentId === conv.id
-                  ? 'bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200'
-                  : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                  ? 'border-[hsl(var(--workbench-accent))]/16 bg-[hsl(var(--workbench-accent-soft))]'
+                  : 'border-[hsl(var(--workbench-outline))] bg-white hover:border-slate-300'
               }`}
             >
               <div className="flex items-start gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                  currentId === conv.id
-                    ? 'bg-gradient-to-br from-indigo-500 to-purple-600'
-                    : 'bg-gray-200'
-                }`}>
-                  <MessageSquare className={`w-5 h-5 ${
-                    currentId === conv.id ? 'text-white' : 'text-gray-600'
-                  }`} />
+                <div
+                  className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-[0.9rem] ${
+                    currentId === conv.id
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-[hsl(var(--workbench-panel))] text-[hsl(var(--workbench-muted-foreground))]'
+                  }`}
+                >
+                  <MessageSquare className="h-5 w-5" />
                 </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 truncate mb-1">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 truncate text-[0.9375rem] font-semibold leading-5 text-[hsl(var(--workbench-ink))]">
                     {conv.title}
                   </div>
-                  {conv.dataset_name && (
-                    <div className="text-xs text-gray-500 truncate mb-1">
+                  {conv.dataset_name ? (
+                    <div className="mb-1 truncate text-[0.75rem] leading-4 text-[hsl(var(--workbench-muted-foreground))]">
                       {conv.dataset_name}
                     </div>
-                  )}
-                  <div className="text-xs text-gray-400">
+                  ) : null}
+                  <div className="tabular-nums text-[0.75rem] leading-4 text-[hsl(var(--workbench-muted-foreground))]">
                     {format(new Date(conv.updated_at), 'MM月dd日 HH:mm', { locale: zhCN })} • {conv.message_count} 条消息
                   </div>
                 </div>
@@ -93,27 +93,26 @@ export default function ConversationList({
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <button
-                      onClick={(e) => e.stopPropagation()}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded-lg"
+                      onClick={(event) => event.stopPropagation()}
+                      className="rounded-lg p-1 text-[hsl(var(--workbench-muted-foreground))] transition-colors hover:bg-[hsl(var(--semantic-error))]/8 hover:text-[hsl(var(--semantic-error))]"
+                      aria-label="删除对话"
                     >
-                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>确认删除此对话？</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        删除后将无法恢复，请谨慎操作。
-                      </AlertDialogDescription>
+                      <AlertDialogDescription>删除后将无法恢复，请谨慎操作。</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>取消</AlertDialogCancel>
                       <AlertDialogAction
-                        onClick={(e) => {
-                          e.stopPropagation()
+                        onClick={(event) => {
+                          event.stopPropagation()
                           onDelete(conv.id)
                         }}
-                        className="bg-red-600 hover:bg-red-700"
+                        className="bg-[hsl(var(--semantic-error))] hover:bg-[hsl(var(--semantic-error))]"
                       >
                         删除
                       </AlertDialogAction>

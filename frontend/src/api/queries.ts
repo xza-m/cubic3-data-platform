@@ -287,7 +287,10 @@ export const deleteTemplate = async (id: number): Promise<void> => {
 /**
  * 使用模板
  */
-export const useTemplate = async (id: number, params: Record<string, any>): Promise<{ sql_query: string; template_name: string }> => {
+export const applyTemplate = async (
+  id: number,
+  params: Record<string, unknown>,
+): Promise<{ sql_query: string; template_name: string }> => {
   const response = await apiClient.post(`/queries/templates/${id}/use`, params)
   return response.data
 }

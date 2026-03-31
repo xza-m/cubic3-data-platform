@@ -282,6 +282,48 @@ class TestClearDatasourceCaches:
         mock_session.rollback.assert_called_once()
 
 
+class TestPruneDatasourceCaches:
+    """prune_datasource_caches 测试"""
+
+    def test_success_prunes_only_stale_databases(self):
+        """保留当前数据库列表，仅删除已消失缓存。"""
+        service, mock_session = _make_service()
+        stale_query = MagicMock()
+        stale_query.delete.return_value = 2
+        mock_session.query.return_value.filter_by.return_value.filter.return_value = stale_query
+
+        result = service.prune_datasource_caches(datasource_id=1, active_databases=["dw", "ads"])
+
+        assert result == 2
+        mock_session.commit.assert_called_once()
+        stale_query.delete.assert_called_once_with(synchronize_session=False)
+
+    def test_empty_active_list_clears_all_datasource_caches(self):
+        """当前无数据库时，清空该数据源的全部缓存。"""
+        service, mock_session = _make_service()
+        filtered_query = MagicMock()
+        filtered_query.delete.return_value = 3
+        mock_session.query.return_value.filter_by.return_value = filtered_query
+
+        result = service.prune_datasource_caches(datasource_id=1, active_databases=[])
+
+        assert result == 3
+        filtered_query.delete.assert_called_once_with(synchronize_session=False)
+        mock_session.commit.assert_called_once()
+
+    def test_failure_rolls_back_and_returns_zero(self):
+        """删除失败时回滚并返回 0。"""
+        service, mock_session = _make_service()
+        filtered_query = MagicMock()
+        filtered_query.delete.side_effect = Exception("delete failed")
+        mock_session.query.return_value.filter_by.return_value = filtered_query
+
+        result = service.prune_datasource_caches(datasource_id=1, active_databases=[])
+
+        assert result == 0
+        mock_session.rollback.assert_called_once()
+
+
 class TestGetCacheStats:
     """get_cache_stats 测试"""
 

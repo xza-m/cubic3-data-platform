@@ -1,5 +1,6 @@
 /**
- * 数据源管理页面 - Migrated to shadcn/ui
+ * 数据源管理页面
+ * 基于 uiv2.pen 设计稿 (Hpudj)
  */
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -8,13 +9,8 @@ import {
   Plus,
   Edit2,
   Trash2,
-  Activity,
-  CheckCircle,
-  XCircle,
   Play,
   Search,
-  AlertCircle,
-  Server,
   Loader2,
   Inbox
 } from 'lucide-react'
@@ -24,7 +20,7 @@ import {
   updateDataSource,
   deleteDataSource,
   testDataSourceConnection,
-  getDataSourceStatistics,
+  syncDataSourceCatalog,
   getDataSourceTypes,
 } from '../api/datasources'
 import type { CreateDataSourceRequest, UpdateDataSourceRequest } from '../api/datasources'
@@ -34,6 +30,7 @@ import {
   FormSelect,
   useToast,
   PageModal,
+  DataCenterPageShell,
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -42,7 +39,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  Badge,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -54,7 +50,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 interface AxiosLikeError {
-  response?: { data?: { message?: string } }
+  response?: { data?: { message?: string; details?: { reason_code?: string } } }
   message?: string
 }
 
@@ -87,8 +83,7 @@ export default function Datasources() {
   const [searchText, setSearchText] = useState('')
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [dsToDelete, setDsToDelete] = useState<DataSource | null>(null)
-  const [testingConnection, setTestingConnection] = useState(false)
-  
+  const [syncingCatalogId, setSyncingCatalogId] = useState<number | null>(null)
   // 创建表单数据
   const [createFormData, setCreateFormData] = useState({
     name: '',
@@ -115,14 +110,9 @@ export default function Datasources() {
     project: ''
   })
 
-  const { data: listData, isLoading, isError } = useQuery({
+  const { data: listData, isLoading, isError, error } = useQuery({
     queryKey: ['datasources'],
     queryFn: () => getDataSources({ page: 1, page_size: 100 })
-  })
-
-  const { data: statsData } = useQuery({
-    queryKey: ['datasources', 'statistics'],
-    queryFn: getDataSourceStatistics
   })
 
   // 获取数据源类型列表
@@ -207,6 +197,31 @@ export default function Datasources() {
     }
   })
 
+  const syncCatalogMutation = useMutation({
+    mutationFn: (id: number) => syncDataSourceCatalog(id),
+    onMutate: (id: number) => {
+      setSyncingCatalogId(id)
+    },
+    onSuccess: () => {
+      toast({
+        title: '目录同步已触发',
+        description: '目录刷新任务已加入队列，请稍后查看同步摘要。',
+      })
+      queryClient.invalidateQueries({ queryKey: ['datasources'] })
+    },
+    onError: (error: unknown) => {
+      const err = error as AxiosLikeError
+      toast({
+        title: '目录同步失败',
+        description: err.response?.data?.message || err.message,
+        variant: 'destructive',
+      })
+    },
+    onSettled: () => {
+      setSyncingCatalogId(null)
+    }
+  })
+
   const handleEdit = (ds: DataSource) => {
     setEditingId(ds.id)
     setEditFormData({
@@ -216,7 +231,7 @@ export default function Datasources() {
       host: ds.connection_config?.host || '',
       port: ds.connection_config?.port || '',
       database: ds.connection_config?.database || '',
-      username: ds.connection_config?.username || '',
+      username: ds.connection_config?.access_id || ds.connection_config?.username || '',
       password: '', // 编辑时密码留空，表示不修改
       project: ds.connection_config?.project || ''
     })
@@ -284,40 +299,8 @@ export default function Datasources() {
     updateMutation.mutate({ id: editingId!, data })
   }
 
-  const handleTestConnection = async (formData: DataSourceFormData) => {
-    setTestingConnection(true)
-    try {
-      const config: Record<string, string> = {}
-      if (formData.source_type === 'maxcompute') {
-        config.project = formData.project
-        config.access_id = formData.username
-        config.access_key = formData.password
-      } else {
-        config.host = formData.host
-        config.port = formData.port
-        config.database = formData.database
-        config.username = formData.username
-        config.password = formData.password
-      }
-
-      await testDataSourceConnection(formData.id || 0)
-      
-      toast({ title: '连接测试成功', description: '数据源连接正常' })
-    } catch (error: unknown) {
-      const err = error as AxiosLikeError
-      toast({ 
-        title: '连接测试失败', 
-        description: err.response?.data?.message || err.message,
-        variant: 'destructive' 
-      })
-    } finally {
-      setTestingConnection(false)
-    }
-  }
-
   // 卡片上的测试连接 - 使用已保存的数据源ID
   const handleCardTestConnection = async (ds: DataSource) => {
-    setTestingConnection(true)
     try {
       const response = await testDataSourceConnection(ds.id)
       
@@ -337,7 +320,6 @@ export default function Datasources() {
       
       // 无论成功还是失败，都刷新数据源列表以更新状态
       queryClient.invalidateQueries({ queryKey: ['datasources'] })
-      queryClient.invalidateQueries({ queryKey: ['datasources-stats'] })
     } catch (error: unknown) {
       const err = error as AxiosLikeError
       toast({ 
@@ -347,33 +329,68 @@ export default function Datasources() {
       })
       // 异常情况也刷新列表
       queryClient.invalidateQueries({ queryKey: ['datasources'] })
-      queryClient.invalidateQueries({ queryKey: ['datasources-stats'] })
-    } finally {
-      setTestingConnection(false)
     }
   }
 
-  const datasources = listData?.data?.items || []
-  const stats = statsData?.data || { total: 0, active: 0, connected: 0, inactive: 0 }
+  const getCatalogSyncSummary = (ds: DataSource) => ({
+    status: ds.extra_config?.catalog_sync?.status || 'pending',
+    last_run_at: ds.extra_config?.catalog_sync?.last_run_at || null,
+    last_error: ds.extra_config?.catalog_sync?.last_error || null,
+    database_count: ds.extra_config?.catalog_sync?.database_count || 0,
+    tracked_databases: ds.extra_config?.catalog_sync?.tracked_databases || [],
+  })
 
-  const typeConfig: Record<string, { gradient: string; icon: string; name: string }> = {
-    postgresql: { gradient: 'from-blue-500 to-blue-600', icon: '🐘', name: 'PostgreSQL' },
-    mysql: { gradient: 'from-orange-500 to-orange-600', icon: '🐬', name: 'MySQL' },
-    clickhouse: { gradient: 'from-yellow-500 to-yellow-600', icon: '⚡', name: 'ClickHouse' },
-    maxcompute: { gradient: 'from-purple-500 to-purple-600', icon: '☁️', name: 'MaxCompute' }
+  const getCatalogSyncBadge = (status: string) => {
+    const config: Record<string, { label: string; className: string }> = {
+      pending: { label: '待同步', className: 'bg-amber-50 text-amber-700' },
+      syncing: { label: '目录同步中', className: 'bg-blue-50 text-blue-700' },
+      synced: { label: '目录已同步', className: 'bg-emerald-50 text-emerald-700' },
+      failed: { label: '目录同步失败', className: 'bg-rose-50 text-rose-700' },
+    }
+    return config[status] || { label: status, className: 'bg-gray-100 text-gray-600' }
+  }
+
+  const formatRelativeSummaryTime = (value?: string | null) => {
+    if (!value) {
+      return '尚未执行'
+    }
+
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return value
+    }
+
+    return parsed.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const datasources = listData?.data?.items || []
+  const stats = {
+    total: datasources.length,
+    active: datasources.filter((ds) => ds.is_active).length,
+    connected: datasources.filter((ds) => ds.connection_status === 'connected').length,
+    inactive: datasources.filter((ds) => !ds.is_active).length,
+  }
+  const listErrorMessage =
+    (error as AxiosLikeError | null)?.response?.data?.message ||
+    (error as AxiosLikeError | null)?.message ||
+    '数据源列表加载失败，请稍后重试。'
+
+  const typeConfig: Record<string, { name: string }> = {
+    postgresql: { name: 'PostgreSQL' },
+    mysql: { name: 'MySQL' },
+    clickhouse: { name: 'ClickHouse' },
+    maxcompute: { name: 'MaxCompute' }
   }
 
   const filteredData = datasources.filter((ds: DataSource) =>
     ds.name.toLowerCase().includes(searchText.toLowerCase()) ||
     ds.source_type.toLowerCase().includes(searchText.toLowerCase())
   )
-
-  const statsList = [
-    { label: '总数据源', value: stats.total, icon: Database, gradient: 'from-indigo-500 to-indigo-600' },
-    { label: '活跃', value: stats.active, icon: Activity, gradient: 'from-emerald-500 to-emerald-600' },
-    { label: '已连接', value: stats.connected, icon: CheckCircle, gradient: 'from-cyan-500 to-cyan-600' },
-    { label: '未激活', value: stats.inactive, icon: XCircle, gradient: 'from-rose-500 to-rose-600' }
-  ]
 
   // 动态获取数据源类型（从后端接口），提供硬编码作为降级方案
   const sourceTypeOptions = (typesData?.data || [
@@ -391,7 +408,7 @@ export default function Datasources() {
       return (
         <>
           <div>
-            <Label>项目名称 (Project) *</Label>
+            <Label>Project *</Label>
             <Input
               value={formData.project}
               onChange={(e) => setFormData({ ...formData, project: e.target.value })}
@@ -401,7 +418,7 @@ export default function Datasources() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Access ID *</Label>
+              <Label>AccessKey ID *</Label>
               <Input
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
@@ -410,12 +427,12 @@ export default function Datasources() {
               />
             </div>
             <div>
-              <Label>Access Key {isCreate ? '*' : '(留空保持不变)'}</Label>
+              <Label>AccessKey Secret {isCreate ? '*' : '(留空保持不变)'}</Label>
               <Input
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder={isCreate ? "阿里云 Access Key" : "留空表示保持原密码"}
+                placeholder={isCreate ? "阿里云 Access Key Secret" : "留空表示保持原 AccessKey Secret"}
                 className="mt-1"
               />
             </div>
@@ -480,175 +497,212 @@ export default function Datasources() {
     )
   }
 
+  const statsCards = [
+    { label: '总数据源', value: stats.total, color: 'text-slate-950' },
+    { label: '活跃', value: stats.active, color: 'text-blue-600' },
+    { label: '已连接', value: stats.connected, color: 'text-emerald-600' },
+    { label: '未激活', value: stats.inactive, color: 'text-slate-400' },
+  ]
+
   return (
     <TooltipProvider>
-    <div className="space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/25">
-            <Database className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">数据源管理</h1>
-            <p className="text-gray-500 text-sm">管理所有数据库连接配置</p>
-          </div>
-        </div>
-        <FormButton onClick={() => setCreateVisible(true)} className="bg-gradient-to-r from-blue-500 to-cyan-500">
-          <Plus className="w-5 h-5 mr-2" />
-          新建数据源
-        </FormButton>
-      </div>
-
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statsList.map((stat, index) => {
-          const Icon = stat.icon
-          return (
-            <div key={index} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm text-gray-500 font-medium mb-1">{stat.label}</div>
-                  <div className="text-3xl font-bold text-gray-900">{stat.value}</div>
-                </div>
-                <div className={cn("w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg", stat.gradient)}>
-                  <Icon className="w-6 h-6 text-white" />
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* 搜索栏 */}
-      <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <Input
-            type="text"
-            placeholder="搜索数据源名称或类型..."
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            className="h-11 pl-12 pr-4"
-          />
-        </div>
-      </div>
-
-      {/* 数据源列表 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {isLoading ? (
-          <div className="col-span-full flex items-center justify-center h-64">
-            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-          </div>
-        ) : filteredData.length === 0 ? (
-          <div className="col-span-full flex flex-col items-center justify-center h-64">
-            <Inbox className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-gray-500 mb-4">
-              {searchText ? '未找到匹配的数据源' : '还没有数据源'}
-            </p>
-            <FormButton onClick={() => setCreateVisible(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              创建第一个数据源
-            </FormButton>
-          </div>
-        ) : (
-          filteredData.map((ds: DataSource) => {
-            const config = typeConfig[ds.source_type] || typeConfig.postgresql
-            return (
-              <div
-                key={ds.id}
-                className="bg-white rounded-2xl border border-gray-200 p-5 hover:shadow-lg transition-all"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className={cn("w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center text-2xl", config.gradient)}>
-                      {config.icon}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{ds.name}</h3>
-                      <Badge variant="secondary" className="mt-1 text-xs">
-                        {config.name}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <FormButton
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleCardTestConnection(ds)}
-                          className="h-8 w-8 hover:text-green-600 hover:bg-green-50"
-                        >
-                          <Play className="w-4 h-4" />
-                        </FormButton>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>测试连接</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <FormButton
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(ds)}
-                          className="h-8 w-8"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </FormButton>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>编辑</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <FormButton
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setDsToDelete(ds)
-                            setDeleteConfirmOpen(true)
-                          }}
-                          className="h-8 w-8 hover:text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </FormButton>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>删除</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </div>
-
-                {ds.description && (
-                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">{ds.description}</p>
-                )}
-
-                <div className="flex items-center justify-between text-xs text-gray-500 pt-3 border-t border-gray-100 mt-3">
-                  <span>ID: {ds.id}</span>
-                  <div className="flex items-center gap-1">
-                    {ds.connection_status === 'connected' ? (
-                      <CheckCircle className="w-3 h-3 text-green-500" />
-                    ) : ds.connection_status === 'error' ? (
-                      <XCircle className="w-3 h-3 text-red-500" />
-                    ) : (
-                      <XCircle className="w-3 h-3 text-gray-400" />
-                    )}
-                    <span>
-                      {ds.connection_status === 'connected' ? '已连接' : 
-                       ds.connection_status === 'error' ? '连接失败' : 
-                       '未连接'}
-                  </span>
-                  </div>
-                </div>
-              </div>
-            )
-          })
+      <DataCenterPageShell
+        title="数据源管理"
+        description="管理所有数据库连接配置"
+        className="px-10 py-8"
+        actions={(
+          <FormButton
+            onClick={() => setCreateVisible(true)}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#2563EB] px-5 py-2.5 text-sm font-medium text-white shadow-[0_2px_8px_#2563EB30] hover:bg-[#1D4ED8]"
+          >
+            <Plus className="h-4 w-4" />
+            新建数据源
+          </FormButton>
         )}
-      </div>
+      >
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {statsCards.map((stat) => (
+              <div
+                key={stat.label}
+                className="relative overflow-hidden rounded-xl bg-white p-5 shadow-[0_4px_20px_#0F172A08]"
+              >
+                <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl bg-gradient-to-b from-[#2563EB] to-[#3B82F6]" />
+                <div className={`text-[28px] font-semibold ${stat.color}`}>{stat.value}</div>
+                <div className="mt-2 text-[13px] text-[#64748B]">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2.5 rounded-lg bg-[#F1F5F9] px-4 py-3">
+            <Search className="h-[18px] w-[18px] text-[#94A3B8]" />
+            <input
+              type="text"
+              placeholder="搜索数据源名称或类型..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none"
+            />
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center rounded-xl bg-white py-32 shadow-[0_2px_24px_#0F172A08]">
+              <Loader2 className="h-8 w-8 animate-spin text-[#94A3B8]" />
+            </div>
+          ) : isError ? (
+            <div className="flex flex-col items-center justify-center rounded-xl bg-white py-32 shadow-[0_2px_24px_#0F172A08]">
+              <Inbox className="mb-4 h-16 w-16 text-[#E2E8F0]" />
+              <p className="mb-2 text-base font-semibold text-[#0F172A]">加载数据源失败</p>
+              <p className="text-sm text-[#64748B]">{listErrorMessage}</p>
+            </div>
+          ) : filteredData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl bg-white py-32 shadow-[0_2px_24px_#0F172A08]">
+              <Inbox className="mb-4 h-16 w-16 text-[#E2E8F0]" />
+              <p className="mb-4 text-sm text-[#64748B]">
+                {searchText ? '未找到匹配的数据源' : '还没有数据源'}
+              </p>
+              <FormButton
+                onClick={() => setCreateVisible(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#2563EB] px-4 py-2 text-sm text-white"
+              >
+                <Plus className="h-4 w-4" />
+                创建第一个数据源
+              </FormButton>
+            </div>
+          ) : (
+            <div className="grid gap-4 xl:grid-cols-3">
+              {filteredData.map((ds: DataSource) => {
+                const config = typeConfig[ds.source_type] || typeConfig.postgresql
+                const catalogSync = getCatalogSyncSummary(ds)
+                const syncBadge = getCatalogSyncBadge(catalogSync.status)
+                const isCatalogSyncing = syncingCatalogId === ds.id || catalogSync.status === 'syncing'
+
+                const typeBadgeColors: Record<string, { bg: string; text: string }> = {
+                  postgresql: { bg: 'bg-blue-50', text: 'text-blue-700' },
+                  mysql: { bg: 'bg-amber-50', text: 'text-amber-700' },
+                  clickhouse: { bg: 'bg-amber-50', text: 'text-amber-700' },
+                  maxcompute: { bg: 'bg-indigo-50', text: 'text-indigo-700' },
+                }
+                const badge = typeBadgeColors[ds.source_type] || typeBadgeColors.postgresql
+
+                return (
+                  <div
+                    key={ds.id}
+                    className="flex flex-col gap-3 rounded-xl bg-white p-5 shadow-[0_2px_16px_#0F172A08]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <span className="text-[15px] font-semibold text-[#0F172A]">{ds.name}</span>
+                        {ds.description ? (
+                          <p className="text-[13px] leading-6 text-[#64748B]">{ds.description}</p>
+                        ) : null}
+                      </div>
+                      <span className={`rounded-md px-2.5 py-1 text-xs font-medium ${badge.bg} ${badge.text}`}>
+                        {config.name}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 rounded-lg bg-[#F8FAFC] px-3.5 py-3">
+                      <div className="flex items-center justify-between text-xs text-[#94A3B8]">
+                        <span>ID: {ds.id}</span>
+                        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', syncBadge.className)}>
+                          {syncBadge.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {ds.connection_status === 'connected' ? (
+                          <>
+                            <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                            <span className="font-medium text-emerald-600">已连接</span>
+                          </>
+                        ) : ds.connection_status === 'error' ? (
+                          <>
+                            <div className="h-2 w-2 rounded-full bg-rose-500" />
+                            <span className="font-medium text-rose-600">连接失败</span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="h-2 w-2 rounded-full bg-slate-400" />
+                            <span className="font-medium text-slate-500">未连接</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-[#94A3B8]">
+                        <span>最近同步</span>
+                        <span>{formatRelativeSummaryTime(catalogSync.last_run_at)}</span>
+                      </div>
+                      {catalogSync.last_error ? (
+                        <div className="text-xs text-rose-600" title={catalogSync.last_error}>
+                          {catalogSync.last_error}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-1 text-[#94A3B8]">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            title="同步目录"
+                            onClick={() => syncCatalogMutation.mutate(ds.id)}
+                            disabled={isCatalogSyncing}
+                            className="cursor-pointer hover:text-[#2563EB] disabled:opacity-50"
+                          >
+                            {isCatalogSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>同步目录</p></TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            title="测试连接"
+                            onClick={() => handleCardTestConnection(ds)}
+                            className="cursor-pointer hover:text-[#10B981]"
+                          >
+                            <Play className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>测试连接</p></TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            title="编辑"
+                            onClick={() => handleEdit(ds)}
+                            className="cursor-pointer hover:text-[#64748B]"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>编辑</p></TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            title="删除"
+                            onClick={() => {
+                              setDsToDelete(ds)
+                              setDeleteConfirmOpen(true)
+                            }}
+                            className="cursor-pointer hover:text-[#EF4444]"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>删除</p></TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </DataCenterPageShell>
 
       {/* 创建数据源弹窗 */}
       <PageModal
@@ -659,9 +713,13 @@ export default function Datasources() {
         className="max-w-3xl"
         footer={
           <div className="flex justify-end gap-2">
-            <FormButton variant="outline" onClick={() => setCreateVisible(false)}>
+            <button
+              type="button"
+              onClick={() => setCreateVisible(false)}
+              className="rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm text-[#64748B] cursor-pointer"
+            >
               取消
-            </FormButton>
+            </button>
             <FormButton onClick={handleCreate} loading={createMutation.isPending}>
               创建
             </FormButton>
@@ -670,8 +728,8 @@ export default function Datasources() {
       >
         <div className="space-y-3">
           <div>
-            <Label>数据源名称 *</Label>
-            <Input 
+            <Label className="text-[#0F172A]">数据源名称 *</Label>
+            <Input
               value={createFormData.name}
               onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })}
               placeholder="例如：生产环境 PostgreSQL"
@@ -679,7 +737,7 @@ export default function Datasources() {
             />
           </div>
           <div>
-            <Label>数据源类型 *</Label>
+            <Label className="text-[#0F172A]">数据源类型 *</Label>
             <FormSelect
               value={createFormData.source_type}
               onValueChange={(val) => setCreateFormData({ ...createFormData, source_type: val })}
@@ -687,9 +745,9 @@ export default function Datasources() {
               options={sourceTypeOptions}
               className="mt-1"
             />
-            </div>
+          </div>
           <div>
-            <Label>描述</Label>
+            <Label className="text-[#0F172A]">描述</Label>
             <Textarea
               value={createFormData.description}
               onChange={(e) => setCreateFormData({ ...createFormData, description: e.target.value })}
@@ -699,14 +757,14 @@ export default function Datasources() {
             />
           </div>
           {createFormData.source_type && (
-            <div className="border-t border-gray-200 pt-3 mt-2">
-              <h4 className="font-medium text-gray-900 mb-3 text-sm">连接配置</h4>
+            <div className="border-t border-[#E2E8F0] pt-3 mt-2">
+              <h4 className="font-medium text-[#0F172A] mb-3 text-sm">连接配置</h4>
               <div className="space-y-3">
                 {renderConfigFields(createFormData, setCreateFormData, true)}
               </div>
             </div>
           )}
-            </div>
+        </div>
       </PageModal>
 
       {/* 编辑数据源弹窗 */}
@@ -718,9 +776,13 @@ export default function Datasources() {
         className="max-w-3xl"
         footer={
           <div className="flex justify-end gap-2">
-            <FormButton variant="outline" onClick={() => setEditVisible(false)}>
+            <button
+              type="button"
+              onClick={() => setEditVisible(false)}
+              className="rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm text-[#64748B] cursor-pointer"
+            >
               取消
-            </FormButton>
+            </button>
             <FormButton onClick={handleUpdate} loading={updateMutation.isPending}>
               保存
             </FormButton>
@@ -729,7 +791,7 @@ export default function Datasources() {
       >
         <div className="space-y-3">
           <div>
-            <Label>数据源名称 *</Label>
+            <Label className="text-[#0F172A]">数据源名称 *</Label>
             <Input
               value={editFormData.name}
               onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
@@ -738,15 +800,15 @@ export default function Datasources() {
             />
           </div>
           <div>
-            <Label>数据源类型</Label>
+            <Label className="text-[#0F172A]">数据源类型</Label>
             <Input
               value={typeConfig[editFormData.source_type]?.name || editFormData.source_type}
               disabled
-              className="mt-1 bg-gray-50"
+              className="mt-1 bg-[#F1F5F9]"
             />
           </div>
           <div>
-            <Label>描述</Label>
+            <Label className="text-[#0F172A]">描述</Label>
             <Textarea
               value={editFormData.description}
               onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
@@ -755,8 +817,8 @@ export default function Datasources() {
               className="mt-1"
             />
           </div>
-          <div className="border-t border-gray-200 pt-3 mt-2">
-            <h4 className="font-medium text-gray-900 mb-3 text-sm">连接配置</h4>
+          <div className="border-t border-[#E2E8F0] pt-3 mt-2">
+            <h4 className="font-medium text-[#0F172A] mb-3 text-sm">连接配置</h4>
             <div className="space-y-3">
               {renderConfigFields(editFormData, setEditFormData, false)}
             </div>
@@ -770,21 +832,20 @@ export default function Datasources() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除数据源 "{dsToDelete?.name}" 吗？此操作无法撤销，关联的数据集也将无法访问。
+              确定要删除数据源 &ldquo;{dsToDelete?.name}&rdquo; 吗？此操作无法撤销，关联的数据集也将无法访问。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => dsToDelete && deleteMutation.mutate(dsToDelete.id)}
-              className="bg-red-500 hover:bg-red-600"
+              className="bg-[#EF4444] hover:bg-[#DC2626]"
             >
               删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
     </TooltipProvider>
   )
 }

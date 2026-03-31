@@ -1,104 +1,215 @@
 ## Context
-本次变更只处理语义中心前端的信息架构和交互边界，不改变语义查询编译、运行时绑定、领域发布校验等后端主规则。
+本次变更不是继续做局部页面 polish，而是把已经成型的语义中心工作台抽象成“可持续开发”的前端架构输入。
 
-现状中的主要问题不是能力缺失，而是页面职责没有完全冻结：
+当前后端主能力来源清晰：
 
-- 列表页、详情页、画布页和 Studio 页互相回流
-- `Cube` 与 `View` 的业务认知和页面结构不一致
-- 领域对象仍然是扁平列表，缺少正式的 `catalog -> domain` 目录层
-- “领域目录”与“领域管理”本质上展示同一对象，职责重叠
-- 画布布局以双侧栏为中心，而不是以建模区域为中心
+- `app/application/semantic/semantic_definition_service.py`
+- `app/application/semantic/cube_modeling_service.py`
+- `app/application/semantic/domain_modeling_service.py`
+- `app/application/semantic/domain_canvas_service.py`
+- `app/application/semantic/semantic_query_service.py`
+- `app/application/semantic/schema_sync_service.py`
+
+这些服务已经表明：语义中心不是一组零散对象，而是一个有稳定任务链的工作台：
+
+`物理表 -> Cube 草稿 -> Cube 生命周期 -> 领域目录 -> 领域关系/Join -> 领域发布 -> View 发布 -> DSL 编译/查询 -> Schema 治理`
+
+因此，前端不应继续按“接口分布”或“资源详情页”扩张，而应按“用户任务 + 页面类型 + 后端能力域”冻结信息架构。
 
 ## Goals / Non-Goals
 - Goals:
-  - 冻结语义中心一级导航和页面职责
-  - 统一语义模型入口，保留 `kind` 差异但不拆一级对象
-  - 将领域入口升级为正式的轻量 `catalog -> domain` 目录页
-  - 将单领域生命周期管理合并进目录详情区
-  - 保留独立“领域建模”模块承接创建和画布入口
-  - 提升领域画布的中心建模优先级
-  - 统一 Drift 状态说明和反馈体验
+  - 将后端能力正式映射为前端可理解的能力域
+  - 固定语义中心五类页面模型
+  - 为每个主页面提供字段清单、组件清单和职责边界
+  - 定义共享前端视图模型与 hook 入口
+  - 为实现阶段提供可直接排期的任务拆分
 - Non-Goals:
-  - 不修改语义层 DSL、Compiler、Query API 行为
-  - 不在本次提案中处理 View 物化策略变更
-  - 不在本次提案中实现真实目录权限体系
-  - 不实现多级递归 catalog 树
-  - 不实现 catalog 级审批、发布或复杂权限规则
+  - 不新增全局导航层级
+  - 不重命名现有主路由
+  - 不新增独立 `View`、`Recipe`、`Schema Drift` 一级页面
+  - 不在本次提案中改动 DSL、Compiler、发布规则等后端业务逻辑
 
 ## Decisions
-- Decision: `Cube` 与 `View` 统一纳入“语义模型管理”
-  - Why: 产品认知上 `View` 属于特殊语义模型，拆成一级页面会增加导航复杂度
+- Decision: 以前端“页面类型”作为第一抽象层，而不是“资源对象类型”
+  - Why: 用户任务天然聚合在列表治理、单体编辑、关系建模、开发调试四类页面中
   - Alternatives considered:
-    - 单独拆出 `View 管理`
-      - 缺点：与现有业务认知不一致，放大心智负担
+    - 以 `Cube / View / Domain / Catalog / Recipe` 为一级页面
+      - 缺点：容易回到传统 CRUD 后台，违背当前 workbench 方向
 
-- Decision: `Cube Studio` 保持独立，不纳入 `DevTools`
-  - Why: Studio 属于建模主流程，不是运行调试工具
-  - Alternatives considered:
-    - 合并到 `DevTools`
-      - 缺点：建模与调试混用，违背单一职责
+- Decision: 语义中心固定五类页面模型
+  - `Overview`
+  - `Inventory`
+  - `Studio`
+  - `Canvas`
+  - `Developer Workbench`
+  - Why: 能稳定承接当前所有后端能力，符合 `KISS`
 
-- Decision: 新建语义模型时 `domain_id` 应可选
-  - Why: 单模型建模应先完成来源绑定和基础定义，再决定是否纳入某个领域
+- Decision: `Cube` 仍是主库存入口，`View` 与 `Recipe` 不单独升格为一级导航
+  - Why: 当前用户核心任务仍围绕 `Cube` 定义、领域关系和治理判断展开
   - Alternatives considered:
-    - 强制先选领域
-      - 缺点：把单模型管理绑定到领域建模前置条件，增加创建阻力
+    - 统一 `Cube / View` 为一级“语义模型管理”
+      - 缺点：会削弱 `Cube` 作为主对象的治理焦点
 
-- Decision: 领域入口采用目录化结构，而非平铺卡片
-  - Why: 目录结构更适合承载分类、层级和后续增长
+- Decision: 目录页负责治理，画布页负责关系建模，Studio 负责单模型定义
+  - Why: 符合后端服务边界，也符合 `SOLID`
   - Alternatives considered:
-    - 保留卡片列表
-      - 缺点：规模增长后检索和定位成本过高
+    - 让目录页承担单领域全生命周期
+      - 缺点：目录页会重新混入重操作流程
 
-- Decision: Catalog 采用轻量两层 `catalog -> domain`，不做多级树
-  - Why: 当前阶段主要问题是“按业务归位”，而不是构建复杂的目录治理体系
-  - Alternatives considered:
-    - 保留纯扁平 domain 列表
-      - 缺点：随着领域数量增长，目录页无法表达业务归属
-    - 直接实现多级递归 catalog 树
-      - 缺点：明显超出当前阶段需求，违背 `KISS` 和 `YAGNI`
+- Decision: DevTools 聚合 `文件编辑 / 编译调试 / Schema 同步`
+  - Why: 这三项后端能力都属于开发与治理支持，不应拆散
 
-- Decision: 独立“领域管理”工作区取消，单领域管理回归领域目录
-  - Why: 目录定位与单领域生命周期维护属于同一上下文，拆开只会放大认知成本
-  - Alternatives considered:
-    - 保留独立“领域管理”页
-      - 缺点：与目录页信息重复，违背单一职责和去重原则
+## Backend Capability Domains
+### 1. 定义域
+- 对象：`Cube / View / Recipe / Domain / Catalog`
+- 能力：列出、查看、读取定义、校验、状态摘要
+- 前端映射：
+  - `Overview`
+  - `CubeList`
+  - `DomainList`
+  - `DevTools / 定义文件`
 
-- Decision: “领域建模”保留独立模块
-  - Why: 建模画布、Join 配置、发布校验应与目录浏览和单领域管理分离
-  - Alternatives considered:
-    - 将建模入口并回目录页
-      - 缺点：目录页会再次承担重操作工作流，回到职责混用问题
+### 2. 建模域
+- 对象：`Cube` 草稿、单模型编辑、领域目录、领域画布
+- 能力：草稿生成、来源绑定、结构维护、Join 维护、领域发布
+- 前端映射：
+  - `CubeStudio`
+  - `DomainModelingEntry`
+  - `DomainCanvas`
 
-- Decision: 领域画布改为“中心画布优先”，侧栏可折叠或抽屉化
-  - Why: 画布是建模主对象，信息面板不应挤占主要可视区域
-  - Alternatives considered:
-    - 保留左右常驻侧栏
-      - 缺点：桌面端横向空间浪费严重，复杂领域下操作受限
+### 3. 运行域
+- 对象：DSL、SQL、查询结果
+- 能力：编译、执行、返回 Join 路径与主 Cube
+- 前端映射：
+  - `DevTools / 编译调试`
+
+### 4. 治理域
+- 对象：发布状态、来源绑定、漂移、阻塞项、提示项
+- 能力：发布状态查询、Schema Drift 检测、注册表摘要
+- 前端映射：
+  - `CubeList`
+  - `DomainList`
+  - `DomainCanvas`
+  - `DevTools / Schema 同步`
+
+## Page Type Model
+### 1. Overview
+- 作用：解释模块职责和当前整体状态
+- 规则：不做分诊、不做入口矩阵、不做推荐流程
+
+### 2. Inventory
+- 作用：找对象、筛对象、判状态
+- 页面：
+  - `CubeList`
+  - `DomainList`
+
+### 3. Studio
+- 作用：维护单个对象定义
+- 页面：
+  - `CubeStudio`
+
+### 4. Canvas
+- 作用：组织关系网络、维护 Join、执行发布前检查
+- 页面：
+  - `DomainCanvas`
+
+### 5. Developer Workbench
+- 作用：定义文件、编译调试、Schema 同步
+- 页面：
+  - `DevTools`
+
+## Route To Responsibility Mapping
+- `/semantic/overview`
+  - 模块职责和整体状态
+- `/semantic/cubes`
+  - Cube 库存治理
+- `/semantic/cubes/new`
+  - 新建 Cube
+- `/semantic/cubes/:name/edit`
+  - 编辑 Cube
+- `/semantic/domains`
+  - 目录治理和领域筛选
+- `/semantic/modeling`
+  - 创建领域草稿与选择已有领域
+- `/semantic/domains/:id`
+  - 领域关系建模
+- `/semantic/tools`
+  - 定义文件、编译调试、Schema 同步
+
+## Shared Frontend Abstractions
+### View Models
+```ts
+type SemanticObjectSummary = {
+  kind: 'cube' | 'view' | 'domain' | 'catalog' | 'recipe'
+  id: string
+  code: string
+  title: string
+  description?: string
+  status: string
+}
+
+type SemanticGovernanceState = {
+  lifecycle: 'draft' | 'active' | 'deprecated'
+  sourceBinding?: 'bound' | 'unbound' | 'invalid'
+  syncStatus?: 'ok' | 'warn' | 'error' | 'unknown'
+  blockers: string[]
+  hints: string[]
+}
+
+type SemanticStructureSummary = {
+  dimensionCount?: number
+  measureCount?: number
+  joinCount?: number
+  cubeCount?: number
+  viewCount?: number
+}
+
+type WorkbenchContextItem = {
+  label: string
+  value: string | number
+  tone?: 'default' | 'accent' | 'warning'
+}
+```
+
+### Hook Contracts
+- `useCubeInventory`
+- `useCubeStudio`
+- `useDomainGovernance`
+- `useDomainCanvas`
+- `useSemanticDevTools`
+
+### Shared Components
+- `SemanticPageHeader`
+- `SemanticWorkbenchContextBar`
+- `SemanticSurface`
+- `SemanticInspectorPanel`
+- `SemanticIssueList`
+- `SemanticActionBar`
+- `SemanticPreviewPanel`
+
+## Page Field Blueprint
+完整字段清单与组件清单单独放在 `page-fields.md`，作为开发输入文档。
+
+核心规则：
+- 页头只写功能，不写流程
+- 上下文条只写范围、状态、规模
+- 每页只保留一个主任务区
+- Inspector 只在需要时显示
+- `View / Recipe` 通过详情区或 DevTools 挂载，不单独升格一级导航
 
 ## Risks / Trade-offs
-- 导航和路由命名调整会带来一定迁移成本
-  - Mitigation: 第一阶段允许保留原路由别名或重定向，先冻结职责再清理命名
+- 将 IA 正式冻结后，局部页面自由发挥空间会变小
+  - Mitigation: 用共享组件和字段清单提供明确扩展边界
 
-- “统一语义模型管理”后，页面需支持 `kind` 差异化展示
-  - Mitigation: 统一列表与详情壳，按 `kind` 控制字段区块
+- 不把 `View` 升为一级入口，可能会影响少数以 `View` 为主的管理需求
+  - Mitigation: 在 `Cube` 预览、详情和 `DevTools` 中增强 `View` 可见性
 
-- 目录化领域管理可能需要新的前端数据结构
-  - Mitigation: 第一阶段仅引入轻量两层模型，允许旧数据先挂在默认 catalog 下
+- 新增共享 view model 层会增加一次抽象成本
+  - Mitigation: 仅为语义中心建立，不扩散到全站，符合 `YAGNI`
 
-- Catalog 新数据模型会影响领域创建与读取接口
-  - Mitigation: 保持旧 `/domains` 能力兼容，同时新增 catalog 维度字段和查询入口，逐步迁移前端
-
-## Migration Plan
-1. 冻结一级导航，只保留“语义模型管理 / 领域目录 / 领域建模 / 开发者工具”
-2. 取消独立“领域管理”概念，将单领域管理动作迁回目录详情区
-3. 新增轻量 `catalog -> domain` 数据模型，并让旧 domain 数据可挂在默认 catalog 下
-4. 调整领域目录为“左侧 catalog 与 domain 列表 / 右侧当前领域详情与管理”
-5. 保留独立“领域建模”入口，承接创建领域草稿和进入画布
-6. 将 `CubeStudio` 改为允许空 `domain_id`
-7. 将 `DomainCanvas` 调整为中心画布优先布局
-8. 将 Drift 说明收敛到统一摘要和检测页
-
-## Open Questions
-- 默认 catalog 的命名和迁移策略是否统一为“未分类领域”或“默认目录”
-- “语义模型管理”是否保留现有 `/semantic/cubes` 路由命名，还是后续统一升级为 `/semantic/models`
+## Implementation Plan
+1. 先固化共享 view model、状态模型和 workbench 页面约束
+2. 统一 `Overview / CubeList / DomainList` 的 Inventory/Overview 语义
+3. 统一 `CubeStudio / DomainCanvas` 的 Studio/Canvas 语义
+4. 统一 `DevTools` 的 Developer Workbench 语义
+5. 最后补 `View / Recipe` 的挂载点，而不是新增一级页

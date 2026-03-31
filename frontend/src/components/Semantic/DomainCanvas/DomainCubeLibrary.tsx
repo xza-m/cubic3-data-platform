@@ -32,7 +32,7 @@ export function DomainCubeLibrary({
             Cube 资源库
           </div>
           <p className="text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]">
-            只显示当前可加入领域的 Cube。拖入画布后，在右侧继续完成 Join 配置。
+            显示当前可加入领域的 Cube。
           </p>
         </div>
 

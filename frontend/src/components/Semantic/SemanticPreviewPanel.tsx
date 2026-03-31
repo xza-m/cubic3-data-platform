@@ -25,15 +25,15 @@ export function SemanticPreviewPanel({
       )}
       data-testid={testId ?? 'semantic-preview-panel'}
     >
-      <div className="border-b border-[hsl(var(--workbench-outline))] px-5 py-4">
+      <div className="border-b border-[hsl(var(--workbench-outline))] px-4 py-3">
         <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[hsl(var(--workbench-ink))]">
-              <PanelRight className="h-4 w-4 text-[hsl(var(--workbench-muted-foreground))]" />
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 whitespace-nowrap text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">
+              <PanelRight className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />
               {title}
             </div>
             {description ? (
-              <p className="text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]">
+              <p className="text-[11px] leading-4 text-[hsl(var(--workbench-muted-foreground))]">
                 {description}
               </p>
             ) : null}
@@ -41,7 +41,7 @@ export function SemanticPreviewPanel({
           {actions}
         </div>
       </div>
-      <div className="space-y-5 px-5 py-5">{children}</div>
+      <div className="space-y-4 px-4 py-4">{children}</div>
     </aside>
   )
 }
@@ -54,7 +54,7 @@ export function SemanticPreviewSection({
   children: ReactNode
 }) {
   return (
-    <section className="space-y-2.5">
+    <section className="space-y-2">
       <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">
         {label}
       </div>
@@ -73,12 +73,39 @@ export function SemanticPreviewMetricGrid({
       {items.map((item) => (
         <div
           key={item.label}
-          className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white/86 px-3.5 py-3"
+          className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white/86 px-3 py-2.5"
         >
           <div className="text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]">
             {item.label}
           </div>
-          <div className="mt-1.5 text-sm font-semibold text-[hsl(var(--workbench-ink))]">
+          <div className="mt-1 text-[13px] font-semibold leading-5 text-[hsl(var(--workbench-ink))]">
+            {item.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function SemanticPreviewFacts({
+  items,
+}: {
+  items: Array<{ label: string; value: ReactNode }>
+}) {
+  return (
+    <div className="overflow-hidden rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white/84">
+      {items.map((item, index) => (
+        <div
+          key={item.label}
+          className={cn(
+            'flex items-start justify-between gap-3 px-3 py-2.5',
+            index > 0 && 'border-t border-[hsl(var(--workbench-outline))]',
+          )}
+        >
+          <div className="text-[10px] uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]">
+            {item.label}
+          </div>
+          <div className="text-right text-[12px] font-medium leading-5 text-[hsl(var(--workbench-ink))]">
             {item.value}
           </div>
         </div>

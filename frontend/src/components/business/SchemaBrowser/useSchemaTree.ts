@@ -3,7 +3,7 @@
  * 
  * 负责树形数据的加载、展开/折叠、搜索过滤、状态管理
  */
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { getDataSourceDatabases, getDataSourceTables } from '@/api/datasources'
 import { getSchemas, getTableSchema, type TableSchemaResponse } from '@/api/schema'
 import type { ApiResponse } from '@/types'
@@ -27,6 +27,11 @@ export function useSchemaTree({ datasourceId, sourceType }: UseSchemaTreeOptions
     const [searchTerm, setSearchTerm] = useState('')
     const [initialized, setInitialized] = useState(false)
     const [typeFilters, setTypeFilters] = useState<Set<FilterableNodeType>>(new Set(['table', 'view']))
+    const nodesRef = useRef(nodes)
+
+    useEffect(() => {
+        nodesRef.current = nodes
+    }, [nodes])
 
     useEffect(() => {
         setNodes(new Map())
@@ -304,7 +309,7 @@ export function useSchemaTree({ datasourceId, sourceType }: UseSchemaTreeOptions
 
     // ─── 展开/折叠节点 ───
     const toggleExpand = useCallback(async (key: NodeKey) => {
-        const node = nodes.get(key)
+        const node = nodesRef.current.get(key)
         if (!node) {
             // 延迟获取——节点可能还在异步创建中
             setTimeout(() => toggleExpand(key), 100)
@@ -339,11 +344,11 @@ export function useSchemaTree({ datasourceId, sourceType }: UseSchemaTreeOptions
                     break
             }
         }
-    }, [nodes, hasSchemaLevel, updateNode, loadSchemas, loadTables, loadColumns])
+    }, [hasSchemaLevel, updateNode, loadSchemas, loadTables, loadColumns])
 
     // ─── 刷新节点 ───
     const refreshNode = useCallback(async (key: NodeKey) => {
-        const node = nodes.get(key)
+        const node = nodesRef.current.get(key)
         if (!node) return
 
         // 清除子节点
@@ -365,7 +370,7 @@ export function useSchemaTree({ datasourceId, sourceType }: UseSchemaTreeOptions
 
         // 重新展开
         setTimeout(() => toggleExpand(key), 50)
-    }, [nodes, toggleExpand])
+    }, [toggleExpand])
 
     // ─── 切换类型过滤器 ───
     const toggleTypeFilter = useCallback((type: FilterableNodeType) => {

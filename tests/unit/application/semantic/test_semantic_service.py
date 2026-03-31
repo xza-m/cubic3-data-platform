@@ -58,9 +58,11 @@ class _InMemoryRepo:
 
 class TestListCubes:
 
-    def test_returns_all_14_cubes(self, service):
+    def test_returns_all_repo_cubes_without_duplicates(self, service):
         cubes = service.list_cubes()
-        assert len(cubes) == 14
+        expected_names = sorted(cube.name for cube in service._cube_repo.list_all())
+        actual_names = sorted(cube["name"] for cube in cubes)
+        assert actual_names == expected_names
 
     def test_cube_has_required_fields(self, service):
         cubes = service.list_cubes()
@@ -341,3 +343,76 @@ class TestCompileAndExecute:
         assert result["primary_cube"] == "answer_records"
         assert result["joined_cubes"] == []
         assert result["retryable"] is False
+
+
+def test_semantic_layer_service_invalidate_cache_and_delegate_methods():
+    class _DefinitionService:
+        def __init__(self):
+            self.invalidated = False
+
+        def invalidate_cache(self):
+            self.invalidated = True
+
+        def list_cubes(self):
+            return [{"name": "orders"}]
+
+        def describe_cube(self, cube_name):
+            return {"name": cube_name}
+
+        def list_views(self, public_only=True):
+            return [public_only]
+
+        def describe_view(self, view_name, include_private=False):
+            return {"name": view_name, "include_private": include_private}
+
+        def expand_view_to_dsl(self, view):
+            return {"view": view.name}
+
+        def validate_cube(self, cube):
+            return [{"name": cube.name}]
+
+        def validate_view(self, view):
+            return [{"name": view.name}]
+
+    class _QueryService:
+        def __init__(self):
+            self.invalidated = False
+
+        def invalidate_cache(self):
+            self.invalidated = True
+
+        def compile_query(self, dsl_dict):
+            return {"dsl": dsl_dict}
+
+        def query(self, dsl_dict, adapter):
+            return {"dsl": dsl_dict, "adapter": adapter}
+
+        def compile_and_execute(self, dsl_dict, adapter):
+            return {"executed": True, "dsl": dsl_dict, "adapter": adapter}
+
+    definition = _DefinitionService()
+    query = _QueryService()
+    service = SemanticLayerService(definition_service=definition, query_service=query)
+    cube = CubeDefinition(
+        name="orders",
+        title="订单",
+        table="dws.orders",
+        dimensions={"id": DimensionDef(title="ID", type="number", sql="{CUBE}.id", primary_key=True)},
+        measures={"total_count": MeasureDef(title="总数", type="count", sql="{CUBE}.id")},
+    )
+    view = ViewDefinition(name="order_view", title="订单视图", cubes=[{"join_path": "orders", "includes": ["id"]}])
+
+    service.invalidate_cache()
+
+    assert definition.invalidated is True
+    assert query.invalidated is True
+    assert service.list_cubes() == [{"name": "orders"}]
+    assert service.describe_cube("orders") == {"name": "orders"}
+    assert service.list_views(public_only=False) == [False]
+    assert service.describe_view("order_view", include_private=True) == {"name": "order_view", "include_private": True}
+    assert service.compile_query({"measures": ["orders.total_count"]}) == {"dsl": {"measures": ["orders.total_count"]}}
+    assert service.expand_view_to_dsl(view) == {"view": "order_view"}
+    assert service.validate_cube(cube) == [{"name": "orders"}]
+    assert service.validate_view(view) == [{"name": "order_view"}]
+    assert service.query({"measures": ["orders.total_count"]}, adapter="adapter")["adapter"] == "adapter"
+    assert service.compile_and_execute({"measures": ["orders.total_count"]}, adapter="adapter")["executed"] is True

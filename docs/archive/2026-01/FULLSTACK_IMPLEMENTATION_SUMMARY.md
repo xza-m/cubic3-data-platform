@@ -328,8 +328,8 @@ A: 已默认使用生产模式。前端经过优化构建，后端使用 Gunicor
 
 - [前后端分离部署指南](./FRONTEND_DEPLOYMENT.md)
 - [架构重构记录](./ARCHITECTURE_REFACTORING.md)
-- [技术栈说明](./TECH_STACK_AND_ARCHITECTURE.md)
-- [快速参考](../QUICK_REFERENCE.md)
+- [技术栈说明](../../TECH_STACK_AND_ARCHITECTURE.md)
+- [快速开始](../../QUICK_START.md)
 
 ---
 

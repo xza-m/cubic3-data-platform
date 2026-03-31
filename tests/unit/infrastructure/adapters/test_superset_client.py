@@ -116,6 +116,49 @@ class TestSupersetClientAuth:
                 with pytest.raises(requests.HTTPError):
                     client._auth_header()
 
+    def test_csrf_header_returns_empty_for_jwt(self, app_with_jwt_config):
+        with app_with_jwt_config.app_context():
+            client = SupersetClient()
+            assert client._csrf_header() == {}
+
+    def test_csrf_header_returns_cached_token(self, app_with_superset_config):
+        with app_with_superset_config.app_context():
+            client = SupersetClient()
+            client._csrf_token = "csrf_cached"
+
+            assert client._csrf_header() == {"X-CSRFToken": "csrf_cached"}
+
+    def test_csrf_header_fetches_and_caches_token(self, app_with_superset_config):
+        with app_with_superset_config.app_context():
+            client = SupersetClient()
+            client._access_token = "access_xyz"
+
+            with patch.object(client.session, "get") as mock_get:
+                mock_resp = MagicMock()
+                mock_resp.json.return_value = {"result": "csrf_new"}
+                mock_resp.raise_for_status = MagicMock()
+                mock_get.return_value = mock_resp
+
+                header = client._csrf_header()
+
+        assert header == {"X-CSRFToken": "csrf_new"}
+        assert client._csrf_token == "csrf_new"
+
+    def test_csrf_header_returns_empty_when_token_missing(self, app_with_superset_config):
+        with app_with_superset_config.app_context():
+            client = SupersetClient()
+            client._access_token = "access_xyz"
+
+            with patch.object(client.session, "get") as mock_get:
+                mock_resp = MagicMock()
+                mock_resp.json.return_value = {}
+                mock_resp.raise_for_status = MagicMock()
+                mock_get.return_value = mock_resp
+
+                header = client._csrf_header()
+
+        assert header == {}
+
 
 # ============================================================================
 # 辅助方法
@@ -145,6 +188,64 @@ class TestSupersetClientHelpers:
             client = SupersetClient()
             path = client._dashboard_url_path("456")
             assert "superset/dashboard/456" in path
+
+    def test_dashboard_url_path_falls_back_when_template_invalid(self, app_with_superset_config):
+        app_with_superset_config.config["SUPERSET_DASHBOARD_URL_TEMPLATE"] = "/dash/{unknown}/"
+        with app_with_superset_config.app_context():
+            client = SupersetClient()
+            path = client._dashboard_url_path("456")
+
+        assert path == "/superset/dashboard/456/"
+
+    def test_get_screenshot_cache_key_wraps_http_error(self, app_with_jwt_config):
+        import requests
+
+        with app_with_jwt_config.app_context():
+            client = SupersetClient()
+            with patch.object(client.session, "post") as mock_post:
+                mock_resp = MagicMock()
+                mock_resp.text = "bad request"
+                mock_resp.status_code = 400
+                mock_resp.raise_for_status.side_effect = requests.HTTPError("boom", response=mock_resp)
+                mock_post.return_value = mock_resp
+
+                with pytest.raises(requests.HTTPError, match="body=bad request"):
+                    client._get_screenshot_cache_key("1", {"force": True}, timeout=5)
+
+    def test_get_screenshot_cache_key_raises_when_payload_has_no_key(self, app_with_jwt_config):
+        with app_with_jwt_config.app_context():
+            client = SupersetClient()
+            with patch.object(client.session, "post") as mock_post:
+                mock_resp = MagicMock()
+                mock_resp.json.return_value = {}
+                mock_resp.raise_for_status = MagicMock()
+                mock_post.return_value = mock_resp
+
+                with pytest.raises(RuntimeError, match="返回为空"):
+                    client._get_screenshot_cache_key("1", {"force": True}, timeout=5)
+
+    @pytest.mark.parametrize("status_code", [202, 404])
+    def test_fetch_screenshot_returns_none_when_not_ready(self, app_with_jwt_config, status_code):
+        with app_with_jwt_config.app_context():
+            client = SupersetClient()
+            with patch.object(client.session, "get") as mock_get:
+                mock_resp = MagicMock(status_code=status_code)
+                mock_get.return_value = mock_resp
+
+                assert client._fetch_screenshot_by_cache_key("1", "cache", timeout=5, attempt=1) is None
+
+    def test_fetch_screenshot_raises_on_unexpected_error(self, app_with_jwt_config):
+        import requests
+
+        with app_with_jwt_config.app_context():
+            client = SupersetClient()
+            with patch.object(client.session, "get") as mock_get:
+                mock_resp = MagicMock(status_code=500, text="boom")
+                mock_resp.raise_for_status.side_effect = requests.HTTPError("500")
+                mock_get.return_value = mock_resp
+
+                with pytest.raises(requests.HTTPError, match="500"):
+                    client._fetch_screenshot_by_cache_key("1", "cache", timeout=5, attempt=1)
 
 
 # ============================================================================
@@ -236,3 +337,31 @@ class TestGetDashboardScreenshot:
                 with patch.object(client, "_fetch_screenshot_by_cache_key", return_value=None):
                     with pytest.raises(RuntimeError, match="not ready after retries"):
                         client.get_dashboard_screenshot("1", timeout=5, retries=1)
+
+    def test_get_screenshot_retries_after_initial_400(self, app_with_jwt_config):
+        import requests
+
+        with app_with_jwt_config.app_context():
+            client = SupersetClient()
+            client.screenshot_max_wait = 0.1
+            client.screenshot_poll_interval = 0.01
+            response = MagicMock(status_code=400)
+            error = requests.HTTPError("400", response=response)
+
+            with patch.object(client, "_get_screenshot_cache_key", side_effect=[error, "key"]) as mock_cache:
+                with patch.object(client, "_fetch_screenshot_by_cache_key", return_value=b"png"):
+                    result = client.get_dashboard_screenshot("1", timeout=5)
+
+        assert result == b"png"
+        assert mock_cache.call_count == 2
+
+    def test_get_screenshot_raises_last_poll_exception(self, app_with_jwt_config):
+        with app_with_jwt_config.app_context():
+            client = SupersetClient()
+            client.screenshot_max_wait = 0.1
+            client.screenshot_poll_interval = 0.01
+
+            with patch.object(client, "_get_screenshot_cache_key", return_value="key"):
+                with patch.object(client, "_fetch_screenshot_by_cache_key", side_effect=RuntimeError("fetch failed")):
+                    with pytest.raises(RuntimeError, match="fetch failed"):
+                        client.get_dashboard_screenshot("1", timeout=5)

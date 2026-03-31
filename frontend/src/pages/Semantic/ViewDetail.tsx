@@ -173,10 +173,11 @@ export default function ViewDetail() {
         description: '数据集状态已刷新，可在字段映射和发布摘要中查看最新结果。',
       })
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
+      const errorMessage = err instanceof Error ? err.message : '未知错误'
       toast({
         title: '发布失败',
-        description: err?.response?.data?.message || err.message || '未知错误',
+        description: errorMessage,
         variant: 'destructive',
       })
     },
@@ -202,6 +203,13 @@ export default function ViewDetail() {
 
   const isMaterialized = matStatus?.materialized === true
   const fieldMappings = matStatus?.field_mappings ?? []
+  const relatedCubeNames = Array.from(
+    new Set(
+      view.cubes
+        .map((cube) => cube.join_path.split('.', 1)[0]?.trim())
+        .filter((cubeName): cubeName is string => Boolean(cubeName)),
+    ),
+  )
   const publishLabel = publishMutation.isPending
     ? '发布中…'
     : isMaterialized
@@ -236,13 +244,13 @@ export default function ViewDetail() {
         actions={
           <>
             <Button variant="outline" asChild>
-              <Link to="/semantic/tools?tab=compiler">
+              <Link to="/semantic/workbench?tab=compiler">
                 <AlertTriangle className="mr-1.5 h-4 w-4" />
                 查看诊断
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link to={`/semantic/tools?tab=editor&kind=view&resource=${encodeURIComponent(view.name)}&file=${encodeURIComponent(view.name)}`}>
+              <Link to={`/semantic/workbench?tab=editor&kind=view&resource=${encodeURIComponent(view.name)}&file=${encodeURIComponent(view.name)}`}>
                 <FileCode className="mr-1.5 h-4 w-4" />
                 查看 YAML
               </Link>
@@ -257,7 +265,7 @@ export default function ViewDetail() {
           secondaryActions={
             <>
               <Button variant="outline" asChild>
-                <Link to="/semantic/tools?tab=sync">查看发布状态</Link>
+                <Link to="/semantic/workbench?tab=sync">查看发布状态</Link>
               </Button>
               <Button variant="outline" onClick={() => setTab('mapping')}>
                 查看字段映射
@@ -293,6 +301,35 @@ export default function ViewDetail() {
                 </div>
                 <div className="mt-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">
                   {matStatus?.definition_summary?.dimension_count ?? 0} 维度 · {matStatus?.definition_summary?.measure_count ?? 0} 指标
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <div
+                className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4"
+                data-testid="view-related-cubes"
+              >
+                <div className="text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">相关 Cube</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {relatedCubeNames.map((cubeName) => (
+                    <Button key={cubeName} asChild variant="outline" size="sm" className="h-8 rounded-full px-3">
+                      <Link to={`/semantic/cubes/${cubeName}`}>
+                        {cubeName}
+                      </Link>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div
+                className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4"
+                data-testid="view-publish-status"
+              >
+                <div className="text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">发布状态</div>
+                <div className="mt-2 text-sm font-semibold text-[hsl(var(--workbench-ink))]">
+                  {matStatus?.publish_status || view.publish_summary?.publish_status || 'unpublished'}
+                </div>
+                <div className="mt-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">
+                  漂移状态：{view.drift_summary?.last_drift_status || matStatus?.state_summary?.last_drift_status || 'unknown'}
                 </div>
               </div>
             </div>

@@ -79,3 +79,37 @@ class TestDatasourceRepository:
 
         mock_session.delete.assert_called_once_with(datasource)
         mock_session.commit.assert_called_once()
+
+    def test_find_by_name_and_find_all(self):
+        """测试按名称查询和查询全部"""
+        repo, mock_session = _make_repo()
+
+        datasource = DataSource(
+            name="Warehouse",
+            source_type="postgresql",
+            connection_config={},
+            created_by="admin",
+        )
+        query = mock_session.query.return_value
+        query.filter_by.return_value.first.return_value = datasource
+        query.all.return_value = [datasource]
+
+        assert repo.find_by_name("Warehouse") is datasource
+        assert repo.find_all() == [datasource]
+
+    def test_exists_by_name_without_and_with_exclude_id(self):
+        """测试名称存在性检查"""
+        repo, mock_session = _make_repo()
+
+        query = mock_session.query.return_value
+        filter_query = MagicMock()
+        query.filter_by.return_value = filter_query
+        filter_query.first.return_value = object()
+
+        assert repo.exists_by_name("Warehouse") is True
+
+        filter_query.first.return_value = None
+        filter_query.filter.return_value = filter_query
+
+        assert repo.exists_by_name("Warehouse", exclude_id=1) is False
+        filter_query.filter.assert_called_once()

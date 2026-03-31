@@ -8,7 +8,7 @@ import { Database, Layers, Loader2 } from 'lucide-react'
 import { getDatasets, getDataset } from '../../api/datasets'
 import { FieldSelector } from '../../components/FieldSelector'
 import type { FieldMeta } from '../../types/filter'
-import { FormSelect, Skeleton } from '@/components/business'
+import { FormSelect } from '@/components/business'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 interface StepDatasetFieldsProps {

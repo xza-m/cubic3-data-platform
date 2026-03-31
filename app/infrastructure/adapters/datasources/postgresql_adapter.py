@@ -125,8 +125,15 @@ class PostgreSQLAdapter(DataSourceAdapter):
                     cursor.execute("""
                         SELECT 
                             schemaname || '.' || tablename as table_name,
-                            pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
-                            obj_description((schemaname||'.'||tablename)::regclass) as comment
+                            pg_size_pretty(
+                                pg_total_relation_size(
+                                    to_regclass(format('%I.%I', schemaname, tablename))
+                                )
+                            ) as size,
+                            obj_description(
+                                to_regclass(format('%I.%I', schemaname, tablename)),
+                                'pg_class'
+                            ) as comment
                         FROM pg_tables 
                         WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
                         ORDER BY schemaname, tablename

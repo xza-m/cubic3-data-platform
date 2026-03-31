@@ -8,13 +8,13 @@ import { CHANNEL_TYPE_OPTIONS } from '@/types/config'
 import { createChannel, updateChannel } from '@/api/channels'
 import {
   PageModal,
-// FormInput,
+  FormInput,
+  FormPassword,
   FormSelect,
   FormButton,
+  FormTextarea,
   useToast,
 } from '@/components/business'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 
@@ -134,7 +134,7 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
         }
         
         // 构建配置
-        let config: Record<string, any> = {}
+        let config: Record<string, unknown> = {}
         switch (channelType) {
             case 'feishu':
                 if (!feishuChatId) {
@@ -200,6 +200,7 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
             open={open}
             onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
             title={isEditing ? '编辑渠道' : '创建渠道'}
+            description="配置渠道类型、目标地址和发送参数。"
             width="500px"
             footer={
                 <div className="flex justify-end gap-2">
@@ -212,10 +213,10 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
                 </div>
             }
         >
-            <div className="space-y-4 mt-4">
+            <div className="mt-2 space-y-4">
                 <div>
                     <Label htmlFor="name">渠道名称 *</Label>
-                    <Input
+                    <FormInput
                         id="name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
@@ -250,25 +251,25 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
                     <>
                         <div>
                             <Label htmlFor="feishu_chat_id">群聊 ID *</Label>
-                            <Input
+                            <FormInput
                                 id="feishu_chat_id"
                                 value={feishuChatId}
                                 onChange={(e) => setFeishuChatId(e.target.value)}
                                 placeholder="oc_xxxxxx"
                                 className="mt-1"
                             />
-                            <p className="text-sm text-gray-500 mt-1">格式如：oc_xxxxxx</p>
+                            <p className="mt-1 text-[0.875rem] leading-5 text-gray-500">格式如：oc_xxxxxx</p>
                         </div>
                         <div>
                             <Label htmlFor="feishu_webhook_url">Webhook URL (可选)</Label>
-                            <Input
+                            <FormInput
                                 id="feishu_webhook_url"
                                 value={feishuWebhookUrl}
                                 onChange={(e) => setFeishuWebhookUrl(e.target.value)}
                                 placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
                                 className="mt-1"
                             />
-                            <p className="text-sm text-gray-500 mt-1">如果不填，将使用应用默认的飞书机器人</p>
+                            <p className="mt-1 text-[0.875rem] leading-5 text-gray-500">留空时使用应用默认的飞书机器人。</p>
                         </div>
                     </>
                 )}
@@ -278,7 +279,7 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
                     <>
                         <div>
                             <Label htmlFor="webhook_url">Webhook URL *</Label>
-                            <Input
+                            <FormInput
                                 id="webhook_url"
                                 value={webhookUrl}
                                 onChange={(e) => setWebhookUrl(e.target.value)}
@@ -301,15 +302,14 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
                         </div>
                         <div>
                             <Label htmlFor="webhook_secret">Secret (可选)</Label>
-                            <Input
+                            <FormPassword
                                 id="webhook_secret"
-                                type="password"
                                 value={webhookSecret}
                                 onChange={(e) => setWebhookSecret(e.target.value)}
                                 placeholder="可选的签名密钥"
                                 className="mt-1"
                             />
-                            <p className="text-sm text-gray-500 mt-1">用于签名验证</p>
+                            <p className="mt-1 text-[0.875rem] leading-5 text-gray-500">用于签名验证。</p>
                         </div>
                     </>
                 )}
@@ -319,7 +319,7 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
                     <>
                         <div>
                             <Label htmlFor="email_recipients">收件人 *</Label>
-                            <Textarea
+                            <FormTextarea
                                 id="email_recipients"
                                 value={emailRecipients}
                                 onChange={(e) => setEmailRecipients(e.target.value)}
@@ -327,11 +327,11 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
                                 rows={2}
                                 className="mt-1"
                             />
-                            <p className="text-sm text-gray-500 mt-1">多个邮箱用逗号分隔</p>
+                            <p className="mt-1 text-[0.875rem] leading-5 text-gray-500">多个邮箱用逗号分隔。</p>
                         </div>
                         <div>
                             <Label htmlFor="email_subject_template">邮件主题模板</Label>
-                            <Input
+                            <FormInput
                                 id="email_subject_template"
                                 value={emailSubjectTemplate}
                                 onChange={(e) => setEmailSubjectTemplate(e.target.value)}
@@ -347,7 +347,7 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
                     <>
                         <div>
                             <Label htmlFor="oss_bucket">Bucket 名称 *</Label>
-                            <Input
+                            <FormInput
                                 id="oss_bucket"
                                 value={ossBucket}
                                 onChange={(e) => setOssBucket(e.target.value)}
@@ -357,14 +357,14 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
                         </div>
                         <div>
                             <Label htmlFor="oss_path_template">路径模板</Label>
-                            <Input
+                            <FormInput
                                 id="oss_path_template"
                                 value={ossPathTemplate}
                                 onChange={(e) => setOssPathTemplate(e.target.value)}
                                 placeholder="exports/{{app_code}}/{{date}}/"
                                 className="mt-1"
                             />
-                            <p className="text-sm text-gray-500 mt-1">
+                            <p className="mt-1 text-[0.875rem] leading-5 text-gray-500">
                                 支持变量: {'{{app_code}}'}, {'{{date}}'}, {'{{execution_id}}'}
                             </p>
                         </div>

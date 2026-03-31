@@ -76,8 +76,13 @@ export default function SaveAsDatasetDialog({
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          const error = err as { response?: { data?: { message?: string } }; message?: string }
-          setLoadError(error.response?.data?.message || error.message || '获取字段信息失败')
+          const error = err as {
+            response?: { data?: { message?: string; details?: { reason_code?: string } } }
+            message?: string
+          }
+          const reasonCode = error.response?.data?.details?.reason_code
+          const message = error.response?.data?.message || error.message || '获取字段信息失败'
+          setLoadError(reasonCode ? `${message}（${reasonCode}）` : message)
           setStep('info') // 仍允许继续，字段配置步骤会为空
         }
       }
@@ -155,7 +160,7 @@ export default function SaveAsDatasetDialog({
   }
 
   const canGoToFields = formData.dataset_name.trim().length > 0
-  const canGoToConfirm = fieldConfigs.length > 0
+  const canGoToConfirm = fieldConfigs.length > 0 || fieldConfiguratorFields.length === 0
 
   const stepIndex = step === 'loading' ? -1 : step === 'info' ? 0 : step === 'fields' ? 1 : 2
   const steps = [
@@ -217,7 +222,7 @@ export default function SaveAsDatasetDialog({
           <div className="space-y-4 max-w-md mx-auto">
             {loadError && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-                字段元数据获取失败: {loadError}。你仍然可以继续注册，但字段配置需要手动补全。
+                字段元数据获取失败: {loadError}。你仍然可以继续注册，后续再补全字段治理信息。
               </div>
             )}
             <div>
@@ -263,7 +268,8 @@ export default function SaveAsDatasetDialog({
             ) : (
               <div className="flex flex-col items-center justify-center h-48 text-gray-400">
                 <Settings className="w-10 h-10 mb-2" />
-                <p className="text-sm">无可配置的字段信息</p>
+                <p className="text-sm">当前没有可配置的字段信息</p>
+                <p className="mt-1 text-xs text-gray-400">可以继续创建，后续通过数据集详情补充字段元数据。</p>
               </div>
             )}
           </div>

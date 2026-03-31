@@ -7,8 +7,6 @@ import {
   createCube,
   createCubeDraftFromTable,
   deprecateCube,
-  describeCube,
-  listDomains,
   updateCube,
   type CubeDetail,
   type CubeDraftPayload,
@@ -22,15 +20,15 @@ import {
   type CubeStudioStepKey,
 } from '@/components/Semantic/CubeStudio/CubeStudioStepRail'
 import { CubeStudioTaskPanel } from '@/components/Semantic/CubeStudio/CubeStudioTaskPanel'
-import { SyncStatusBadge } from '@/components/Semantic/SyncStatusBadge'
+import { SemanticWorkbenchContextBar } from '@/components/Semantic/SemanticWorkbenchContextBar'
 import {
   SemanticPageHeader,
   SemanticPageShell,
   SemanticStatusBanner,
   type SemanticValidationSummary,
 } from '@/components/Semantic/workbench'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useCubeStudio } from '@/hooks/semantic-ia'
 import { useUnsavedChangesPrompt } from '@/hooks/useUnsavedChangesPrompt'
 import { getSemanticStatusLabel } from '@/lib/semantic-status'
 import type { TreeNode } from '@/components/business/SchemaBrowser/types'
@@ -100,8 +98,8 @@ function buildNewModeSummary(
         ? '草稿已就绪，等待保存'
         : '先完成来源绑定与草稿生成',
     description: draft
-      ? '请按顺序完成基础信息、结构校对、规则确认，再进入保存与发布。'
-      : '新建模式采用固定流程：来源绑定、生成草稿、校对结构、确认规则、保存草稿。',
+      ? '先确认自动生成的结构和必要规则，再决定保存为草稿。'
+      : '新建模式优先自动生成草稿，再对名称、结构和规则做少量人工补充。',
     blockers,
     hints,
     stats: [
@@ -128,7 +126,7 @@ function buildEditModeSummary(cubeDetail: CubeDetail | undefined, dirty: boolean
     status,
     title: status === 'dirty' ? '当前修改尚未保存' : '当前模型状态稳定',
     description: status === 'dirty'
-      ? '请在保存前完成基础信息、规则和校验确认。'
+      ? '请确认当前属性、规则和阻塞项，再保存修改。'
       : '编辑模式下统一维护单 Cube 的属性、规则和生命周期动作。',
     blockers,
     hints: [
@@ -178,20 +176,20 @@ function buildStepItems(
 ) {
   if (isEditMode) {
     return [
-      { key: 'basic', title: '基础信息', description: '维护名称、说明和领域归属。', done: Boolean(cubeDetail?.title?.trim()) },
-      { key: 'source', title: '来源绑定', description: '确认当前来源上下文和绑定摘要。', done: Boolean(cubeDetail) },
-      { key: 'structure', title: '维度 / 指标', description: '校对当前结构规模和自动识别结果。', done: Boolean(cubeDetail) },
-      { key: 'rules', title: '语义规则', description: '确认粒度和实体主键等核心规则。', done: Boolean(cubeDetail) },
+      { key: 'basic', title: '基础信息', description: '修正名称、说明和领域归属。', done: Boolean(cubeDetail?.title?.trim()) },
+      { key: 'source', title: '来源绑定', description: '查看当前来源上下文和绑定摘要。', done: Boolean(cubeDetail) },
+      { key: 'structure', title: '维度 / 指标', description: '校对当前结构规模和识别结果。', done: Boolean(cubeDetail) },
+      { key: 'rules', title: '语义规则', description: '维护粒度和实体主键等核心规则。', done: Boolean(cubeDetail) },
       { key: 'validation', title: '校验与预览', description: '集中查看阻塞项、提醒项和影响范围。', done: summary.blockers?.length === 0 },
       { key: 'publish', title: '保存与发布', description: '收敛保存、激活和弃用动作。', done: false },
     ] satisfies CubeStudioStepItem[]
   }
 
   return [
-    { key: 'basic', title: '基础信息', description: '确认名称、说明和领域归属。', done: Boolean(draft?.name.trim() && draft?.title.trim()) },
-    { key: 'source', title: '来源绑定', description: '选择数据源和物理表并生成草稿。', done: Boolean(selectedSource && selectedTable && draft) },
+    { key: 'basic', title: '基础信息', description: '补充显示名称、领域和说明。', done: Boolean(draft?.name.trim() && draft?.title.trim()) },
+    { key: 'source', title: '来源绑定', description: '确认来源后自动生成草稿。', done: Boolean(selectedSource && selectedTable && draft) },
     { key: 'structure', title: '维度 / 指标', description: '校对自动识别出的结构。', done: Boolean(draft && (Object.keys(draft.dimensions || {}).length > 0 || Object.keys(draft.measures || {}).length > 0)) },
-    { key: 'rules', title: '语义规则', description: '确认默认粒度和实体主键。', done: Boolean(draft && ((draft.grain || '').trim() || (draft.entity_key || '').trim())) },
+    { key: 'rules', title: '语义规则', description: '只维护少量核心规则。', done: Boolean(draft && ((draft.grain || '').trim() || (draft.entity_key || '').trim())) },
     { key: 'validation', title: '校验与预览', description: '集中处理阻塞项和提醒项。', done: Boolean(draft && summary.blockers?.length === 0) },
     { key: 'publish', title: '保存与发布', description: '将当前草稿保存为 Draft Cube。', done: false },
   ] satisfies CubeStudioStepItem[]
@@ -234,17 +232,8 @@ export default function CubeStudio() {
   })
   const datasources = datasourceResp?.items ?? []
 
-  const { data: domainsResp } = useQuery({
-    queryKey: ['semantic', 'domains'],
-    queryFn: async () => (await listDomains()).data,
-  })
-  const domains = domainsResp?.domains ?? []
-
-  const { data: cubeDetail, isLoading } = useQuery({
-    queryKey: ['semantic', 'cube', name],
-    queryFn: async () => (await describeCube(name!)).data as CubeDetail,
-    enabled: !!name,
-  })
+  const { domains, detail: cubeDetail, detailQuery } = useCubeStudio({ cubeName: name })
+  const isLoading = detailQuery.isLoading
 
   useEffect(() => {
     if (!selectedSource && datasources.length > 0) {
@@ -453,6 +442,12 @@ export default function CubeStudio() {
   }, [inferredStep])
 
   const stepItems = buildStepItems(isEditMode, selectedSource, selectedTable, draft, cubeDetail, summary)
+  const hasMultiDomainProjection = Boolean(
+    cubeDetail && (
+      (cubeDetail.domain_count || 0) > 1
+      || (cubeDetail.domain_ids?.length || 0) > 1
+    ),
+  )
 
   if (isEditMode && isLoading) {
     return (
@@ -464,7 +459,7 @@ export default function CubeStudio() {
     )
   }
 
-  const heading = isEditMode ? 'Cube Studio' : '新建 Cube'
+  const heading = isEditMode ? '编辑 Cube' : '新建 Cube'
 
   return (
     <SemanticPageShell>
@@ -472,14 +467,9 @@ export default function CubeStudio() {
         backHref="/semantic/cubes"
         backLabel="返回 Cube 管理"
         title={heading}
-        description="当前页面围绕单个 Cube 的基础信息、来源绑定、结构校对、语义规则和保存动作展开，不在这里处理跨 Cube 关系。"
+        description="维护单个 Cube 的基础定义、来源绑定和语义规则。"
         status={summary.status}
-        meta={(
-          <>
-            {cubeDetail?.status ? <Badge variant="outline">{getSemanticStatusLabel(cubeDetail.status)}</Badge> : null}
-            {cubeDetail?.state_summary?.sync_status ? <SyncStatusBadge status={cubeDetail.state_summary.sync_status as any} /> : null}
-          </>
-        )}
+        eyebrow={null}
       />
 
       <SemanticStatusBanner
@@ -491,7 +481,7 @@ export default function CubeStudio() {
               onClick: handleSave,
               icon: <Save className="mr-1.5 h-4 w-4" />,
               disabled: !isEditDirty || updateCubeMutation.isPending,
-              testId: 'semantic-primary-action',
+              testId: 'cube-banner-save-current',
             }
             : draft
               ? {
@@ -499,16 +489,32 @@ export default function CubeStudio() {
                 onClick: handleCreate,
                 icon: <Save className="mr-1.5 h-4 w-4" />,
                 disabled: createCubeMutation.isPending || summary.status === 'blocked',
-                testId: 'cube-save-draft',
+                testId: 'cube-banner-save-draft',
               }
               : {
                 label: '生成 Cube 草稿',
                 onClick: () => createDraftMutation.mutate(),
                 icon: <Wand2 className="mr-1.5 h-4 w-4" />,
                 disabled: !selectedSource || !selectedTable || createDraftMutation.isPending,
-                testId: 'cube-generate-draft',
+                testId: 'cube-banner-generate-draft',
               }
         }
+      />
+
+      {isEditMode && hasMultiDomainProjection ? (
+        <div className="rounded-[var(--workbench-radius)] border border-[hsl(var(--semantic-warn))]/20 bg-[hsl(var(--semantic-warn))]/8 px-4 py-3 text-sm text-[hsl(var(--workbench-ink))]">
+          该 Cube 已被多个领域引用，当前编辑仅维护投影领域字段。
+        </div>
+      ) : null}
+
+      <SemanticWorkbenchContextBar
+        items={[
+          { label: '当前模式', value: isEditMode ? '编辑现有 Cube' : '新建草稿', tone: 'default' },
+          { label: '当前状态', value: getSemanticStatusLabel(cubeDetail?.status || draft?.status || 'draft'), tone: summary.status === 'blocked' ? 'warning' : summary.status === 'ready' ? 'accent' : 'default' },
+          { label: '来源绑定', value: selectedTable ? `${selectedTable.database}.${selectedTable.table}` : selectedDataSource?.name || '未选择', tone: selectedTable ? 'accent' : 'default' },
+          { label: '维度 / 指标', value: `${draft ? Object.keys(draft.dimensions || {}).length : cubeDetail ? Object.keys(cubeDetail.dimensions).length : 0} / ${draft ? Object.keys(draft.measures || {}).length : cubeDetail ? Object.keys(cubeDetail.measures).length : 0}`, tone: 'default' },
+        ]}
+        testId="cube-studio-context-bar"
       />
 
       <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_320px]">
@@ -553,6 +559,7 @@ export default function CubeStudio() {
           cubeDetail={cubeDetail}
           domains={domains}
           draftDiff={draftDiff}
+          summary={summary}
         />
       </div>
     </SemanticPageShell>

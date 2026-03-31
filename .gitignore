@@ -39,7 +39,10 @@ env/
 *.swo
 *~
 .cursor/
-.github/
+.github/*
+!.github/copilot-instructions.md
+!.github/workflows/
+!.github/workflows/*.yml
 
 # ============================================================================
 # Environment Variables
@@ -92,6 +95,7 @@ htmlcov/
 .nox/
 *.cover
 *.py,cover
+frontend/coverage/
 
 # ============================================================================
 # Uploads & Results
@@ -153,6 +157,7 @@ dmypy.json
 # Local Tooling & Agent State
 # ============================================================================
 .agent/
+.planning/debug/
 .backup/
 .claude/
 .pip-packages/
@@ -160,11 +165,14 @@ dmypy.json
 .spec-workflow/
 .impeccable.md
 backups/
+images/
+output/
 
 # ============================================================================
 # Generated Semantic Test Fixtures
 # ============================================================================
 app/infrastructure/semantic/catalogs/playwright_catalog_*.yml
+app/infrastructure/semantic/cubes/playwright_cube_*.yml
 app/infrastructure/semantic/domains/domain_playwright_*.yml
 app/infrastructure/semantic/domains/domain_debug_*.yml
 app/infrastructure/semantic/domains/domain_test*.yml

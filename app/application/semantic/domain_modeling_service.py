@@ -163,6 +163,7 @@ class DomainModelingService:
                 "catalog_name": self._resolve_catalog_definition(domain.catalog_code).name,
             },
             "state_summary": self._build_state_summary(domain),
+            "governance_summary": self._build_governance_summary(domain),
         }
 
     def create_domain(self, payload: Dict[str, Any]) -> DomainDefinition:
@@ -194,6 +195,7 @@ class DomainModelingService:
         merged["code"] = existing.code
         merged["id"] = existing.id or existing.code
         merged["catalog_code"] = self._resolve_catalog_code_from_payload(payload, existing=existing)
+        merged["cubes"] = self._normalize_domain_cubes(merged.get("cubes") or [])
         if not payload.get("status"):
             merged["status"] = existing.status
         domain = DomainDefinition(**merged)
@@ -225,6 +227,13 @@ class DomainModelingService:
             merged["cubes"] = cubes
         if joins is not None:
             merged["joins"] = joins
+        duplicate_cubes = self._find_duplicate_domain_cubes(merged.get("cubes") or [])
+        if duplicate_cubes:
+            raise ApplicationException(
+                "领域发布失败: 同一领域内不能重复引用同一个 Cube: "
+                + "、".join(duplicate_cubes)
+            )
+        merged["cubes"] = self._normalize_domain_cubes(merged.get("cubes") or [])
         try:
             domain = DomainDefinition(**merged)
         except Exception as exc:
@@ -247,9 +256,7 @@ class DomainModelingService:
         domain = self._find_domain(domain_id)
         if self._cube_repo.get(cube_name) is None:
             raise ApplicationException(f"未找到 Cube: {cube_name}")
-        cubes = list(domain.cubes)
-        if cube_name not in cubes:
-            cubes.append(cube_name)
+        cubes = self._normalize_domain_cubes([*domain.cubes, cube_name])
         return self.publish_domain(domain_id, cubes=cubes)
 
     def add_join(self, domain_id: str, payload: Dict[str, Any]) -> DomainDefinition:
@@ -438,6 +445,55 @@ class DomainModelingService:
             return summary
         summary.update(entry.to_summary())
         return summary
+
+    def _build_governance_summary(self, domain: DomainDefinition) -> Dict[str, int]:
+        summary = {
+            "cube_count": len(domain.cubes),
+            "active_cube_count": 0,
+            "draft_cube_count": 0,
+            "deprecated_cube_count": 0,
+            "join_count": len(domain.joins),
+            "dangling_cube_count": 0,
+        }
+        for cube_name in domain.cubes:
+            cube = self._cube_repo.get(cube_name)
+            if cube is None:
+                summary["dangling_cube_count"] += 1
+                continue
+            if cube.status == "active":
+                summary["active_cube_count"] += 1
+            elif cube.status == "draft":
+                summary["draft_cube_count"] += 1
+            elif cube.status in {"deprecated", "archived"}:
+                summary["deprecated_cube_count"] += 1
+        return summary
+
+    def _normalize_domain_cubes(self, cubes: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for cube_name in cubes:
+            name = str(cube_name).strip()
+            if not name or name in seen:
+                continue
+            normalized.append(name)
+            seen.add(name)
+        return normalized
+
+    @staticmethod
+    def _find_duplicate_domain_cubes(cubes: list[str]) -> list[str]:
+        duplicates: list[str] = []
+        seen: set[str] = set()
+        duplicate_seen: set[str] = set()
+        for cube_name in cubes:
+            name = str(cube_name).strip()
+            if not name:
+                continue
+            if name in seen and name not in duplicate_seen:
+                duplicates.append(name)
+                duplicate_seen.add(name)
+                continue
+            seen.add(name)
+        return duplicates
 
     def _generate_unique_code(self, name: str) -> str:
         base = generate_domain_code(name)

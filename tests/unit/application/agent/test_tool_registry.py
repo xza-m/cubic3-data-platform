@@ -286,6 +286,182 @@ class TestToolExecutor:
         assert "error" in result
         assert "DB connection failed" in result["error"]
 
+    def test_execute_handler_missing_returns_error(self):
+        tool_def = ToolDef(
+            name="broken",
+            description="Broken",
+            parameters={},
+            channels=["feishu"],
+            handler="broken_handler",
+        )
+        executor = ToolExecutor(tool_defs=[tool_def], adapter=MagicMock())
+
+        result = executor.execute("broken", {})
+
+        assert result == {"error": "工具处理器未实现: broken_handler"}
+
+    def test_execute_read_knowledge_supports_prefix_and_missing_file(self):
+        tool_def = ToolDef(
+            name="read_knowledge",
+            description="Read",
+            parameters={},
+            channels=["feishu"],
+            handler="read_knowledge",
+        )
+        knowledge = MagicMock()
+        knowledge.read.side_effect = ["# 内容", FileNotFoundError("missing.md")]
+        executor = ToolExecutor(
+            tool_defs=[tool_def],
+            adapter=MagicMock(),
+            knowledge_service=knowledge,
+        )
+
+        success = executor.execute("read_knowledge", {"path": "knowledge/docs/a.md"})
+        failed = executor.execute("read_knowledge", {"path": "missing.md"})
+
+        assert success == {"content": "# 内容"}
+        assert failed == {"error": "missing.md"}
+        assert knowledge.read.call_args_list[0].args == ("docs/a.md",)
+
+    def test_execute_read_knowledge_without_service_returns_error(self):
+        tool_def = ToolDef(
+            name="read_knowledge",
+            description="Read",
+            parameters={},
+            channels=["feishu"],
+            handler="read_knowledge",
+        )
+        executor = ToolExecutor(tool_defs=[tool_def], adapter=MagicMock())
+
+        result = executor.execute("read_knowledge", {"path": "docs/a.md"})
+
+        assert result == {"error": "知识服务未配置"}
+
+    def test_execute_list_tables_supports_prefix_filter(self):
+        tool_def = ToolDef(
+            name="list_tables",
+            description="List tables",
+            parameters={},
+            channels=["feishu"],
+            handler="list_tables",
+        )
+        adapter = MagicMock()
+        adapter.list_tables.return_value = [
+            {"name": "ods_orders"},
+            {"name": "dwd_orders"},
+            {"name": "ods_users"},
+        ]
+        executor = ToolExecutor(tool_defs=[tool_def], adapter=adapter, database="dw")
+
+        result = executor.execute("list_tables", {"prefix": "ods_"})
+
+        assert result["tables"] == [{"name": "ods_orders"}, {"name": "ods_users"}]
+
+    def test_execute_describe_table_without_database_returns_error(self):
+        tool_def = ToolDef(
+            name="describe_table",
+            description="Describe table",
+            parameters={},
+            channels=["feishu"],
+            handler="describe_table",
+        )
+        executor = ToolExecutor(tool_defs=[tool_def], adapter=MagicMock())
+
+        result = executor.execute("describe_table", {"table_name": "orders"})
+
+        assert result == {"error": "未指定数据库名称"}
+
+    def test_execute_sql_empty_result_returns_message(self):
+        tool_def = ToolDef(
+            name="execute_sql",
+            description="Execute SQL",
+            parameters={},
+            channels=["feishu"],
+            handler="execute_sql",
+        )
+        adapter = MagicMock()
+        adapter.execute_query.return_value = {"columns": ["id"], "rows": [], "execution_time_ms": 12}
+        executor = ToolExecutor(tool_defs=[tool_def], adapter=adapter)
+
+        with patch(
+            "app.application.agent.services.tool_registry.prepare_readonly_sql",
+            return_value="SELECT * FROM demo",
+        ):
+            result = executor.execute("execute_sql", {"sql": "SELECT * FROM demo"})
+
+        assert result["row_count"] == 0
+        assert "结果为空" in result["message"]
+
+    def test_execute_list_cubes_filters_inactive_items(self):
+        tool_def = ToolDef(
+            name="list_cubes",
+            description="List cubes",
+            parameters={},
+            channels=["feishu"],
+            handler="list_cubes",
+        )
+        semantic = MagicMock()
+        semantic.list_cubes.return_value = [
+            {"name": "orders", "status": "active"},
+            {"name": "legacy", "status": "inactive"},
+            {"name": "users"},
+        ]
+        executor = ToolExecutor(tool_defs=[tool_def], adapter=MagicMock(), semantic_service=semantic)
+
+        result = executor.execute("list_cubes", {})
+
+        assert [cube["name"] for cube in result["cubes"]] == ["orders", "users"]
+        assert result["total"] == 2
+
+    def test_execute_describe_cube_and_query_paths(self):
+        describe_tool = ToolDef(
+            name="describe_cube",
+            description="Describe cube",
+            parameters={},
+            channels=["feishu"],
+            handler="describe_cube",
+        )
+        query_tool = ToolDef(
+            name="query",
+            description="Query",
+            parameters={},
+            channels=["feishu"],
+            handler="query",
+        )
+        semantic = MagicMock()
+        semantic.describe_cube.return_value = {"name": "orders"}
+        semantic.compile_and_execute.return_value = {"data": [{"cnt": 1}]}
+        adapter = MagicMock()
+        executor = ToolExecutor(
+            tool_defs=[describe_tool, query_tool],
+            adapter=adapter,
+            semantic_service=semantic,
+        )
+
+        assert executor.execute("describe_cube", {"cube_name": "orders"}) == {"name": "orders"}
+        assert executor.execute("query", {"dsl": {"measures": ["orders.count"]}}) == {"data": [{"cnt": 1}]}
+        semantic.compile_and_execute.assert_called_once_with({"measures": ["orders.count"]}, adapter)
+
+    def test_execute_describe_cube_and_query_without_semantic_service(self):
+        describe_tool = ToolDef(
+            name="describe_cube",
+            description="Describe cube",
+            parameters={},
+            channels=["feishu"],
+            handler="describe_cube",
+        )
+        query_tool = ToolDef(
+            name="query",
+            description="Query",
+            parameters={},
+            channels=["feishu"],
+            handler="query",
+        )
+        executor = ToolExecutor(tool_defs=[describe_tool, query_tool], adapter=MagicMock())
+
+        assert executor.execute("describe_cube", {"cube_name": "orders"}) == {"error": "语义层服务未配置"}
+        assert executor.execute("query", {"dsl": {}}) == {"error": "语义层服务未配置"}
+
 
 # ============================================================================
 # ToolDef

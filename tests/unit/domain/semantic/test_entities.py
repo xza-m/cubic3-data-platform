@@ -3,9 +3,12 @@ import pytest
 from pydantic import ValidationError
 
 from app.domain.semantic.entities import (
+    CatalogDefinition,
     CubeDefinition,
     DefaultFilterDef,
     DimensionDef,
+    DomainDefinition,
+    DomainJoinDef,
     FilterDef,
     JoinDef,
     MeasureDef,
@@ -17,6 +20,8 @@ from app.domain.semantic.entities import (
     TimeDimensionDef,
     ViewCubeRef,
     ViewDefinition,
+    generate_catalog_code,
+    generate_domain_code,
 )
 
 
@@ -197,6 +202,23 @@ class TestRecipeDefinition:
         )
         assert recipe.extract_cube_names() == {"x", "y", "z"}
 
+    def test_extract_cube_names_from_segments_member_filters_and_order(self):
+        recipe = RecipeDefinition(
+            name="r2",
+            title="扩展 DSL",
+            examples=[{
+                "question": "q",
+                "dsl": {
+                    "measures": ["a.cnt"],
+                    "segments": ["seg_cube.active_users", {"ignored": True}],
+                    "filters": [{"member": "member_cube.status", "operator": "equals", "values": ["ok"]}],
+                    "order": [["order_cube.score", "desc"], []],
+                },
+            }],
+        )
+
+        assert recipe.extract_cube_names() == {"a", "seg_cube", "member_cube", "order_cube"}
+
 
 # ── QueryDSL ─────────────────────────────────
 
@@ -223,3 +245,77 @@ class TestQueryDSL:
     def test_filter_requires_target(self):
         with pytest.raises(ValidationError, match="dimension.*member"):
             FilterDef(operator="equals", values=[1])
+
+
+class TestDomainEntities:
+
+    def test_domain_join_requires_strategy_for_one_to_many(self):
+        with pytest.raises(ValidationError, match="aggregation_strategy"):
+            DomainJoinDef(
+                name="student_to_orders",
+                source_cube="student",
+                target_cube="orders",
+                source_field="student_id",
+                target_field="student_id",
+                cardinality="1:N",
+            )
+
+    def test_domain_definition_normalizes_id_and_accepts_unique_joins(self):
+        domain = DomainDefinition(
+            code="learning",
+            name="学习域",
+            cubes=["student", "orders"],
+            joins=[
+                {
+                    "name": "student_orders",
+                    "source_cube": "student",
+                    "target_cube": "orders",
+                    "source_field": "student_id",
+                    "target_field": "student_id",
+                    "cardinality": "N:1",
+                }
+            ],
+        )
+        assert domain.id == "learning"
+        assert domain.joins[0].name == "student_orders"
+
+    def test_domain_definition_rejects_duplicate_cubes(self):
+        with pytest.raises(ValidationError, match="重复 Cube"):
+            DomainDefinition(
+                code="learning",
+                name="学习域",
+                cubes=["student", "student"],
+            )
+
+    def test_domain_definition_rejects_duplicate_directed_edges(self):
+        duplicate_join = {
+            "name": "student_orders",
+            "source_cube": "student",
+            "target_cube": "orders",
+            "source_field": "student_id",
+            "target_field": "student_id",
+        }
+        with pytest.raises(ValidationError, match="重复同向关系"):
+            DomainDefinition(
+                code="learning",
+                name="学习域",
+                cubes=["student", "orders"],
+                joins=[duplicate_join, {**duplicate_join, "name": "student_orders_2"}],
+            )
+
+    def test_catalog_definition_defaults(self):
+        catalog = CatalogDefinition(code="learning", name="学习分析")
+        assert catalog.status == "active"
+        assert catalog.sort_order == 100
+
+    def test_generate_domain_and_catalog_code_are_stable(self):
+        assert generate_domain_code("Learning Domain") == "learning_domain"
+        assert generate_catalog_code("Learning Catalog") == "learning_catalog"
+
+    def test_generate_code_falls_back_for_non_alnum_names(self):
+        domain_code = generate_domain_code("###")
+        catalog_code = generate_catalog_code("！！！")
+        assert domain_code.startswith("domain_")
+        assert len(domain_code) == len("domain_") + 8
+        assert catalog_code.startswith("catalog_")
+        assert len(catalog_code) == len("catalog_") + 8

@@ -1,5 +1,21 @@
 import apiClient from './client'
 
+export interface SemanticDomainProjection {
+  id?: string | null
+  code: string
+  name: string
+  status?: string
+}
+
+export interface GovernanceSummary {
+  cube_count: number
+  active_cube_count: number
+  draft_cube_count: number
+  deprecated_cube_count: number
+  join_count: number
+  dangling_cube_count: number
+}
+
 export interface CubeSummary {
   name: string
   title: string
@@ -8,6 +24,9 @@ export interface CubeSummary {
   in_domain?: boolean
   domain_id?: string | null
   domain_name?: string | null
+  domain_ids: string[]
+  domains: Array<SemanticDomainProjection>
+  domain_count: number
   status?: 'draft' | 'active' | 'deprecated' | string
   source_id?: number | null
   source_database?: string | null
@@ -41,7 +60,7 @@ export interface MeasureInfo {
 }
 
 export interface StateSummary {
-  object_type?: 'cube' | 'view' | string
+  object_type?: 'cube' | 'view' | 'recipe' | 'domain' | string
   object_name?: string
   source_id?: number | null
   status?: 'draft' | 'active' | 'deprecated' | string
@@ -76,6 +95,9 @@ export interface CubeDetail {
   table: string
   domain_id?: string | null
   domain_name?: string | null
+  domain_ids: string[]
+  domains: Array<SemanticDomainProjection>
+  domain_count: number
   status?: 'draft' | 'active' | 'deprecated' | string
   source_id?: number | null
   source_database?: string | null
@@ -100,6 +122,13 @@ export interface ViewSummary {
   description: string
   public: boolean
   cube_count: number
+  cubes?: string[]
+  status?: string
+  state_summary?: StateSummary
+  publish_summary?: {
+    publish_status?: string | null
+    last_published_at?: string | null
+  }
 }
 
 export interface MaterializeResult {
@@ -165,6 +194,7 @@ export interface RecipeSummary {
   tags: string[]
   example_count: number
   related_cubes: string[]
+  state_summary?: StateSummary
 }
 
 export interface CompileResult {
@@ -259,6 +289,7 @@ export interface DomainDetail {
   cubes: string[]
   joins: DomainCanvasEdge[]
   state_summary?: StateSummary
+  governance_summary?: GovernanceSummary
 }
 
 export interface DomainCatalogSummary {
@@ -290,6 +321,9 @@ export interface DomainCanvasNode {
   status?: 'draft' | 'active' | 'deprecated' | string
   source_id?: number | null
   domain_id?: string | null
+  related_domain_ids?: string[]
+  related_domain_names?: string[]
+  domain_count?: number
   source_binding_summary?: StateSummary['source_binding_summary']
   state_summary?: StateSummary
 }
@@ -317,6 +351,7 @@ export interface DomainCanvasData {
     status: 'draft' | 'active' | 'archived' | string
     owner?: string | null
     state_summary?: StateSummary | null
+    governance_summary?: GovernanceSummary
   }
   nodes: DomainCanvasNode[]
   edges: DomainCanvasEdge[]

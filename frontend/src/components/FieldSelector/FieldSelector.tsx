@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Search, Key, Database, BarChart3, ChevronDown } from 'lucide-react'
+import { Search, Key, Database, BarChart3 } from 'lucide-react'
 import type { FieldMeta } from '../../types/filter'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -144,8 +144,6 @@ export default function FieldSelector({
     const categoryFields = fieldsByCategory[category]
     const selectedCount = categoryFields.filter(f => value.includes(f.physical_name)).length
     const allSelected = selectedCount === categoryFields.length && categoryFields.length > 0
-    const indeterminate = selectedCount > 0 && selectedCount < categoryFields.length
-    
     return (
       <AccordionItem value={category} key={category} className="mb-3 border-none">
         <AccordionTrigger className="hover:no-underline bg-white/50 rounded-lg px-4 py-3">

@@ -93,6 +93,7 @@ class CreateDatasourceHandler:
             extra_config=command.extra_config or {},
             created_by=command.created_by
         )
+        datasource.initialize_catalog_sync()
         
         # 4. 记录领域事件
         datasource.record_event(

@@ -4,6 +4,7 @@
  */
 import * as React from "react"
 import { format } from "date-fns"
+import { zhCN } from "date-fns/locale"
 import { Calendar as CalendarIcon } from "lucide-react"
 import { DateRange } from "react-day-picker"
 
@@ -28,7 +29,7 @@ export interface FormDatePickerProps {
 export function FormDatePicker({
   value,
   onChange,
-  placeholder = "Pick a date",
+  placeholder = "请选择日期",
   className,
   disabled,
 }: FormDatePickerProps) {
@@ -39,13 +40,13 @@ export function FormDatePicker({
           variant={"outline"}
           disabled={disabled}
           className={cn(
-            "w-full justify-start text-left font-normal",
+            "w-full justify-start text-left text-[0.9375rem] leading-5 font-normal",
             !value && "text-muted-foreground",
             className
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {value ? format(value, "PPP") : <span>{placeholder}</span>}
+          {value ? format(value, "PPP", { locale: zhCN }) : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0">
@@ -53,6 +54,7 @@ export function FormDatePicker({
           mode="single"
           selected={value}
           onSelect={onChange}
+          locale={zhCN}
           initialFocus
         />
       </PopoverContent>
@@ -72,7 +74,7 @@ export interface FormRangePickerProps {
 export function FormRangePicker({
   value,
   onChange,
-  placeholder = "Pick a date range",
+  placeholder = "请选择日期范围",
   className,
   disabled,
 }: FormRangePickerProps) {
@@ -94,7 +96,7 @@ export function FormRangePicker({
           variant={"outline"}
           disabled={disabled}
           className={cn(
-            "w-full justify-start text-left font-normal",
+            "w-full justify-start text-left text-[0.9375rem] leading-5 font-normal",
             !date && "text-muted-foreground",
             className
           )}
@@ -103,11 +105,11 @@ export function FormRangePicker({
           {date?.from ? (
             date.to ? (
               <>
-                {format(date.from, "LLL dd, y")} -{" "}
-                {format(date.to, "LLL dd, y")}
+                {format(date.from, "PPP", { locale: zhCN })} -{" "}
+                {format(date.to, "PPP", { locale: zhCN })}
               </>
             ) : (
-              format(date.from, "LLL dd, y")
+              format(date.from, "PPP", { locale: zhCN })
             )
           ) : (
             <span>{placeholder}</span>
@@ -121,6 +123,7 @@ export function FormRangePicker({
           defaultMonth={date?.from}
           selected={date}
           onSelect={handleSelect}
+          locale={zhCN}
           numberOfMonths={2}
         />
       </PopoverContent>

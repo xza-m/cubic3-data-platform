@@ -10,6 +10,7 @@ import {
   SheetTitle,
   SheetFooter,
 } from "@/components/ui/sheet"
+import { cn } from "@/lib/utils"
 
 interface PageDrawerProps {
   open: boolean
@@ -19,7 +20,7 @@ interface PageDrawerProps {
   children: React.ReactNode
   footer?: React.ReactNode
   side?: "top" | "right" | "bottom" | "left"
-  width?: string | number  // Added width support
+  width?: string | number
 }
 
 export function PageDrawer({
@@ -32,25 +33,25 @@ export function PageDrawer({
   side = "right",
   width,
 }: PageDrawerProps) {
-  const widthClass = width 
+  const widthClass = width
     ? (typeof width === 'number' ? `w-[${width}px]` : width)
-    : 'w-[400px] sm:w-[540px]';
-  
+    : 'w-[420px] sm:w-[560px]'
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent 
-        side={side} 
-        className={`${widthClass} overflow-y-auto`}
+      <SheetContent
+        side={side}
+        className={cn(widthClass, "overflow-y-auto")}
         style={width && typeof width === 'number' ? { width: `${width}px` } : undefined}
       >
         {(title || description) && (
-          <SheetHeader>
+          <SheetHeader className="border-b border-border pb-4">
             {title && <SheetTitle>{title}</SheetTitle>}
             {description && <SheetDescription>{description}</SheetDescription>}
           </SheetHeader>
         )}
-        <div className="py-4">{children}</div>
-        {footer && <SheetFooter>{footer}</SheetFooter>}
+        <div className="py-5">{children}</div>
+        {footer && <SheetFooter className="border-t border-border pt-4">{footer}</SheetFooter>}
       </SheetContent>
     </Sheet>
   )

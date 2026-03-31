@@ -61,6 +61,7 @@ class ListTasksHandler:
             column('dataset_id'),
             column('task_type'),
             column('is_active'),
+            column('created_by'),
             column('last_run_at'),
             column('last_run_status'),
             column('created_at')

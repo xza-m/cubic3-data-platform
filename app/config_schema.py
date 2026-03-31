@@ -117,7 +117,7 @@ class FileConfig(BaseModel):
     """文件上传配置"""
     upload_folder: str = Field(default="instance/uploads", description="上传文件夹路径")
     max_content_length: int = Field(default=50 * 1024 * 1024, description="最大文件大小（字节）")
-    allowed_extensions: Set[str] = Field(default={'csv'}, description="允许的文件扩展名")
+    allowed_extensions: Set[str] = Field(default={'csv', 'xls', 'xlsx'}, description="允许的文件扩展名")
     extraction_result_dir: str = Field(default="instance/extraction_results", description="提取结果目录")
 
 
@@ -211,7 +211,7 @@ class AppConfig(BaseModel):
             file=FileConfig(
                 upload_folder=os.getenv('UPLOAD_FOLDER', 'instance/uploads'),
                 max_content_length=int(os.getenv('MAX_CONTENT_LENGTH', str(50 * 1024 * 1024))),
-                allowed_extensions=set(os.getenv('ALLOWED_EXTENSIONS', 'csv').split(',')),
+                allowed_extensions=set(os.getenv('ALLOWED_EXTENSIONS', 'csv,xls,xlsx').split(',')),
                 extraction_result_dir=os.getenv('EXTRACTION_RESULT_DIR', 'instance/extraction_results')
             ),
             jwt_secret=os.getenv('JWT_SECRET', 'your-secret-key'),

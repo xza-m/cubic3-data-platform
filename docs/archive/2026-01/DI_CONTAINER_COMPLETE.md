@@ -10,7 +10,7 @@
 
 ### 1. 完善 DI 容器配置
 
-**文件**: [`app/di/container.py`](../app/di/container.py)
+**文件**: [`app/di/container.py`](../../../app/di/container.py)
 
 **配置内容**:
 
@@ -44,7 +44,7 @@
 
 ### 2. 创建 DI 工具函数
 
-**文件**: [`app/di/utils.py`](../app/di/utils.py)
+**文件**: [`app/di/utils.py`](../../../app/di/utils.py)
 
 **功能**:
 ```python
@@ -63,7 +63,7 @@ def get_app_container() -> Container:
 
 ### 3. 初始化容器
 
-**文件**: [`app/__init__.py`](../app/__init__.py)
+**文件**: [`app/__init__.py`](../../../app/__init__.py)
 
 **变更**:
 ```python

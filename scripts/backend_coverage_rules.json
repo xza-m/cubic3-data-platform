@@ -1,0 +1,14 @@
+{
+  "total_threshold": 95.0,
+  "module_threshold": 95.0,
+  "core_modules": {
+    "application.semantic": 100.0,
+    "domain.semantic": 100.0,
+    "application.dataset": 100.0,
+    "application.datasource": 100.0,
+    "application.query": 100.0,
+    "infrastructure.repositories": 100.0,
+    "shared": 100.0,
+    "shared.utils": 100.0
+  }
+}

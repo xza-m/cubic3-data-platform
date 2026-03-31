@@ -77,6 +77,16 @@ class TestYamlCubeRepository:
         assert cubes[0].name == "test_cube"
         assert cubes[0].table == "test_table"
 
+    def test_runtime_loader_ignores_playwright_fixtures(self, tmp_path):
+        cubes_dir = str(tmp_path / "cubes")
+        _write_yml(cubes_dir, "test_cube", CUBE_DATA)
+        _write_yml(cubes_dir, "playwright_cube_1774702941350", {**CUBE_DATA, "name": "playwright_cube_1774702941350"})
+
+        repo = YamlCubeRepository(cubes_dir)
+
+        cubes = repo.list_all()
+        assert [cube.name for cube in cubes] == ["test_cube"]
+
     def test_get_existing(self, tmp_path):
         cubes_dir = str(tmp_path / "cubes")
         _write_yml(cubes_dir, "test_cube", CUBE_DATA)
@@ -138,6 +148,10 @@ class TestYamlCubeRepository:
 
 class TestYamlViewRepository:
 
+    def test_list_all_empty_dir(self, tmp_path):
+        repo = YamlViewRepository(str(tmp_path / "views"))
+        assert repo.list_all() == []
+
     def test_load_and_list(self, tmp_path):
         views_dir = str(tmp_path / "views")
         _write_yml(views_dir, "test_view", VIEW_DATA)
@@ -159,6 +173,33 @@ class TestYamlViewRepository:
         repo = YamlViewRepository(views_dir)
         assert repo.delete("test_view") is True
         assert repo.get("test_view") is None
+
+    def test_delete_nonexistent(self, tmp_path):
+        repo = YamlViewRepository(str(tmp_path / "views"))
+        assert repo.delete("missing") is False
+
+    def test_reload_and_invalid_yaml(self, tmp_path):
+        views_dir = str(tmp_path / "views")
+        _write_yml(views_dir, "test_view", VIEW_DATA)
+        repo = YamlViewRepository(views_dir)
+        assert len(repo.list_all()) == 1
+
+        another = {
+            "name": "second_view",
+            "title": "第二视图",
+            "cubes": [{"join_path": "test_cube", "includes": ["cnt"]}],
+        }
+        _write_yml(views_dir, "second_view", another)
+        assert len(repo.list_all()) == 1
+
+        repo.reload()
+        assert len(repo.list_all()) == 2
+
+        os.remove(os.path.join(views_dir, "second_view.yml"))
+        with open(os.path.join(views_dir, "bad.yml"), "w", encoding="utf-8") as f:
+            yaml.dump({"title": "bad"}, f)
+        with pytest.raises(ValueError, match="Failed to load View YAML"):
+            repo.reload()
 
 
 # ── YamlRecipeRepository ────────────────────

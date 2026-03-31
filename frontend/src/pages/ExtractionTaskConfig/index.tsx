@@ -23,6 +23,9 @@ export default function ExtractionTaskConfig() {
   
   // 从URL参数获取预选的数据集ID
   const preselectedDatasetId = searchParams.get('dataset') ? Number(searchParams.get('dataset')) : null
+  const taskType = searchParams.get('taskType') === 'scheduled' ? 'scheduled' : 'manual'
+  const taskTypeLabel = taskType === 'scheduled' ? '定时查询' : '数据提取任务'
+  const successTitle = taskType === 'scheduled' ? '定时查询创建成功' : '任务创建成功'
   
   // 状态管理
   const [currentStep, setCurrentStep] = useState(0)
@@ -41,13 +44,14 @@ export default function ExtractionTaskConfig() {
   const createMutation = useMutation({
     mutationFn: createTask,
     onSuccess: async () => {
-      toast({ title: '任务创建成功' })
+      toast({ title: successTitle })
       
       // 刷新任务列表
       await queryClient.invalidateQueries({ queryKey: ['extraction-tasks'] })
+      await queryClient.invalidateQueries({ queryKey: ['scheduled-query-tasks'] })
       
       // 等待刷新后导航
-      setTimeout(() => navigate('/extraction-tasks'), 100)
+      setTimeout(() => navigate(taskType === 'scheduled' ? '/queries/scheduled' : '/extraction-tasks'), 100)
     },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } }; message?: string }
@@ -103,7 +107,7 @@ export default function ExtractionTaskConfig() {
   
   // 处理保存
   const handleSave = (taskData: CreateTaskRequest) => {
-    createMutation.mutate(taskData)
+    createMutation.mutate({ ...taskData, task_type: taskType })
   }
   
   // 渲染当前步骤的内容
@@ -153,13 +157,13 @@ export default function ExtractionTaskConfig() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto">
         {/* 返回按钮 */}
-        <FormButton
+          <FormButton
           variant="outline"
-          onClick={() => navigate('/extraction-tasks')}
+          onClick={() => navigate(taskType === 'scheduled' ? '/queries/scheduled' : '/extraction-tasks')}
           className="mb-6"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          返回任务列表
+          返回{taskType === 'scheduled' ? '定时查询' : '任务列表'}
         </FormButton>
         
         {/* 页面标题 */}
@@ -168,8 +172,12 @@ export default function ExtractionTaskConfig() {
             <FileText className="w-7 h-7 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">创建数据提取任务</h1>
-            <p className="text-gray-500 mt-1">配置数据提取任务的数据集、字段和过滤条件</p>
+            <h1 className="text-3xl font-bold text-gray-900">创建{taskTypeLabel}</h1>
+            <p className="text-gray-500 mt-1">
+              {taskType === 'scheduled'
+                ? '配置周期执行的查询任务，保存后可在定时查询工作区继续启停和重跑。'
+                : '配置数据提取任务的数据集、字段和过滤条件'}
+            </p>
           </div>
         </div>
         

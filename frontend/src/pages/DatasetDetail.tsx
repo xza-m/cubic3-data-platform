@@ -6,9 +6,18 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Table2, Database, Calendar, User, CheckCircle, Clock, AlertCircle, FileText, Hash, Type, Tag, Edit2, Save, X, RefreshCw, Loader2, Inbox } from 'lucide-react'
 import { getDataset, updateDataset, type UpdateDatasetRequest } from '@/api/datasets'
-import { FormButton, DataTable, Badge, useToast, Skeleton } from '@/components/business'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import {
+  FormButton,
+  FormInput,
+  FormTextarea,
+  DataTable,
+  Badge,
+  useToast,
+  PageCard,
+  CapabilityGateCard,
+  DataCenterPageShell,
+  PreviewPanel,
+} from '@/components/business'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import type { DataTableColumn } from '@/components/business/DataTable'
@@ -48,6 +57,18 @@ export default function DatasetDetail() {
 
   const dataset = datasetRes?.data || null
   const fields = (dataset?.fields || []) as DatasetField[]
+  const previewRows = (dataset?.sample_rows ?? []) as Record<string, unknown>[]
+  const previewColumnKeys = dataset?.sample_columns?.length
+    ? dataset.sample_columns
+    : previewRows.length > 0
+      ? Object.keys(previewRows[0] ?? {})
+      : []
+  const hasPreviewData = previewRows.length > 0 && previewColumnKeys.length > 0
+  const governanceCards = [
+    { title: '血缘分析', reason: '血缘关系需要后端真实编排链路支撑，当前阶段仅展示禁用入口。' },
+    { title: '影响分析', reason: '影响分析依赖下游任务、订阅和消费关系汇总，当前阶段尚未接入。' },
+    { title: '质量评分', reason: '质量评分需要真实规则命中和监控结果，当前阶段仅保留占位说明。' },
+  ]
 
   const updateMutation = useMutation({
     mutationFn: (data: UpdateDatasetRequest) => updateDataset(Number(id), data),
@@ -229,10 +250,15 @@ export default function DatasetDetail() {
   const StatusIcon = statusConfig.icon
 
   return (
-    <div className="space-y-6">
-      {/* 页面标题 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+    <DataCenterPageShell
+      title={dataset.dataset_name}
+      description={dataset.dataset_code}
+      actions={(
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className={cn('rounded-xl px-4 py-2 flex items-center gap-2', statusConfig.bg, statusConfig.color)}>
+            <StatusIcon className="w-4 h-4" />
+            <span className="font-medium">{statusConfig.label}</span>
+          </div>
           <FormButton
             variant="outline"
             size="icon"
@@ -241,24 +267,14 @@ export default function DatasetDetail() {
           >
             <ArrowLeft className="w-5 h-5" />
           </FormButton>
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-            <Table2 className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{dataset.dataset_name}</h1>
-            <p className="text-gray-500 text-sm">{dataset.dataset_code}</p>
-          </div>
         </div>
-        <div className={cn("px-4 py-2 rounded-xl flex items-center gap-2", statusConfig.bg, statusConfig.color)}>
-          <StatusIcon className="w-4 h-4" />
-          <span className="font-medium">{statusConfig.label}</span>
-        </div>
-      </div>
+      )}
+    >
 
       {/* 基本信息 */}
-      <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
+      <PageCard className="border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <h2 className="font-workbench-display text-[1.25rem] font-semibold tracking-[-0.02em] text-gray-900 flex items-center gap-2">
             <FileText className="w-5 h-5 text-emerald-500" />
             基本信息
           </h2>
@@ -294,7 +310,7 @@ export default function DatasetDetail() {
                 <Tag className="w-4 h-4" />
                 数据集编码
               </div>
-              <div className="font-mono text-gray-900">{dataset.dataset_code}</div>
+              <div className="font-mono text-[0.9375rem] leading-6 text-gray-900">{dataset.dataset_code}</div>
             </div>
             <div className="col-span-1 border-b border-gray-100 pb-4">
               <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
@@ -308,7 +324,7 @@ export default function DatasetDetail() {
                 <Database className="w-4 h-4" />
                 物理表
               </div>
-              <div className="font-mono text-sm text-gray-900">{dataset.physical_table}</div>
+              <div className="font-mono text-[0.875rem] leading-5 text-gray-900">{dataset.physical_table}</div>
             </div>
             <div className="col-span-1 border-b border-gray-100 pb-4">
               <div className="text-sm text-gray-500 mb-2">数据源类型</div>
@@ -347,11 +363,11 @@ export default function DatasetDetail() {
           <div className="grid grid-cols-2 gap-6">
             <div className="col-span-1">
               <Label>数据集编码</Label>
-              <Input value={dataset.dataset_code} disabled className="mt-1 font-mono" />
+              <FormInput value={dataset.dataset_code} disabled className="mt-1 font-mono" />
             </div>
             <div className="col-span-1">
               <Label>数据集名称 *</Label>
-              <Input
+              <FormInput
                 value={formData.dataset_name}
                 onChange={(e) => setFormData({ ...formData, dataset_name: e.target.value })}
                 placeholder="请输入数据集名称"
@@ -360,11 +376,11 @@ export default function DatasetDetail() {
             </div>
             <div className="col-span-2">
               <Label>物理表</Label>
-              <Input value={dataset.physical_table} disabled className="mt-1 font-mono" />
+              <FormInput value={dataset.physical_table} disabled className="mt-1 font-mono" />
             </div>
             <div className="col-span-1">
               <Label>负责人</Label>
-              <Input
+              <FormInput
                 value={formData.owner}
                 onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
                 placeholder="请输入负责人"
@@ -373,11 +389,11 @@ export default function DatasetDetail() {
             </div>
             <div className="col-span-1">
               <Label>数据源类型</Label>
-              <Input value={dataset.source_type || '-'} disabled className="mt-1" />
+              <FormInput value={dataset.source_type || '-'} disabled className="mt-1" />
             </div>
             <div className="col-span-2">
               <Label>描述</Label>
-              <Textarea
+              <FormTextarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
@@ -387,15 +403,55 @@ export default function DatasetDetail() {
             </div>
           </div>
         )}
-      </div>
+      </PageCard>
+
+      {hasPreviewData ? (
+        <PreviewPanel title="数据预览" state="ready">
+          <div className="overflow-hidden rounded-xl border border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    {previewColumnKeys.map((column) => (
+                      <th
+                        key={column}
+                        className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold text-slate-500"
+                      >
+                        {column}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {previewRows.map((row, rowIndex) => (
+                    <tr key={`preview-row-${rowIndex}`}>
+                      {previewColumnKeys.map((column) => (
+                        <td key={`${rowIndex}-${column}`} className="whitespace-nowrap px-4 py-3 text-slate-700">
+                          {toDisplayText(row[column])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </PreviewPanel>
+      ) : (
+        <PreviewPanel
+          title="数据预览"
+          state="empty"
+          emptyDescription="当前数据集暂无可展示预览"
+        />
+      )}
 
       {/* 字段信息 */}
-      <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-sm">
+      <PageCard className="border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <h2 className="font-workbench-display text-[1.25rem] font-semibold tracking-[-0.02em] text-gray-900 flex items-center gap-2">
             <Hash className="w-5 h-5 text-emerald-500" />
             字段信息
-            <span className="text-sm font-normal text-gray-500 ml-2">({fields.length} 个字段)</span>
+            <span className="ml-2 text-[0.875rem] font-normal leading-5 text-gray-500">({fields.length} 个字段)</span>
           </h2>
         </div>
         {fields.length > 0 ? (
@@ -408,10 +464,16 @@ export default function DatasetDetail() {
         ) : (
           <div className="flex flex-col items-center justify-center h-64">
             <Inbox className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-gray-500">暂无字段信息</p>
+            <p className="text-[0.9375rem] leading-6 text-gray-500">暂无字段信息</p>
           </div>
         )}
+      </PageCard>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {governanceCards.map((card) => (
+          <CapabilityGateCard key={card.title} title={card.title} reason={card.reason} />
+        ))}
       </div>
-    </div>
+    </DataCenterPageShell>
   )
 }

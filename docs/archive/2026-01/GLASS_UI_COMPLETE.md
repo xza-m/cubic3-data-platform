@@ -250,10 +250,10 @@ dw_bi_webhook_gateway-rq_worker-2   Up (异步任务)
 
 | 文档 | 说明 |
 |------|------|
-| [UI_DESIGN_SYSTEM.md](./UI_DESIGN_SYSTEM.md) | UI设计系统详解 |
+| [reference-design/README.md](../../reference-design/README.md) | 当前可用的设计参考目录 |
 | [DOCKER_BUILD_FIX.md](./DOCKER_BUILD_FIX.md) | Docker问题解决 |
-| [STARTUP_GUIDE.md](./docs/STARTUP_GUIDE.md) | 启动指南 |
-| [PROJECT_ENHANCEMENT_COMPLETE.md](./docs/PROJECT_ENHANCEMENT_COMPLETE.md) | 项目完善总结 |
+| [STARTUP_GUIDE.md](../../STARTUP_GUIDE.md) | 当前启动指南 |
+| [PROJECT_ENHANCEMENT_COMPLETE.md](./PROJECT_ENHANCEMENT_COMPLETE.md) | 项目完善总结 |
 
 ---
 

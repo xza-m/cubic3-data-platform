@@ -39,7 +39,7 @@ export function FormSelect({
   onValueChange,
   onChange,
   options,
-  placeholder = "Select an option",
+  placeholder = "请选择",
   className,
   disabled,
   searchable = false,
@@ -72,14 +72,14 @@ export function FormSelect({
               placeholder="搜索..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-8 border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+              className="h-8 border-0 text-[0.875rem] leading-5 focus-visible:ring-0 focus-visible:ring-offset-0"
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
             />
           </div>
         )}
         {filteredOptions.length === 0 ? (
-          <div className="py-6 text-center text-sm text-gray-500">
+          <div className="py-6 text-center text-[0.875rem] leading-5 text-gray-500">
             没有找到匹配项
           </div>
         ) : (

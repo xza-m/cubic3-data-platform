@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "default_target": "verify",
+  "target_order": [
+    "verify-backend",
+    "verify-frontend",
+    "verify-semantic",
+    "verify",
+    "verify-docs"
+  ],
+  "rules": [
+    {
+      "name": "docs-baseline",
+      "kind": "docs",
+      "description": "基线文档改动，进入文档交付入口。",
+      "patterns": [
+        "AGENTS.md",
+        "README.md",
+        "frontend/README.md",
+        "docs/*.md",
+        "docs/**/*.md"
+      ],
+      "targets": [
+        "verify-docs"
+      ]
+    },
+    {
+      "name": "semantic-surface",
+      "kind": "semantic",
+      "description": "语义中心页面、组件、语义资产或语义专项测试改动。",
+      "patterns": [
+        "frontend/src/pages/Semantic/*.ts",
+        "frontend/src/pages/Semantic/*.tsx",
+        "frontend/src/pages/Semantic/**/*.ts",
+        "frontend/src/pages/Semantic/**/*.tsx",
+        "frontend/src/components/Semantic/*.ts",
+        "frontend/src/components/Semantic/*.tsx",
+        "frontend/src/components/Semantic/**/*.ts",
+        "frontend/src/components/Semantic/**/*.tsx",
+        "frontend/src/hooks/semantic-ia/*.ts",
+        "frontend/src/hooks/semantic-ia/*.tsx",
+        "frontend/src/hooks/semantic-ia/**/*.ts",
+        "frontend/src/hooks/semantic-ia/**/*.tsx",
+        "frontend/src/api/semantic.ts",
+        "frontend/tests/e2e/*.py",
+        "frontend/tests/e2e-node/semantic.visual.spec.ts",
+        "frontend/tests/e2e-node/cube-*.spec.ts",
+        "frontend/tests/e2e-node/domain-*.spec.ts",
+        "frontend/tests/e2e-node/devtools-browse.spec.ts",
+        "app/application/semantic/*.py",
+        "app/application/semantic/**/*.py",
+        "app/domain/semantic/*.py",
+        "app/domain/semantic/**/*.py",
+        "app/infrastructure/semantic/*.py",
+        "app/infrastructure/semantic/**/*.py",
+        "app/infrastructure/semantic/**/*.yml",
+        "app/interfaces/api/v1/semantic.py",
+        "tests/unit/application/semantic/*.py",
+        "tests/unit/application/semantic/**/*.py",
+        "tests/unit/domain/semantic/*.py",
+        "tests/unit/domain/semantic/**/*.py",
+        "tests/unit/infrastructure/semantic/*.py",
+        "tests/unit/infrastructure/semantic/**/*.py",
+        "tests/integration/test_semantic*.py"
+      ],
+      "targets": [
+        "verify-semantic"
+      ]
+    },
+    {
+      "name": "frontend-surface",
+      "kind": "frontend",
+      "description": "前端页面、组件、样式和浏览器测试改动。",
+      "patterns": [
+        "frontend/index.html",
+        "frontend/src/*.css",
+        "frontend/src/**/*.css",
+        "frontend/src/*.ts",
+        "frontend/src/*.tsx",
+        "frontend/src/**/*.ts",
+        "frontend/src/**/*.tsx",
+        "frontend/tests/e2e-node/*.ts",
+        "frontend/tests/e2e-node/**/*.ts",
+        "frontend/tests/e2e-node/*.tsx",
+        "frontend/tests/e2e-node/**/*.tsx"
+      ],
+      "targets": [
+        "verify-frontend"
+      ]
+    },
+    {
+      "name": "backend-surface",
+      "kind": "backend",
+      "description": "后端应用代码、测试或迁移脚本改动。",
+      "patterns": [
+        "app/*.py",
+        "app/**/*.py",
+        "tests/*.py",
+        "tests/**/*.py",
+        "migrations/*.py",
+        "migrations/**/*.py",
+        "wsgi.py",
+        "run_worker.py",
+        "start_rq_worker.sh"
+      ],
+      "targets": [
+        "verify-backend"
+      ]
+    },
+    {
+      "name": "repo-escalation",
+      "kind": "repo",
+      "description": "工具链、根入口、依赖或仓库级脚本改动，升级到仓库级收口。",
+      "patterns": [
+        ".github/*",
+        ".github/**/*",
+        "Makefile",
+        "docker-compose.yml",
+        "deploy.sh",
+        "env.sample",
+        "pytest.ini",
+        "requirements.txt",
+        "schema/*",
+        "schema/**/*",
+        "scripts/*.py",
+        "scripts/**/*.py",
+        "scripts/*.sh",
+        "scripts/**/*.sh",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/playwright.config.ts",
+        "frontend/tsconfig*.json",
+        "frontend/vite.config.ts",
+        "frontend/vitest.config.ts"
+      ],
+      "targets": [
+        "verify"
+      ]
+    }
+  ]
+}

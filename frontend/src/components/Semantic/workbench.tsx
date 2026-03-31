@@ -9,7 +9,6 @@ import {
   GitBranch,
   Loader2,
   PanelRight,
-  Sparkles,
   XCircle,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -69,7 +68,7 @@ const statusMeta: Record<SemanticPageStatus, { label: string; className: string;
   dirty: {
     label: '有未保存变更',
     className: 'border-[hsl(var(--semantic-warn))]/20 bg-[hsl(var(--semantic-warn))]/10 text-[hsl(var(--semantic-warn))]',
-    icon: <Sparkles className="h-3.5 w-3.5" />,
+    icon: <Clock3 className="h-3.5 w-3.5" />,
   },
   validating: {
     label: '校验中',
@@ -162,24 +161,27 @@ export function SemanticPageHeader({
   badges?: ReactNode
   meta?: ReactNode
   actions?: ReactNode
-  eyebrow?: string
+  eyebrow?: ReactNode | null
 }) {
   const statusChip = status ? statusMeta[status] : null
+  const eyebrowContent = eyebrow === undefined ? null : eyebrow
+  const showTopline = eyebrow !== null && (eyebrowContent || statusChip || badges)
   return (
     <header className="border-b border-[hsl(var(--workbench-outline))]/80 px-1 pb-4 pt-0.5" data-testid="semantic-page-header">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1 space-y-2.5">
-          <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-            <span className="h-2 w-2 rounded-full bg-[hsl(var(--workbench-accent))]" />
-            <span>{eyebrow ?? 'Semantic Center'}</span>
-            {statusChip && (
-              <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-none', statusChip.className)}>
-                {statusChip.icon}
-                {statusChip.label}
-              </span>
-            )}
-            {badges}
-          </div>
+          {showTopline ? (
+            <div className="flex flex-wrap items-center gap-2 text-[length:var(--text-caption)] font-semibold uppercase tracking-[var(--tracking-caps)] text-[hsl(var(--workbench-muted-foreground))]">
+              {eyebrowContent ? <span>{eyebrowContent}</span> : null}
+              {statusChip && (
+                <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-none', statusChip.className)}>
+                  {statusChip.icon}
+                  {statusChip.label}
+                </span>
+              )}
+              {badges}
+            </div>
+          ) : null}
           {backHref && backLabel && (
             <Link to={backHref} className="inline-flex items-center gap-1.5 text-xs font-medium text-[hsl(var(--workbench-muted-foreground))] transition-colors hover:text-[hsl(var(--workbench-ink))]">
               <ArrowRight className="h-3.5 w-3.5 rotate-180" />
@@ -188,13 +190,13 @@ export function SemanticPageHeader({
           )}
           <div className="space-y-2">
             <h1
-              className="text-[1.72rem] font-semibold tracking-[-0.045em] text-[hsl(var(--workbench-ink))] md:text-[1.95rem]"
+              className="text-[length:var(--text-display)] font-semibold leading-[var(--leading-display)] tracking-[var(--tracking-display)] text-[hsl(var(--workbench-ink))] md:text-[2.18rem]"
               data-semantic-display="true"
             >
               {title}
             </h1>
             {description && (
-              <p className="max-w-4xl text-[0.92rem] leading-6 text-[hsl(var(--workbench-muted-foreground))]">
+              <p className="max-w-[62ch] text-[length:var(--text-body-lg)] leading-7 text-[hsl(var(--workbench-muted-foreground))]">
                 {description}
               </p>
             )}
@@ -225,14 +227,14 @@ export function SemanticWorkbenchHeader({
   const tabs: Array<{ key: SemanticWorkbenchMode; label: string; href: string; icon: ReactNode }> = [
     {
       key: 'modeling',
-      label: '建模画布',
+      label: '领域建模',
       href: '/semantic/modeling',
       icon: <GitBranch className="h-4 w-4" aria-hidden="true" />,
     },
     {
       key: 'tools',
-      label: 'DevTools',
-      href: '/semantic/tools',
+      label: '开发工具',
+      href: '/semantic/workbench',
       icon: <Code2 className="h-4 w-4" aria-hidden="true" />,
     },
     {
@@ -248,8 +250,8 @@ export function SemanticWorkbenchHeader({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-3">
           <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
-            <Sparkles className="h-4 w-4 text-[hsl(var(--workbench-accent))]" aria-hidden="true" />
-            Semantic Layer
+            <Code2 className="h-4 w-4 text-[hsl(var(--workbench-accent))]" aria-hidden="true" />
+            语义层
           </div>
           <div className="space-y-2">
             <h1 className="text-[2.4rem] font-semibold tracking-[-0.045em] text-[hsl(var(--workbench-ink))]" data-semantic-display="true">
@@ -268,7 +270,7 @@ export function SemanticWorkbenchHeader({
             data-testid={actionTestId}
           >
             <Link to={actionHref}>
-              {actionIcon ?? <Sparkles className="mr-2 h-4 w-4" aria-hidden="true" />}
+              {actionIcon ?? <ArrowRight className="mr-2 h-4 w-4" aria-hidden="true" />}
               {actionLabel}
             </Link>
           </Button>
@@ -370,10 +372,10 @@ export function SemanticStatCard({
   className?: string
 }) {
   const toneClassName = {
-    default: 'bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,248,251,0.92))]',
-    accent: 'bg-[linear-gradient(180deg,rgba(239,243,255,0.98),rgba(255,255,255,0.94))]',
-    positive: 'bg-[linear-gradient(180deg,rgba(240,249,244,0.98),rgba(255,255,255,0.94))]',
-    warning: 'bg-[linear-gradient(180deg,rgba(255,249,236,0.98),rgba(255,255,255,0.94))]',
+    default: 'bg-[rgba(255,255,255,0.96)]',
+    accent: 'bg-[hsl(var(--workbench-accent-soft))]',
+    positive: 'bg-[hsl(var(--semantic-ok))]/6',
+    warning: 'bg-[hsl(var(--semantic-warn))]/7',
   }[tone]
 
   return (

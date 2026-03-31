@@ -87,7 +87,8 @@ def register_error_handlers(app):
         return jsonify({
             'code': -1,
             'message': e.message,
-            'error_code': e.code
+            'error_code': e.code,
+            'details': e.details
         }), 500
     
     @app.errorhandler(InfrastructureException)
@@ -97,7 +98,8 @@ def register_error_handlers(app):
         return jsonify({
             'code': -1,
             'message': '服务暂时不可用，请稍后重试',
-            'error_code': e.code
+            'error_code': e.code,
+            'details': e.details
         }), 503
     
     @app.errorhandler(HTTPException)

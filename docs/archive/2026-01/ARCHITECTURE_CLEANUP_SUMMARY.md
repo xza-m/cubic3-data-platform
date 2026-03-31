@@ -286,10 +286,10 @@ STRICT_CONFIG_VALIDATION=false    # 是否严格验证配置
 
 ## 九、相关文档
 
-- [OpenSpec 提案](../openspec/changes/refactor-architecture-cleanup/proposal.md)
-- [技术设计](../openspec/changes/refactor-architecture-cleanup/design.md)
-- [架构审计报告](../audit_summary.md)
-- [数据库架构](../DATABASE_ARCHITECTURE.md)
+- [OpenSpec 提案](../../../openspec/changes/archive/2026-01-25-refactor-architecture-cleanup/proposal.md)
+- [技术设计](../../../openspec/changes/archive/2026-01-25-refactor-architecture-cleanup/design.md)
+- [架构审计报告](./audit_summary.md)
+- 数据库架构：当前仓库无独立数据库架构文档，请结合当前代码与基线文档阅读
 
 ---
 

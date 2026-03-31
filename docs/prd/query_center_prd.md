@@ -1,4 +1,7 @@
-好的，让我详细设计前端界面的布局和交互体验。
+# 查询中心前端布局与交互草案
+
+> 状态：早期设计草案，主要保留布局和交互思路。
+> 不作为当前 Query Center UI 基线；当前实现请优先参考 `../../README.md`、`../TECH_STACK_AND_ARCHITECTURE.md`、`../../frontend/src/App.tsx` 与现有页面代码。
 
 ## 一、整体布局架构
 

@@ -8,6 +8,7 @@ import yaml
 
 from app.domain.semantic.entities import DomainDefinition
 from app.domain.semantic.ports.domain_repository import IDomainRepository
+from app.infrastructure.semantic.runtime_yaml_filter import should_ignore_runtime_yaml
 
 
 class YamlDomainRepository(IDomainRepository):
@@ -24,6 +25,8 @@ class YamlDomainRepository(IDomainRepository):
             self._loaded = True
             return
         for fp in sorted(self._dir.glob("domain_*.yml")):
+            if should_ignore_runtime_yaml(fp):
+                continue
             try:
                 raw = yaml.safe_load(fp.read_text(encoding="utf-8"))
                 if raw:

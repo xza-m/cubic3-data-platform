@@ -27,3 +27,8 @@ class TestDatasourceAPI:
         """统计路由已注册（非 404）"""
         response = client.get(f'{self.BASE}/statistics', headers={'X-User-Id': 'test_user'})
         assert response.status_code != 404
+
+    def test_sync_catalog_route_exists(self, client):
+        """目录同步路由已注册（非 404）"""
+        response = client.post(f'{self.BASE}/1/sync-catalog', headers={'X-User-Id': 'test_user'})
+        assert response.status_code != 404

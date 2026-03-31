@@ -152,7 +152,7 @@
 - ✅ 添加 API 文档和日志系统说明
 
 ### 4.3 创建迁移指南 ✅
-**新文档**: `docs/MIGRATION_GUIDE.md` (400+ 行)
+**新文档**: `docs/archive/legacy/MIGRATION_GUIDE.md` (400+ 行)
 
 **内容**:
 - 📋 迁移概述（已完成 + 未迁移模块）
@@ -214,7 +214,7 @@
 ### 新增文件
 ```
 docs/
-├── MIGRATION_GUIDE.md              # 架构迁移指南 (400+ 行)
+├── archive/legacy/MIGRATION_GUIDE.md  # 架构迁移指南 (400+ 行)
 └── archive/
     └── 2026-01/                    # 归档目录
         ├── (22 个根目录文档)
@@ -271,7 +271,7 @@ openspec/changes/refactor-architecture-cleanup/
 
 - **提案文档**: `openspec/changes/refactor-architecture-cleanup/proposal.md`
 - **任务清单**: `openspec/changes/refactor-architecture-cleanup/tasks.md`
-- **迁移指南**: `docs/MIGRATION_GUIDE.md`
+- **迁移指南**: `docs/archive/legacy/MIGRATION_GUIDE.md`
 - **架构文档**: `docs/TECH_STACK_AND_ARCHITECTURE.md`
 - **API 文档**: http://localhost/api/docs
 

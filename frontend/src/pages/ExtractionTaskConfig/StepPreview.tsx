@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react'
-import { RefreshCw, CheckCircle, FileText, Save, Code, Loader2, ChevronDown } from 'lucide-react'
+import { RefreshCw, CheckCircle, FileText, Save, Code, Loader2 } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { previewData } from '../../api/extraction'
 import type { FilterGroup } from '../../types/filter'
