@@ -397,7 +397,7 @@ describe('Datasources page', () => {
     expect(dataSourceMocks.syncDataSourceCatalog.mock.calls[0][0]).toBe(1)
     expect(dataSourceMocks.toast).toHaveBeenCalledWith({
       title: '目录同步已触发',
-      description: '目录刷新任务已加入队列，请稍后查看同步摘要。',
+      description: '目录刷新任务已加入队列，卡片会自动刷新同步状态。',
     })
 
     await user.click(getDatasourceActions('教学 PostgreSQL').test)

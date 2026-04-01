@@ -1,7 +1,7 @@
 /**
- * 配置表单抽屉
+ * 实例配置弹窗
  *
- * 使用 shadcn/ui Sheet + @rjsf/core 替代原来的 Ant Design Drawer + @rjsf/antd
+ * 使用统一的屏中弹窗承载实例配置表单
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Code2, FileCode, Wand2, Loader2 } from 'lucide-react'
@@ -14,14 +14,6 @@ import DataSourceSelector from '../Selectors/DataSourceSelector'
 import DatasetSelector from '../Selectors/DatasetSelector'
 import { templates as rjsfTemplates, widgets as rjsfWidgets } from './rjsf-theme'
 
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -40,7 +32,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useToast } from '@/components/business'
+import { PageModal, useToast } from '@/components/business'
 
 interface ConfigDrawerProps {
   open: boolean
@@ -367,7 +359,7 @@ export default function ConfigDrawer({
     }
   }, [instance])
 
-  // 当打开抽屉时，根据是否有 schema 自动选择模式
+  // 当打开弹窗时，根据是否有 schema 自动选择模式
   useEffect(() => {
     if (open) {
       setMode(hasSchema ? 'smart' : 'json')
@@ -507,188 +499,191 @@ export default function ConfigDrawer({
   }
 
   return (
-    <Sheet open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
-      <SheetContent side="right" className="flex w-[720px] flex-col overflow-y-auto sm:max-w-[720px]">
-        <SheetHeader>
-          <SheetTitle>{isEdit ? '编辑实例' : `创建实例 - ${app?.name}`}</SheetTitle>
-          <SheetDescription>配置应用实例参数</SheetDescription>
-        </SheetHeader>
-
-        <div className="flex-1 space-y-4 py-4">
-          {/* 实例名称 */}
-          <div className="space-y-2">
-            <Label htmlFor="name">实例名称 <span className="text-red-500">*</span></Label>
-            <Input
-              id="name"
-              placeholder="例如：每日销售看板推送"
-              value={formValues.name}
-              onChange={(e) => updateField('name', e.target.value)}
-            />
-            {errors.name && <p className="text-[0.875rem] leading-5 text-red-500">{errors.name}</p>}
-          </div>
-
-          {/* 描述 */}
-          <div className="space-y-2">
-            <Label htmlFor="description">描述</Label>
-            <Textarea
-              id="description"
-              rows={2}
-              placeholder="可选，描述此实例的用途"
-              value={formValues.description}
-              onChange={(e) => updateField('description', e.target.value)}
-            />
-          </div>
-
-          {/* 调度类型（Agent 类应用固定为手动触发） */}
-          {app?.category === 'agent' ? (
-            <div className="space-y-2">
-              <Label>调度类型</Label>
-              <Input value="消息驱动（无需调度）" disabled />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>调度类型 <span className="text-red-500">*</span></Label>
-              <Select
-                value={formValues.schedule_type}
-                onValueChange={(v) => updateField('schedule_type', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="选择调度类型" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="manual">手动触发</SelectItem>
-                  <SelectItem value="cron">定时调度</SelectItem>
-                  <SelectItem value="event">事件触发</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Cron 表达式（条件显示） */}
-          {formValues.schedule_type === 'cron' && (
-            <div className="space-y-2">
-              <Label htmlFor="schedule_config">
-                Cron 表达式
-                <span className="text-red-500"> *</span>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  
-                  格式：分 时 日 月 周，例如：0 9 * * * 表示每天早上9点
-                </span>
-              </Label>
-              <Textarea
-                id="schedule_config"
-                rows={2}
-                placeholder='{"cron": "0 9 * * *"}'
-                className="font-mono text-[0.875rem] leading-6"
-                value={formValues.schedule_config}
-                onChange={(e) => updateField('schedule_config', e.target.value)}
-              />
-              {errors.schedule_config && <p className="text-[0.875rem] leading-5 text-red-500">{errors.schedule_config}</p>}
-            </div>
-          )}
-
-          {/* 配置内容 */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>
-                应用配置
-                <span className="ml-2 text-[0.75rem] leading-4 text-muted-foreground">({getModeName()})</span>
-              </Label>
-              <div className="flex gap-2">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" onClick={handleFillExample}>
-                        <FileCode className="w-4 h-4 mr-1" />
-                        填充示例
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>一键填充示例配置</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="sm" onClick={handleModeSwitch}>
-                        {mode === 'smart' ? <Code2 className="w-4 h-4 mr-1" /> : <Wand2 className="w-4 h-4 mr-1" />}
-                        切换模式
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      切换到{mode === 'smart' ? 'JSON文本' : mode === 'json' ? '代码编辑器' : hasSchema ? '智能表单' : 'JSON文本'}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </div>
-
-            {mode === 'smart' && hasSchema ? (
-              <div className="rounded-md">
-                <Form
-                  schema={app!.config_schema as RJSFSchema}
-                  formData={smartFormData}
-                  validator={validator}
-                  onChange={(e) => setSmartFormData(e.formData)}
-                  templates={rjsfTemplates}
-                  widgets={mergedWidgets}
-                  uiSchema={uiSchema}
-                >
-                  <></>
-                </Form>
-              </div>
-            ) : mode === 'code' ? (
-              <div className="border rounded-md overflow-hidden">
-                <Editor
-                  height="300px"
-                  language="json"
-                  value={configJson}
-                  onChange={(value) => setConfigJson(value || '{}')}
-                  options={{ minimap: { enabled: false }, fontSize: 13 }}
-                />
-              </div>
-            ) : (
-              <>
-                {app && (
-                  <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[0.9375rem] leading-6">
-                    <div className="mb-2 font-medium text-blue-900">配置说明</div>
-                    <div className="whitespace-pre-wrap text-blue-800">
-                      {getConfigExample(app.code)}
-                    </div>
-                  </div>
-                )}
-                <Textarea
-                  rows={12}
-                  placeholder={app ? getConfigPlaceholder(app.code) : '请输入 JSON 格式的配置'}
-                  className="font-mono text-[0.875rem] leading-6"
-                  value={formValues.config}
-                  onChange={(e) => updateField('config', e.target.value)}
-                />
-              </>
-            )}
-          </div>
-
-          {/* 启用开关 */}
-          <div className="flex items-center gap-3">
-            <Label htmlFor="enabled">启用状态</Label>
-            <Switch
-              id="enabled"
-              checked={formValues.enabled}
-              onCheckedChange={(v) => updateField('enabled', v)}
-            />
-            <span className="text-[0.875rem] leading-5 text-muted-foreground">
-              {formValues.enabled ? '已启用' : '已禁用'}
-            </span>
-          </div>
-        </div>
-
-        <SheetFooter className="pt-4 border-t">
+    <PageModal
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) handleClose()
+      }}
+      title={isEdit ? '编辑实例' : `创建实例 - ${app?.name}`}
+      description="配置应用实例参数"
+      width="min(960px, 92vw)"
+      className="max-h-[90vh]"
+      bodyClassName="modal-scrollbar-hidden px-1"
+      footer={
+        <div className="flex items-center justify-end gap-3 border-t border-[#E2E8F0] px-6 py-4">
           <Button variant="outline" onClick={handleClose}>取消</Button>
           <Button onClick={handleSubmit} disabled={submitting}>
             {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             {isEdit ? '保存' : '创建'}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </div>
+      }
+    >
+      <div className="space-y-4 py-1">
+        {/* 实例名称 */}
+        <div className="space-y-2">
+          <Label htmlFor="name">实例名称 <span className="text-red-500">*</span></Label>
+          <Input
+            id="name"
+            placeholder="例如：每日销售看板推送"
+            value={formValues.name}
+            onChange={(e) => updateField('name', e.target.value)}
+          />
+          {errors.name && <p className="text-[0.875rem] leading-5 text-red-500">{errors.name}</p>}
+        </div>
+
+        {/* 描述 */}
+        <div className="space-y-2">
+          <Label htmlFor="description">描述</Label>
+          <Textarea
+            id="description"
+            rows={2}
+            placeholder="可选，描述此实例的用途"
+            value={formValues.description}
+            onChange={(e) => updateField('description', e.target.value)}
+          />
+        </div>
+
+        {/* 调度类型（Agent 类应用固定为手动触发） */}
+        {app?.category === 'agent' ? (
+          <div className="space-y-2">
+            <Label>调度类型</Label>
+            <Input value="消息驱动（无需调度）" disabled />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label>调度类型 <span className="text-red-500">*</span></Label>
+            <Select
+              value={formValues.schedule_type}
+              onValueChange={(v) => updateField('schedule_type', v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择调度类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="manual">手动触发</SelectItem>
+                <SelectItem value="cron">定时调度</SelectItem>
+                <SelectItem value="event">事件触发</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Cron 表达式（条件显示） */}
+        {formValues.schedule_type === 'cron' && (
+          <div className="space-y-2">
+            <Label htmlFor="schedule_config">
+              Cron 表达式
+              <span className="text-red-500"> *</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                格式：分 时 日 月 周，例如：0 9 * * * 表示每天早上9点
+              </span>
+            </Label>
+            <Textarea
+              id="schedule_config"
+              rows={2}
+              placeholder='{"cron": "0 9 * * *"}'
+              className="font-mono text-[0.875rem] leading-6"
+              value={formValues.schedule_config}
+              onChange={(e) => updateField('schedule_config', e.target.value)}
+            />
+            {errors.schedule_config && <p className="text-[0.875rem] leading-5 text-red-500">{errors.schedule_config}</p>}
+          </div>
+        )}
+
+        {/* 配置内容 */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>
+              应用配置
+              <span className="ml-2 text-[0.75rem] leading-4 text-muted-foreground">({getModeName()})</span>
+            </Label>
+            <div className="flex gap-2">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="sm" onClick={handleFillExample}>
+                      <FileCode className="w-4 h-4 mr-1" />
+                      填充示例
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>一键填充示例配置</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="sm" onClick={handleModeSwitch}>
+                      {mode === 'smart' ? <Code2 className="w-4 h-4 mr-1" /> : <Wand2 className="w-4 h-4 mr-1" />}
+                      切换模式
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    切换到{mode === 'smart' ? 'JSON文本' : mode === 'json' ? '代码编辑器' : hasSchema ? '智能表单' : 'JSON文本'}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+
+          {mode === 'smart' && hasSchema ? (
+            <div className="rounded-md">
+              <Form
+                schema={app!.config_schema as RJSFSchema}
+                formData={smartFormData}
+                validator={validator}
+                onChange={(e) => setSmartFormData(e.formData)}
+                templates={rjsfTemplates}
+                widgets={mergedWidgets}
+                uiSchema={uiSchema}
+              >
+                <></>
+              </Form>
+            </div>
+          ) : mode === 'code' ? (
+            <div className="border rounded-md overflow-hidden">
+              <Editor
+                height="300px"
+                language="json"
+                value={configJson}
+                onChange={(value) => setConfigJson(value || '{}')}
+                options={{ minimap: { enabled: false }, fontSize: 13 }}
+              />
+            </div>
+          ) : (
+            <>
+              {app && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-[0.9375rem] leading-6">
+                  <div className="mb-2 font-medium text-blue-900">配置说明</div>
+                  <div className="whitespace-pre-wrap text-blue-800">
+                    {getConfigExample(app.code)}
+                  </div>
+                </div>
+              )}
+              <Textarea
+                rows={12}
+                placeholder={app ? getConfigPlaceholder(app.code) : '请输入 JSON 格式的配置'}
+                className="font-mono text-[0.875rem] leading-6"
+                value={formValues.config}
+                onChange={(e) => updateField('config', e.target.value)}
+              />
+            </>
+          )}
+        </div>
+
+        {/* 启用开关 */}
+        <div className="flex items-center gap-3">
+          <Label htmlFor="enabled">启用状态</Label>
+          <Switch
+            id="enabled"
+            checked={formValues.enabled}
+            onCheckedChange={(v) => updateField('enabled', v)}
+          />
+          <span className="text-[0.875rem] leading-5 text-muted-foreground">
+            {formValues.enabled ? '已启用' : '已禁用'}
+          </span>
+        </div>
+      </div>
+    </PageModal>
   )
 }

@@ -79,6 +79,25 @@ type JoinFormState = {
   description: string
 }
 
+const COMPACT_VIEWPORT_QUERY = '(max-width: 1279px)'
+
+function useCompactViewport() {
+  const [isCompact, setIsCompact] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const media = window.matchMedia(COMPACT_VIEWPORT_QUERY)
+    const update = () => setIsCompact(media.matches)
+
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  return isCompact
+}
+
 const defaultJoinForm = (source: string, target: string): JoinFormState => ({
   source_cube: source,
   target_cube: target,
@@ -338,6 +357,7 @@ export default function DomainCanvas() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const isCompactViewport = useCompactViewport()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const wrapperRef = useRef<HTMLDivElement | null>(null)
@@ -354,6 +374,8 @@ export default function DomainCanvas() {
   const [catalogPage, setCatalogPage] = useState(1)
   const [expandedCatalogs, setExpandedCatalogs] = useState<Set<string>>(new Set())
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set())
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
 
   const { data, isLoading } = useDomainCanvas(id)
   const resourcePanelMode: ResourcePanelMode = searchParams.get('panel') === 'catalog' ? 'catalog' : 'library'
@@ -397,6 +419,17 @@ export default function DomainCanvas() {
   useEffect(() => {
     setCatalogPage(1)
   }, [treeSearch, resourcePanelMode])
+
+  useEffect(() => {
+    if (isCompactViewport) {
+      setLeftPanelCollapsed(true)
+      setRightPanelCollapsed(true)
+      return
+    }
+
+    setLeftPanelCollapsed(false)
+    setRightPanelCollapsed(false)
+  }, [isCompactViewport])
 
   const visibleLibrary = useMemo(() => {
     const keyword = cubeSearch.trim().toLowerCase()
@@ -630,10 +663,10 @@ export default function DomainCanvas() {
 
   if (isLoading || governanceLoading) {
     return (
-      <div className="flex h-full gap-2 p-4">
-        <Skeleton className="h-full w-[240px] rounded-xl" />
-        <Skeleton className="h-full flex-1 rounded-xl" />
-        <Skeleton className="h-full w-[280px] rounded-xl" />
+      <div className="flex h-full flex-col gap-2 p-4 xl:flex-row">
+        <Skeleton className="h-24 rounded-xl xl:h-full xl:w-[240px]" />
+        <Skeleton className="min-h-[32rem] flex-1 rounded-xl" />
+        <Skeleton className="h-28 rounded-xl xl:h-full xl:w-[280px]" />
       </div>
     )
   }
@@ -641,184 +674,214 @@ export default function DomainCanvas() {
   const inDomainSet = new Set(nodes.map((n) => n.id))
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden" data-testid="domain-canvas-page">
-      {/* ── Left: 资源树 (240px) ── */}
-      <aside className="flex w-[240px] shrink-0 flex-col border-r-0 bg-white">
-        <div className="border-b border-border px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="inline-flex items-center rounded-lg bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => updatePanelMode('library')}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  resourcePanelMode === 'library' ? 'bg-white text-slate-900 shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                Cube 库
-              </button>
-              <button
-                type="button"
-                onClick={() => updatePanelMode('catalog')}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  resourcePanelMode === 'catalog' ? 'bg-white text-slate-900 shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                领域目录
-              </button>
-            </div>
-            <button type="button" className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-muted">
+    <div
+      className="flex h-[calc(100vh-3.5rem)] flex-col overflow-auto xl:flex-row xl:overflow-hidden"
+      data-testid="domain-canvas-page"
+    >
+      <aside
+        className={`order-2 flex shrink-0 flex-col border-t border-border bg-white xl:order-1 xl:h-full xl:border-t-0 xl:border-r-0 ${
+          leftPanelCollapsed ? 'w-full xl:w-[56px]' : 'w-full xl:w-[240px]'
+        }`}
+        data-testid="domain-tree-panel"
+      >
+        {leftPanelCollapsed ? (
+          <div className="flex h-11 items-center justify-between border-b border-border px-4 xl:h-full xl:flex-col xl:justify-center xl:px-0">
+            <button
+              type="button"
+              onClick={() => setLeftPanelCollapsed(false)}
+              aria-label="展开资源树"
+              className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-muted"
+            >
               <PanelLeftClose className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
+            <span className="text-[11px] tracking-[0.16em] text-slate-400 xl:[writing-mode:vertical-lr]">
+              Cube 资源库
+            </span>
           </div>
-        </div>
-
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1.5">
-            <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder={resourcePanelMode === 'library' ? '搜索 Cube...' : '搜索目录、领域、Cube...'}
-              value={resourcePanelMode === 'library' ? cubeSearch : treeSearch}
-              onChange={(e) => {
-                if (resourcePanelMode === 'library') setCubeSearch(e.target.value)
-                else setTreeSearch(e.target.value)
-              }}
-              className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-1 flex-col overflow-hidden px-2 pb-4">
-          <div className="flex-1 overflow-y-auto">
-          {resourcePanelMode === 'library' ? pagedLibrary.map((cube) => {
-            const isInCanvas = inDomainSet.has(cube.name)
-            return (
-              <button
-                key={cube.name}
-                type="button"
-                draggable
-                data-testid={`domain-library-cube-${cube.name}`}
-                onDragStart={handleDragStart(cube.name)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                  isInCanvas
-                    ? 'bg-blue-50'
-                    : 'hover:bg-muted'
-                }`}
-              >
-                <Box className={`h-4 w-4 shrink-0 ${isInCanvas ? 'text-blue-500' : 'text-muted-foreground'}`} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-medium text-foreground">{cube.title}</div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {cube.dimension_count} 维度 · {cube.measure_count} 指标
-                  </div>
+        ) : (
+          <>
+            <div className="border-b border-border px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="inline-flex min-w-0 items-center rounded-lg bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => updatePanelMode('library')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                      resourcePanelMode === 'library' ? 'bg-white text-slate-900 shadow-sm' : 'text-muted-foreground'
+                    }`}
+                  >
+                    Cube 库
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updatePanelMode('catalog')}
+                    className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                      resourcePanelMode === 'catalog' ? 'bg-white text-slate-900 shadow-sm' : 'text-muted-foreground'
+                    }`}
+                  >
+                    领域目录
+                  </button>
                 </div>
-                <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              </button>
-            )
-          }) : pagedCatalogs.map((catalog) => {
-            const isCatalogExpanded = expandedCatalogs.has(catalog.code)
-            return (
-              <div key={catalog.code}>
                 <button
                   type="button"
-                  onClick={() => toggleCatalog(catalog.code)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-slate-50"
+                  onClick={() => setLeftPanelCollapsed(true)}
+                  aria-label="折叠资源树"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md hover:bg-muted"
                 >
-                  {isCatalogExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                  )}
-                  {isCatalogExpanded ? (
-                    <FolderOpen className="h-4 w-4 text-blue-500" />
-                  ) : (
-                    <Folder className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className="flex-1 truncate text-xs font-medium text-foreground">{catalog.name}</span>
+                  <PanelLeftClose className="h-3.5 w-3.5 text-muted-foreground" />
                 </button>
-                {isCatalogExpanded ? (
-                  <div className="pb-1 pl-6">
-                    {(catalog.domains || []).map((domain) => {
-                      const domainKey = domain.id || domain.code
-                      const isExpanded = expandedDomains.has(domainKey)
-                      const isActive = domainKey === id
+              </div>
+            </div>
+
+            <div className="px-4 py-3">
+              <div className="flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1.5">
+                <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder={resourcePanelMode === 'library' ? '搜索 Cube...' : '搜索目录、领域、Cube...'}
+                  value={resourcePanelMode === 'library' ? cubeSearch : treeSearch}
+                  onChange={(e) => {
+                    if (resourcePanelMode === 'library') setCubeSearch(e.target.value)
+                    else setTreeSearch(e.target.value)
+                  }}
+                  className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-4">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {resourcePanelMode === 'library' ? (
+                  <>
+                    {pagedLibrary.map((cube) => {
+                      const isInCanvas = inDomainSet.has(cube.name)
                       return (
-                        <div key={domainKey}>
+                        <button
+                          key={cube.name}
+                          type="button"
+                          draggable
+                          data-testid={`domain-library-cube-${cube.name}`}
+                          onDragStart={handleDragStart(cube.name)}
+                          className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                            isInCanvas ? 'bg-blue-50' : 'hover:bg-muted'
+                          }`}
+                        >
+                          <Box className={`h-4 w-4 shrink-0 ${isInCanvas ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[13px] font-medium text-foreground">{cube.title}</div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {cube.dimension_count} 维度 · {cube.measure_count} 指标
+                            </div>
+                          </div>
+                          <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        </button>
+                      )
+                    })}
+                    {visibleLibrary.length === 0 ? (
+                      <div className="px-3 py-6 text-center text-xs text-muted-foreground">没有可加入的 Cube</div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    {pagedCatalogs.map((catalog) => {
+                      const isCatalogExpanded = expandedCatalogs.has(catalog.code)
+                      return (
+                        <div key={catalog.code}>
                           <button
                             type="button"
-                            onClick={() => {
-                              handleSelectDomain(domainKey)
-                              toggleDomain(domainKey)
-                            }}
-                            className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left ${
-                              isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'
-                            }`}
+                            onClick={() => toggleCatalog(catalog.code)}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-slate-50"
                           >
-                            {isExpanded ? (
-                              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                            {isCatalogExpanded ? (
+                              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                             ) : (
-                              <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                             )}
-                            <Network className={`h-3.5 w-3.5 ${isActive ? 'text-blue-600' : 'text-muted-foreground'}`} />
-                            <span className="flex-1 truncate text-xs font-medium">{domain.name}</span>
-                            <span className="text-[10px] text-muted-foreground">{domain.cube_count} Cubes</span>
+                            {isCatalogExpanded ? (
+                              <FolderOpen className="h-4 w-4 text-blue-500" />
+                            ) : (
+                              <Folder className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            <span className="flex-1 truncate text-xs font-medium text-foreground">{catalog.name}</span>
                           </button>
-                          {isExpanded && isActive ? (
-                            <div className="space-y-0.5 pl-6">
-                              {nodes.map((node) => (
-                                <button
-                                  key={node.id}
-                                  type="button"
-                                  onClick={() => setSelectedNodeId(node.id)}
-                                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-50"
-                                >
-                                  <Box className="h-3 w-3 text-muted-foreground" />
-                                  <span className="truncate text-[11px] text-foreground">
-                                    {String(node.data?.title || node.id)}
-                                  </span>
-                                </button>
-                              ))}
+                          {isCatalogExpanded ? (
+                            <div className="pb-1 pl-6">
+                              {(catalog.domains || []).map((domain) => {
+                                const domainKey = domain.id || domain.code
+                                const isExpanded = expandedDomains.has(domainKey)
+                                const isActive = domainKey === id
+                                return (
+                                  <div key={domainKey}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleSelectDomain(domainKey)
+                                        toggleDomain(domainKey)
+                                      }}
+                                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left ${
+                                        isActive ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50'
+                                      }`}
+                                    >
+                                      {isExpanded ? (
+                                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                                      ) : (
+                                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                                      )}
+                                      <Network className={`h-3.5 w-3.5 ${isActive ? 'text-blue-600' : 'text-muted-foreground'}`} />
+                                      <span className="flex-1 truncate text-xs font-medium">{domain.name}</span>
+                                      <span className="text-[10px] text-muted-foreground">{domain.cube_count} Cubes</span>
+                                    </button>
+                                    {isExpanded && isActive ? (
+                                      <div className="space-y-0.5 pl-6">
+                                        {nodes.map((node) => (
+                                          <button
+                                            key={node.id}
+                                            type="button"
+                                            onClick={() => setSelectedNodeId(node.id)}
+                                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-slate-50"
+                                          >
+                                            <Box className="h-3 w-3 text-muted-foreground" />
+                                            <span className="truncate text-[11px] text-foreground">
+                                              {String(node.data?.title || node.id)}
+                                            </span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                )
+                              })}
                             </div>
                           ) : null}
                         </div>
                       )
                     })}
-                  </div>
-                ) : null}
+                    {filteredCatalogs.length === 0 ? (
+                      <div className="px-3 py-6 text-center text-xs text-muted-foreground">没有匹配的目录或领域</div>
+                    ) : null}
+                  </>
+                )}
               </div>
-            )
-          })}
-          {resourcePanelMode === 'library' && visibleLibrary.length === 0 ? (
-            <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-              没有可加入的 Cube
+              <div className="px-1 pt-2">
+                {resourcePanelMode === 'library' ? (
+                  <ResourcePagination page={libraryPage} pageCount={libraryPageCount} onChange={setLibraryPage} />
+                ) : (
+                  <ResourcePagination page={catalogPage} pageCount={catalogPageCount} onChange={setCatalogPage} />
+                )}
+              </div>
             </div>
-          ) : null}
-          {resourcePanelMode === 'catalog' && filteredCatalogs.length === 0 ? (
-            <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-              没有匹配的目录或领域
-            </div>
-          ) : null}
-          </div>
-          <div className="px-1 pt-2">
-            {resourcePanelMode === 'library' ? (
-              <ResourcePagination page={libraryPage} pageCount={libraryPageCount} onChange={setLibraryPage} />
-            ) : (
-              <ResourcePagination page={catalogPage} pageCount={catalogPageCount} onChange={setCatalogPage} />
-            )}
-          </div>
-        </div>
+          </>
+        )}
       </aside>
 
-      {/* Resize handle 1 */}
-      <div className="flex w-2 shrink-0 items-center justify-center bg-slate-50">
+      <div className="hidden w-2 shrink-0 items-center justify-center bg-slate-50 xl:flex">
         <div className="h-10 w-[3px] rounded-full bg-border" />
       </div>
 
-      {/* ── Center: Canvas ── */}
       <section
         ref={wrapperRef}
         data-testid="domain-canvas-surface"
-        className="relative flex min-w-0 flex-1 flex-col bg-slate-50"
+        className="order-1 relative flex min-w-0 flex-1 flex-col bg-slate-50 xl:order-2 xl:h-full"
         onDragOver={(e) => e.preventDefault()}
         onDragOverCapture={(e) => e.preventDefault()}
         onDrop={handleDrop}
@@ -850,240 +913,284 @@ export default function DomainCanvas() {
         </ReactFlowProvider>
       </section>
 
-      {/* Resize handle 2 */}
-      <div className="flex w-2 shrink-0 items-center justify-center bg-slate-50">
+      <div className="hidden w-2 shrink-0 items-center justify-center bg-slate-50 xl:flex">
         <div className="h-10 w-[3px] rounded-full bg-border" />
       </div>
 
-      {/* ── Right: Join 配置 / 领域信息 (280px) ── */}
-      <aside className="flex w-[280px] shrink-0 flex-col bg-white" data-testid="domain-join-panel">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-4">
-          <span className="text-sm font-semibold text-foreground">
-            {resourcePanelMode === 'library' ? 'Join 配置' : '领域信息'}
-          </span>
-          <button type="button" className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-muted">
-            <PanelRightClose className="h-3.5 w-3.5 text-muted-foreground" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {resourcePanelMode === 'library' && selectedEdgeId && joinForm ? (
-            /* ── Join form (when editing) ── */
-            <div className="space-y-4">
-              <div className="space-y-3">
-                <div className="text-xs font-semibold text-foreground">编辑 Join</div>
-
-                <div>
-                  <div className="mb-1 text-[11px] text-muted-foreground">源 Cube</div>
-                  <Input value={joinForm.source_cube} disabled className="h-8 text-xs" />
-                </div>
-                <div>
-                  <div className="mb-1 text-[11px] text-muted-foreground">目标 Cube</div>
-                  <Input value={joinForm.target_cube} disabled className="h-8 text-xs" />
-                </div>
-
-                <div>
-                  <div className="mb-1 text-[11px] text-muted-foreground">源字段</div>
-                  <Select value={joinForm.source_field} onValueChange={(v) => setJoinForm({ ...joinForm, source_field: v })}>
-                    <SelectTrigger className="h-8 text-xs" data-testid="domain-inspector-source-field">
-                      <SelectValue placeholder="选择字段" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(cubeIndex.get(joinForm.source_cube)?.dimensions || []).map((field) => (
-                        <SelectItem key={field} value={field}>{field}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <div className="mb-1 text-[11px] text-muted-foreground">目标字段</div>
-                  <Select value={joinForm.target_field} onValueChange={(v) => setJoinForm({ ...joinForm, target_field: v })}>
-                    <SelectTrigger className="h-8 text-xs" data-testid="domain-inspector-target-field">
-                      <SelectValue placeholder="选择字段" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(cubeIndex.get(joinForm.target_cube)?.dimensions || []).map((field) => (
-                        <SelectItem key={field} value={field}>{field}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <div className="mb-1 text-[11px] text-muted-foreground">Join Type</div>
-                    <Select value={joinForm.join_type} onValueChange={(v) => setJoinForm({ ...joinForm, join_type: v as JoinType })}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="left">left</SelectItem>
-                        <SelectItem value="inner">inner</SelectItem>
-                        <SelectItem value="right">right</SelectItem>
-                        <SelectItem value="full">full</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <div className="mb-1 text-[11px] text-muted-foreground">基数</div>
-                    <Select
-                      value={joinForm.cardinality}
-                      onValueChange={(v) => setJoinForm({
-                        ...joinForm,
-                        cardinality: v as JoinCardinality,
-                        aggregation_strategy: v === '1:N' ? joinForm.aggregation_strategy : 'none',
-                      })}
-                    >
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1:1">1:1</SelectItem>
-                        <SelectItem value="N:1">N:1</SelectItem>
-                        <SelectItem value="1:N">1:N</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {joinForm.cardinality === '1:N' ? (
-                  <div>
-                    <div className="mb-1 text-[11px] text-muted-foreground">聚合策略</div>
-                    <Select value={joinForm.aggregation_strategy} onValueChange={(v) => setJoinForm({ ...joinForm, aggregation_strategy: v as JoinAggregationStrategy })}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">none</SelectItem>
-                        <SelectItem value="aggregate_before_join">aggregate_before_join</SelectItem>
-                        <SelectItem value="latest_snapshot">latest_snapshot</SelectItem>
-                        <SelectItem value="distinct_on_target">distinct_on_target</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
-
-                <div>
-                  <div className="mb-1 text-[11px] text-muted-foreground">说明</div>
-                  <Textarea
-                    rows={2}
-                    value={joinForm.description}
-                    onChange={(e) => setJoinForm({ ...joinForm, description: e.target.value })}
-                    className="text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleJoinSave}
-                  data-testid="domain-inspector-save"
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-2 text-xs font-medium text-white hover:bg-blue-700"
-                >
-                  <Save className="h-3.5 w-3.5" />
-                  保存
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteSelectedEdge}
-                  className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-          ) : resourcePanelMode === 'library' ? (
-            /* ── Join list (default view) ── */
-            <div className="flex flex-col gap-5">
-              <div className="flex flex-col gap-2.5">
-                <span className="text-xs font-semibold text-foreground">当前 Join 关系</span>
-                {edges.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
-                    还没有定义 Join 关系
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2.5">
-                    {edges.map((edge) => (
-                      <JoinCard
-                        key={edge.id}
-                        edge={edge}
-                        cubeIndex={cubeIndex}
-                        selected={String(edge.id) === selectedEdgeId}
-                        onClick={() => handleSelectJoinCard(edge)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
+      <aside
+        className={`order-3 flex shrink-0 flex-col border-t border-border bg-white xl:order-3 xl:h-full xl:border-t-0 xl:border-l ${
+          rightPanelCollapsed ? 'w-full xl:w-[56px]' : 'w-full xl:w-[280px]'
+        }`}
+        data-testid="domain-join-panel"
+      >
+        {rightPanelCollapsed ? (
+          <div className="flex h-11 items-center justify-between border-b border-border px-4 xl:h-full xl:flex-col xl:justify-center xl:px-0">
+            <button
+              type="button"
+              onClick={() => setRightPanelCollapsed(false)}
+              aria-label="展开 Join 面板"
+              className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-muted"
+            >
+              <PanelRightClose className="h-3.5 w-3.5 text-muted-foreground" />
+            </button>
+            <span className="text-[11px] tracking-[0.16em] text-slate-400 xl:[writing-mode:vertical-lr]">
+              {resourcePanelMode === 'library' ? 'Join 配置' : '领域信息'}
+            </span>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between border-b border-border px-4 py-4">
+              <span className="text-sm font-semibold text-foreground">
+                {resourcePanelMode === 'library' ? 'Join 配置' : '领域信息'}
+              </span>
               <button
                 type="button"
-                className="flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-slate-100 py-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-slate-200/80"
+                onClick={() => setRightPanelCollapsed(true)}
+                aria-label="折叠 Join 面板"
+                className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-muted"
               >
-                <Plus className="h-3.5 w-3.5" />
-                新建 Join 关系
+                <PanelRightClose className="h-3.5 w-3.5 text-muted-foreground" />
               </button>
             </div>
-          ) : (
-            <div className="space-y-5">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">领域说明</div>
-                <div className="mt-3 text-sm font-semibold text-slate-900">{data?.domain.name || '未命名领域'}</div>
-                <p className="mt-2 text-xs leading-6 text-slate-600">
-                  {data?.domain.description || '当前领域还没有补充业务说明。'}
-                </p>
-              </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">当前资源</div>
-                  <span className="text-[11px] text-slate-500">{nodes.length} Cubes</span>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {selectedNode ? (
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
-                      <div className="text-xs font-semibold text-blue-700">
-                        {String(selectedNode.data?.title || selectedNode.id)}
+            <div className="flex-1 overflow-y-auto p-4">
+              {resourcePanelMode === 'library' && selectedEdgeId && joinForm ? (
+                <div className="space-y-4">
+                  <div className="space-y-3">
+                    <div className="text-xs font-semibold text-foreground">编辑 Join</div>
+
+                    <div>
+                      <div className="mb-1 text-[11px] text-muted-foreground">源 Cube</div>
+                      <Input value={joinForm.source_cube} disabled className="h-8 text-xs" />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-[11px] text-muted-foreground">目标 Cube</div>
+                      <Input value={joinForm.target_cube} disabled className="h-8 text-xs" />
+                    </div>
+
+                    <div>
+                      <div className="mb-1 text-[11px] text-muted-foreground">源字段</div>
+                      <Select
+                        value={joinForm.source_field}
+                        onValueChange={(v) => setJoinForm({ ...joinForm, source_field: v })}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="domain-inspector-source-field">
+                          <SelectValue placeholder="选择字段" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(cubeIndex.get(joinForm.source_cube)?.dimensions || []).map((field) => (
+                            <SelectItem key={field} value={field}>{field}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <div className="mb-1 text-[11px] text-muted-foreground">目标字段</div>
+                      <Select
+                        value={joinForm.target_field}
+                        onValueChange={(v) => setJoinForm({ ...joinForm, target_field: v })}
+                      >
+                        <SelectTrigger className="h-8 text-xs" data-testid="domain-inspector-target-field">
+                          <SelectValue placeholder="选择字段" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(cubeIndex.get(joinForm.target_cube)?.dimensions || []).map((field) => (
+                            <SelectItem key={field} value={field}>{field}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="mb-1 text-[11px] text-muted-foreground">Join Type</div>
+                        <Select
+                          value={joinForm.join_type}
+                          onValueChange={(v) => setJoinForm({ ...joinForm, join_type: v as JoinType })}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="left">left</SelectItem>
+                            <SelectItem value="inner">inner</SelectItem>
+                            <SelectItem value="right">right</SelectItem>
+                            <SelectItem value="full">full</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <div className="mt-1 text-[11px] text-blue-700/80">
-                        {String(selectedNode.data?.dimensions || 0)} 维度 · {String(selectedNode.data?.measures || 0)} 指标
+                      <div>
+                        <div className="mb-1 text-[11px] text-muted-foreground">基数</div>
+                        <Select
+                          value={joinForm.cardinality}
+                          onValueChange={(v) =>
+                            setJoinForm({
+                              ...joinForm,
+                              cardinality: v as JoinCardinality,
+                              aggregation_strategy: v === '1:N' ? joinForm.aggregation_strategy : 'none',
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1:1">1:1</SelectItem>
+                            <SelectItem value="N:1">N:1</SelectItem>
+                            <SelectItem value="1:N">1:N</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
-                  ) : null}
-                  {nodes.slice(0, 6).map((node) => (
-                    <button
-                      key={node.id}
-                      type="button"
-                      onClick={() => setSelectedNodeId(node.id)}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left ${
-                        selectedNodeId === node.id ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className="truncate text-xs font-medium">{String(node.data?.title || node.id)}</span>
-                      <span className="shrink-0 text-[11px] text-slate-500">
-                        {String(node.data?.dimensions || 0)} / {String(node.data?.measures || 0)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <div className="space-y-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Cube 关系</div>
-                {edges.length ? edges.map((edge) => (
-                  <JoinCard
-                    key={String(edge.id)}
-                    edge={edge}
-                    cubeIndex={cubeIndex}
-                    selected={selectedEdgeId === String(edge.id)}
-                    onClick={() => handleSelectJoinCard(edge)}
-                  />
-                )) : (
-                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">
-                    当前领域还没有可展示的 Cube 关系
+                    {joinForm.cardinality === '1:N' ? (
+                      <div>
+                        <div className="mb-1 text-[11px] text-muted-foreground">聚合策略</div>
+                        <Select
+                          value={joinForm.aggregation_strategy}
+                          onValueChange={(v) => setJoinForm({ ...joinForm, aggregation_strategy: v as JoinAggregationStrategy })}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">none</SelectItem>
+                            <SelectItem value="aggregate_before_join">aggregate_before_join</SelectItem>
+                            <SelectItem value="latest_snapshot">latest_snapshot</SelectItem>
+                            <SelectItem value="distinct_on_target">distinct_on_target</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : null}
+
+                    <div>
+                      <div className="mb-1 text-[11px] text-muted-foreground">说明</div>
+                      <Textarea
+                        rows={2}
+                        value={joinForm.description}
+                        onChange={(e) => setJoinForm({ ...joinForm, description: e.target.value })}
+                        className="text-xs"
+                      />
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleJoinSave}
+                      data-testid="domain-inspector-save"
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-2 text-xs font-medium text-white hover:bg-blue-700"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteSelectedEdge}
+                      className="rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+              ) : resourcePanelMode === 'library' ? (
+                <div className="flex flex-col gap-5">
+                  <div className="flex flex-col gap-2.5">
+                    <span className="text-xs font-semibold text-foreground">当前 Join 关系</span>
+                    {edges.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+                        还没有定义 Join 关系
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2.5">
+                        {edges.map((edge) => (
+                          <JoinCard
+                            key={edge.id}
+                            edge={edge}
+                            cubeIndex={cubeIndex}
+                            selected={String(edge.id) === selectedEdgeId}
+                            onClick={() => handleSelectJoinCard(edge)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-slate-100 py-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-slate-200/80"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    新建 Join 关系
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">领域说明</div>
+                    <div className="mt-3 text-sm font-semibold text-slate-900">{data?.domain.name || '未命名领域'}</div>
+                    <p className="mt-2 text-xs leading-6 text-slate-600">
+                      {data?.domain.description || '当前领域还没有补充业务说明。'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">当前资源</div>
+                      <span className="text-[11px] text-slate-500">{nodes.length} Cubes</span>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {selectedNode ? (
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                          <div className="text-xs font-semibold text-blue-700">
+                            {String(selectedNode.data?.title || selectedNode.id)}
+                          </div>
+                          <div className="mt-1 text-[11px] text-blue-700/80">
+                            {String(selectedNode.data?.dimensions || 0)} 维度 · {String(selectedNode.data?.measures || 0)} 指标
+                          </div>
+                        </div>
+                      ) : null}
+                      {nodes.slice(0, 6).map((node) => (
+                        <button
+                          key={node.id}
+                          type="button"
+                          onClick={() => setSelectedNodeId(node.id)}
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left ${
+                            selectedNodeId === node.id ? 'bg-blue-50 text-blue-700' : 'bg-slate-50 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="truncate text-xs font-medium">{String(node.data?.title || node.id)}</span>
+                          <span className="shrink-0 text-[11px] text-slate-500">
+                            {String(node.data?.dimensions || 0)} / {String(node.data?.measures || 0)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Cube 关系</div>
+                    {edges.length ? (
+                      edges.map((edge) => (
+                        <JoinCard
+                          key={String(edge.id)}
+                          edge={edge}
+                          cubeIndex={cubeIndex}
+                          selected={selectedEdgeId === String(edge.id)}
+                          onClick={() => handleSelectJoinCard(edge)}
+                        />
+                      ))
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">
+                        当前领域还没有可展示的 Cube 关系
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </aside>
     </div>
   )

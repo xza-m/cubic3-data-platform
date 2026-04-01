@@ -170,6 +170,24 @@ describe('DataChat page', () => {
     expect(dataChatMocks.toast).toHaveBeenCalledWith({ title: '请先选择数据集', variant: 'warning' })
   })
 
+  it('后端无真实会话时展示真实空态而不是样例内容', async () => {
+    dataChatMocks.listConversations.mockResolvedValueOnce({
+      data: {
+        items: [],
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('暂无历史对话')).toBeInTheDocument()
+    expect(screen.getByText('选择数据集后创建新对话，系统才会展示真实问答内容。')).toBeInTheDocument()
+    expect(screen.getByText('当前没有可展示的真实消息')).toBeInTheDocument()
+    expect(screen.getByText('请选择左侧已有对话，或先选择数据集后创建新对话。')).toBeInTheDocument()
+    expect(screen.queryByText('本月各产品线营收分析')).not.toBeInTheDocument()
+    expect(screen.queryByText('已为您生成以下 SQL')).not.toBeInTheDocument()
+    expect(screen.queryByText('已为您生成可视化图表')).not.toBeInTheDocument()
+  })
+
   it('在已有对话上下文后支持创建同数据集的新对话', async () => {
     const user = userEvent.setup()
 

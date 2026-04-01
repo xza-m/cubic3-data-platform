@@ -352,6 +352,7 @@ describe('DomainCanvas page', () => {
     renderPage()
 
     await screen.findByTestId('domain-canvas-page')
+    expect(screen.getByTestId('domain-canvas-page')).toHaveClass('flex-col')
     expect(screen.getByTestId('mock-reactflow-provider')).toBeInTheDocument()
     expect(screen.getByText('Cube 库')).toBeInTheDocument()
     expect(screen.getByText('学习领域')).toBeInTheDocument()
@@ -359,6 +360,8 @@ describe('DomainCanvas page', () => {
     expect(screen.getByTestId('domain-library-cube-user_profile')).toBeInTheDocument()
     expect(screen.getByTestId('mock-reactflow')).toBeInTheDocument()
     expect(within(screen.getByTestId('domain-join-panel')).getByText('当前 Join 关系')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '折叠资源树' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '折叠 Join 面板' })).toBeInTheDocument()
   })
 
   it('支持切换到领域目录模式，并在右侧展示领域信息', async () => {

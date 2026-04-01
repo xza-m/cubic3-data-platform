@@ -280,7 +280,9 @@ export default function Login() {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="text-[#94A3B8] hover:text-[#64748B] transition-colors cursor-pointer"
-                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                  aria-label={showPassword ? '隐藏输入内容' : '显示输入内容'}
+                  aria-pressed={showPassword}
+                  aria-controls="password"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>

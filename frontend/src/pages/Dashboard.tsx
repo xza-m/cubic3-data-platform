@@ -2,7 +2,6 @@
  * Dashboard - 首页工作台
  * 基于 uiv2.pen 设计稿 (q0cE6) 生成
  */
-import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -68,14 +67,31 @@ const getRelativeTimeLabel = (value?: string) => {
   if (!value) return '刚刚'
 
   const target = new Date(value)
+  if (Number.isNaN(target.getTime())) return '刚刚'
+
   const diff = Date.now() - target.getTime()
   const minute = 60 * 1000
   const hour = 60 * minute
   const day = 24 * hour
 
+  if (diff < minute) return '刚刚'
   if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))} 分钟前`
   if (diff < day) return `${Math.floor(diff / hour)} 小时前`
-  return '昨天'
+
+  const days = Math.floor(diff / day)
+  if (days === 1) return '昨天'
+  if (days < 7) return `${days} 天前`
+
+  const year = target.getFullYear()
+  const currentYear = new Date().getFullYear()
+  const month = target.getMonth() + 1
+  const date = target.getDate()
+
+  if (year === currentYear) {
+    return `${month}月${date}日`
+  }
+
+  return `${year}年${month}月${date}日`
 }
 
 const getQueryStatusLabel = (status: DashboardOverviewRecentQuery['status']): QueryItem['status'] => {
@@ -102,60 +118,79 @@ const formatTrend = (value: number | null, suffix: string) => {
 }
 
 const formatWeekTrend = (value: number | null) => {
-  if (value === null) return null
+  if (value === null) return '近 7 日暂无数据'
   return `近 7 日 ${value}`
 }
 
 const formatStatValue = (value: number | null) => (value === null ? '--' : String(value))
 
+const emptyOverview = {
+  stats: {
+    datasource_total: null,
+    dataset_total: null,
+    semantic_model_total: null,
+    today_query_count: null,
+    ai_chat_count: null,
+  },
+  recent_queries: [] as DashboardOverviewRecentQuery[],
+  health: {
+    datasource_connectivity: null,
+    semantic_coverage: null,
+    query_success_rate: null,
+  },
+  trends: {
+    datasource_month_delta: null,
+    dataset_week_delta: null,
+    query_count_week: null,
+  },
+}
+
 /* ---------- component ---------- */
 
 export default function Dashboard() {
   const navigate = useNavigate()
-
-  const { data: overview } = useQuery({
+  const {
+    data: overview = emptyOverview,
+    isError,
+  } = useQuery({
     queryKey: ['dashboard', 'overview'],
     queryFn: getDashboardOverview,
+    retry: false,
   })
 
-  const recentQueries = useMemo<QueryItem[]>(() => {
-    const items = overview?.recent_queries || []
-    return items.slice(0, 5).map((history) => ({
-      name: getQueryTitle(history),
-      tag: history.datasource_name || '查询中心',
-      time: getRelativeTimeLabel(history.executed_at),
-      status: getQueryStatusLabel(history.status),
-    }))
-  }, [overview])
+  const recentQueries: QueryItem[] = (overview.recent_queries || []).slice(0, 5).map((history) => ({
+    name: getQueryTitle(history),
+    tag: history.datasource_name || '查询中心',
+    time: getRelativeTimeLabel(history.executed_at || undefined),
+    status: getQueryStatusLabel(history.status),
+  }))
 
-  const healthItems = useMemo<HealthItem[]>(() => {
-    return [
-      {
-        label: '数据源连通性',
-        value: overview?.health.datasource_connectivity ?? null,
-        color: 'bg-[#10B981]',
-        textColor: 'text-[#10B981]',
-      },
-      {
-        label: '模型覆盖率',
-        value: overview?.health.semantic_coverage ?? null,
-        color: 'bg-[#2563EB]',
-        textColor: 'text-[#2563EB]',
-      },
-      {
-        label: '查询成功率',
-        value: overview?.health.query_success_rate ?? null,
-        color: 'bg-[#10B981]',
-        textColor: 'text-[#10B981]',
-      },
-    ]
-  }, [overview])
+  const healthItems: HealthItem[] = [
+    {
+      label: '数据源连通性',
+      value: overview.health.datasource_connectivity,
+      color: 'bg-[#10B981]',
+      textColor: 'text-[#10B981]',
+    },
+    {
+      label: '模型覆盖率',
+      value: overview.health.semantic_coverage,
+      color: 'bg-[#2563EB]',
+      textColor: 'text-[#2563EB]',
+    },
+    {
+      label: '查询成功率',
+      value: overview.health.query_success_rate,
+      color: 'bg-[#10B981]',
+      textColor: 'text-[#10B981]',
+    },
+  ]
 
   const stats: StatCard[] = [
     {
       label: '已接入数据源',
-      value: formatStatValue(overview?.stats.datasource_total ?? null),
-      trend: formatTrend(overview?.trends.datasource_month_delta ?? null, '本月'),
+      value: formatStatValue(overview.stats.datasource_total),
+      trend: formatTrend(overview.trends.datasource_month_delta, '本月'),
       trendFallback: '暂无趋势',
       icon: Database,
       iconColor: 'text-[#2563EB]',
@@ -163,17 +198,16 @@ export default function Dashboard() {
     },
     {
       label: '今日查询',
-      value: formatStatValue(overview?.stats.today_query_count ?? null),
-      trend: formatWeekTrend(overview?.trends.query_count_week ?? null),
-      trendFallback: '暂无趋势',
+      value: formatStatValue(overview.stats.today_query_count),
+      trend: formatWeekTrend(overview.trends.query_count_week),
       icon: Search,
       iconColor: 'text-[#2563EB]',
       iconBg: 'bg-[#EFF6FF]',
     },
     {
       label: '语义模型',
-      value: formatStatValue(overview?.stats.semantic_model_total ?? null),
-      trend: formatTrend(overview?.trends.dataset_week_delta ?? null, '本周'),
+      value: formatStatValue(overview.stats.semantic_model_total),
+      trend: formatTrend(overview.trends.dataset_week_delta, '本周'),
       trendFallback: '暂无趋势',
       icon: Boxes,
       iconColor: 'text-[#6366F1]',
@@ -181,7 +215,7 @@ export default function Dashboard() {
     },
     {
       label: 'AI 对话',
-      value: formatStatValue(overview?.stats.ai_chat_count ?? null),
+      value: formatStatValue(overview.stats.ai_chat_count),
       trend: null,
       trendFallback: '未接入',
       icon: MessageSquare,
@@ -202,10 +236,19 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold text-[#0F172A]">欢迎回来，数据工程师</h1>
-          <p className="text-sm text-[#64748B]">以下是您的工作台概览</p>
+          <p className="text-sm text-[#64748B]">
+            {isError ? '工作台聚合接口异常，当前仅保留单一口径提示。' : '以下是您的工作台概览'}
+          </p>
         </div>
         <span className="text-sm text-[#94A3B8]">{dateStr}</span>
       </div>
+
+      {isError ? (
+        <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-5 py-4 text-sm text-[#991B1B]">
+          <p className="font-medium">工作台概览暂时不可用</p>
+          <p className="mt-1 text-[#B91C1C]">请稍后刷新，当前页面不会再改用其他业务接口混算统计口径。</p>
+        </div>
+      ) : null}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-4 gap-5">
@@ -261,9 +304,10 @@ export default function Dashboard() {
               )
             })
           ) : (
-            <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
+              <div className="flex min-h-[220px] flex-col items-center justify-center px-6 text-center">
               <Inbox className="h-10 w-10 text-[#CBD5E1]" />
-              <p className="mt-3 text-sm text-[#94A3B8]">最近还没有真实查询记录</p>
+              <p className="mt-3 text-sm font-medium text-[#0F172A]">暂无查询记录</p>
+              <p className="mt-2 text-sm text-[#94A3B8]">当前统计周期内没有查询历史。</p>
             </div>
           )}
         </div>
@@ -296,7 +340,10 @@ export default function Dashboard() {
           ) : (
             <div className="flex min-h-[220px] flex-col items-center justify-center rounded-b-xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] text-center">
               <Inbox className="h-10 w-10 text-[#CBD5E1]" />
-              <p className="mt-3 text-sm text-[#94A3B8]">暂无可用健康指标</p>
+              <p className="mt-3 text-sm font-medium text-[#0F172A]">暂无健康指标</p>
+              <p className="mt-2 max-w-[220px] text-sm leading-6 text-[#94A3B8]">
+                至少需要后端返回一个非 null 指标后才会展示健康概览。
+              </p>
             </div>
           )}
         </div>

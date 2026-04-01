@@ -26,6 +26,7 @@ export default function SchemaBrowser({
     compactTree = false,
     activeDatabase,
     hideDatabaseLevel = false,
+    autoExpandInitial = true,
     showStatusBar = true,
     className = '',
     onSelect,
@@ -53,7 +54,7 @@ export default function SchemaBrowser({
         toggleExpand,
         refreshNode,
         isNodeVisible,
-    } = useSchemaTree({ datasourceId, sourceType })
+    } = useSchemaTree({ datasourceId, sourceType, autoExpandInitial })
 
     // 数据源变化时加载数据库列表
     useEffect(() => {
@@ -62,8 +63,9 @@ export default function SchemaBrowser({
         }
     }, [datasourceId, loadDatabases])
 
-    // 自动展开第一层数据库 / schema，保持语义建模场景可以直接定位到首个物理表。
+    // 在需要时自动展开第一层数据库 / schema，保持语义建模场景可以直接定位到首个物理表。
     useEffect(() => {
+        if (!autoExpandInitial) return
         if (!initialized || rootKeys.length === 0) return
 
         const firstRootKey = rootKeys[0]
@@ -92,7 +94,7 @@ export default function SchemaBrowser({
         if (firstTableNode && (firstTableNode.type === 'table' || firstTableNode.type === 'view') && !firstTableNode.expanded) {
             void toggleExpand(firstTableKey)
         }
-    }, [initialized, nodes, rootKeys, toggleExpand])
+    }, [autoExpandInitial, initialized, nodes, rootKeys, toggleExpand])
 
     useEffect(() => {
         if (!initialized || !activeDatabase) return

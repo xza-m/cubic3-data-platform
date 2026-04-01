@@ -199,6 +199,13 @@ describe('App routes', () => {
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/domains/domain-1?mode=focus')
   })
 
+  it('领域建模入口会优先进入上一版领域建模工作台跳转页', async () => {
+    renderApp('/semantic/modeling')
+
+    expect(await screen.findByText('领域画布跳转页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/modeling')
+  })
+
   it('未知路由会回到 dashboard', async () => {
     renderApp('/not-found')
 

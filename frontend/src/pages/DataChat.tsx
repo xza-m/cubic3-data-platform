@@ -9,11 +9,9 @@ import {
   ArrowUp,
   BarChart2,
   Bot,
-  Copy,
   Download,
   PanelLeftClose,
   PanelRightOpen,
-  Play,
   Plus,
   Search,
   Sparkles,
@@ -29,15 +27,6 @@ import {
   type Message,
 } from '../api/conversations'
 import DatasetSelector from '../components/Chat/DatasetSelector'
-
-/* ---------- static sample data (design) ---------- */
-const sampleConversations = [
-  { id: 1, title: '本月各产品线营收分析', time: '10 分钟前', active: true },
-  { id: 2, title: '用户留存率趋势查询', time: '2 小时前' },
-  { id: 3, title: 'Q1 季度订单异常分析', time: '昨天' },
-  { id: 4, title: 'Top 10 客户价值排行', time: '3 天前' },
-  { id: 5, title: '数据源连接状态检查', time: '上周' },
-]
 
 export default function DataChat() {
   const queryClient = useQueryClient()
@@ -62,6 +51,10 @@ export default function DataChat() {
     queryFn: () => getConversation(currentConversation!),
     enabled: !!currentConversation,
   })
+
+  useEffect(() => {
+    setMessages([])
+  }, [currentConversation])
 
   useEffect(() => {
     if (conversationData) {
@@ -117,9 +110,13 @@ export default function DataChat() {
     setInputValue('')
   }
 
-  const convList = conversations.length > 0
-    ? conversations.map((c) => ({ id: c.id, title: c.title || `对话 #${c.id}`, time: '', active: c.id === currentConversation }))
-    : sampleConversations.map((c) => ({ ...c, active: c.id === currentConversation }))
+  const activeConversation =
+    conversationData?.data ||
+    conversations.find((conversation) => conversation.id === currentConversation)
+  const conversationTitle = activeConversation?.title?.trim() || '请选择或创建对话'
+  const hasConversations = conversations.length > 0
+  const hasCurrentConversation = typeof currentConversation === 'number'
+  const hasMessages = messages.length > 0
 
   return (
     <div className="flex h-full w-full" data-testid="data-chat-layout">
@@ -155,26 +152,35 @@ export default function DataChat() {
 
         {/* Conversation Items */}
         <div className="flex-1 overflow-y-auto p-2">
-          <div className="flex flex-col gap-1">
-            {convList.map((conv) => (
-              <button
-                key={conv.id}
-                type="button"
-                data-testid={`conversation-row-${conv.id}`}
-                onClick={() => setCurrentConversation(conv.id)}
-                className={`flex flex-col gap-1 rounded-lg px-4 py-3 text-left cursor-pointer transition-colors ${
-                  conv.active
-                    ? 'bg-[#EFF6FF]'
-                    : 'hover:bg-[#F1F5F9]'
-                }`}
-              >
-                <span className="text-[13px] font-medium text-[#0F172A] truncate">{conv.title}</span>
-                {conv.time && (
-                  <span className="text-[11px] text-[#94A3B8]">{conv.time}</span>
-                )}
-              </button>
-            ))}
-          </div>
+          {hasConversations ? (
+            <div className="flex flex-col gap-1">
+              {conversations.map((conversation) => (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  data-testid={`conversation-row-${conversation.id}`}
+                  onClick={() => setCurrentConversation(conversation.id)}
+                  className={`flex flex-col gap-1 rounded-lg px-4 py-3 text-left cursor-pointer transition-colors ${
+                    conversation.id === currentConversation
+                      ? 'bg-[#EFF6FF]'
+                      : 'hover:bg-[#F1F5F9]'
+                  }`}
+                >
+                  <span className="text-[13px] font-medium text-[#0F172A] truncate">
+                    {conversation.title || `对话 #${conversation.id}`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-[220px] flex-col items-center justify-center px-4 text-center">
+              <Bot className="h-10 w-10 text-[#CBD5E1]" />
+              <p className="mt-3 text-sm font-medium text-[#0F172A]">暂无历史对话</p>
+              <p className="mt-2 text-xs leading-6 text-[#94A3B8]">
+                选择数据集后创建新对话，系统才会展示真实问答内容。
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -188,7 +194,7 @@ export default function DataChat() {
         {/* Chat Header */}
         <div className="flex items-center justify-between border-b border-[#E2E8F0] px-5 py-3.5">
           <div className="flex items-center gap-2.5">
-            <span className="text-[15px] font-semibold text-[#0F172A]">本月各产品线营收分析</span>
+            <span className="text-[15px] font-semibold text-[#0F172A]">{conversationTitle}</span>
             <span className="rounded-[10px] bg-gradient-to-b from-[#6366F1] to-[#3B82F6] px-2 py-0.5 text-[10px] font-medium text-white">
               AI 语义驱动
             </span>
@@ -204,8 +210,7 @@ export default function DataChat() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-5">
           <div className="flex flex-col gap-5">
-            {/* Render real messages if available, otherwise show design sample */}
-            {messages.length > 0 ? (
+            {hasMessages ? (
               messages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'gap-3'}`}>
                   {msg.role === 'assistant' && (
@@ -225,67 +230,17 @@ export default function DataChat() {
                 </div>
               ))
             ) : (
-              <>
-                {/* Sample user message */}
-                <div className="flex justify-end">
-                  <div className="max-w-[70%] rounded-2xl rounded-br-sm bg-[#2563EB] px-4 py-3 text-[13px] text-white">
-                    本月各产品线的营收总额分别是多少？
-                  </div>
-                </div>
-
-                {/* Sample AI response */}
-                <div className="flex gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366F1] to-[#3B82F6]">
-                    <Bot className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <div className="rounded-2xl rounded-bl-sm bg-[#F1F5F9] px-4 py-3">
-                      <p className="text-[13px] text-[#0F172A] mb-2">好的，我来查询本月各产品线的营收汇总数据。已为您生成以下 SQL：</p>
-                      <div className="rounded-lg bg-[#1E293B] p-3">
-                        <code className="text-[11px] font-mono text-[#93C5FD] leading-relaxed whitespace-pre-wrap">
-{`SELECT product_line,
-  SUM(amount) AS revenue
-FROM public.orders
-WHERE created_at >= '2026-03-01'
-GROUP BY product_line
-ORDER BY revenue DESC;`}
-                        </code>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button type="button" className="flex items-center gap-1 rounded-md bg-[#2563EB] px-2.5 py-1 cursor-pointer">
-                        <Play className="h-3 w-3 text-white" />
-                        <span className="text-[11px] font-medium text-white">执行查询</span>
-                      </button>
-                      <button type="button" className="flex items-center gap-1 rounded-md border border-[#E2E8F0] px-2.5 py-1 cursor-pointer">
-                        <Copy className="h-3 w-3 text-[#64748B]" />
-                        <span className="text-[11px] text-[#64748B]">复制 SQL</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Second user message */}
-                <div className="flex justify-end">
-                  <div className="max-w-[70%] rounded-2xl rounded-br-sm bg-[#2563EB] px-4 py-3">
-                    <button type="button" className="text-[13px] text-white cursor-pointer">
-                      帮我把这个结果可视化展示出来
-                    </button>
-                  </div>
-                </div>
-
-                {/* Second AI response */}
-                <div className="flex gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#6366F1] to-[#3B82F6]">
-                    <Bot className="h-4 w-4 text-white" />
-                  </div>
-                  <div className="rounded-2xl rounded-bl-sm bg-[#F1F5F9] px-4 py-3">
-                    <p className="text-[13px] text-[#0F172A]">
-                      已为您生成可视化图表。查询 1,847 条订单数据后发现：主营品线占总收入 42%，其次为电子产品线 28%，增长较上月上升 8%，服务类占比最小。
-                    </p>
-                  </div>
-                </div>
-              </>
+              <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-[#E2E8F0] bg-[#F8FAFC] px-6 text-center">
+                <Bot className="h-12 w-12 text-[#CBD5E1]" />
+                <p className="mt-4 text-sm font-medium text-[#0F172A]">
+                  {hasCurrentConversation ? '当前对话还没有消息' : '当前没有可展示的真实消息'}
+                </p>
+                <p className="mt-2 max-w-[360px] text-sm leading-6 text-[#94A3B8]">
+                  {hasCurrentConversation
+                    ? '发送第一条问题后，这里只会展示后端真实返回的问答记录。'
+                    : '请选择左侧已有对话，或先选择数据集后创建新对话。'}
+                </p>
+              </div>
             )}
           </div>
         </div>

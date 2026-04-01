@@ -17,6 +17,7 @@ interface PageModalProps {
   onOpenChange?: (open: boolean) => void
   onClose?: () => void
   title?: string
+  ariaLabel?: string
   description?: string
   children: React.ReactNode
   footer?: React.ReactNode
@@ -30,6 +31,7 @@ export function PageModal({
   onOpenChange,
   onClose,
   title,
+  ariaLabel,
   description,
   children,
   footer,
@@ -48,7 +50,8 @@ export function PageModal({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className={cn("sm:max-w-[28rem]", className)}
+        aria-label={ariaLabel}
+        className={cn("flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-[28rem]", className)}
         style={width ? { maxWidth: typeof width === 'number' ? `${width}px` : width } : undefined}
       >
         {(title || description) && (
@@ -57,7 +60,7 @@ export function PageModal({
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
         )}
-        <div className={cn("py-5", bodyClassName)}>{children}</div>
+        <div className={cn("min-h-0 flex-1 overflow-y-auto py-5", bodyClassName)}>{children}</div>
         {footer && <DialogFooter className="border-t border-border pt-4">{footer}</DialogFooter>}
       </DialogContent>
     </Dialog>

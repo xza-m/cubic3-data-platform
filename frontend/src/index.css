@@ -311,6 +311,18 @@ time,
   --os-padding-axis: 8px;
 }
 
+.modal-scrollbar-hidden {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.modal-scrollbar-hidden::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
+}
+
 /* ============================================
    Dashboard 自定义样式
    ============================================ */

@@ -102,6 +102,28 @@ WHERE o.created_at >= CURRENT_DATE - INTERVAL '30 day'
 GROUP BY o.order_id, o.status, c.name
 LIMIT 100`
 
+const queryToolbarIconButtonClass =
+  'flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md bg-slate-100 p-0 text-slate-500 transition-colors hover:bg-slate-200'
+
+const COMPACT_VIEWPORT_QUERY = '(max-width: 1279px)'
+
+function useCompactViewport() {
+  const [isCompact, setIsCompact] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const media = window.matchMedia(COMPACT_VIEWPORT_QUERY)
+    const update = () => setIsCompact(media.matches)
+
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  return isCompact
+}
+
 const normalizeQueryColumns = (columns: unknown): string[] => {
   if (!Array.isArray(columns)) return []
   return columns.map((column) => {
@@ -152,6 +174,7 @@ export default function QueryCenterDashboard() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const location = useLocation()
+  const isCompactViewport = useCompactViewport()
   const [selectedSource, setSelectedSource] = useState<number>()
   const [selectedDatabase, setSelectedDatabase] = useState<string>()
   const [sql, setSql] = useState(DEFAULT_SQL)
@@ -166,6 +189,17 @@ export default function QueryCenterDashboard() {
   const [saveFormData, setSaveFormData] = useState({ query_name: '', description: '' })
   const [activeQueryId, setActiveQueryId] = useState<number>()
   const [legacyView, setLegacyView] = useState<LegacyQueryView | null>(null)
+
+  useEffect(() => {
+    if (isCompactViewport) {
+      setSchemaCollapsed(true)
+      setTemplateCollapsed(true)
+      return
+    }
+
+    setSchemaCollapsed(false)
+    setTemplateCollapsed(true)
+  }, [isCompactViewport])
 
   const { data: datasourcesData } = useQuery({
     queryKey: ['datasources'],
@@ -208,14 +242,9 @@ export default function QueryCenterDashboard() {
     enabled: Boolean(selectedSource),
   })
   const databaseOptions = Array.isArray(databasesData?.data) ? databasesData.data : []
-  const selectedDatasource = datasources.find((item: DataSource) => item.id === selectedSource)
   const datasourceSelectOptions = datasources.map((item: DataSource) => ({
     value: String(item.id),
     label: item.name,
-  }))
-  const databaseSelectOptions = databaseOptions.map((database) => ({
-    value: database,
-    label: database,
   }))
 
   useEffect(() => {
@@ -478,69 +507,75 @@ export default function QueryCenterDashboard() {
   const resultData = results?.data.map((row, index) => ({ id: index, ...row })) || []
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#F8FAFC]" data-testid="query-center-dashboard-layout">
-      <section className={cn(
-        'flex shrink-0 flex-col border-r border-slate-200 bg-white transition-all duration-200 ease-in-out',
-        schemaCollapsed ? 'w-[56px]' : 'w-[240px]',
-      )}>
-        <div className="flex h-11 items-center justify-between border-b border-slate-200 px-3">
-          <button
-            type="button"
-            onClick={() => setSchemaCollapsed((current) => !current)}
-            className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
-            aria-label={schemaCollapsed ? '展开结构树' : '折叠结构树'}
-          >
-            {schemaCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
-          </button>
-          {!schemaCollapsed ? (
-            <div className="min-w-0 flex-1 pl-2">
-              <FormSelect
-                value={selectedSource ? String(selectedSource) : undefined}
-                onValueChange={(value) => setSelectedSource(value ? Number(value) : undefined)}
-                options={datasourceSelectOptions}
-                placeholder="选择数据源"
-                className="h-[34px] rounded-xl border-slate-200 bg-white text-sm"
-              />
-            </div>
-          ) : null}
-        </div>
+    <div className="flex h-full flex-col overflow-auto bg-[#F8FAFC] xl:flex-row xl:overflow-hidden" data-testid="query-center-dashboard-layout">
+      <section
+        className={cn(
+          'order-2 flex shrink-0 flex-col border-t border-slate-200 bg-white transition-all duration-200 ease-in-out xl:order-1 xl:h-full xl:border-r xl:border-t-0',
+          schemaCollapsed ? 'w-full xl:w-[56px]' : 'w-full xl:w-[280px]',
+        )}
+        data-testid="query-center-schema-panel"
+      >
         {schemaCollapsed ? (
-          <div className="flex min-h-0 flex-1 items-center justify-center">
-            <span className="text-[11px] tracking-[0.16em] text-slate-400 [writing-mode:vertical-lr]">数据库结构</span>
+          <div className="flex h-full flex-col">
+            <div className="flex h-11 items-center justify-between border-b border-slate-200 px-3 xl:h-full xl:flex-col xl:justify-center xl:px-0">
+              <button
+                type="button"
+                onClick={() => setSchemaCollapsed(false)}
+                className={queryToolbarIconButtonClass}
+                aria-label="展开结构树"
+              >
+                <PanelLeftOpen className="h-3.5 w-3.5" />
+              </button>
+              <span className="text-[11px] tracking-[0.16em] text-slate-400 xl:[writing-mode:vertical-lr]">数据库结构</span>
+            </div>
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="border-b border-slate-200 px-3 py-2">
-              <FormSelect
-                value={selectedDatabase}
-                onValueChange={setSelectedDatabase}
-                options={databaseSelectOptions}
-                placeholder="选择数据库"
-                className="h-9 rounded-xl border-slate-200 bg-white text-sm"
-                disabled={!selectedDatasource || databaseSelectOptions.length === 0}
+            <div className="border-b border-slate-200 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <FormSelect
+                    value={selectedSource ? String(selectedSource) : undefined}
+                    onValueChange={(value) => setSelectedSource(value ? Number(value) : undefined)}
+                    options={datasourceSelectOptions}
+                    placeholder="选择数据源"
+                    className="h-[30px] rounded-md border-0 bg-slate-100 text-sm text-slate-700 shadow-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSchemaCollapsed((current) => !current)}
+                  className={queryToolbarIconButtonClass}
+                  aria-label={schemaCollapsed ? '展开结构树' : '折叠结构树'}
+                >
+                  {schemaCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <SchemaBrowser
+                datasourceId={selectedSource}
+                sourceType={datasources.find((item: DataSource) => item.id === selectedSource)?.source_type}
+                title="数据库结构"
+                showTitle={false}
+                showSearch={false}
+                compactTree={true}
+                activeDatabase={selectedDatabase}
+                hideDatabaseLevel={true}
+                autoExpandInitial={false}
+                showStatusBar={false}
+                collapsible={false}
+                onInsert={insertText}
+                onDoubleClick={(_node, qualifiedName) => insertText(qualifiedName)}
+                onPreview={handlePreviewTable}
+                className="h-full border-l-0"
               />
             </div>
-            <SchemaBrowser
-              datasourceId={selectedSource}
-              sourceType={datasources.find((item: DataSource) => item.id === selectedSource)?.source_type}
-              title="数据库结构"
-              showTitle={false}
-              showSearch={false}
-              compactTree={true}
-              activeDatabase={selectedDatabase}
-              hideDatabaseLevel={true}
-              showStatusBar={false}
-              collapsible={false}
-              onInsert={insertText}
-              onDoubleClick={(_node, qualifiedName) => insertText(qualifiedName)}
-              onPreview={handlePreviewTable}
-              className="border-l-0"
-            />
           </div>
         )}
       </section>
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="order-1 flex min-w-0 flex-1 flex-col xl:order-2">
         {legacyView ? (
           <div
             data-testid="query-center-legacy-context"
@@ -550,8 +585,8 @@ export default function QueryCenterDashboard() {
             <div className="mt-1 text-xs text-blue-700">{LEGACY_QUERY_VIEW_COPY[legacyView].description}</div>
           </div>
         ) : null}
-        <div className="flex h-11 items-center justify-between border-b border-slate-200 bg-white px-3">
-          <div className="flex items-center gap-2">
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
             <FormButton onClick={handleExecute} disabled={executing} loading={executing} className="h-[30px] rounded-lg bg-blue-600 px-3 text-xs font-medium">
               <Play className="mr-1.5 h-3.5 w-3.5" />
               运行
@@ -569,9 +604,24 @@ export default function QueryCenterDashboard() {
               模版
             </div>
           </div>
-          <div className="inline-flex h-[30px] items-center rounded-md bg-slate-100 px-3 font-mono text-[11px] text-slate-700">
-            LIMIT 1000
-            <ChevronDown className="ml-1.5 h-3.5 w-3.5 text-slate-500" />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex h-[30px] items-center rounded-md bg-slate-100 px-3 font-mono text-[11px] text-slate-700 transition-colors hover:bg-slate-200"
+            >
+              LIMIT 1000
+              <ChevronDown className="ml-1.5 h-3.5 w-3.5 text-slate-500" />
+            </button>
+            {!templateCollapsed ? (
+              <button
+                type="button"
+                aria-label="折叠模版库"
+                onClick={() => setTemplateCollapsed(true)}
+                className={queryToolbarIconButtonClass}
+              >
+                <PanelRightClose className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -663,26 +713,23 @@ export default function QueryCenterDashboard() {
 
       <aside
         className={cn(
-          'flex shrink-0 flex-col border-l border-slate-200 bg-white transition-all duration-200 ease-in-out',
-          templateCollapsed ? 'w-[56px]' : 'w-[320px]',
+          'order-3 flex shrink-0 flex-col border-t border-slate-200 bg-white transition-all duration-200 ease-in-out xl:h-full xl:border-l xl:border-t-0',
+          templateCollapsed ? 'w-full xl:w-[56px]' : 'w-full xl:w-[320px]',
         )}
+        data-testid="query-center-template-panel"
       >
         {templateCollapsed ? (
           <div className="flex h-full flex-col">
-            <div className="flex h-11 items-center justify-center border-b border-slate-200">
+            <div className="flex h-11 items-center justify-between border-b border-slate-200 px-3 xl:h-full xl:flex-col xl:justify-center xl:px-0">
               <button
                 type="button"
                 aria-label="展开模版库"
                 onClick={() => setTemplateCollapsed(false)}
-                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
+                className={queryToolbarIconButtonClass}
               >
                 <PanelRightOpen className="h-3.5 w-3.5" />
               </button>
-            </div>
-            <div className="flex min-h-0 flex-1 items-center justify-center">
-              <span className="text-[11px] tracking-[0.16em] text-slate-400 [writing-mode:vertical-lr]">
-                模版库
-              </span>
+              <span className="text-[11px] tracking-[0.16em] text-slate-400 xl:[writing-mode:vertical-lr]">模版库</span>
             </div>
           </div>
         ) : (
@@ -692,7 +739,7 @@ export default function QueryCenterDashboard() {
                 <h2 className="text-sm font-semibold text-slate-900">模版库</h2>
                 <div className="flex items-center gap-2">
                   <TooltipProvider>
-                    <Tooltip>
+                  <Tooltip>
                       <TooltipTrigger asChild>
                         <div className="rounded-md bg-slate-100 px-2 py-1 text-[11px] text-slate-500">
                           {templates.length} 条
@@ -701,14 +748,6 @@ export default function QueryCenterDashboard() {
                       <TooltipContent><p>当前按搜索条件返回的模版数量</p></TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                  <button
-                    type="button"
-                    aria-label="折叠模版库"
-                    onClick={() => setTemplateCollapsed(true)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm"
-                  >
-                    <PanelRightClose className="h-3.5 w-3.5" />
-                  </button>
                 </div>
               </div>
               <div className="mt-3 space-y-2">

@@ -103,9 +103,9 @@ describe('Login page', () => {
 
     const passwordInput = screen.getByLabelText('密码') as HTMLInputElement
     expect(passwordInput.type).toBe('password')
-    fireEvent.click(screen.getByRole('button', { name: '显示密码' }))
+    fireEvent.click(screen.getByRole('button', { name: '显示输入内容' }))
     expect(passwordInput.type).toBe('text')
-    fireEvent.click(screen.getByRole('button', { name: '隐藏密码' }))
+    fireEvent.click(screen.getByRole('button', { name: '隐藏输入内容' }))
     expect(passwordInput.type).toBe('password')
 
     fireEvent.click(screen.getByRole('button', { name: '飞书登录' }))

@@ -66,7 +66,7 @@ vi.mock('../../components/AppCenter/ConfigDrawer', () => ({
     if (!open) return null
 
     return createPortal(
-      <div role="dialog" aria-label="实例配置抽屉" style={{ pointerEvents: 'auto' }}>
+      <div role="dialog" aria-label="实例配置弹窗" style={{ pointerEvents: 'auto' }}>
         <p>{instance ? `编辑 ${instance.name}` : `新建 ${app?.name}`}</p>
         <button type="button" onClick={() => onClose?.()}>
           关闭
@@ -81,16 +81,18 @@ vi.mock('@/components/business', () => ({
   PageModal: ({
     open,
     title,
+    ariaLabel,
     description,
     children,
   }: {
     open: boolean
     title?: string
+    ariaLabel?: string
     description?: string
     children: ReactNode
   }) => (
     open ? createPortal(
-      <div role="dialog" aria-label={title || '应用详情'}>
+      <div role="dialog" aria-label={ariaLabel || title || '应用详情'}>
         {title ? <h2>{title}</h2> : null}
         {description ? <p>{description}</p> : null}
         {children}
@@ -208,6 +210,9 @@ describe('AppMarket page', () => {
     renderPage()
 
     expect(await screen.findByText('应用中心')).toBeInTheDocument()
+    expect(screen.getByTestId('app-market-grid')).toHaveClass('grid-cols-1')
+    expect(screen.getByTestId('app-market-grid')).toHaveClass('sm:grid-cols-2')
+    expect(screen.getByTestId('app-market-grid')).toHaveClass('xl:grid-cols-3')
     expect(await screen.findByText('日报推送')).toBeInTheDocument()
     expect(screen.getByText('数据助手')).toBeInTheDocument()
     expect(appMarketMocks.getApps).toHaveBeenCalledWith({
@@ -252,7 +257,7 @@ describe('AppMarket page', () => {
     renderPage()
 
     const cardTitle = await screen.findByText('日报推送')
-    await user.click(within(cardTitle.closest('.group') as HTMLElement).getByRole('button', { name: '查看' }))
+    await user.click(cardTitle.closest('.group') as HTMLElement)
 
     await waitFor(() => {
       expect(appMarketMocks.getInstances).toHaveBeenCalledWith({
@@ -274,12 +279,15 @@ describe('AppMarket page', () => {
     renderPage()
 
     const cardTitle = await screen.findByText('日报推送')
-    await user.click(within(cardTitle.closest('.group') as HTMLElement).getByRole('button', { name: '查看' }))
+    await user.click(cardTitle.closest('.group') as HTMLElement)
     const detailDialog = await screen.findByRole('dialog', { name: '日报推送' })
 
     await user.click(within(detailDialog).getByRole('button', { name: '新建实例' }))
-    expect(await screen.findByRole('dialog', { name: '实例配置抽屉' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: '实例配置弹窗' })).toBeInTheDocument()
     expect(screen.getByText('新建 日报推送')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '日报推送' })).not.toBeInTheDocument()
+    })
     expect(typeof appMarketMocks.submitConfig).toBe('function')
     await act(async () => {
       await appMarketMocks.submitConfig?.({
@@ -302,9 +310,16 @@ describe('AppMarket page', () => {
       })
     })
 
+    const reopenCardTitle = await screen.findByText('日报推送')
+    await user.click(reopenCardTitle.closest('.group') as HTMLElement)
+    expect(await screen.findByRole('dialog', { name: '日报推送' })).toBeInTheDocument()
+
     await user.click(screen.getByRole('button', { name: '编辑 日报实例' }))
-    expect(await screen.findByRole('dialog', { name: '实例配置抽屉' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '编辑 日报实例' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: '实例配置弹窗' })).toBeInTheDocument()
+    expect(screen.getByText('编辑 日报实例')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '日报推送' })).not.toBeInTheDocument()
+    })
     expect(typeof appMarketMocks.submitConfig).toBe('function')
     await act(async () => {
       await appMarketMocks.submitConfig?.({
@@ -323,6 +338,33 @@ describe('AppMarket page', () => {
         schedule_type: 'manual',
         enabled: true,
       })
+    })
+  })
+
+  it('不再展示页头新建实例和卡片级查看/新建按钮', async () => {
+    renderPage()
+
+    await screen.findByText('日报推送')
+
+    expect(screen.queryByRole('button', { name: '新建实例' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '查看' })).not.toBeInTheDocument()
+  })
+
+  it('详情弹窗中的新建实例会关闭详情并打开实例配置弹窗', async () => {
+    const user = userEvent.setup()
+
+    renderPage()
+
+    const cardTitle = await screen.findByText('数据助手')
+    await user.click(cardTitle.closest('.group') as HTMLElement)
+
+    const detailDialog = await screen.findByRole('dialog', { name: '数据助手' })
+    await user.click(within(detailDialog).getByRole('button', { name: '新建实例' }))
+
+    expect(await screen.findByRole('dialog', { name: '实例配置弹窗' })).toBeInTheDocument()
+    expect(screen.getByText('新建 数据助手')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '数据助手' })).not.toBeInTheDocument()
     })
   })
 

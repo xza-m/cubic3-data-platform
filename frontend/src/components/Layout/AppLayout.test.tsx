@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -19,6 +19,7 @@ function renderLayout(initialEntry = '/dashboard') {
           <Route path="/dashboard" element={<div>工作台页面</div>} />
           <Route path="/semantic/cubes" element={<div>Cube 页面</div>} />
           <Route path="/data-center/datasources" element={<div>数据源页面</div>} />
+          <Route path="/data-center/datasets" element={<div>数据集页面</div>} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -26,8 +27,11 @@ function renderLayout(initialEntry = '/dashboard') {
 }
 
 describe('AppLayout', () => {
-  it('渲染暗色侧边栏和导航项', () => {
+  it('渲染暗色侧边栏和导航项', async () => {
+    const user = userEvent.setup()
     renderLayout('/dashboard')
+
+    await user.hover(screen.getByTestId('app-shell-sidebar'))
 
     expect(screen.getByText('Cubic³')).toBeInTheDocument()
     expect(screen.getByText('工作台')).toBeInTheDocument()
@@ -44,8 +48,11 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('button', { name: '退出登录' })).not.toBeInTheDocument()
   })
 
-  it('语义中心子导航使用最新 IA 文案与入口', () => {
+  it('语义中心子导航使用最新 IA 文案与入口', async () => {
+    const user = userEvent.setup()
     renderLayout('/semantic/cubes')
+
+    await user.hover(screen.getByTestId('app-shell-sidebar'))
 
     expect(screen.getByText('语义工作台')).toBeInTheDocument()
     expect(screen.getByText('Cube 管理')).toBeInTheDocument()
@@ -62,12 +69,19 @@ describe('AppLayout', () => {
 
     Object.defineProperty(globalThis, 'localStorage', {
       configurable: true,
-      value: { removeItem },
+      value: {
+        getItem: vi.fn(),
+        setItem: vi.fn(),
+        removeItem,
+        clear: vi.fn(),
+      },
     })
 
     renderLayout('/semantic/cubes')
 
-    await user.click(screen.getByRole('button', { name: '退出登录' }))
+    await user.hover(screen.getByTestId('app-shell-sidebar'))
+
+    fireEvent.click(screen.getByRole('button', { name: '退出登录' }))
 
     expect(removeItem).toHaveBeenCalledWith('auth_token')
     expect(screen.getByText('登录页')).toBeInTheDocument()
@@ -76,5 +90,35 @@ describe('AppLayout', () => {
       configurable: true,
       value: originalLocalStorage,
     })
+  })
+
+  it('鼠标仍停留在侧边栏时，切换 tab 后应保持展开', async () => {
+    const user = userEvent.setup()
+    renderLayout('/dashboard')
+
+    const sidebar = screen.getByTestId('app-shell-sidebar')
+    fireEvent.mouseEnter(sidebar)
+    expect(sidebar.className).toContain('w-60')
+
+    await user.click(screen.getByRole('button', { name: /数据源/i }))
+
+    expect(await screen.findByText('数据源页面')).toBeInTheDocument()
+    expect(sidebar.className).toContain('w-60')
+  })
+
+  it('鼠标仍停留在侧边栏时，切换二级功能页后应保持展开', async () => {
+    const user = userEvent.setup()
+    renderLayout('/data-center/datasources')
+
+    const sidebar = screen.getByTestId('app-shell-sidebar')
+    await user.hover(sidebar)
+
+    const datasetButton = screen.getByRole('button', { name: /^数据集$/ })
+    await user.click(datasetButton)
+
+    expect(await screen.findByText('数据集页面')).toBeInTheDocument()
+    expect(sidebar.className).toContain('w-60')
+    expect(screen.getByRole('button', { name: /^数据源$/ })).toBeVisible()
+    expect(screen.getByRole('button', { name: /^数据集$/ })).toBeVisible()
   })
 })

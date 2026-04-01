@@ -2,6 +2,7 @@
 
 > 状态：设计输入，需结合当前 Agent / DataChat / 飞书接入实现核对是否已落地。
 > 不作为当前实现基线；当前事实请优先参考 `../../README.md`、`../TECH_STACK_AND_ARCHITECTURE.md` 与现有代码。
+> 说明：本文档聚焦智能问数域的多信道 Agent 能力；应用中心中的运行型 `DataAgent` 管理面（定义 / 实例 / 执行）请以 `app_center_prd.md` 为准。
 
 ## 一、背景与目标
 
@@ -598,6 +599,12 @@ AppCenter（数据应用中心）作为 Agent 体系的**管理面**，不负责
 | **监控** | 执行日志（`agent_query_log`）、反馈记录 |
 
 与推送类应用（`report_push`、`anomaly_monitor`）的区别：推送类应用由 `ExecutionService` 调度 Executor 执行；Agent 类应用由用户消息驱动，`DataAgentExecutor` 仅负责配置校验，不参与运行时执行。
+
+补充归属说明：
+
+- `data_agent` 继续归入应用中心，因为它属于固定 prompt + tool 的运行型能力
+- `DataChat` 与飞书问数 Bot 属于同一交互型问数能力的两个接入信道
+- 飞书 Bot 的差异体现在接入信道、授权和渠道配置，不体现在一级产品归属
 
 #### 为什么是 AppInstance 而不是独立配置
 

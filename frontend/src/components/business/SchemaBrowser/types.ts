@@ -73,6 +73,8 @@ export interface SchemaBrowserProps extends SchemaBrowserCallbacks {
     activeDatabase?: string
     /** 隐藏 database 层，直接展示 schema/table/field */
     hideDatabaseLevel?: boolean
+    /** 首次加载时是否自动展开首层节点 */
+    autoExpandInitial?: boolean
     /** 是否显示底部状态栏 */
     showStatusBar?: boolean
     /** 自定义 className */

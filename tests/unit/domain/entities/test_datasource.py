@@ -204,3 +204,30 @@ class TestDatasource:
         assert masked["extra_config"]["catalog_sync"]["status"] == DataSource.CATALOG_SYNC_PENDING
         assert raw["extra_config"]["catalog_sync"]["database_count"] == 0
         assert repr(datasource) == "<DataSource Serialized (postgresql)>"
+
+    def test_catalog_sync_summary_changes_can_persist_to_database(self, app, db_session):
+        datasource = DataSource(
+            id=999001,
+            name="Persisted",
+            source_type="postgresql",
+            connection_config={"host": "localhost"},
+            extra_config={},
+            is_active=True,
+            created_by="tester",
+        )
+
+        db_session.add(datasource)
+        db_session.commit()
+
+        datasource.mark_catalog_sync_syncing()
+        db_session.commit()
+        datasource.mark_catalog_sync_synced(["dw", "ads"])
+        db_session.commit()
+
+        db_session.expire_all()
+        reloaded = db_session.query(DataSource).filter_by(id=datasource.id).first()
+
+        assert reloaded is not None
+        assert reloaded.get_catalog_sync_summary()["status"] == DataSource.CATALOG_SYNC_SYNCED
+        assert reloaded.get_catalog_sync_summary()["tracked_databases"] == ["ads", "dw"]
+        assert reloaded.get_catalog_sync_summary()["database_count"] == 2

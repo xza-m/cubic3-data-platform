@@ -280,6 +280,9 @@ describe('QueryCenter Dashboard page', () => {
     renderPage()
 
     expect(await screen.findByTestId('query-center-dashboard-layout')).toBeInTheDocument()
+    expect(screen.getByTestId('query-center-dashboard-layout')).toHaveClass('flex-col')
+    expect(screen.getByTestId('query-center-schema-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('query-center-template-panel')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开模版库' })).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('搜索模版...')).not.toBeInTheDocument()
     expect(screen.getByText('模版库')).toBeInTheDocument()
@@ -406,8 +409,6 @@ describe('QueryCenter Dashboard page', () => {
     await waitFor(() => {
       expect(dashboardMocks.getDataSourceDatabases).toHaveBeenCalledWith(2)
     })
-    await waitFor(() => {
-      expect(screen.getByLabelText('选择数据库')).toHaveValue('analytics')
-    })
+    expect(screen.queryByLabelText('选择数据库')).not.toBeInTheDocument()
   })
 })

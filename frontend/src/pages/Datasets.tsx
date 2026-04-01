@@ -137,7 +137,7 @@ export default function Datasets() {
     { title: '影响分析', reason: '下游影响范围尚未接入真实任务和订阅关系，暂不开放操作。' },
     { title: '质量评分', reason: '质量评分依赖真实治理规则与监控结果回传，当前阶段仅显示禁用态。' },
   ]
-  const tableColumnsClass = 'grid grid-cols-[minmax(260px,2.1fr)_minmax(260px,1.7fr)_120px_minmax(120px,0.9fr)_120px] gap-4'
+  const tableColumnsClass = 'grid grid-cols-[minmax(220px,1.9fr)_minmax(220px,1.5fr)_minmax(120px,0.8fr)_110px_minmax(120px,0.8fr)_120px] gap-4'
 
   return (
     <DataCenterPageShell
@@ -228,6 +228,7 @@ export default function Datasets() {
             <div className={`${tableColumnsClass} items-center border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3.5`}>
               <span className="min-w-0 text-xs font-semibold text-[#64748B]">数据集</span>
               <span className="min-w-0 text-xs font-semibold text-[#64748B]">物理表</span>
+              <span className="text-xs font-semibold text-[#64748B]">数据源类型</span>
               <span className="text-xs font-semibold text-[#64748B]">同步状态</span>
               <span className="text-xs font-semibold text-[#64748B]">负责人</span>
               <span className="text-xs font-semibold text-[#64748B]">操作</span>
@@ -266,6 +267,11 @@ export default function Datasets() {
                     }
                   >
                     {ds.physical_table || (ds.dataset_type === 'virtual' ? '视图' : ds.dataset_type === 'file' ? ds.file_metadata?.file_name : '-')}
+                  </span>
+
+                  {/* Source type */}
+                  <span className="block min-w-0 truncate text-[13px] text-[#64748B]" title={ds.source_type || '-'}>
+                    {ds.source_type || '-'}
                   </span>
 
                   {/* Sync status */}

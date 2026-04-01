@@ -2,7 +2,7 @@
  * 数据源管理页面
  * 基于 uiv2.pen 设计稿 (Hpudj)
  */
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Database,
@@ -74,6 +74,58 @@ interface DataSourceTypeOption {
   icon?: string
 }
 
+function DataSourceBrandIcon({ sourceType }: { sourceType: string }) {
+  const baseClass = 'flex h-12 w-12 items-center justify-center rounded-xl shadow-[inset_0_1px_0_#FFFFFF80]'
+
+  if (sourceType === 'postgresql') {
+    return (
+      <div className={`${baseClass} bg-[#E8F0FF] text-[#336791]`} aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current">
+          <path d="M12.2 2.4c-4.7 0-7.7 3.3-7.7 8.1 0 2.8 1.3 4.8 3.6 5.9v3.3c0 .6.7.9 1.2.5l2.1-1.6c.2-.1.4-.2.6-.2h1.1c4.1 0 6.9-3 6.9-7.8 0-4.9-3.1-8.2-7.8-8.2Zm2.7 11.4h-1.8l-.8 2.3a.8.8 0 0 1-1.5-.5l.7-1.8h-1.1c-1.9 0-3-1.2-3-3.1 0-2 1.2-3.3 3.3-3.3h4.1c1.9 0 3 1.2 3 3.1 0 1.9-1.2 3.3-2.9 3.3Z" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (sourceType === 'mysql') {
+    return (
+      <div className={`${baseClass} bg-[#FFF3E8] text-[#F29111]`} aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current">
+          <path d="M17.7 6.2c-1.5-.7-3.2-.7-4.8-.1l-2 .7-1.8-.5a.8.8 0 0 0-.9 1.2l1.2 1.9-.7 1.7a6 6 0 0 0 1.8 7.1l1.4 1.1c.4.3 1 .1 1.2-.4l.5-1.5 1.6-.2a5.7 5.7 0 0 0 4.9-4.2l.3-1.2c.4-1.8-.5-4.1-2.7-5.6Zm-5 7.7a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8Zm3.4-1.7a.9.9 0 1 1 0-1.8.9.9 0 0 1 0 1.8Z" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (sourceType === 'clickhouse') {
+    return (
+      <div className={`${baseClass} bg-[#FFF7D6] text-[#FFCC01]`} aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-7 w-7">
+          <rect x="4" y="5" width="4" height="14" rx="1" fill="currentColor" />
+          <rect x="10" y="8" width="4" height="11" rx="1" fill="#FF6A00" />
+          <rect x="16" y="11" width="4" height="8" rx="1" fill="#1D4ED8" />
+        </svg>
+      </div>
+    )
+  }
+
+  if (sourceType === 'maxcompute') {
+    return (
+      <div className={`${baseClass} bg-[#EEF2FF] text-[#6D28D9]`} aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current">
+          <path d="M12 3.5 4.8 7.7v8.6L12 20.5l7.2-4.2V7.7L12 3.5Zm0 2.1 4.9 2.8L12 11.2 7.1 8.4 12 5.6Zm-5.1 4.6 4.2 2.4v5l-4.2-2.5v-4.9Zm6 7.4v-5l4.2-2.4v5l-4.2 2.4Z" />
+        </svg>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`${baseClass} bg-slate-100 text-slate-500`} aria-hidden="true">
+      <Database className="h-6 w-6" />
+    </div>
+  )
+}
+
 export default function Datasources() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -84,6 +136,7 @@ export default function Datasources() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [dsToDelete, setDsToDelete] = useState<DataSource | null>(null)
   const [syncingCatalogId, setSyncingCatalogId] = useState<number | null>(null)
+  const [pollingCatalogIds, setPollingCatalogIds] = useState<number[]>([])
   // 创建表单数据
   const [createFormData, setCreateFormData] = useState({
     name: '',
@@ -112,7 +165,8 @@ export default function Datasources() {
 
   const { data: listData, isLoading, isError, error } = useQuery({
     queryKey: ['datasources'],
-    queryFn: () => getDataSources({ page: 1, page_size: 100 })
+    queryFn: () => getDataSources({ page: 1, page_size: 100 }),
+    refetchInterval: pollingCatalogIds.length > 0 ? 2000 : false,
   })
 
   // 获取数据源类型列表
@@ -201,12 +255,44 @@ export default function Datasources() {
     mutationFn: (id: number) => syncDataSourceCatalog(id),
     onMutate: (id: number) => {
       setSyncingCatalogId(id)
+      setPollingCatalogIds((current) => (current.includes(id) ? current : [...current, id]))
+      queryClient.setQueryData(['datasources'], (current: typeof listData) => {
+        if (!current?.data?.items) {
+          return current
+        }
+
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            items: current.data.items.map((item) => {
+              if (item.id !== id) {
+                return item
+              }
+
+              const existingSync = item.extra_config?.catalog_sync || {}
+              return {
+                ...item,
+                extra_config: {
+                  ...(item.extra_config || {}),
+                  catalog_sync: {
+                    ...existingSync,
+                    status: 'syncing',
+                    last_error: null,
+                  },
+                },
+              }
+            }),
+          },
+        }
+      })
     },
-    onSuccess: () => {
+    onSuccess: (_result, id) => {
       toast({
         title: '目录同步已触发',
-        description: '目录刷新任务已加入队列，请稍后查看同步摘要。',
+        description: '目录刷新任务已加入队列，卡片会自动刷新同步状态。',
       })
+      setPollingCatalogIds((current) => (current.includes(id) ? current : [...current, id]))
       queryClient.invalidateQueries({ queryKey: ['datasources'] })
     },
     onError: (error: unknown) => {
@@ -221,6 +307,31 @@ export default function Datasources() {
       setSyncingCatalogId(null)
     }
   })
+
+  useEffect(() => {
+    const items = listData?.data?.items || []
+    if (!pollingCatalogIds.length) {
+      return
+    }
+
+    const finishedIds = new Set(
+      items
+        .filter((item) => {
+          if (!pollingCatalogIds.includes(item.id)) {
+            return false
+          }
+          const status = item.extra_config?.catalog_sync?.status
+          return status === 'synced' || status === 'failed'
+        })
+        .map((item) => item.id),
+    )
+
+    if (!finishedIds.size) {
+      return
+    }
+
+    setPollingCatalogIds((current) => current.filter((id) => !finishedIds.has(id)))
+  }, [listData, pollingCatalogIds])
 
   const handleEdit = (ds: DataSource) => {
     setEditingId(ds.id)
@@ -591,11 +702,14 @@ export default function Datasources() {
                     className="flex flex-col gap-3 rounded-xl bg-white p-5 shadow-[0_2px_16px_#0F172A08]"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-2">
-                        <span className="text-[15px] font-semibold text-[#0F172A]">{ds.name}</span>
-                        {ds.description ? (
-                          <p className="text-[13px] leading-6 text-[#64748B]">{ds.description}</p>
-                        ) : null}
+                      <div className="flex min-w-0 items-start gap-3">
+                        <DataSourceBrandIcon sourceType={ds.source_type} />
+                        <div className="min-w-0 space-y-2">
+                          <span className="block truncate text-[15px] font-semibold text-[#0F172A]">{ds.name}</span>
+                          {ds.description ? (
+                            <p className="line-clamp-2 text-[13px] leading-6 text-[#64748B]">{ds.description}</p>
+                          ) : null}
+                        </div>
                       </div>
                       <span className={`rounded-md px-2.5 py-1 text-xs font-medium ${badge.bg} ${badge.text}`}>
                         {config.name}
@@ -631,6 +745,10 @@ export default function Datasources() {
                         <span>最近同步</span>
                         <span>{formatRelativeSummaryTime(catalogSync.last_run_at)}</span>
                       </div>
+                      <div className="flex items-center justify-between text-xs text-[#94A3B8]">
+                        <span>已追踪库</span>
+                        <span>{catalogSync.database_count || 0} 个数据库</span>
+                      </div>
                       {catalogSync.last_error ? (
                         <div className="text-xs text-rose-600" title={catalogSync.last_error}>
                           {catalogSync.last_error}
@@ -638,7 +756,7 @@ export default function Datasources() {
                       ) : null}
                     </div>
 
-                    <div className="flex items-center gap-3 pt-1 text-[#94A3B8]">
+                    <div className="flex items-center gap-4 pt-1 text-[#94A3B8]">
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
@@ -646,7 +764,7 @@ export default function Datasources() {
                             title="同步目录"
                             onClick={() => syncCatalogMutation.mutate(ds.id)}
                             disabled={isCatalogSyncing}
-                            className="cursor-pointer hover:text-[#2563EB] disabled:opacity-50"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-50 transition-colors hover:bg-blue-50 hover:text-[#2563EB] disabled:opacity-50"
                           >
                             {isCatalogSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
                           </button>
@@ -659,7 +777,7 @@ export default function Datasources() {
                             type="button"
                             title="测试连接"
                             onClick={() => handleCardTestConnection(ds)}
-                            className="cursor-pointer hover:text-[#10B981]"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-50 transition-colors hover:bg-emerald-50 hover:text-[#10B981]"
                           >
                             <Play className="h-4 w-4" />
                           </button>
@@ -672,7 +790,7 @@ export default function Datasources() {
                             type="button"
                             title="编辑"
                             onClick={() => handleEdit(ds)}
-                            className="cursor-pointer hover:text-[#64748B]"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-50 transition-colors hover:bg-slate-100 hover:text-[#64748B]"
                           >
                             <Edit2 className="h-4 w-4" />
                           </button>
@@ -688,7 +806,7 @@ export default function Datasources() {
                               setDsToDelete(ds)
                               setDeleteConfirmOpen(true)
                             }}
-                            className="cursor-pointer hover:text-[#EF4444]"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-50 transition-colors hover:bg-rose-50 hover:text-[#EF4444]"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

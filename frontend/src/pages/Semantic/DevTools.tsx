@@ -25,17 +25,36 @@ const tabMeta = {
 
 type IdeTab = keyof typeof tabMeta
 
+const COMPACT_VIEWPORT_QUERY = '(max-width: 1279px)'
+
+function useCompactViewport() {
+  const [isCompact, setIsCompact] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const media = window.matchMedia(COMPACT_VIEWPORT_QUERY)
+    const update = () => setIsCompact(media.matches)
+
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  return isCompact
+}
+
 function IdeSkeleton() {
   return (
     <div className="flex h-full flex-col" data-testid="devtools-screen">
-      <div className="flex-1 overflow-hidden rounded-xl bg-white shadow-[0_2px_24px_#0F172A08]">
-        <div className="grid h-full xl:grid-cols-[280px_minmax(0,1fr)_280px]">
-          <Skeleton className="h-[42rem] rounded-l-xl" />
-          <div className="flex h-[42rem] flex-col">
+      <div className="flex-1 overflow-auto rounded-xl bg-white shadow-[0_2px_24px_#0F172A08] xl:overflow-hidden">
+        <div className="flex h-full flex-col xl:flex-row" data-testid="devtools-workbench-shell">
+          <Skeleton className="h-24 rounded-none xl:h-[42rem] xl:w-[280px] xl:rounded-l-xl" />
+          <div className="flex min-h-[28rem] flex-1 flex-col xl:h-[42rem]">
             <Skeleton className="h-14 rounded-none" />
             <Skeleton className="flex-1 rounded-none" />
           </div>
-          <Skeleton className="h-[42rem] rounded-r-xl" />
+          <Skeleton className="h-28 rounded-none xl:h-[42rem] xl:w-[280px] xl:rounded-r-xl" />
         </div>
       </div>
     </div>
@@ -78,12 +97,14 @@ function InspectorJoinItem({ name, joinType }: { name: string; joinType: string 
 
 export default function DevTools() {
   const [, setSearchParams] = useSearchParams()
+  const isCompactViewport = useCompactViewport()
   const [tab] = useUrlState<IdeTab>('tab', 'editor')
   const [selectedKind] = useUrlState<SemanticObjectKind>('kind', 'cube')
   const [selectedCode] = useUrlState<string>('resource', '')
   const [selectedName] = useUrlState<string>('file', '')
   const [resourceSearch] = useUrlState<string>('q', '')
   const [treeCollapsed, setTreeCollapsed] = useState(false)
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const [, setCompileStatus] = useState<CompileDebugStatus>({ state: 'idle', label: '未执行', lastRunAt: null })
   const [, setEditorDirty] = useState(false)
   const updateQueryParams = useCallback((updates: Record<string, string | undefined>) => {
@@ -151,6 +172,17 @@ export default function DevTools() {
     }
   }, [defaultSelection, selectedCode, updateQueryParams])
 
+  useEffect(() => {
+    if (isCompactViewport) {
+      setTreeCollapsed(true)
+      setInspectorCollapsed(true)
+      return
+    }
+
+    setTreeCollapsed(false)
+    setInspectorCollapsed(false)
+  }, [isCompactViewport])
+
   const workspaceTitle = selectedResource?.name || '请选择对象'
   const cubeResourceGroups = useMemo(
     () => resourceGroups.filter((group) => group.kind === 'cube'),
@@ -178,11 +210,10 @@ export default function DevTools() {
   return (
     <div className="flex h-full flex-col" data-testid="devtools-screen">
       <h1 className="sr-only">语义工作台</h1>
-      <div className="flex-1 overflow-hidden rounded-xl bg-white shadow-[0_2px_24px_#0F172A08]">
-        <div className="grid h-full xl:grid-cols-[280px_minmax(0,1fr)_280px]" style={{
-          gridTemplateColumns: treeCollapsed ? '56px minmax(0,1fr) 280px' : '280px minmax(0,1fr) 280px',
-        }}>
+      <div className="flex-1 overflow-auto rounded-xl bg-white shadow-[0_2px_24px_#0F172A08] xl:overflow-hidden">
+        <div className="flex h-full flex-col xl:flex-row" data-testid="devtools-workbench-shell">
             {/* ── Left Panel: Resource Tree ── */}
+            <div className={treeCollapsed ? 'order-2 w-full xl:order-1 xl:h-full xl:w-[56px]' : 'order-2 w-full xl:order-1 xl:h-full xl:w-[240px]'} data-testid="devtools-tree-panel">
             <SemanticResourceTree
               search={resourceSearch}
               onSearchChange={(value) => updateQueryParams({ q: value || undefined })}
@@ -192,11 +223,12 @@ export default function DevTools() {
               selectedCode={selectedCode}
               onSelect={(_kind, key) => handleSelectResource('cube', key)}
             />
+            </div>
 
             {/* ── Center Panel: Toolbar + Editor ── */}
-            <section className="flex min-w-0 flex-col border-x border-[hsl(var(--workbench-outline))]">
+            <section className="order-1 flex min-w-0 flex-1 flex-col border-b border-[hsl(var(--workbench-outline))] xl:order-2 xl:h-full xl:border-b-0 xl:border-x">
               {/* Toolbar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-5 py-0">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[hsl(var(--workbench-outline))] px-4 py-0 sm:px-5">
                 {/* Left: object name + sync badge */}
                 <div className="flex items-center gap-3 py-3">
                   <span className="text-[15px] font-semibold text-[hsl(var(--workbench-ink))]">
@@ -302,15 +334,23 @@ export default function DevTools() {
             </section>
 
             {/* ── Right Panel: Inspector ── */}
-            <aside className="flex flex-col gap-5 overflow-y-auto bg-[hsl(var(--workbench-surface))] p-5" data-testid="devtools-inspector-panel">
+            <div className={inspectorCollapsed ? 'order-3 w-full xl:order-3 xl:h-full xl:w-[56px]' : 'order-3 w-full xl:order-3 xl:h-full xl:w-[280px]'} data-testid="devtools-inspector-wrapper">
+            <aside className="flex flex-col gap-5 overflow-y-auto bg-[hsl(var(--workbench-surface))] p-4 sm:p-5 xl:h-full" data-testid="devtools-inspector-panel">
               {/* Header */}
               <div className="flex items-center justify-between">
                 <span className="text-[15px] font-bold text-[hsl(var(--workbench-ink))]">属性</span>
-                <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setInspectorCollapsed((current) => !current)}
+                  aria-label={inspectorCollapsed ? '展开属性面板' : '折叠属性面板'}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] shadow-sm"
+                >
                   <ChevronRight className="h-3.5 w-3.5 text-[hsl(var(--workbench-muted-foreground))]" />
-                </div>
+                </button>
               </div>
 
+              {!inspectorCollapsed ? (
+                <>
               {/* Properties Section */}
               {selectedResource ? (
                 <div className="space-y-4">
@@ -400,7 +440,10 @@ export default function DevTools() {
                   ) : null}
                 </div>
               ) : null}
+                </>
+              ) : null}
             </aside>
+            </div>
           </div>
         </div>
       </div>

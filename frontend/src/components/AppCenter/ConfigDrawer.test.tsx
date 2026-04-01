@@ -11,6 +11,30 @@ const configDrawerMocks = vi.hoisted(() => ({
 
 vi.mock('@/components/business', () => ({
   useToast: () => ({ toast: configDrawerMocks.toast }),
+  PageModal: ({
+    open,
+    title,
+    ariaLabel,
+    description,
+    children,
+    footer,
+  }: {
+    open: boolean
+    title?: string
+    ariaLabel?: string
+    description?: string
+    children?: ReactNode
+    footer?: ReactNode
+  }) => (
+    open ? (
+      <div role="dialog" aria-label={ariaLabel || title || '实例配置弹窗'}>
+        {title ? <h2>{title}</h2> : null}
+        {description ? <p>{description}</p> : null}
+        {children}
+        {footer}
+      </div>
+    ) : null
+  ),
 }))
 
 vi.mock('@monaco-editor/react', () => ({
@@ -96,21 +120,6 @@ vi.mock('@rjsf/core', () => ({
       </div>
     )
   },
-}))
-
-vi.mock('@/components/ui/sheet', () => ({
-  Sheet: ({
-    open,
-    children,
-  }: {
-    open: boolean
-    children: ReactNode
-  }) => (open ? <div role="dialog">{children}</div> : null),
-  SheetContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SheetTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
-  SheetDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
-  SheetFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
 vi.mock('@/components/ui/button', () => ({

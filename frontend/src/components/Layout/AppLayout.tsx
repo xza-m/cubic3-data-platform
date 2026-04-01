@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react'
 import {
@@ -28,6 +28,44 @@ import type { LucideIcon } from 'lucide-react'
 import CommandPalette from '../CommandPalette'
 import AIAssistant from '../AIAssistant'
 import NotificationCenter from '../NotificationCenter'
+
+const preloadedRoutes = new Set<string>()
+
+const preloadRoute = async (path: string) => {
+  const preloadKey =
+    path.startsWith('/semantic/cubes')
+      ? '/semantic/cubes'
+      : path.startsWith('/semantic/modeling')
+        ? '/semantic/modeling'
+        : path
+
+  if (preloadedRoutes.has(preloadKey)) return
+
+  const loaders: Record<string, () => Promise<unknown>> = {
+    '/dashboard': () => import('../../pages/Dashboard'),
+    '/queries': () => import('../../pages/QueryCenter/Dashboard'),
+    '/data-center/datasources': () => import('../../pages/Datasources'),
+    '/data-center/datasets': () => import('../../pages/Datasets'),
+    '/apps': () => import('../../pages/AppCenter/AppMarket'),
+    '/executions': () => import('../../pages/AppCenter/ExecutionMonitor'),
+    '/config/channels': () => import('../../pages/ConfigCenter/Channels'),
+    '/config/subscriptions': () => import('../../pages/ConfigCenter/Subscriptions'),
+    '/semantic/workbench': () => import('../../pages/Semantic/DevTools'),
+    '/semantic/cubes': () => import('../../pages/Semantic/CubeList'),
+    '/semantic/modeling': () => import('../../pages/Semantic/ModelingRedirect'),
+    '/data-chat': () => import('../../pages/DataChat'),
+  }
+
+  const loader = loaders[preloadKey]
+  if (!loader) return
+
+  preloadedRoutes.add(preloadKey)
+  try {
+    await loader()
+  } catch {
+    preloadedRoutes.delete(preloadKey)
+  }
+}
 
 /* ---------- navigation config ---------- */
 
@@ -87,11 +125,17 @@ const DEFAULT_EXPANDED_MENUS = navigation
 export default function AppLayout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const sidebarRef = useRef<HTMLElement | null>(null)
+  const sidebarReleaseTimerRef = useRef<number | null>(null)
   const [expandedMenus, setExpandedMenus] = useState<string[]>(DEFAULT_EXPANDED_MENUS)
+  const [sidebarHovered, setSidebarHovered] = useState(false)
+  const [sidebarFocused, setSidebarFocused] = useState(false)
+  const [sidebarPinnedUntilLeave, setSidebarPinnedUntilLeave] = useState(false)
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const isDashboardRoute = location.pathname === '/dashboard'
+  const sidebarExpanded = sidebarHovered || sidebarFocused || sidebarPinnedUntilLeave
 
   // ⌘K to open command palette
   useEffect(() => {
@@ -103,6 +147,30 @@ export default function AppLayout() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (sidebarRef.current?.matches(':hover')) {
+      preserveSidebarExpansion()
+    }
+  }, [location.pathname])
+
+  useEffect(() => {
+    return () => {
+      if (sidebarReleaseTimerRef.current !== null) {
+        window.clearTimeout(sidebarReleaseTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const warmupTimer = window.setTimeout(() => {
+      preloadSidebarRoutes()
+    }, 120)
+
+    return () => {
+      window.clearTimeout(warmupTimer)
+    }
   }, [])
 
   const isActive = (path?: string) => {
@@ -117,25 +185,109 @@ export default function AppLayout() {
     setExpandedMenus((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
   }
 
+  const preserveSidebarExpansion = () => {
+    if (sidebarReleaseTimerRef.current !== null) {
+      window.clearTimeout(sidebarReleaseTimerRef.current)
+      sidebarReleaseTimerRef.current = null
+    }
+    setSidebarHovered(true)
+    setSidebarPinnedUntilLeave(true)
+  }
+
+  const releaseSidebarExpansion = () => {
+    if (sidebarReleaseTimerRef.current !== null) {
+      window.clearTimeout(sidebarReleaseTimerRef.current)
+      sidebarReleaseTimerRef.current = null
+    }
+    setSidebarHovered(false)
+    setSidebarPinnedUntilLeave(false)
+  }
+
+  const preloadSidebarRoutes = () => {
+    navigation.forEach((item) => {
+      if ('children' in item) {
+        item.children.forEach((child) => void preloadRoute(child.path))
+      } else {
+        void preloadRoute(item.path)
+      }
+    })
+  }
+
+  const handleSidebarMouseLeave = (event: MouseEvent<HTMLElement>) => {
+    const currentTarget = event.currentTarget
+    const relatedTarget = event.relatedTarget
+    if (relatedTarget instanceof Node && currentTarget.contains(relatedTarget)) {
+      return
+    }
+
+    setSidebarHovered(false)
+
+    if (sidebarReleaseTimerRef.current !== null) {
+      window.clearTimeout(sidebarReleaseTimerRef.current)
+    }
+
+    sidebarReleaseTimerRef.current = window.setTimeout(() => {
+      const sidebarElement = sidebarRef.current
+      if (sidebarElement?.matches(':hover')) {
+        setSidebarHovered(true)
+        return
+      }
+      releaseSidebarExpansion()
+    }, 120)
+  }
+
   const handleLogout = () => {
     localStorage.removeItem('auth_token')
     navigate('/login', { replace: true })
   }
 
+  const navigateWithinSidebar = async (path: string) => {
+    preserveSidebarExpansion()
+    await preloadRoute(path)
+    startTransition(() => {
+      navigate(path)
+    })
+  }
+
   return (
     <div className="flex h-screen bg-[#F8FAFC]">
       {/* Sidebar */}
-      <aside data-testid="app-shell-sidebar" className="flex w-60 shrink-0 flex-col bg-[#0F172A] px-4 py-6">
+      <aside
+        ref={sidebarRef}
+        data-testid="app-shell-sidebar"
+        onMouseEnter={() => {
+          preserveSidebarExpansion()
+          preloadSidebarRoutes()
+        }}
+        onMouseLeave={handleSidebarMouseLeave}
+        onFocusCapture={() => setSidebarFocused(true)}
+        onBlurCapture={(event) => {
+          const nextTarget = event.relatedTarget
+          if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+            setSidebarFocused(false)
+          }
+        }}
+        className={`flex shrink-0 flex-col bg-[#0F172A] py-6 transition-[width,padding] duration-200 ${
+          sidebarExpanded ? 'w-60 px-4' : 'w-[88px] px-3'
+        }`}
+      >
         {/* Logo */}
         <button
           type="button"
           onClick={() => navigate('/dashboard')}
-          className="mb-6 flex items-center gap-3 px-3 cursor-pointer"
+          className={`mb-6 flex items-center px-3 cursor-pointer ${sidebarExpanded ? 'gap-3' : 'justify-center'}`}
         >
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#2563EB]">
             <LayoutDashboard className="h-4 w-4 text-white" />
           </div>
-          <span className="text-lg font-semibold text-white font-['Inter']">Cubic&sup3;</span>
+          <span
+            className={`overflow-hidden whitespace-nowrap text-lg font-semibold text-white font-['Inter'] transition-all duration-200 ${
+              sidebarExpanded ? 'max-w-[140px] opacity-100' : 'max-w-0 opacity-0'
+            }`}
+            aria-hidden={!sidebarExpanded}
+          >
+            Cubic&sup3;
+          </span>
         </button>
 
         {/* Navigation */}
@@ -150,26 +302,42 @@ export default function AppLayout() {
               <div key={'path' in item ? item.path : item.key}>
                 <button
                   type="button"
+                  data-sidebar-nav="true"
+                  onMouseDownCapture={() => preserveSidebarExpansion()}
+                  onMouseEnter={() => {
+                    if (!hasChildren) {
+                      void preloadRoute(item.path)
+                    }
+                  }}
                   onClick={() => {
                     if (hasChildren) toggleMenu(item.key)
-                    else navigate(item.path)
+                    else navigateWithinSidebar(item.path)
                   }}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors cursor-pointer ${
+                  className={`flex w-full items-center rounded-lg px-3 py-2.5 text-sm transition-colors cursor-pointer ${
+                    sidebarExpanded ? 'gap-3' : 'justify-center'
+                  } ${
                     active && !hasChildren
                       ? 'bg-[#1E293B] font-medium text-white'
                       : 'text-[#94A3B8] hover:bg-[#1E293B]/50 hover:text-slate-200'
                   }`}
                 >
                   <Icon className="h-5 w-5 shrink-0" />
-                  <span className="flex-1 text-left font-['Inter']">{item.label}</span>
-                  {hasChildren ? (
+                  <span
+                    className={`overflow-hidden whitespace-nowrap text-left font-['Inter'] transition-all duration-200 ${
+                      sidebarExpanded ? 'flex-1 opacity-100' : 'w-0 opacity-0'
+                    }`}
+                    aria-hidden={!sidebarExpanded}
+                  >
+                    {item.label}
+                  </span>
+                  {hasChildren && sidebarExpanded ? (
                     expanded
                       ? <ChevronDown className="h-4 w-4" />
                       : <ChevronRight className="h-4 w-4" />
                   ) : null}
                 </button>
 
-                {hasChildren && expanded ? (
+                {hasChildren && expanded && sidebarExpanded ? (
                   <div className="mt-1 space-y-0.5">
                     {item.children.map((child) => {
                       const ChildIcon = child.icon
@@ -178,7 +346,10 @@ export default function AppLayout() {
                         <button
                           key={child.path}
                           type="button"
-                          onClick={() => navigate(child.path)}
+                          data-sidebar-nav="true"
+                          onMouseDownCapture={() => preserveSidebarExpansion()}
+                          onMouseEnter={() => void preloadRoute(child.path)}
+                          onClick={() => navigateWithinSidebar(child.path)}
                           className={`flex w-full items-center gap-2 rounded-md py-2 pl-11 pr-3 text-[13px] transition-colors cursor-pointer ${
                             childActive
                               ? 'font-medium text-white'
@@ -199,15 +370,20 @@ export default function AppLayout() {
 
         {/* User section */}
         <div className="mt-4 border-t border-[#1E293B] pt-4">
-          <div className="flex items-center gap-3 px-3">
+          <div className={`flex items-center px-3 ${sidebarExpanded ? 'gap-3' : 'justify-center'}`}>
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#334155] text-white">
               <User className="h-4 w-4" />
             </div>
-            <div className="min-w-0 flex-1">
+            <div
+              className={`min-w-0 flex-1 overflow-hidden transition-all duration-200 ${
+                sidebarExpanded ? 'max-w-[140px] opacity-100' : 'max-w-0 opacity-0'
+              }`}
+              aria-hidden={!sidebarExpanded}
+            >
               <div className="truncate text-[13px] font-medium text-white font-['Inter']">数据工程师</div>
               <div className="text-xs text-[#94A3B8] font-['Inter']">管理员</div>
             </div>
-            {!isDashboardRoute ? (
+            {!isDashboardRoute && sidebarExpanded ? (
               <>
                 <button
                   type="button"

@@ -116,6 +116,7 @@ describe('Datasets page', () => {
     expect(screen.getByText('总数据集')).toBeInTheDocument()
     expect(screen.getByText('已同步')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('搜索数据集名称或编码...')).toBeInTheDocument()
+    expect(await screen.findByText('数据源类型')).toBeInTheDocument()
     const physicalRow = (await screen.findByText('课堂进度')).parentElement?.parentElement
     const virtualRow = screen.getByText('行为细分').parentElement?.parentElement
     const fileRow = screen.getByText('成绩上传').parentElement?.parentElement
@@ -125,17 +126,20 @@ describe('Datasets page', () => {
 
     expect(within(physicalRow!).getByText('ID:9 · 物理表')).toBeInTheDocument()
     expect(within(physicalRow!).getByText('dwd_lesson_progress')).toBeInTheDocument()
+    expect(within(physicalRow!).getByText('postgresql')).toBeInTheDocument()
     expect(within(physicalRow!).getByText('已同步')).toBeInTheDocument()
     expect(within(physicalRow!).getByText('data-team')).toBeInTheDocument()
 
     expect(within(virtualRow!).getByText('ID:10 · SQL')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('视图')).toBeInTheDocument()
+    expect(within(virtualRow!).getByText('maxcompute')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('失败')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('schema_fetch_failed')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('ops-team')).toBeInTheDocument()
 
     expect(within(fileRow!).getByText('ID:11 · 文件')).toBeInTheDocument()
     expect(within(fileRow!).getByText('scores.xlsx')).toBeInTheDocument()
+    expect(within(fileRow!).getByText('-')).toBeInTheDocument()
     expect(within(fileRow!).getByText('同步中')).toBeInTheDocument()
     expect(within(fileRow!).getByText('teacher')).toBeInTheDocument()
     expect(screen.getByText('血缘分析')).toBeInTheDocument()

@@ -180,6 +180,9 @@ describe('DevTools page', () => {
     await screen.findByRole('heading', { name: '语义工作台' })
 
     expect(screen.getByTestId('devtools-screen')).toBeInTheDocument()
+    expect(screen.getByTestId('devtools-workbench-shell')).toHaveClass('flex-col')
+    expect(screen.getByTestId('devtools-tree-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('devtools-inspector-wrapper')).toBeInTheDocument()
     expect(screen.queryByTestId('devtools-workbench-context-bar')).not.toBeInTheDocument()
     expect(screen.getByTestId('devtools-tab-editor')).toBeInTheDocument()
     expect(screen.getByTestId('devtools-tab-python')).toBeInTheDocument()
@@ -197,7 +200,7 @@ describe('DevTools page', () => {
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
-    expect(screen.getByText('Cube 资源库')).toBeInTheDocument()
+    expect(screen.getByText('Cube 库')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('搜索 Cube...')).toBeInTheDocument()
     expect(screen.queryByTestId('semantic-resource-kind-cube')).not.toBeInTheDocument()
   })

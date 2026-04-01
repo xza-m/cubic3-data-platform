@@ -14,10 +14,10 @@ last_reviewed: 2026-03-24
 ## 当前文件
 
 - [应用中心 PRD](app_center_prd.md)
-  - 聚焦应用中心的产品定位、实例管理、调度执行和监控
+  - 聚焦应用中心的产品定位、运行型应用实例管理、调度执行和监控
   - 状态：设计文档，需结合当前代码确认落地范围
 - [智能问数 / Data Agent PRD](data_agent_prd.md)
-  - 聚焦多信道 Agent、DataChat 与飞书复用、Skill 体系整合
+  - 聚焦交互型问数能力、多信道 Agent、DataChat 与飞书复用、Skill 体系整合
   - 状态：架构与产品设计输入，落地时需同时核对后端实现
 - [查询中心 PRD](query_center_prd.md)
   - 主要是早期前端布局和交互草案

@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Dashboard from './Dashboard'
 
 const navigateMock = vi.fn()
@@ -40,6 +40,10 @@ function renderPage() {
 }
 
 describe('Dashboard page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('渲染欢迎语、聚合统计、近期查询和快捷操作', async () => {
     navigateMock.mockReset()
     dashboardMocks.getDashboardOverview.mockResolvedValue({
@@ -94,12 +98,14 @@ describe('Dashboard page', () => {
     expect(screen.getByText('快捷操作')).toBeInTheDocument()
   })
 
-  it('空指标不显示假值，且近期查询为空时展示空态', async () => {
+  it('近期查询超过一天后按真实天数显示，不再一律显示昨天', async () => {
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+
     dashboardMocks.getDashboardOverview.mockResolvedValue({
       stats: {
-        datasource_total: 0,
-        dataset_total: 0,
-        semantic_model_total: 0,
+        datasource_total: 1,
+        dataset_total: 1,
+        semantic_model_total: 1,
         today_query_count: 0,
         ai_chat_count: null,
       },
@@ -108,7 +114,15 @@ describe('Dashboard page', () => {
         dataset_week_delta: null,
         query_count_week: null,
       },
-      recent_queries: [],
+      recent_queries: [
+        {
+          id: 42,
+          name: 'SELECT * FROM orders',
+          status: 'success',
+          executed_at: threeDaysAgo,
+          datasource_name: '订单 PostgreSQL',
+        },
+      ],
       health: {
         datasource_connectivity: null,
         semantic_coverage: null,
@@ -118,12 +132,53 @@ describe('Dashboard page', () => {
 
     renderPage()
 
-    expect(await screen.findByText('最近还没有真实查询记录')).toBeInTheDocument()
-    expect(screen.getAllByText('暂无趋势')).toHaveLength(3)
-    expect(screen.getByText('未接入')).toBeInTheDocument()
-    expect(screen.queryByText('+2 本月')).not.toBeInTheDocument()
-    expect(screen.queryByText('+5 本周')).not.toBeInTheDocument()
-    expect(screen.queryByText('近 7 日 18')).not.toBeInTheDocument()
+    expect(await screen.findByText('3 天前')).toBeInTheDocument()
+    expect(screen.queryByText('昨天')).not.toBeInTheDocument()
+  })
+
+  it('对 null、0、空列表按 overview 单源语义渲染', async () => {
+    dashboardMocks.getDashboardOverview.mockResolvedValue({
+      stats: {
+        datasource_total: null,
+        dataset_total: 0,
+        semantic_model_total: 0,
+        today_query_count: 0,
+        ai_chat_count: null,
+      },
+      trends: {
+        datasource_month_delta: null,
+        dataset_week_delta: 0,
+        query_count_week: null,
+      },
+      recent_queries: [],
+      health: {
+        datasource_connectivity: null,
+        semantic_coverage: 0,
+        query_success_rate: null,
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('0%')).toBeInTheDocument()
+    expect(screen.getByText('暂无查询记录')).toBeInTheDocument()
+    expect(screen.getByText('当前统计周期内没有查询历史。')).toBeInTheDocument()
+    expect(screen.getAllByText('暂无趋势')).toHaveLength(1)
+    expect(screen.getByText('语义模型').parentElement?.textContent).toContain('0 本周')
+    expect(screen.getByText('近 7 日暂无数据')).toBeInTheDocument()
+    expect(screen.queryByText('暂无健康指标')).not.toBeInTheDocument()
+    expect(screen.queryByText('至少需要后端返回一个非 null 指标后才会展示健康概览。')).not.toBeInTheDocument()
+  })
+
+  it('overview 失败时不再混算其他业务接口数据', async () => {
+    dashboardMocks.getDashboardOverview.mockRejectedValue(new Error('dashboard overview failed'))
+
+    renderPage()
+
+    expect(await screen.findByText('工作台概览暂时不可用')).toBeInTheDocument()
+    expect(screen.getByText('请稍后刷新，当前页面不会再改用其他业务接口混算统计口径。')).toBeInTheDocument()
+    expect(screen.queryByText('SELECT * FROM orders')).not.toBeInTheDocument()
+    expect(screen.queryByText('60%')).not.toBeInTheDocument()
   })
 
   it('快捷操作点击可导航', async () => {

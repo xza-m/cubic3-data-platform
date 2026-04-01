@@ -8,17 +8,16 @@ import DomainModelingEntry from './DomainModelingEntry'
 
 const domainEntryMocks = vi.hoisted(() => ({
   createDomain: vi.fn(),
-  useDomainModelingEntry: vi.fn(),
+  listDomains: vi.fn(),
+  listDomainCatalogs: vi.fn(),
   toast: vi.fn(),
   navigate: vi.fn(),
 }))
 
 vi.mock('@/api/semantic', () => ({
   createDomain: domainEntryMocks.createDomain,
-}))
-
-vi.mock('@/hooks/semantic-ia', () => ({
-  useDomainModelingEntry: domainEntryMocks.useDomainModelingEntry,
+  listDomains: domainEntryMocks.listDomains,
+  listDomainCatalogs: domainEntryMocks.listDomainCatalogs,
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -63,31 +62,22 @@ vi.mock('@/components/Semantic/workbench', () => ({
   SemanticPageHeader: ({
     title,
     description,
+    meta,
     actions,
   }: {
     title: string
     description: string
+    meta?: ReactNode
     actions?: ReactNode
   }) => (
     <header>
       <h1>{title}</h1>
       <p>{description}</p>
+      <div>{meta}</div>
       <div>{actions}</div>
     </header>
   ),
   SemanticSurface: ({ children }: { children: ReactNode }) => <section>{children}</section>,
-}))
-
-vi.mock('@/components/Semantic/SemanticWorkbenchContextBar', () => ({
-  SemanticWorkbenchContextBar: ({ items }: { items: Array<{ label: string; value: string }> }) => (
-    <div data-testid="context-bar">
-      {items.map((item) => (
-        <span key={item.label}>
-          {item.label}:{item.value}
-        </span>
-      ))}
-    </div>
-  ),
 }))
 
 vi.mock('@/components/ui/badge', () => ({
@@ -157,34 +147,27 @@ function renderPage() {
 describe('DomainModelingEntry page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    domainEntryMocks.useDomainModelingEntry.mockReturnValue({
-      catalogs: [
-        { code: 'default', name: '默认目录' },
-        { code: 'analytics', name: '分析目录' },
-      ],
-      draftDomains: [
-        { id: 'draft-1', code: 'answer_analysis', name: '答题分析', catalog_name: '默认目录' },
-      ],
-      publishedDomains: [
-        { id: 'prod-1', code: 'teaching_ops', name: '教学运营', catalog_name: '分析目录' },
-      ],
-      contextBarItems: [
-        { label: '目录', value: '2' },
-        { label: '草稿领域', value: '1' },
-      ],
-      isLoading: false,
+    domainEntryMocks.listDomainCatalogs.mockResolvedValue({
+      data: {
+        catalogs: [
+          { code: 'default', name: '默认目录' },
+          { code: 'analytics', name: '分析目录' },
+        ],
+      },
+    })
+    domainEntryMocks.listDomains.mockResolvedValue({
+      data: {
+        domains: [
+          { id: 'draft-1', code: 'answer_analysis', name: '答题分析', catalog_name: '默认目录', status: 'draft' },
+          { id: 'prod-1', code: 'teaching_ops', name: '教学运营', catalog_name: '分析目录', status: 'active' },
+        ],
+      },
     })
     domainEntryMocks.createDomain.mockResolvedValue({ data: { id: 'draft-99', code: 'draft-99' } })
   })
 
   it('加载中时展示骨架屏', () => {
-    domainEntryMocks.useDomainModelingEntry.mockReturnValue({
-      catalogs: [],
-      draftDomains: [],
-      publishedDomains: [],
-      contextBarItems: [],
-      isLoading: true,
-    })
+    domainEntryMocks.listDomains.mockImplementation(() => new Promise(() => {}))
 
     renderPage()
 
@@ -197,11 +180,12 @@ describe('DomainModelingEntry page', () => {
     renderPage()
 
     expect(await screen.findByText('领域建模')).toBeInTheDocument()
-    expect(screen.getByTestId('context-bar')).toHaveTextContent('目录:2')
+    expect(await screen.findByText('2 个目录')).toBeInTheDocument()
+    expect(screen.getByText('2 个领域')).toBeInTheDocument()
     expect(screen.getByText('答题分析')).toBeInTheDocument()
     expect(screen.getByText('教学运营')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '新建目录' }))
+    await user.click(await screen.findByRole('button', { name: '新建目录' }))
     expect(screen.getByRole('dialog', { name: '目录编辑器' })).toBeInTheDocument()
   })
 
@@ -210,9 +194,10 @@ describe('DomainModelingEntry page', () => {
 
     renderPage()
 
-    await user.click(screen.getByRole('button', { name: '新建目录' }))
+    await screen.findByText('领域建模')
+    await user.click(await screen.findByRole('button', { name: '新建目录' }))
     await user.click(screen.getByRole('button', { name: '使用 analytics 目录' }))
-    await user.type(screen.getByLabelText('领域名称'), '  答题画像  ')
+    await user.type(await screen.findByLabelText('领域名称'), '  答题画像  ')
     await user.click(screen.getByTestId('domain-create-submit'))
 
     await waitFor(() => {
@@ -231,7 +216,8 @@ describe('DomainModelingEntry page', () => {
 
     renderPage()
 
-    await user.type(screen.getByLabelText('领域名称'), '教学洞察')
+    await screen.findByText('领域建模')
+    await user.type(await screen.findByLabelText('领域名称'), '教学洞察')
     await user.click(screen.getByTestId('domain-create-submit'))
 
     await waitFor(() => {
@@ -244,12 +230,11 @@ describe('DomainModelingEntry page', () => {
   })
 
   it('草稿和已发布领域为空时展示对应空态', async () => {
-    domainEntryMocks.useDomainModelingEntry.mockReturnValue({
-      catalogs: [{ code: 'default', name: '默认目录' }],
-      draftDomains: [],
-      publishedDomains: [],
-      contextBarItems: [{ label: '目录', value: '1' }],
-      isLoading: false,
+    domainEntryMocks.listDomainCatalogs.mockResolvedValue({
+      data: { catalogs: [{ code: 'default', name: '默认目录' }] },
+    })
+    domainEntryMocks.listDomains.mockResolvedValue({
+      data: { domains: [] },
     })
 
     renderPage()

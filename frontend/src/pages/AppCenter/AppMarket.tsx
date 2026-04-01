@@ -28,7 +28,7 @@ export default function AppMarket() {
   const [activeCategory, setActiveCategory] = useState<string>('all')
   const [selectedApp, setSelectedApp] = useState<AppDefinition | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
-  const [configDrawerOpen, setConfigDrawerOpen] = useState(false)
+  const [configModalOpen, setConfigModalOpen] = useState(false)
   const [editingInstance, setEditingInstance] = useState<AppInstance | null>(null)
   const [instancePage, setInstancePage] = useState(1)
   const instancePageSize = 5
@@ -73,8 +73,11 @@ export default function AppMarket() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['apps'] })
       await queryClient.invalidateQueries({ queryKey: ['app-instances'] })
-      setConfigDrawerOpen(false)
+      setConfigModalOpen(false)
       setEditingInstance(null)
+      if (!detailOpen) {
+        setSelectedApp(null)
+      }
     },
   })
 
@@ -101,7 +104,7 @@ export default function AppMarket() {
     setSelectedApp(app)
     setInstancePage(1)
     setDetailOpen(true)
-    setConfigDrawerOpen(false)
+    setConfigModalOpen(false)
     setEditingInstance(null)
   }
 
@@ -110,27 +113,21 @@ export default function AppMarket() {
     if (!open) {
       setSelectedApp(null)
       setEditingInstance(null)
-      setConfigDrawerOpen(false)
+      setConfigModalOpen(false)
       setInstancePage(1)
     }
   }
 
   const openCreateInstance = () => {
     setEditingInstance(null)
-    setConfigDrawerOpen(true)
-  }
-
-  const openCreateInstanceForApp = (app: AppDefinition) => {
-    setSelectedApp(app)
-    setInstancePage(1)
-    setDetailOpen(true)
-    setEditingInstance(null)
-    setConfigDrawerOpen(true)
+    setDetailOpen(false)
+    setConfigModalOpen(true)
   }
 
   const openEditInstance = (instance: AppInstance) => {
+    setDetailOpen(false)
     setEditingInstance(instance)
-    setConfigDrawerOpen(true)
+    setConfigModalOpen(true)
   }
 
   const handleSubmitInstance = async (payload: CreateInstanceInput | UpdateInstanceInput) => {
@@ -152,27 +149,13 @@ export default function AppMarket() {
   ]
 
   return (
-    <div className="flex flex-col gap-6 px-10 py-8">
+    <div className="flex flex-col gap-5 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-bold text-[#0F172A]">应用中心</h1>
-          <p className="text-sm text-[#64748B]">统一管理和调度各种数据推送、告警、报告应用</p>
+          <p className="text-sm text-[#64748B]">统一管理和调度各类运行型数据应用，不承载交互式问答助手</p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="rounded-lg border-[#DBEAFE] text-[#2563EB] hover:bg-[#EFF6FF] hover:text-[#1D4ED8]"
-          onClick={() => {
-            const firstApp = filteredApps?.[0] || apps?.[0]
-            if (firstApp) {
-              openCreateInstanceForApp(firstApp)
-            }
-          }}
-          disabled={!(filteredApps?.length || apps?.length)}
-        >
-          新建实例
-        </Button>
       </div>
 
       {/* Search */}
@@ -188,13 +171,13 @@ export default function AppMarket() {
       </div>
 
       {/* Category Tabs */}
-      <div className="flex items-center border-b border-[#E2E8F0]">
+      <div className="-mx-1 flex items-center gap-1 overflow-x-auto border-b border-[#E2E8F0] pb-px">
         {categories.map((cat) => (
           <button
             key={cat.key}
             type="button"
             onClick={() => setActiveCategory(cat.key)}
-            className={`px-5 py-3 text-sm cursor-pointer ${
+            className={`shrink-0 px-4 py-3 text-sm cursor-pointer sm:px-5 ${
               activeCategory === cat.key
                 ? 'font-medium text-[#2563EB] border-b-2 border-[#2563EB]'
                 : 'text-[#64748B]'
@@ -207,7 +190,7 @@ export default function AppMarket() {
 
       {/* App Cards Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3" data-testid="app-market-grid">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <div key={i} className="rounded-xl bg-white p-6 shadow-[0_2px_16px_#0F172A08]">
               <Skeleton className="h-10 w-10 rounded-[10px] mb-4" />
@@ -218,13 +201,12 @@ export default function AppMarket() {
           ))}
         </div>
       ) : filteredApps && filteredApps.length > 0 ? (
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3" data-testid="app-market-grid">
           {filteredApps.map((app) => (
             <AppCard
               key={app.code}
               app={app}
               onClick={() => openAppDetail(app)}
-              onCreateInstance={() => openCreateInstanceForApp(app)}
             />
           ))}
         </div>
@@ -239,15 +221,14 @@ export default function AppMarket() {
       <PageModal
         open={detailOpen}
         onOpenChange={closeAppDetail}
-        title={selectedApp?.name || '应用详情'}
-        description={selectedApp?.description || ''}
-        width="min(1120px, 92vw)"
-        className="max-h-[90vh] overflow-hidden p-0"
-        bodyClassName="p-0"
+        ariaLabel={selectedApp?.name || '应用详情'}
+        width="min(960px, 88vw)"
+        className="max-h-[88vh] overflow-hidden"
+        bodyClassName="modal-scrollbar-hidden p-0"
       >
           {selectedApp ? (
-            <div className="flex h-[82vh] min-h-0 flex-col overflow-hidden bg-[#F8FAFC]">
-              <div className="flex items-start justify-between gap-6 border-b border-[#E2E8F0] bg-white px-6 py-5">
+            <div className="mx-auto flex min-h-0 w-full max-w-[920px] flex-col overflow-hidden px-1 pb-1">
+              <div className="flex items-start justify-between gap-6 border-b border-[#E2E8F0] px-5 pb-5 pt-2 pr-14 sm:px-6 sm:pr-16">
                 <div className="min-w-0">
                   <div className="inline-flex items-center rounded-full bg-[#EFF6FF] px-3 py-1 text-xs font-medium text-[#2563EB]">
                     应用详情
@@ -270,7 +251,7 @@ export default function AppMarket() {
                 </div>
               </div>
 
-              <div className="grid gap-4 px-6 py-5 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-4 px-5 py-5 sm:grid-cols-2 sm:px-6 xl:grid-cols-2">
                 {summaryCards.map((card) => {
                   const Icon = card.icon
                   return (
@@ -289,7 +270,7 @@ export default function AppMarket() {
                 })}
               </div>
 
-              <div className="mx-6 mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-[0_2px_24px_#0F172A08]">
+              <div className="mx-5 mb-5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-[0_2px_24px_#0F172A08] sm:mx-6 sm:mb-6">
                 <div className="flex items-center justify-between border-b border-[#E2E8F0] px-5 py-4">
                   <div>
                     <h3 className="text-sm font-semibold text-[#0F172A]">实例列表</h3>
@@ -319,12 +300,15 @@ export default function AppMarket() {
       </PageModal>
 
       <ConfigDrawer
-        open={configDrawerOpen}
+        open={configModalOpen}
         app={selectedApp}
         instance={editingInstance}
         onClose={() => {
-          setConfigDrawerOpen(false)
+          setConfigModalOpen(false)
           setEditingInstance(null)
+          if (!detailOpen) {
+            setSelectedApp(null)
+          }
         }}
         onSubmit={handleSubmitInstance}
       />

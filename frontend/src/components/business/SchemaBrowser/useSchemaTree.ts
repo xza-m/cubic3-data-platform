@@ -18,9 +18,10 @@ import {
 interface UseSchemaTreeOptions {
     datasourceId?: number
     sourceType?: string
+    autoExpandInitial?: boolean
 }
 
-export function useSchemaTree({ datasourceId, sourceType }: UseSchemaTreeOptions) {
+export function useSchemaTree({ datasourceId, sourceType, autoExpandInitial = true }: UseSchemaTreeOptions) {
     const [nodes, setNodes] = useState<Map<NodeKey, TreeNode>>(new Map())
     const [rootKeys, setRootKeys] = useState<NodeKey[]>([])
     const [selectedKey, setSelectedKey] = useState<NodeKey | null>(null)
@@ -114,8 +115,8 @@ export function useSchemaTree({ datasourceId, sourceType }: UseSchemaTreeOptions
             setRootKeys(dbKeys)
             setInitialized(true)
 
-            // 自动展开第一个数据库
-            if (dbKeys.length > 0) {
+            // 在需要时自动展开第一个数据库
+            if (autoExpandInitial && dbKeys.length > 0) {
                 toggleExpand(dbKeys[0])
             }
 
@@ -123,7 +124,7 @@ export function useSchemaTree({ datasourceId, sourceType }: UseSchemaTreeOptions
             console.error('Failed to load databases:', error)
             updateNode(rootKey, { loading: false })
         }
-    }, [datasourceId])
+    }, [datasourceId, autoExpandInitial])
 
     // ─── 加载 Schema 列表 ───
     const loadSchemas = useCallback(async (dbKey: NodeKey, database: string) => {
@@ -170,16 +171,16 @@ export function useSchemaTree({ datasourceId, sourceType }: UseSchemaTreeOptions
                 return next
             })
 
-            // 自动展开 public schema
+            // 在需要时自动展开 public schema
             const publicKey = schemaKeys.find(k => k.endsWith(':public'))
-            if (publicKey) {
+            if (autoExpandInitial && publicKey) {
                 toggleExpand(publicKey)
             }
         } catch (error) {
             console.error('Failed to load schemas:', error)
             updateNode(dbKey, { loading: false })
         }
-    }, [datasourceId, updateNode])
+    }, [datasourceId, autoExpandInitial, updateNode])
 
     // ─── 加载表列表 ───
     const loadTables = useCallback(async (parentKey: NodeKey, database: string, schema?: string) => {

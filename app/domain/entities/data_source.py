@@ -1,6 +1,7 @@
 """
 数据源实体
 """
+from copy import deepcopy
 from datetime import datetime
 from app.shared.utils.time import utcnow
 from typing import Dict, Any, List
@@ -39,7 +40,7 @@ class DataSource(db.Model):
     
     # 连接配置
     connection_config = Column(JsonType, nullable=False)
-    extra_config = Column(JsonType, default={})
+    extra_config = Column(JsonType, default=dict)
     
     # 状态管理
     is_active = Column(Boolean, default=True)
@@ -85,8 +86,8 @@ class DataSource(db.Model):
     def _ensure_extra_config(self) -> Dict[str, Any]:
         """确保 extra_config 为可写字典。"""
         if not isinstance(self.extra_config, dict):
-            self.extra_config = {}
-        return self.extra_config
+            return {}
+        return deepcopy(self.extra_config)
 
     def get_catalog_sync_summary(self) -> Dict[str, Any]:
         """返回目录同步摘要，并补齐缺省字段。"""

@@ -17,7 +17,6 @@ import type { AppDefinition } from '../../api/appCenter'
 interface AppCardProps {
   app: AppDefinition
   onClick?: () => void
-  onCreateInstance?: () => void
 }
 
 const APP_ICONS: Record<string, LucideIcon> = {
@@ -40,7 +39,7 @@ const ICON_STYLES: Record<string, { bg: string; color: string }> = {
   data_agent: { bg: 'bg-[#EEF2FF]', color: 'text-[#6366F1]' },
 }
 
-export default function AppCard({ app, onClick, onCreateInstance }: AppCardProps) {
+export default function AppCard({ app, onClick }: AppCardProps) {
   const Icon = APP_ICONS[app.code] || Database
   const style = ICON_STYLES[app.code] || { bg: 'bg-[#F1F5F9]', color: 'text-[#64748B]' }
 
@@ -74,28 +73,7 @@ export default function AppCard({ app, onClick, onCreateInstance }: AppCardProps
         <span className="text-[#10B981]">
           {app.instance_count || 0} 个实例 · {app.enabled ? '已启用' : '未启用'}
         </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onClick?.()
-            }}
-            className="rounded-md px-2.5 py-1.5 text-[#64748B] transition-colors hover:bg-[#EFF6FF] hover:text-[#2563EB]"
-          >
-            查看
-          </button>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onCreateInstance?.()
-            }}
-            className="rounded-md bg-[#EFF6FF] px-2.5 py-1.5 font-medium text-[#2563EB] transition-colors hover:bg-[#DBEAFE]"
-          >
-            新建实例
-          </button>
-        </div>
+        <span className="text-[#94A3B8] transition-colors group-hover:text-[#2563EB]">查看详情</span>
       </div>
     </div>
   )
