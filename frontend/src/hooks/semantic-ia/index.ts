@@ -6,6 +6,14 @@ export { useDomainCanvas } from './useDomainCanvas'
 export { useDomainDirectorySelection, type UseDomainDirectorySelectionParams } from './useDomainDirectorySelection'
 export { useDomainModelingEntry } from './useDomainModelingEntry'
 export {
+  buildSemanticWorkbenchHref,
+  useSemanticWorkbench,
+  type SemanticWorkbenchCubeRef,
+  type SemanticWorkbenchMode,
+  type SemanticWorkbenchTab,
+  type UseSemanticWorkbenchOptions,
+} from './useSemanticWorkbench'
+export {
   useSemanticDevTools,
   type SemanticDevToolsSelectedResource,
   type UseSemanticDevToolsOptions,

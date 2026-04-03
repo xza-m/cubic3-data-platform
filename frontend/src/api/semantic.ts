@@ -419,6 +419,9 @@ export const createCube = (payload: CubeDraftPayload) =>
 export const updateCube = (name: string, payload: Partial<CubeDraftPayload>) =>
   apiClient.put<CubeDraftPayload>(`/semantic/cubes/${name}`, payload)
 
+export const createCubeRevision = (name: string) =>
+  apiClient.post<CubeDraftPayload>(`/semantic/cubes/${name}/revisions`)
+
 export const activateCube = (name: string) =>
   apiClient.post<CubeDraftPayload>(`/semantic/cubes/${name}/activate`)
 

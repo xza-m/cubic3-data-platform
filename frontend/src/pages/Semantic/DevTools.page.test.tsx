@@ -1,7 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import React from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import DevTools from './DevTools'
 
@@ -42,15 +41,6 @@ vi.mock('@/components/Semantic/DevTools/YamlEditorTab', () => ({
       ) : null}
     </div>
   ),
-}))
-
-vi.mock('@/components/Semantic/DevTools/CompileDebugTab', () => ({
-  CompileDebugTab: ({ onStatusChange }: { onStatusChange?: (status: any) => void }) => {
-    React.useEffect(() => {
-      onStatusChange?.({ state: 'idle', label: '未执行', lastRunAt: null })
-    }, [onStatusChange])
-    return <div data-testid="mock-compile-tab">Compile</div>
-  },
 }))
 
 vi.mock('@/components/Semantic/DevTools/PlaygroundTab', () => ({
@@ -181,15 +171,14 @@ describe('DevTools page', () => {
 
     expect(screen.getByTestId('devtools-screen')).toBeInTheDocument()
     expect(screen.getByTestId('devtools-workbench-shell')).toHaveClass('flex-col')
+    expect(screen.queryByText('AI 辅助建模')).not.toBeInTheDocument()
     expect(screen.getByTestId('devtools-tree-panel')).toBeInTheDocument()
     expect(screen.getByTestId('devtools-inspector-wrapper')).toBeInTheDocument()
     expect(screen.queryByTestId('devtools-workbench-context-bar')).not.toBeInTheDocument()
     expect(screen.getByTestId('devtools-tab-editor')).toBeInTheDocument()
     expect(screen.getByTestId('devtools-tab-python')).toBeInTheDocument()
-    expect(screen.getByTestId('devtools-tab-compiler')).toBeInTheDocument()
     expect(screen.getByTestId('devtools-tab-sync')).toBeInTheDocument()
     expect(await screen.findByTestId('mock-yaml-editor-answer_records')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '验证' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '发布' })).toBeInTheDocument()
     expect(screen.getAllByText('答题记录').length).toBeGreaterThan(0)
   })
@@ -205,16 +194,14 @@ describe('DevTools page', () => {
     expect(screen.queryByTestId('semantic-resource-kind-cube')).not.toBeInTheDocument()
   })
 
-  it('切到编译调试后切换对象仍保留当前 tab', async () => {
+  it('旧的 compiler tab 参数会兼容映射到预览页', async () => {
     mockLists()
-    renderPage('/semantic/workbench?kind=view&resource=learning_overview&file=learning_overview')
+    renderPage('/semantic/workbench?tab=compiler')
 
     await screen.findByRole('heading', { name: '语义工作台' })
-    fireEvent.click(screen.getByTestId('devtools-tab-compiler'))
 
-    expect(screen.getByTestId('mock-compile-tab')).toBeInTheDocument()
-    expect(screen.getByTestId('mock-compile-tab')).toBeInTheDocument()
-    expect(screen.getAllByText('学习总览').length).toBeGreaterThan(0)
+    expect(await screen.findByTestId('mock-playground-tab')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
   })
 
   it('切到 PY 后展示 Python 实现预览', async () => {
@@ -228,14 +215,14 @@ describe('DevTools page', () => {
     expect(screen.getByTestId('mock-python-tab')).toBeInTheDocument()
   })
 
-  it('选择领域时在定义文件页展示产品化空状态', async () => {
+  it('选择领域旧链接时会自动回退到默认 Cube', async () => {
     mockLists()
     renderPage('/semantic/workbench?kind=domain&resource=domain-learning')
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
-    expect(screen.getByText('当前对象暂不支持在线 YAML 编辑')).toBeInTheDocument()
-    expect(within(screen.getByTestId('semantic-editor-empty-state')).getByRole('link', { name: '打开领域模块' })).toHaveAttribute('href', '/semantic/domains/domain-learning')
+    expect(await screen.findByTestId('mock-yaml-editor-answer_records')).toBeInTheDocument()
+    expect(screen.queryByTestId('semantic-editor-empty-state')).not.toBeInTheDocument()
   })
 
   it('支持在工具页挂载 Recipe 定义文件', async () => {
@@ -252,18 +239,17 @@ describe('DevTools page', () => {
     expect(screen.getAllByText('学习路径示例').length).toBeGreaterThan(0)
   })
 
-  it('选择目录时在定义文件页展示稳定空状态并提供返回动作', async () => {
+  it('选择目录旧链接时会自动回退到默认 Cube', async () => {
     mockLists()
     renderPage('/semantic/workbench?kind=catalog&resource=learning')
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
-    expect(screen.getByText('当前对象暂不支持在线 YAML 编辑')).toBeInTheDocument()
-    expect(screen.getByText('目录对象已并入领域建模页维护。这里显示资源树、编译调试和 Schema 同步。')).toBeInTheDocument()
-    expect(within(screen.getByTestId('semantic-editor-empty-state')).getByRole('link', { name: '打开领域建模' })).toHaveAttribute('href', '/semantic/domains')
+    expect(await screen.findByTestId('mock-yaml-editor-answer_records')).toBeInTheDocument()
+    expect(screen.queryByTestId('semantic-editor-empty-state')).not.toBeInTheDocument()
   })
 
-  it('切到预览后展示 Schema 工作区', async () => {
+  it('切到预览后展示统一预览工作区', async () => {
     mockLists()
     renderPage()
 
