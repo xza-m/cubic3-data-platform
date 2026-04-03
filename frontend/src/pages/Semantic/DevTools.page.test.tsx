@@ -127,8 +127,20 @@ function mockLists() {
           status: 'active',
           state_summary: { sync_status: 'ok' },
         },
+        {
+          name: 'answer_records__revision_draft',
+          title: '答题记录修订草稿',
+          description: '',
+          table: 'answer_records',
+          dimensions: [],
+          measures: [],
+          dimension_count: 1,
+          measure_count: 1,
+          status: 'draft',
+          state_summary: { sync_status: 'warn' },
+        },
       ],
-      total: 1,
+      total: 2,
     },
   })
   semanticApiMocks.listViews.mockResolvedValue({
@@ -163,7 +175,7 @@ function mockLists() {
 }
 
 describe('DevTools page', () => {
-  it('默认进入 Cube 定义文件并渲染新工作台', async () => {
+  it('默认进入已发布 Cube 的预览页并渲染新工作台', async () => {
     mockLists()
     renderPage()
 
@@ -178,9 +190,31 @@ describe('DevTools page', () => {
     expect(screen.getByTestId('devtools-tab-editor')).toBeInTheDocument()
     expect(screen.getByTestId('devtools-tab-python')).toBeInTheDocument()
     expect(screen.getByTestId('devtools-tab-sync')).toBeInTheDocument()
-    expect(await screen.findByTestId('mock-yaml-editor-answer_records')).toBeInTheDocument()
+    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
+    expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: '发布' })).toBeInTheDocument()
     expect(screen.getAllByText('答题记录').length).toBeGreaterThan(0)
+  })
+
+  it('通过 cube 参数可以直达指定草稿 Cube，而不是默认第一个 Cube', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?cube=answer_records__revision_draft')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(await screen.findByTestId('mock-yaml-editor-answer_records__revision_draft')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '发布' })).toBeInTheDocument()
+  })
+
+  it('已发布 Cube 在无显式 tab 时默认进入预览', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?cube=answer_records')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
+    expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
   })
 
   it('资源树按当前对象类型展示单一资源库头部', async () => {
@@ -221,7 +255,7 @@ describe('DevTools page', () => {
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
-    expect(await screen.findByTestId('mock-yaml-editor-answer_records')).toBeInTheDocument()
+    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
     expect(screen.queryByTestId('semantic-editor-empty-state')).not.toBeInTheDocument()
   })
 
@@ -245,7 +279,7 @@ describe('DevTools page', () => {
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
-    expect(await screen.findByTestId('mock-yaml-editor-answer_records')).toBeInTheDocument()
+    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
     expect(screen.queryByTestId('semantic-editor-empty-state')).not.toBeInTheDocument()
   })
 

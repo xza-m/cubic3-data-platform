@@ -12,7 +12,6 @@ import { YamlEditorTab } from '@/components/Semantic/DevTools/YamlEditorTab'
 // workbench wrappers removed — page uses direct layout matching design spec
 import { Skeleton } from '@/components/ui/skeleton'
 import { normalizeSemanticWorkbenchTab, useSemanticDevTools } from '@/hooks/semantic-ia'
-import { useUrlState } from '@/hooks/useUrlState'
 import type { SemanticObjectKind } from '@/lib/semantic-workbench'
 
 const tabMeta = {
@@ -94,13 +93,17 @@ function InspectorJoinItem({ name, joinType }: { name: string; joinType: string 
 }
 
 export default function DevTools() {
-  const [, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const isCompactViewport = useCompactViewport()
-  const [rawTab] = useUrlState<string>('tab', 'editor')
-  const [selectedKind] = useUrlState<SemanticObjectKind>('kind', 'cube')
-  const [selectedCode] = useUrlState<string>('resource', '')
-  const [selectedName] = useUrlState<string>('file', '')
-  const [resourceSearch] = useUrlState<string>('q', '')
+  const rawTab = searchParams.get('tab') ?? ''
+  const selectedCube = searchParams.get('cube') ?? ''
+  const selectedKind = (searchParams.get('kind') as SemanticObjectKind | null) ?? 'cube'
+  const selectedCode = searchParams.get('resource') ?? ''
+  const selectedName = searchParams.get('file') ?? ''
+  const effectiveSelectedKind: SemanticObjectKind = selectedCube ? 'cube' : selectedKind
+  const effectiveSelectedCode = selectedCube || selectedCode
+  const effectiveSelectedName = selectedCube || selectedName
+  const resourceSearch = searchParams.get('q') ?? ''
   const [treeCollapsed, setTreeCollapsed] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const updateQueryParams = useCallback((updates: Record<string, string | undefined>) => {
@@ -118,18 +121,12 @@ export default function DevTools() {
   }, [setSearchParams])
 
   const setTabValue = useCallback((value: IdeTab) => {
-    updateQueryParams({ tab: value === 'editor' ? undefined : value })
+    updateQueryParams({ tab: value })
   }, [updateQueryParams])
-
-  const tab = useMemo<IdeTab>(() => {
-    if (rawTab === 'python') return 'python'
-    return normalizeSemanticWorkbenchTab('workspace', rawTab, 'modeling') === 'preview'
-      ? 'sync'
-      : 'editor'
-  }, [rawTab])
 
   const handleSelectResource = useCallback((kind: SemanticObjectKind, key: string) => {
     updateQueryParams({
+      cube: kind === 'cube' ? key : undefined,
       kind: kind === 'cube' ? undefined : kind,
       resource: key,
       file: kind === 'cube' || kind === 'view' || kind === 'recipe' ? key : undefined,
@@ -146,9 +143,9 @@ export default function DevTools() {
     isLoading,
   } = useSemanticDevTools({
     keyword: resourceSearch,
-    selectedKind,
-    selectedCode,
-    selectedName,
+    selectedKind: effectiveSelectedKind,
+    selectedCode: effectiveSelectedCode,
+    selectedName: effectiveSelectedName,
   })
 
   const normalizedSelection = resolvedSelection ?? {
@@ -208,16 +205,26 @@ export default function DevTools() {
     () => cubes.find((c) => c.name === activeCode),
     [activeCode, cubes],
   )
+  const selectedCubeStatus = selectedCubeSummary?.status ?? ''
+
+  const tab = useMemo<IdeTab>(() => {
+    if (rawTab === 'python') return 'python'
+    const fallbackTab = selectedCubeStatus === 'active' ? 'preview' : 'modeling'
+    return normalizeSemanticWorkbenchTab('workspace', rawTab, fallbackTab) === 'preview'
+      ? 'sync'
+      : 'editor'
+  }, [rawTab, selectedCubeStatus])
 
   useEffect(() => {
     if (!targetSelection || !selectionNeedsSync) return
 
     updateQueryParams({
+      cube: targetSelection.kind === 'cube' ? (selectedCube || targetSelection.resource) : undefined,
       kind: targetSelection.kind === 'cube' ? undefined : targetSelection.kind,
       resource: targetSelection.resource,
       file: targetSelection.file,
     })
-  }, [selectionNeedsSync, targetSelection, updateQueryParams])
+  }, [selectedCube, selectionNeedsSync, targetSelection, updateQueryParams])
 
   useEffect(() => {
     if (isCompactViewport) {
