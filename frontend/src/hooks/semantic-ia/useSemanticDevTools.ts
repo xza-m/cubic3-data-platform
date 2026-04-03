@@ -188,30 +188,91 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
     keyword,
   }), [catalogs, cubes, domains, keyword, recipes, views])
 
-  const selection = useMemo(() => {
+  const defaultSelection = useMemo(() => {
+    if (cubes.length > 0) {
+      return { kind: 'cube' as const, resource: cubes[0].name, file: cubes[0].name }
+    }
+    if (views.length > 0) {
+      return { kind: 'view' as const, resource: views[0].name, file: views[0].name }
+    }
+    if (recipes.length > 0) {
+      return { kind: 'recipe' as const, resource: recipes[0].name, file: recipes[0].name }
+    }
+    if (domains.length > 0) {
+      return { kind: 'domain' as const, resource: String(domains[0].id || domains[0].code), file: undefined }
+    }
+    if (catalogs.length > 0) {
+      return { kind: 'catalog' as const, resource: catalogs[0].code, file: undefined }
+    }
+    return null
+  }, [catalogs, cubes, domains, recipes, views])
+
+  const selectionExists = useMemo(() => {
+    if (!selectedCode && !selectedName) return false
+
     if (selectedKind === 'cube') {
-      const cube = cubes.find((item) => item.name === selectedCode || item.name === selectedName)
-      return cube ? buildSemanticSelection('ide', 'cube', { name: cube.title, code: cube.name }) : null
+      return cubes.some((item) => item.name === selectedCode || item.name === selectedName)
     }
     if (selectedKind === 'view') {
-      const view = views.find((item) => item.name === selectedCode || item.name === selectedName)
-      return view ? buildSemanticSelection('ide', 'view', { name: view.title, code: view.name }) : null
+      return views.some((item) => item.name === selectedCode || item.name === selectedName)
     }
     if (selectedKind === 'recipe') {
-      const recipe = recipes.find((item) => item.name === selectedCode || item.name === selectedName)
-      return recipe ? buildSemanticSelection('ide', 'recipe', { name: recipe.title, code: recipe.name }) : null
+      return recipes.some((item) => item.name === selectedCode || item.name === selectedName)
     }
     if (selectedKind === 'domain') {
-      const domain = domains.find((item) => String(item.id || item.code) === selectedCode || item.code === selectedCode)
-      return domain ? buildSemanticSelection('ide', 'domain', { name: domain.name, code: String(domain.id || domain.code) }) : null
+      return domains.some(
+        (item) => String(item.id || item.code) === selectedCode || item.code === selectedCode || item.name === selectedName,
+      )
     }
-    const catalog = catalogs.find((item) => item.code === selectedCode)
-    return catalog ? buildSemanticSelection('ide', 'catalog', { name: catalog.name, code: catalog.code }) : null
+
+    return catalogs.some((item) => item.code === selectedCode || item.name === selectedName)
   }, [catalogs, cubes, domains, recipes, selectedCode, selectedKind, selectedName, views])
 
+  const normalizedSelection = useMemo(() => {
+    const shouldFallbackToDefault = Boolean(
+      defaultSelection
+      && (
+        selectedKind === 'domain'
+        || selectedKind === 'catalog'
+        || !selectionExists
+      ),
+    )
+
+    if (shouldFallbackToDefault && defaultSelection) {
+      return {
+        selectedKind: defaultSelection.kind,
+        selectedCode: defaultSelection.resource,
+        selectedName: defaultSelection.file ?? '',
+      }
+    }
+
+    return { selectedKind, selectedCode, selectedName }
+  }, [defaultSelection, selectedCode, selectedKind, selectedName, selectionExists])
+
+  const selection = useMemo(() => {
+    if (normalizedSelection.selectedKind === 'cube') {
+      const cube = cubes.find((item) => item.name === normalizedSelection.selectedCode || item.name === normalizedSelection.selectedName)
+      return cube ? buildSemanticSelection('ide', 'cube', { name: cube.title, code: cube.name }) : null
+    }
+    if (normalizedSelection.selectedKind === 'view') {
+      const view = views.find((item) => item.name === normalizedSelection.selectedCode || item.name === normalizedSelection.selectedName)
+      return view ? buildSemanticSelection('ide', 'view', { name: view.title, code: view.name }) : null
+    }
+    if (normalizedSelection.selectedKind === 'recipe') {
+      const recipe = recipes.find((item) => item.name === normalizedSelection.selectedCode || item.name === normalizedSelection.selectedName)
+      return recipe ? buildSemanticSelection('ide', 'recipe', { name: recipe.title, code: recipe.name }) : null
+    }
+    if (normalizedSelection.selectedKind === 'domain') {
+      const domain = domains.find((item) => String(item.id || item.code) === normalizedSelection.selectedCode || item.code === normalizedSelection.selectedCode)
+      return domain ? buildSemanticSelection('ide', 'domain', { name: domain.name, code: String(domain.id || domain.code) }) : null
+    }
+    const catalog = catalogs.find((item) => item.code === normalizedSelection.selectedCode)
+    return catalog ? buildSemanticSelection('ide', 'catalog', { name: catalog.name, code: catalog.code }) : null
+  }, [catalogs, cubes, domains, normalizedSelection, recipes, views])
+
   const selectedResource = useMemo<SemanticDevToolsSelectedResource | null>(() => {
-    if (selectedKind === 'cube') {
-      const cube = cubes.find((item) => item.name === selectedCode || item.name === selectedName)
+    if (normalizedSelection.selectedKind === 'cube') {
+      const cube = cubes.find((item) => item.name === normalizedSelection.selectedCode || item.name === normalizedSelection.selectedName)
       if (!cube) return null
       const syncMeta = getSyncMeta(cube.state_summary?.sync_status || cube.sync_status)
       return {
@@ -229,8 +290,8 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
         recipeMeta: null,
       }
     }
-    if (selectedKind === 'view') {
-      const view = views.find((item) => item.name === selectedCode || item.name === selectedName)
+    if (normalizedSelection.selectedKind === 'view') {
+      const view = views.find((item) => item.name === normalizedSelection.selectedCode || item.name === normalizedSelection.selectedName)
       if (!view) return null
       return {
         kind: 'view',
@@ -247,8 +308,8 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
         recipeMeta: null,
       }
     }
-    if (selectedKind === 'recipe') {
-      const recipe = recipes.find((item) => item.name === selectedCode || item.name === selectedName)
+    if (normalizedSelection.selectedKind === 'recipe') {
+      const recipe = recipes.find((item) => item.name === normalizedSelection.selectedCode || item.name === normalizedSelection.selectedName)
       if (!recipe) return null
       return {
         kind: 'recipe',
@@ -270,8 +331,8 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
         },
       }
     }
-    if (selectedKind === 'domain') {
-      const domain = domains.find((item) => String(item.id || item.code) === selectedCode || item.code === selectedCode)
+    if (normalizedSelection.selectedKind === 'domain') {
+      const domain = domains.find((item) => String(item.id || item.code) === normalizedSelection.selectedCode || item.code === normalizedSelection.selectedCode)
       if (!domain) return null
       const syncMeta = getSyncMeta(domain.state_summary?.sync_status)
       return {
@@ -289,7 +350,7 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
         recipeMeta: null,
       }
     }
-    const catalog = catalogs.find((item) => item.code === selectedCode)
+    const catalog = catalogs.find((item) => item.code === normalizedSelection.selectedCode)
     if (!catalog) return null
     const syncMeta = getSyncMeta(catalog.status)
     return {
@@ -306,26 +367,7 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
       highlightObjectName: null,
       recipeMeta: null,
     }
-  }, [catalogs, cubes, domains, recipes, selectedCode, selectedKind, selectedName, views])
-
-  const defaultSelection = useMemo(() => {
-    if (cubes.length > 0) {
-      return { kind: 'cube' as const, resource: cubes[0].name, file: cubes[0].name }
-    }
-    if (views.length > 0) {
-      return { kind: 'view' as const, resource: views[0].name, file: views[0].name }
-    }
-    if (recipes.length > 0) {
-      return { kind: 'recipe' as const, resource: recipes[0].name, file: recipes[0].name }
-    }
-    if (domains.length > 0) {
-      return { kind: 'domain' as const, resource: String(domains[0].id || domains[0].code), file: undefined }
-    }
-    if (catalogs.length > 0) {
-      return { kind: 'catalog' as const, resource: catalogs[0].code, file: undefined }
-    }
-    return null
-  }, [catalogs, cubes, domains, recipes, views])
+  }, [catalogs, cubes, domains, normalizedSelection, recipes, views])
 
   return {
     catalogsQuery,
@@ -342,6 +384,7 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
     selectedResource,
     resourceGroups,
     defaultSelection,
+    resolvedSelection: normalizedSelection,
     isLoading,
   }
 }
