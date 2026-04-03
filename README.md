@@ -163,22 +163,13 @@ make setup
 cp env.sample .env
 ```
 
-2. 首次通过 Nginx 访问前端前，先构建前端静态资源：
-
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-```
-
-3. 启动服务：
+2. 启动服务：
 
 ```bash
 docker compose up --build -d
 ```
 
-4. 访问入口：
+3. 访问入口：
 
 - 前端：`http://localhost:81`
 - 后端 API：`http://localhost:5000`

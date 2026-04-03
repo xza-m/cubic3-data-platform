@@ -152,4 +152,4 @@ src/
 
 ## 构建产物
 
-`npm run build` 会生成 `dist/`。Docker 模式下，Nginx 会直接挂载该目录作为前端静态资源根目录，因此部署前需要确保 `dist/` 已更新。
+`npm run build` 会生成 `dist/`，用于本地预览或静态产物检查。Docker 模式下，`nginx` 镜像会在构建阶段自动执行前端打包并内置静态资源，不再依赖宿主机的 `dist/` 目录。

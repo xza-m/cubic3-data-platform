@@ -5,14 +5,14 @@ services:
   # Nginx 反向代理 + 静态文件服务
   # ============================================
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: docker/nginx.Dockerfile
+    image: cubic3-data-platform-nginx
     container_name: cubic3-data-platform-nginx
     ports:
       - "81:80"
       - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
     depends_on:
       - backend
     networks:
