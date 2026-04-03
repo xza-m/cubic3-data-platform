@@ -9,7 +9,18 @@ const semanticApiMocks = vi.hoisted(() => ({
   listCubes: vi.fn(),
   listViews: vi.fn(),
   describeCube: vi.fn(),
+  createCubeRevision: vi.fn(),
 }))
+
+const navigateMock = vi.hoisted(() => vi.fn())
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
+  }
+})
 
 vi.mock('@/api/semantic', async () => {
   const actual = await vi.importActual<typeof import('@/api/semantic')>('@/api/semantic')
@@ -18,6 +29,7 @@ vi.mock('@/api/semantic', async () => {
     listCubes: semanticApiMocks.listCubes,
     listViews: semanticApiMocks.listViews,
     describeCube: semanticApiMocks.describeCube,
+    createCubeRevision: semanticApiMocks.createCubeRevision,
   }
 })
 
@@ -74,9 +86,11 @@ describe('CubeList page', () => {
     semanticApiMocks.listCubes.mockReset()
     semanticApiMocks.listViews.mockReset()
     semanticApiMocks.describeCube.mockReset()
+    semanticApiMocks.createCubeRevision.mockReset()
+    navigateMock.mockReset()
   })
 
-  it('Cube 管理页使用表格主视图与当前筛选栏', async () => {
+  it('Cube 管理页默认进入资产视角，只展示已发布对象并移除新建入口', async () => {
     mockCubeInventory([
       buildCube('answer_records', '学生答题记录', {
         table: 'answer_records',
@@ -85,24 +99,32 @@ describe('CubeList page', () => {
         status: 'active',
         domain_name: '学习领域',
       }),
+      buildCube('answer_records__revision_draft', '答题记录修订草稿', {
+        table: 'answer_records',
+        dimension_count: 1,
+        measure_count: 1,
+        status: 'draft',
+      }),
     ])
 
     renderPage()
 
     await screen.findByTestId('cube-management-page')
     expect(screen.getByRole('heading', { name: 'Cube 管理' })).toBeInTheDocument()
-    expect(screen.getByText('管理语义模型 Cube 的定义、维度与指标')).toBeInTheDocument()
+    expect(screen.getByText('管理已发布与已废弃的语义资产')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('搜索 Cube 名称...')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '新建 Cube' })).toHaveAttribute('href', '/semantic/cubes/new')
+    expect(screen.queryByRole('link', { name: '新建 Cube' })).not.toBeInTheDocument()
     expect(screen.getByText('Cube 名称')).toBeInTheDocument()
     expect(screen.getByText('SQL 表')).toBeInTheDocument()
     expect(screen.getByText('维度')).toBeInTheDocument()
     expect(screen.getByText('指标')).toBeInTheDocument()
     expect(screen.getByText('字段')).toBeInTheDocument()
+    const [statusSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
+    expect(statusSelect).toHaveValue('active')
     expect(screen.getByText('学生答题记录')).toBeInTheDocument()
+    expect(screen.queryByText('答题记录修订草稿')).not.toBeInTheDocument()
     expect(screen.getByText('answer_records')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '编辑' })).toHaveAttribute('href', '/semantic/cubes/answer_records/edit')
-    expect(screen.getByRole('button', { name: '预览' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '查看' })).toBeInTheDocument()
   })
 
   it('搜索关键字会过滤 Cube 列表并展示空态', async () => {
@@ -121,6 +143,9 @@ describe('CubeList page', () => {
 
     await screen.findByTestId('cube-management-page')
     const searchInput = screen.getByPlaceholderText('搜索 Cube 名称...')
+    const [statusSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
+
+    await user.selectOptions(statusSelect, 'all')
 
     await user.type(searchInput, '课程')
     await waitFor(() => {
@@ -180,7 +205,8 @@ describe('CubeList page', () => {
     renderPage()
 
     await screen.findByTestId('cube-management-page')
-    const [, domainSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
+    const [statusSelect, domainSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
+    await user.selectOptions(statusSelect, 'all')
     await user.selectOptions(domainSelect, 'assigned')
 
     await waitFor(() => {
@@ -219,5 +245,59 @@ describe('CubeList page', () => {
     expect(domainSelect).toHaveValue('assigned')
     expect(screen.getByText('A 维度模型')).toBeInTheDocument()
     expect(screen.queryByText('Z 事实模型')).not.toBeInTheDocument()
+  })
+
+  it('已发布 Cube 可从详情抽屉发起修订并跳回工作台', async () => {
+    const user = userEvent.setup()
+    mockCubeInventory([
+      buildCube('answer_records', '学生答题记录', {
+        table: 'answer_records',
+        dimension_count: 3,
+        measure_count: 2,
+        status: 'active',
+      }),
+    ])
+    semanticApiMocks.describeCube.mockResolvedValue({
+      data: {
+        name: 'answer_records',
+        title: '学生答题记录',
+        description: '答题事实表',
+        table: 'answer_records',
+        domain_ids: [],
+        domains: [],
+        domain_count: 0,
+        status: 'active',
+        dimensions: {
+          student_id: { title: '学生', type: 'string' },
+        },
+        measures: {
+          answer_count: { title: '答题数', type: 'count' },
+        },
+        segments: {},
+        joins: {},
+      },
+    })
+    semanticApiMocks.createCubeRevision.mockResolvedValue({
+      data: {
+        name: 'answer_records__revision_draft',
+        title: '学生答题记录修订草稿',
+        description: '待补充',
+        table: 'answer_records',
+        source_id: 1,
+        dimensions: {},
+        measures: {},
+        status: 'draft',
+      },
+    })
+
+    renderPage()
+
+    await screen.findByTestId('cube-management-page')
+    await user.click(screen.getByRole('button', { name: '学生答题记录' }))
+    await screen.findByText('查看当前 Cube 的字段摘要、状态、所属领域与最近变更。')
+    await user.click(screen.getByRole('button', { name: '发起修订' }))
+
+    await waitFor(() => expect(semanticApiMocks.createCubeRevision).toHaveBeenCalledWith('answer_records'))
+    expect(navigateMock).toHaveBeenCalledWith('/semantic/workbench?cube=answer_records__revision_draft&tab=modeling')
   })
 })

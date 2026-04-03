@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
-import { Plus, RefreshCw, Search } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { RefreshCw, Search } from 'lucide-react'
 import type { CubeSummary } from '@/api/semantic'
 import { CubePreviewPanel } from '@/components/Semantic/CubeList/CubePreviewPanel'
 import {
@@ -91,8 +91,7 @@ function CubeRow({
       </div>
       {/* 操作 */}
       <div className="flex w-[112px] shrink-0 items-center justify-center gap-3 text-xs text-muted-foreground">
-        <Link to={`/semantic/cubes/${cube.name}/edit`} className="hover:text-foreground">编辑</Link>
-        <button type="button" onClick={() => onSelect(cube.name)} className="hover:text-foreground">预览</button>
+        <button type="button" onClick={() => onSelect(cube.name)} className="hover:text-foreground">查看</button>
       </div>
     </div>
   )
@@ -119,7 +118,7 @@ export default function CubeList() {
   const [pageSize] = useUrlState<string>('page_size', '10')
   const [selectedName, setSelectedName] = useUrlState<string>('name', '')
   const [focus] = useUrlState<CubeFocusFilter>('focus', 'all')
-  const [status] = useUrlState<CubeStatusFilter>('status', 'all')
+  const [status] = useUrlState<CubeStatusFilter>('status', 'active')
   const [cubeType] = useUrlState<CubeTypeFilter>('cube_type', 'all')
   const [domain] = useUrlState<CubeDomainFilter>('domain', 'all')
   const [sort] = useUrlState<CubeSortOption>('sort', 'priority')
@@ -127,7 +126,7 @@ export default function CubeList() {
   const updateListState = useCallback((updates: Record<string, string>) => {
     const defaults: Record<string, string> = {
       q: '', page: '1', page_size: '10', name: '', focus: 'all',
-      status: 'all', cube_type: 'all', domain: 'all', sort: 'priority',
+      status: 'active', cube_type: 'all', domain: 'all', sort: 'priority',
     }
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
@@ -160,7 +159,7 @@ export default function CubeList() {
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <h1 className="text-xl font-bold text-foreground">Cube 管理</h1>
-          <p className="text-sm text-muted-foreground">管理语义模型 Cube 的定义、维度与指标</p>
+          <p className="text-sm text-muted-foreground">管理已发布与已废弃的语义资产</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -170,13 +169,6 @@ export default function CubeList() {
             <RefreshCw className="h-3.5 w-3.5" />
             刷新
           </button>
-          <Link
-            to="/semantic/cubes/new"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_#2563EB30] transition-colors hover:bg-blue-700"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            新建 Cube
-          </Link>
         </div>
       </div>
 

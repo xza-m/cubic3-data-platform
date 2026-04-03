@@ -208,16 +208,6 @@ export function getViewPublishLabel(item: ViewSummary, status?: MaterializeStatu
   return item.public ? '公开待发布' : '私有待发布'
 }
 
-export function buildCubePreviewActions(item: CubeSummary | CubeDetail | null) {
-  if (!item) return []
-  return [
-    {
-      label: '编辑定义',
-      href: `/semantic/cubes/${item.name}/edit`,
-    },
-  ]
-}
-
 export function getCubePrimaryStatus(item: CubeSummary | CubeDetail) {
   return getSemanticStatusLabel(item.status || 'draft')
 }

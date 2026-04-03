@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { ensureCubeAvailable, getFirstCubeNameFromManagement, gotoSemantic, prepareAuthenticatedPage } from './helpers'
+import { ensureCubeAvailable, gotoSemantic, prepareAuthenticatedPage } from './helpers'
 
 test.beforeEach(async ({ page }) => {
   await prepareAuthenticatedPage(page)
 })
 
-test('在 Cube 管理中浏览模型并进入关系画布', async ({ page }) => {
+test('在 Cube 管理中浏览资产并进入工作台对象态', async ({ page }) => {
   await ensureCubeAvailable(page)
   await gotoSemantic(page, '/semantic/cubes')
   await expect(page.getByRole('heading', { name: 'Cube 管理' })).toBeVisible()
@@ -15,9 +15,20 @@ test('在 Cube 管理中浏览模型并进入关系画布', async ({ page }) => 
     await expect(multiDomainItem).toBeVisible()
   }
 
-  const cubeName = await getFirstCubeNameFromManagement(page)
-  await gotoSemantic(page, `/semantic/cubes/${cubeName}`)
+  const emptyState = page.getByText('没有命中当前条件的 Cube', { exact: false })
+  if (await emptyState.isVisible().catch(() => false)) {
+    await gotoSemantic(page, '/semantic/cubes?status=all')
+    await expect(page.getByRole('heading', { name: 'Cube 管理' })).toBeVisible()
+  }
 
-  await expect(page).toHaveURL(new RegExp(`/semantic/cubes/${cubeName}/edit$`))
-  await expect(page.getByRole('heading', { name: '编辑 Cube' })).toBeVisible()
+  const firstViewButton = page.getByRole('button', { name: '查看' }).first()
+  await expect(firstViewButton).toBeVisible()
+  await firstViewButton.click()
+
+  const workbenchLink = page.getByRole('link', { name: /工作台/ }).first()
+  await expect(workbenchLink).toBeVisible()
+  await workbenchLink.click()
+
+  await expect(page).toHaveURL(/\/semantic\/workbench\?cube=.*&tab=(preview|modeling)$/)
+  await expect(page.getByRole('heading', { name: '语义工作台' })).toBeVisible()
 })
