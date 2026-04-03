@@ -205,7 +205,7 @@ def mock_modeling_service():
         "status": "draft",
     }))
     service.create_revision_draft.return_value = MagicMock(model_dump=MagicMock(return_value={
-        "name": "orders",
+        "name": "orders__revision_draft",
         "title": "订单",
         "status": "draft",
     }))
@@ -389,6 +389,7 @@ class TestCubesEndpoint:
     def test_create_revision_route_returns_created_payload(self, semantic_client, mock_modeling_service):
         resp = semantic_client.post("/api/v1/semantic/cubes/orders/revisions")
         assert resp.status_code == 201
+        assert resp.get_json()["data"]["name"] == "orders__revision_draft"
         assert resp.get_json()["data"]["status"] == "draft"
         mock_modeling_service.create_revision_draft.assert_called_once_with("orders")
 

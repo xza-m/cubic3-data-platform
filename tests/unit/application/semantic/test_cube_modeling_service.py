@@ -156,7 +156,7 @@ def test_create_activate_and_deprecate_cube_updates_registry():
     assert registry_repo.calls[-1][2]["status"] == "deprecated"
 
 
-def test_create_revision_draft_from_active_cube_returns_draft_copy():
+def test_create_revision_draft_from_active_cube_returns_unique_draft_copy_and_keeps_active_source():
     cube_repo = _InMemoryCubeRepo()
     cube_repo.save(
         CubeDefinition(
@@ -169,6 +169,17 @@ def test_create_revision_draft_from_active_cube_returns_draft_copy():
             measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
         )
     )
+    cube_repo.save(
+        CubeDefinition(
+            name="answer_records__revision_draft",
+            title="答题记录",
+            table="dws.answer_records",
+            source_id=11,
+            status="draft",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
     service = CubeModelingService(
         cube_repo=cube_repo,
         runtime_binding_service=_FakeRuntime(),
@@ -176,9 +187,35 @@ def test_create_revision_draft_from_active_cube_returns_draft_copy():
 
     draft = service.create_revision_draft("answer_records")
 
-    assert draft.name == "answer_records"
+    assert draft.name == "answer_records__revision_draft_2"
     assert draft.status == "draft"
     assert draft.title == "答题记录"
+    assert cube_repo.get("answer_records").status == "active"
+    assert cube_repo.get("answer_records__revision_draft").status == "draft"
+    assert cube_repo.get("answer_records__revision_draft_2") == draft
+
+
+@pytest.mark.parametrize("status", ["draft", "deprecated"])
+def test_create_revision_draft_rejects_non_active_cubes(status):
+    cube_repo = _InMemoryCubeRepo()
+    cube_repo.save(
+        CubeDefinition(
+            name="answer_records",
+            title="答题记录",
+            table="dws.answer_records",
+            source_id=11,
+            status=status,
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
+    service = CubeModelingService(
+        cube_repo=cube_repo,
+        runtime_binding_service=_FakeRuntime(),
+    )
+
+    with pytest.raises(ApplicationException, match="只有已发布 Cube 才能发起修订"):
+        service.create_revision_draft("answer_records")
 
 
 def test_create_cube_requires_source_id():
