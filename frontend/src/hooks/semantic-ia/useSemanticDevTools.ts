@@ -17,6 +17,7 @@ export interface UseSemanticDevToolsOptions {
   selectedKind?: SemanticObjectKind
   selectedCode?: string
   selectedName?: string
+  preserveLegacySelection?: boolean
 }
 
 export interface SemanticDevToolsSelectedResource {
@@ -171,6 +172,7 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
   const selectedKind = options?.selectedKind ?? 'cube'
   const selectedCode = options?.selectedCode ?? ''
   const selectedName = options?.selectedName ?? ''
+  const preserveLegacySelection = options?.preserveLegacySelection ?? false
 
   const isLoading =
     catalogsQuery.isLoading
@@ -232,8 +234,7 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
     const shouldFallbackToDefault = Boolean(
       defaultSelection
       && (
-        selectedKind === 'domain'
-        || selectedKind === 'catalog'
+        ((!preserveLegacySelection) && (selectedKind === 'domain' || selectedKind === 'catalog'))
         || !selectionExists
       ),
     )
@@ -247,7 +248,7 @@ export function useSemanticDevTools(options?: UseSemanticDevToolsOptions) {
     }
 
     return { selectedKind, selectedCode, selectedName }
-  }, [defaultSelection, selectedCode, selectedKind, selectedName, selectionExists])
+  }, [defaultSelection, preserveLegacySelection, selectedCode, selectedKind, selectedName, selectionExists])
 
   const selection = useMemo(() => {
     if (normalizedSelection.selectedKind === 'cube') {

@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { createContext, useContext, type ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CompileDebugTab } from './CompileDebugTab'
 import { PlaygroundTab } from './PlaygroundTab'
 import { SchemaSyncTab } from './SchemaSyncTab'
 import { YamlEditorTab } from './YamlEditorTab'
@@ -231,70 +230,6 @@ describe('DevTools tabs', () => {
     vi.useRealTimers()
   })
 
-  it('CompileDebugTab 支持成功编译、步骤日志和复制 SQL', async () => {
-    const onStatusChange = vi.fn()
-    devToolsTabMocks.compileDsl.mockResolvedValue({
-      data: {
-        sql: 'select 1',
-        primary_cube: 'answer_records',
-        joined_cubes: ['student'],
-      },
-    })
-
-    renderWithProviders(<CompileDebugTab onStatusChange={onStatusChange} />)
-
-    expect(screen.getByText('暂未执行编译')).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: '编译' }))
-
-    expect(await screen.findByText('生成 SQL')).toBeInTheDocument()
-    expect(devToolsTabMocks.compileDsl).toHaveBeenCalledWith(
-      expect.objectContaining({
-        measures: ['answer_records.total_count', 'answer_records.accuracy'],
-        dimensions: ['answer_records.subject_name'],
-        limit: 100,
-      }),
-    )
-    expect(screen.getByText('当前会经过 1 个 JOIN 节点。主路径为 answer_records 与 student。')).toBeInTheDocument()
-    expect(onStatusChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ state: 'success', label: '成功' }),
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: '复制' }))
-
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('select 1')
-    expect(screen.getByRole('button', { name: '已复制' })).toBeInTheDocument()
-  })
-
-  it('CompileDebugTab 支持 JSON 非法和接口失败回退', async () => {
-    devToolsTabMocks.compileDsl.mockRejectedValue(new Error('字段引用不存在'))
-
-    renderWithProviders(<CompileDebugTab />)
-
-    fireEvent.change(screen.getByLabelText('json-editor'), { target: { value: '{' } })
-    await userEvent.click(screen.getByRole('button', { name: '编译' }))
-
-    expect(devToolsTabMocks.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'JSON 格式错误', variant: 'destructive' }),
-    )
-
-    fireEvent.change(screen.getByLabelText('json-editor'), {
-      target: { value: '{"measures":["answer_records.total_count"]}' },
-    })
-    await userEvent.click(screen.getByRole('button', { name: '编译' }))
-
-    expect(await screen.findByText('当前阻塞')).toBeInTheDocument()
-    expect(await screen.findAllByText('字段引用不存在')).toHaveLength(2)
-    expect(devToolsTabMocks.toast).toHaveBeenCalledWith({
-      title: '编译失败',
-      description: '字段引用不存在',
-      variant: 'destructive',
-    })
-
-    await userEvent.click(screen.getByRole('button', { name: '重置' }))
-    expect(screen.getAllByText('未执行')).toHaveLength(2)
-  })
-
   it('SchemaSyncTab 支持空态、无漂移结果和带过滤的检测结果', async () => {
     const firstReport = {
       data: {
@@ -436,7 +371,7 @@ describe('DevTools tabs', () => {
     expect(screen.getByText('当前页支持 Cube / View / Recipe 的在线 YAML 编辑，并显示定义文件、校验结果和保存动作。')).toBeInTheDocument()
   })
 
-  it('PlaygroundTab 支持 DSL 构建、编译和执行查询', async () => {
+  it('PlaygroundTab 支持统一配置滚动区、共享 DSL/SQL 面板以及编译执行结果', async () => {
     devToolsTabMocks.listCubes.mockResolvedValue({
       data: {
         cubes: [{ name: 'answer_records', title: '答题记录' }],
@@ -487,9 +422,9 @@ describe('DevTools tabs', () => {
 
     renderWithProviders(<PlaygroundTab preferredCube="answer_records" />)
 
-    expect(await screen.findByText('指标')).toBeInTheDocument()
+    expect(await screen.findByTestId('playground-config-scroll')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('checkbox', { name: /总次数/ }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /总次数/ }))
     await userEvent.click(screen.getByRole('checkbox', { name: /学科/ }))
     await userEvent.click(screen.getByRole('button', { name: 'answer_date' }))
 
@@ -504,10 +439,13 @@ describe('DevTools tabs', () => {
     await waitFor(() => {
       expect((screen.getByLabelText('json-editor') as HTMLTextAreaElement).value).toContain('"join_path": [')
     })
+    expect(screen.getByTestId('playground-mode-badge')).toHaveTextContent('Joined Cube')
+    expect(screen.getByTestId('playground-result-toolbar')).toBeInTheDocument()
+    expect(screen.getByTestId('playground-output-tabs')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '编译' }))
 
-    expect(await screen.findByText('编译后 SQL')).toBeInTheDocument()
+    const sqlEditor = (await screen.findByLabelText('sql-editor')) as HTMLTextAreaElement
     expect(devToolsTabMocks.compileDsl).toHaveBeenCalledWith({
       measures: ['answer_records.total_count'],
       dimensions: ['answer_records.subject_name'],
@@ -521,16 +459,18 @@ describe('DevTools tabs', () => {
       join_path: ['answer_records', 'student'],
       limit: 100,
     })
-    expect(screen.getByText('JOIN: student')).toBeInTheDocument()
+    expect(screen.getByTestId('playground-output-panel')).toBeInTheDocument()
+    expect(sqlEditor.value).toContain('select subject_name, count(*) from answer_records')
 
     await userEvent.click(screen.getByRole('button', { name: '编译并执行' }))
 
     expect(await screen.findByText('执行结果')).toBeInTheDocument()
+    expect(screen.getByTestId('playground-execution-summary')).toBeInTheDocument()
     expect(screen.getByText('1 行 · 23 ms')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('数学')).toBeInTheDocument()
   })
 
-  it('PlaygroundTab 支持 DSL 非法、编译失败和执行失败提示', async () => {
+  it('PlaygroundTab 在单 Cube 模式下支持编译失败和执行失败提示', async () => {
     devToolsTabMocks.listCubes.mockResolvedValue({
       data: {
         cubes: [{ name: 'answer_records', title: '答题记录' }],
@@ -556,20 +496,8 @@ describe('DevTools tabs', () => {
 
     renderWithProviders(<PlaygroundTab preferredCube="answer_records" />)
 
-    await screen.findByText('DSL JSON')
-
-    fireEvent.change(screen.getByLabelText('json-editor'), {
-      target: { value: '{' },
-    })
-    await userEvent.click(screen.getByRole('button', { name: '编译' }))
-
-    expect(devToolsTabMocks.toast).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'DSL JSON 格式错误', variant: 'destructive' }),
-    )
-
-    fireEvent.change(screen.getByLabelText('json-editor'), {
-      target: { value: '{"limit":100}' },
-    })
+    await screen.findByTestId('playground-config-scroll')
+    expect(screen.getByTestId('playground-mode-badge')).toHaveTextContent('单 Cube')
 
     await userEvent.click(screen.getByRole('button', { name: '编译' }))
     await waitFor(() => {
@@ -588,5 +516,8 @@ describe('DevTools tabs', () => {
         variant: 'destructive',
       })
     })
+
+    expect(screen.getByText('编译失败')).toBeInTheDocument()
+    expect(screen.getByText('执行失败')).toBeInTheDocument()
   })
 })

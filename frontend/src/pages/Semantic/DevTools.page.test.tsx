@@ -10,6 +10,7 @@ const semanticApiMocks = vi.hoisted(() => ({
   listCubes: vi.fn(),
   listViews: vi.fn(),
   listRecipes: vi.fn(),
+  describeCube: vi.fn(),
 }))
 
 vi.mock('@/api/semantic', async () => {
@@ -21,6 +22,7 @@ vi.mock('@/api/semantic', async () => {
     listCubes: semanticApiMocks.listCubes,
     listViews: semanticApiMocks.listViews,
     listRecipes: semanticApiMocks.listRecipes,
+    describeCube: semanticApiMocks.describeCube,
   }
 })
 
@@ -58,7 +60,9 @@ vi.mock('@/components/Semantic/DevTools/PlaygroundTab', () => ({
 }))
 
 vi.mock('@/components/Semantic/DevTools/PythonPreviewTab', () => ({
-  PythonPreviewTab: () => <div data-testid="mock-python-tab">Python Preview</div>,
+  PythonPreviewTab: ({ cube }: { cube?: { name?: string } }) => (
+    <div data-testid="mock-python-tab">Python Preview {cube?.name || 'none'}</div>
+  ),
 }))
 
 function renderPage(initialEntry = '/semantic/workbench') {
@@ -172,38 +176,62 @@ function mockLists() {
       total: 1,
     },
   })
+  semanticApiMocks.describeCube.mockImplementation(async (name: string) => ({
+    data: {
+      name,
+      title: name === 'answer_records' ? '答题记录' : '答题记录修订草稿',
+      description: name === 'answer_records' ? '答题行为事实表' : '待修订版本',
+      table: 'answer_records',
+      domain_ids: [],
+      domains: [],
+      domain_count: 0,
+      status: name === 'answer_records' ? 'active' : 'draft',
+      dimensions: {
+        occurred_at: { title: '发生时间', type: 'time' },
+        student_name: { title: '学生', type: 'string' },
+        subject_name: { title: '学科', type: 'string' },
+      },
+      measures: {
+        answer_count: { title: '答题次数', type: 'count', certified: true },
+        correct_rate: { title: '正确率', type: 'number' },
+      },
+      segments: {},
+      joins: {},
+      source_binding_summary: {
+        source_name: '学习行为仓',
+      },
+      state_summary: {
+        status: name === 'answer_records' ? 'active' : 'draft',
+      },
+    },
+  }))
 }
 
 describe('DevTools page', () => {
-  it('默认进入已发布 Cube 的预览页并渲染新工作台', async () => {
+  it('工作台首屏显示 AI 辅助建模主任务区与继续工作区', async () => {
     mockLists()
     renderPage()
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
-    expect(screen.getByTestId('devtools-screen')).toBeInTheDocument()
-    expect(screen.getByTestId('devtools-workbench-shell')).toHaveClass('flex-col')
-    expect(screen.queryByText('AI 辅助建模')).not.toBeInTheDocument()
-    expect(screen.getByTestId('devtools-tree-panel')).toBeInTheDocument()
-    expect(screen.getByTestId('devtools-inspector-wrapper')).toBeInTheDocument()
-    expect(screen.queryByTestId('devtools-workbench-context-bar')).not.toBeInTheDocument()
-    expect(screen.getByTestId('devtools-tab-editor')).toBeInTheDocument()
-    expect(screen.getByTestId('devtools-tab-python')).toBeInTheDocument()
-    expect(screen.getByTestId('devtools-tab-sync')).toBeInTheDocument()
-    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
+    expect(screen.getAllByText('AI 辅助建模').length).toBeGreaterThan(0)
+    expect(screen.getByText('最近草稿')).toBeInTheDocument()
+    expect(screen.getByText('最近发布')).toBeInTheDocument()
+    expect(screen.getByText('继续工作')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-playground-tab')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '发布' })).toBeInTheDocument()
-    expect(screen.getAllByText('答题记录').length).toBeGreaterThan(0)
   })
 
-  it('通过 cube 参数可以直达指定草稿 Cube，而不是默认第一个 Cube', async () => {
+  it('草稿 Cube 在无显式 tab 时默认进入建模', async () => {
     mockLists()
     renderPage('/semantic/workbench?cube=answer_records__revision_draft')
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
-    expect(await screen.findByTestId('mock-yaml-editor-answer_records__revision_draft')).toBeInTheDocument()
-    expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
+    expect(screen.getByTestId('devtools-tab-modeling')).toHaveAttribute('data-state', 'active')
+    expect(screen.getAllByText('推荐指标').length).toBeGreaterThan(0)
+    expect(screen.getByText('来源摘要')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-playground-tab')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: '发布' })).toBeInTheDocument()
   })
 
@@ -213,86 +241,104 @@ describe('DevTools page', () => {
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
+    expect(screen.getByTestId('devtools-tab-preview')).toHaveAttribute('data-state', 'active')
     expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
     expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
   })
 
-  it('资源树按当前对象类型展示单一资源库头部', async () => {
-    mockLists()
-    renderPage()
-
-    await screen.findByRole('heading', { name: '语义工作台' })
-
-    expect(screen.getByText('Cube 库')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('搜索 Cube...')).toBeInTheDocument()
-    expect(screen.queryByTestId('semantic-resource-kind-cube')).not.toBeInTheDocument()
-  })
-
   it('旧的 compiler tab 参数会兼容映射到预览页', async () => {
     mockLists()
-    renderPage('/semantic/workbench?tab=compiler')
+    renderPage('/semantic/workbench?cube=answer_records&tab=compiler')
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
+    expect(screen.getByTestId('devtools-tab-preview')).toHaveAttribute('data-state', 'active')
     expect(await screen.findByTestId('mock-playground-tab')).toBeInTheDocument()
     expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
   })
 
+  it('旧版无 cube 的 sync 入口会回退到默认 Cube 预览', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?tab=sync')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(screen.getByTestId('devtools-tab-preview')).toHaveAttribute('data-state', 'active')
+    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
+  })
+
+  it('旧版 cube preview 深链会保留目标 Cube', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?kind=cube&resource=answer_records__revision_draft&file=answer_records__revision_draft&tab=sync')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(screen.getByTestId('devtools-tab-preview')).toHaveAttribute('data-state', 'active')
+    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records__revision_draft|hide-select')
+  })
+
+  it('旧版 cube python 深链会保留目标 Cube 详情', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?kind=cube&resource=answer_records__revision_draft&file=answer_records__revision_draft&tab=python')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(screen.getByTestId('devtools-tab-python')).toHaveAttribute('data-state', 'active')
+    expect(await screen.findByTestId('mock-python-tab')).toHaveTextContent('Python Preview answer_records__revision_draft')
+  })
+
+  it('旧版 recipe YAML 深链仍会进入对应对象态', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?tab=editor&kind=recipe&resource=learning_path&file=learning_path')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(await screen.findByTestId('mock-yaml-editor-learning_path')).toBeInTheDocument()
+    expect(screen.getByTestId('mock-recipe-yaml-summary')).toHaveTextContent('学习,转化|2|answer_records')
+    expect(screen.queryByText('最近草稿')).not.toBeInTheDocument()
+  })
+
+  it('旧版 view YAML 深链仍会进入对应对象态', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?tab=editor&kind=view&resource=learning_overview&file=learning_overview')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(await screen.findByTestId('mock-yaml-editor-learning_overview')).toBeInTheDocument()
+    expect(screen.queryByText('最近发布')).not.toBeInTheDocument()
+  })
+
+  it('旧版 domain 链接会保留原始领域对象而不是回退默认 Cube', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?tab=editor&kind=domain&resource=domain-learning')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(screen.getByTestId('semantic-editor-empty-state')).toBeInTheDocument()
+    expect(screen.getByText('当前对象暂不支持在线 YAML 编辑')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '打开领域模块' })).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-playground-tab')).not.toBeInTheDocument()
+  })
+
+  it('旧版 catalog 链接会保留原始目录对象而不是回退默认 Cube', async () => {
+    mockLists()
+    renderPage('/semantic/workbench?tab=editor&kind=catalog&resource=learning')
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+
+    expect(screen.getByTestId('semantic-editor-empty-state')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '打开领域建模' })).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-playground-tab')).not.toBeInTheDocument()
+  })
+
   it('切到 PY 后展示 Python 实现预览', async () => {
     mockLists()
-    renderPage()
+    renderPage('/semantic/workbench?cube=answer_records')
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
     fireEvent.click(screen.getByTestId('devtools-tab-python'))
 
-    expect(screen.getByTestId('mock-python-tab')).toBeInTheDocument()
-  })
-
-  it('选择领域旧链接时会自动回退到默认 Cube', async () => {
-    mockLists()
-    renderPage('/semantic/workbench?kind=domain&resource=domain-learning')
-
-    await screen.findByRole('heading', { name: '语义工作台' })
-
-    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
-    expect(screen.queryByTestId('semantic-editor-empty-state')).not.toBeInTheDocument()
-  })
-
-  it('支持在工具页挂载 Recipe 定义文件', async () => {
-    mockLists()
-    renderPage('/semantic/workbench?kind=recipe&resource=learning_path&file=learning_path')
-
-    await screen.findByRole('heading', { name: '语义工作台' })
-
-    expect(screen.getByTestId('mock-yaml-editor-learning_path')).toBeInTheDocument()
-    expect(screen.getByTestId('mock-recipe-yaml-summary')).toHaveTextContent('学习,转化|2|answer_records')
-    expect(screen.getByText('Recipe 信息')).toBeInTheDocument()
-    expect(screen.getByText('关联 Cube')).toBeInTheDocument()
-    expect(screen.getByText('示例数')).toBeInTheDocument()
-    expect(screen.getAllByText('学习路径示例').length).toBeGreaterThan(0)
-  })
-
-  it('选择目录旧链接时会自动回退到默认 Cube', async () => {
-    mockLists()
-    renderPage('/semantic/workbench?kind=catalog&resource=learning')
-
-    await screen.findByRole('heading', { name: '语义工作台' })
-
-    expect(await screen.findByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
-    expect(screen.queryByTestId('semantic-editor-empty-state')).not.toBeInTheDocument()
-  })
-
-  it('切到预览后展示统一预览工作区', async () => {
-    mockLists()
-    renderPage()
-
-    await screen.findByRole('heading', { name: '语义工作台' })
-
-    fireEvent.click(screen.getByTestId('devtools-tab-sync'))
-
-    expect(screen.getByTestId('mock-playground-tab')).toHaveTextContent('Playground answer_records|hide-select')
-    expect(screen.queryByTestId('devtools-workbench-context-bar')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '验证' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('mock-python-tab')).toHaveTextContent('Python Preview answer_records')
   })
 })
