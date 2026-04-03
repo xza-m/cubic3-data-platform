@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle, ChevronRight, Link as LinkIcon, Upload } from 'lucide-react'
+import { ChevronRight, Link as LinkIcon, Upload } from 'lucide-react'
 import { describeCube, type CubeDetail } from '@/api/semantic'
-import { CompileDebugTab, type CompileDebugStatus } from '@/components/Semantic/DevTools/CompileDebugTab'
 import { PythonPreviewTab } from '@/components/Semantic/DevTools/PythonPreviewTab'
 import { SemanticEditorEmptyState } from '@/components/Semantic/DevTools/SemanticEditorEmptyState'
 import { PlaygroundTab } from '@/components/Semantic/DevTools/PlaygroundTab'
@@ -12,15 +11,14 @@ import { SemanticResourceTree } from '@/components/Semantic/DevTools/SemanticRes
 import { YamlEditorTab } from '@/components/Semantic/DevTools/YamlEditorTab'
 // workbench wrappers removed — page uses direct layout matching design spec
 import { Skeleton } from '@/components/ui/skeleton'
-import { useSemanticDevTools } from '@/hooks/semantic-ia'
+import { normalizeSemanticWorkbenchTab, useSemanticDevTools } from '@/hooks/semantic-ia'
 import { useUrlState } from '@/hooks/useUrlState'
 import type { SemanticObjectKind } from '@/lib/semantic-workbench'
 
 const tabMeta = {
   editor: { title: 'YAML', description: '查看和维护对象定义文件。' },
   python: { title: 'PY', description: '查看 Python 版对象定义参考。' },
-  compiler: { title: '编译调试', description: '查看编译结果、执行日志和 SQL 输出。' },
-  sync: { title: '预览', description: '查看 Schema 漂移、同步状态和建议动作。' },
+  sync: { title: '预览', description: '查看 DSL、SQL、编译结果与执行反馈。' },
 } as const
 
 type IdeTab = keyof typeof tabMeta
@@ -98,15 +96,13 @@ function InspectorJoinItem({ name, joinType }: { name: string; joinType: string 
 export default function DevTools() {
   const [, setSearchParams] = useSearchParams()
   const isCompactViewport = useCompactViewport()
-  const [tab] = useUrlState<IdeTab>('tab', 'editor')
+  const [rawTab] = useUrlState<string>('tab', 'editor')
   const [selectedKind] = useUrlState<SemanticObjectKind>('kind', 'cube')
   const [selectedCode] = useUrlState<string>('resource', '')
   const [selectedName] = useUrlState<string>('file', '')
   const [resourceSearch] = useUrlState<string>('q', '')
   const [treeCollapsed, setTreeCollapsed] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
-  const [, setCompileStatus] = useState<CompileDebugStatus>({ state: 'idle', label: '未执行', lastRunAt: null })
-  const [, setEditorDirty] = useState(false)
   const updateQueryParams = useCallback((updates: Record<string, string | undefined>) => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
@@ -125,6 +121,13 @@ export default function DevTools() {
     updateQueryParams({ tab: value === 'editor' ? undefined : value })
   }, [updateQueryParams])
 
+  const tab = useMemo<IdeTab>(() => {
+    if (rawTab === 'python') return 'python'
+    return normalizeSemanticWorkbenchTab('workspace', rawTab, 'modeling') === 'preview'
+      ? 'sync'
+      : 'editor'
+  }, [rawTab])
+
   const handleSelectResource = useCallback((kind: SemanticObjectKind, key: string) => {
     updateQueryParams({
       kind: kind === 'cube' ? undefined : kind,
@@ -136,6 +139,7 @@ export default function DevTools() {
   const {
     cubes,
     selection,
+    resolvedSelection,
     selectedResource,
     resourceGroups,
     defaultSelection,
@@ -147,30 +151,73 @@ export default function DevTools() {
     selectedName,
   })
 
+  const normalizedSelection = resolvedSelection ?? {
+    selectedKind,
+    selectedCode,
+    selectedName,
+  }
+  const targetSelection = useMemo(() => {
+    if (resolvedSelection) {
+      return {
+        kind: resolvedSelection.selectedKind,
+        resource: resolvedSelection.selectedCode,
+        file: resolvedSelection.selectedName || undefined,
+      }
+    }
+
+    if (!selectedCode && defaultSelection) {
+      return defaultSelection
+    }
+
+    return null
+  }, [defaultSelection, resolvedSelection, selectedCode])
+  const selectionNeedsSync = useMemo(() => {
+    if (!targetSelection) return false
+
+    const expectedKind = targetSelection.kind
+    const expectedResource = targetSelection.resource
+    const expectedFile = targetSelection.file ?? ''
+
+    return (
+      selectedKind !== expectedKind
+      || selectedCode !== expectedResource
+      || selectedName !== expectedFile
+    )
+  }, [selectedCode, selectedKind, selectedName, targetSelection])
+  const activeKind = selection?.kind ?? normalizedSelection.selectedKind
+  const activeCode = selection?.code ?? normalizedSelection.selectedCode
+  const activeName = selection?.name ?? normalizedSelection.selectedName
+  const previewCube = useMemo(() => {
+    if (selectedResource?.kind === 'cube') return selectedResource.code
+    if (selection?.kind === 'cube') return selection.code
+    if (defaultSelection?.kind === 'cube') return defaultSelection.resource
+    return cubes[0]?.name
+  }, [cubes, defaultSelection, selectedResource, selection])
+  const hideCubeSelectInPreview = selectedResource?.kind === 'cube' || selection?.kind === 'cube'
+
   // Fetch cube detail for inspector panel
   const cubeDetailQuery = useQuery({
-    queryKey: ['semantic', 'cube-detail', selectedCode],
-    queryFn: async () => (await describeCube(selectedCode)).data,
-    enabled: Boolean(selectedCode && selectedKind === 'cube'),
+    queryKey: ['semantic', 'cube-detail', activeCode],
+    queryFn: async () => (await describeCube(activeCode)).data,
+    enabled: Boolean(activeCode && activeKind === 'cube'),
   })
   const cubeDetail: CubeDetail | undefined = cubeDetailQuery.data
 
   // Find the selected cube from cubes list as fallback
   const selectedCubeSummary = useMemo(
-    () => cubes.find((c) => c.name === selectedCode),
-    [cubes, selectedCode],
+    () => cubes.find((c) => c.name === activeCode),
+    [activeCode, cubes],
   )
 
   useEffect(() => {
-    if (selectedCode) return
-    if (defaultSelection) {
-      updateQueryParams({
-        kind: defaultSelection.kind === 'cube' ? undefined : defaultSelection.kind,
-        resource: defaultSelection.resource,
-        file: defaultSelection.file,
-      })
-    }
-  }, [defaultSelection, selectedCode, updateQueryParams])
+    if (!targetSelection || !selectionNeedsSync) return
+
+    updateQueryParams({
+      kind: targetSelection.kind === 'cube' ? undefined : targetSelection.kind,
+      resource: targetSelection.resource,
+      file: targetSelection.file,
+    })
+  }, [selectionNeedsSync, targetSelection, updateQueryParams])
 
   useEffect(() => {
     if (isCompactViewport) {
@@ -183,7 +230,7 @@ export default function DevTools() {
     setInspectorCollapsed(false)
   }, [isCompactViewport])
 
-  const workspaceTitle = selectedResource?.name || '请选择对象'
+  const workspaceTitle = selectedResource?.name || activeName || '请选择对象'
   const cubeResourceGroups = useMemo(
     () => resourceGroups.filter((group) => group.kind === 'cube'),
     [resourceGroups],
@@ -203,7 +250,7 @@ export default function DevTools() {
     ? Object.entries(cubeDetail.joins).map(([key, join]) => ({ name: join.target_cube, joinType: join.type, key }))
     : []
 
-  if (isLoading) {
+  if (isLoading || selectionNeedsSync) {
     return <IdeSkeleton />
   }
 
@@ -220,7 +267,7 @@ export default function DevTools() {
               groups={cubeResourceGroups}
               collapsed={treeCollapsed}
               onToggleCollapsed={() => setTreeCollapsed((current) => !current)}
-              selectedCode={selectedCode}
+              selectedCode={activeCode}
               onSelect={(_kind, key) => handleSelectResource('cube', key)}
             />
             </div>
@@ -254,7 +301,7 @@ export default function DevTools() {
 
                 {/* Center: tab group */}
                 <div className="flex items-center">
-                  {(['editor', 'python', 'compiler', 'sync'] as const).map((item) => (
+                  {(['editor', 'python', 'sync'] as const).map((item) => (
                     <button
                       key={item}
                       type="button"
@@ -273,15 +320,6 @@ export default function DevTools() {
 
                 {/* Right: action buttons */}
                 <div className="flex items-center gap-2 py-3">
-                  {selectedResource?.editorSupported && tab === 'editor' ? (
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[hsl(var(--workbench-outline))] px-4 py-2 text-[13px] font-medium text-[hsl(var(--workbench-ink))] transition-colors hover:bg-[hsl(var(--workbench-surface-2))]"
-                    >
-                      <CheckCircle className="h-3.5 w-3.5" />
-                      验证
-                    </button>
-                  ) : null}
                   {selectedResource ? (
                     <Link
                       to={selectedResource.actionHref}
@@ -303,20 +341,14 @@ export default function DevTools() {
                         fileType={selectedResource.editorType}
                         fileName={selectedResource.code}
                         recipeMeta={selectedResource.recipeMeta}
-                        onDirtyChange={setEditorDirty}
+                        onDirtyChange={() => undefined}
                       />
                     </div>
                   ) : (
                     <div className="flex h-full items-center justify-center bg-[hsl(var(--workbench-surface))] px-6 py-5">
-                      <SemanticEditorEmptyState kind={selectedKind === 'domain' ? 'domain' : 'catalog'} selectionCode={selectedCode} />
+                      <SemanticEditorEmptyState kind={activeKind === 'domain' ? 'domain' : 'catalog'} selectionCode={activeCode} />
                     </div>
                   )
-                ) : null}
-
-                {tab === 'compiler' ? (
-                  <div className="h-full overflow-auto px-6 py-5">
-                    <CompileDebugTab onStatusChange={setCompileStatus} />
-                  </div>
                 ) : null}
 
                 {tab === 'python' ? (
@@ -327,7 +359,10 @@ export default function DevTools() {
 
                 {tab === 'sync' ? (
                   <div className="h-full overflow-auto px-6 py-5">
-                    <PlaygroundTab preferredCube={selectedKind === 'cube' ? selectedCode : undefined} hideCubeSelect={selectedKind === 'cube'} />
+                    <PlaygroundTab
+                      preferredCube={previewCube}
+                      hideCubeSelect={hideCubeSelectInPreview}
+                    />
                   </div>
                 ) : null}
               </div>
@@ -389,7 +424,7 @@ export default function DevTools() {
               ) : null}
 
               {/* Stats Section */}
-              {selectedResource && selectedKind === 'cube' ? (
+              {selectedResource && activeKind === 'cube' ? (
                 <div className="space-y-3">
                   <span className="text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">模型统计</span>
                   <div className="grid grid-cols-3 gap-2">
@@ -411,7 +446,7 @@ export default function DevTools() {
               ) : null}
 
               {/* Non-cube resource info */}
-              {selectedResource && selectedKind !== 'cube' ? (
+              {selectedResource && activeKind !== 'cube' ? (
                 <div className="space-y-3">
                   <span className="text-[13px] font-semibold text-[hsl(var(--workbench-ink))]">对象信息</span>
                   <div className="grid grid-cols-2 gap-2">
