@@ -2,9 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React, { createContext, useContext, type ReactNode } from 'react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import RelationCanvas, {
+  LegacyCubeWorkbenchRedirect,
   buildCreateCubeDraftRequest,
   notifyCreateCubeFailure,
   resolveSelectedCubeId,
@@ -216,6 +217,24 @@ function renderPage(initialEntry = '/semantic/cubes/new') {
   )
 }
 
+function renderLegacyRedirect(initialEntry: string) {
+  function LocationProbe() {
+    const location = useLocation()
+    return <div data-testid="location-probe">{location.pathname}{location.search}</div>
+  }
+
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route path="/semantic/cubes/new" element={<LegacyCubeWorkbenchRedirect />} />
+        <Route path="/semantic/cubes/:name/edit" element={<LegacyCubeWorkbenchRedirect />} />
+        <Route path="/semantic/workbench" element={<div data-testid="workbench-destination">语义工作台页</div>} />
+      </Routes>
+      <LocationProbe />
+    </MemoryRouter>,
+  )
+}
+
 function buildGraphData() {
   return {
     nodes: [
@@ -307,6 +326,34 @@ function buildDraft(overrides: Record<string, any> = {}) {
 }
 
 describe('RelationCanvas page', () => {
+  it('旧的新建路由会回流到工作台起始态', async () => {
+    renderLegacyRedirect('/semantic/cubes/new')
+
+    expect(await screen.findByTestId('workbench-destination')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench')
+  })
+
+  it('旧的编辑路由会回流到对应 workbench 对象态', async () => {
+    renderLegacyRedirect('/semantic/cubes/answer_records/edit')
+
+    expect(await screen.findByTestId('workbench-destination')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench?cube=answer_records&tab=modeling')
+  })
+
+  it('旧的编辑路由会保留已有 query，而不是强制改成默认 tab', async () => {
+    renderLegacyRedirect('/semantic/cubes/answer_records/edit?tab=sync')
+
+    expect(await screen.findByTestId('workbench-destination')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench?tab=sync&cube=answer_records')
+  })
+
+  it('旧的新建路由会删除残留 cube query 再回到工作台起始态', async () => {
+    renderLegacyRedirect('/semantic/cubes/new?cube=old')
+
+    expect(await screen.findByTestId('workbench-destination')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench')
+  })
+
   it('创建草稿前要求已选择数据源与物理表', () => {
     expect(() => buildCreateCubeDraftRequest()).toThrow('请先选择数据源和物理表')
     expect(

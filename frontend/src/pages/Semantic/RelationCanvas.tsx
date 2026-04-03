@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ReactFlow,
@@ -52,6 +52,11 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { fmtDate } from '@/lib/format'
+import {
+  buildCreateCubeDraftRequest,
+  notifyCreateCubeFailure,
+  type SelectedTable,
+} from '@/lib/semantic-cube-draft'
 import { getSemanticStatusLabel } from '@/lib/semantic-status'
 import type { DataSource } from '@/types'
 import type { TreeNode } from '@/components/business/SchemaBrowser/types'
@@ -62,38 +67,7 @@ const nodeTypes = { cube: CubeNode }
 const edgeTypes = { join: JoinEdge }
 const elk = new ELK()
 
-interface SelectedTable {
-  database: string
-  schema?: string
-  table: string
-  comment?: string
-}
-
-export function buildCreateCubeDraftRequest(
-  selectedSource?: string,
-  selectedTable?: SelectedTable | null,
-) {
-  if (!selectedSource || !selectedTable) {
-    throw new Error('请先选择数据源和物理表')
-  }
-
-  return {
-    source_id: Number(selectedSource),
-    database: selectedTable.database,
-    schema: selectedTable.schema,
-    table: selectedTable.table,
-  }
-}
-
-export function notifyCreateCubeFailure({
-  toast,
-  error,
-}: {
-  toast: (payload: { title: string; description: string; variant: 'destructive' }) => void
-  error: unknown
-}) {
-  toast({ title: '创建 Cube 失败', description: (error as Error).message, variant: 'destructive' })
-}
+export { buildCreateCubeDraftRequest, notifyCreateCubeFailure } from '@/lib/semantic-cube-draft'
 
 export function resolveSelectedCubeId({
   name,
@@ -111,6 +85,46 @@ export function resolveSelectedCubeId({
     return null
   }
   return undefined
+}
+
+export function buildLegacyCubeWorkbenchHref({
+  name,
+  pathname,
+  search,
+}: {
+  name?: string
+  pathname: string
+  search?: string
+}) {
+  const params = new URLSearchParams(search || '')
+
+  if (name) {
+    params.set('cube', name)
+    if (!params.get('tab')) {
+      params.set('tab', 'modeling')
+    }
+  } else if (pathname.endsWith('/cubes/new')) {
+    params.delete('cube')
+  }
+
+  const query = params.toString()
+  return `/semantic/workbench${query ? `?${query}` : ''}`
+}
+
+export function LegacyCubeWorkbenchRedirect() {
+  const { name } = useParams<{ name: string }>()
+  const location = useLocation()
+
+  return (
+    <Navigate
+      to={buildLegacyCubeWorkbenchHref({
+        name,
+        pathname: location.pathname,
+        search: location.search,
+      })}
+      replace
+    />
+  )
 }
 
 async function layoutGraph(

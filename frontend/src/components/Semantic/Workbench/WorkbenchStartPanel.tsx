@@ -1,6 +1,7 @@
 import { ArrowRight, Bot, Layers3, Sparkles, Wand2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { CubeSummary } from '@/api/semantic'
+import { WorkbenchCubeDraftStarter } from './WorkbenchCubeDraftStarter'
 import { WorkbenchResumePanel } from './WorkbenchResumePanel'
 
 export function WorkbenchStartPanel({
@@ -51,16 +52,16 @@ export function WorkbenchStartPanel({
           <div className="rounded-[24px] border border-white/10 bg-white/8 p-5 backdrop-blur">
             <div className="space-y-2">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-white/62">AI 辅助建模</div>
-              <div className="text-2xl font-semibold tracking-[-0.03em] text-white">从结构化起始面板开始</div>
+              <div className="text-2xl font-semibold tracking-[-0.03em] text-white">从 workbench 首屏直接完成最小创建</div>
               <p className="text-sm leading-7 text-white/72">
-                当前任务先提供平台级起始面板和继续工作入口，后续再接入真实生成链路。
+                现在可以在首屏里直接选择数据源与物理表，生成 Cube 草稿并保存为 Draft Cube，再进入对象态继续建模。
               </p>
             </div>
             <div className="mt-5 space-y-3">
               {[
-                '1. 选择已有草稿，继续补维度、指标和日期属性。',
-                '2. 选择最近发布对象，回到预览页查看 SQL / DSL 结果。',
-                '3. 后续接入生成接口后，这里会承接“描述需求 → 自动产出草稿”。',
+                '1. 选择数据源与物理表，生成一版最小 Cube 草稿。',
+                '2. 在首屏补草稿名称与标题，并保存为 Draft Cube。',
+                '3. 保存后自动进入对象态，继续补维度、指标和预览校验。',
               ].map((step) => (
                 <div key={step} className="rounded-[18px] border border-white/10 bg-slate-950/16 px-4 py-3 text-sm leading-6 text-white/76">
                   {step}
@@ -79,6 +80,8 @@ export function WorkbenchStartPanel({
           </div>
         </div>
       </section>
+
+      <WorkbenchCubeDraftStarter />
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <WorkbenchResumePanel

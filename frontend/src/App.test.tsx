@@ -75,9 +75,29 @@ vi.mock('./pages/Semantic/Playground', () => ({
   default: () => <div>Cube Playground 页</div>,
 }))
 
-vi.mock('./pages/Semantic/RelationCanvas', () => ({
-  default: () => <div>Cube 关系画布页</div>,
-}))
+vi.mock('./pages/Semantic/RelationCanvas', async () => {
+  const actualRouter = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    default: () => <div>Cube 关系画布页</div>,
+    LegacyCubeWorkbenchRedirect: () => {
+      const location = actualRouter.useLocation()
+      const params = actualRouter.useParams<{ name: string }>()
+      const search = new URLSearchParams(location.search)
+      if (params.name) {
+        search.set('cube', params.name)
+        if (!search.get('tab')) {
+          search.set('tab', 'modeling')
+        }
+      }
+      return (
+        <actualRouter.Navigate
+          to={`/semantic/workbench${search.toString() ? `?${search.toString()}` : ''}`}
+          replace
+        />
+      )
+    },
+  }
+})
 
 vi.mock('./pages/Semantic/DomainCanvas', () => ({
   default: () => <div>领域画布页</div>,
@@ -132,18 +152,24 @@ describe('App routes', () => {
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench?tab=sync')
   })
 
-  it('Cube 主路径使用新界面：列表走 Cube 列表，旧详情入口会收口到编辑画布', async () => {
+  it('Cube 主路径使用新界面：列表走 Cube 列表，旧入口回流到工作台对象态', async () => {
     const firstRender = renderApp('/semantic/cubes')
     expect(await screen.findByText('Cube 列表页')).toBeInTheDocument()
     firstRender.unmount()
 
     const secondRender = renderApp('/semantic/cubes/answer_records')
-    expect(await screen.findByText('Cube 关系画布页')).toBeInTheDocument()
-    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/cubes/answer_records/edit')
+    expect(await screen.findByText('语义工作台页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench?cube=answer_records&tab=modeling')
     secondRender.unmount()
 
+    const thirdRender = renderApp('/semantic/cubes/new')
+    expect(await screen.findByText('语义工作台页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench')
+    thirdRender.unmount()
+
     renderApp('/semantic/cubes/answer_records/edit')
-    expect(await screen.findByText('Cube 关系画布页')).toBeInTheDocument()
+    expect(await screen.findByText('语义工作台页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench?cube=answer_records&tab=modeling')
   })
 
   it('查询分析入口会进入新的查询分析中心主工作台', async () => {

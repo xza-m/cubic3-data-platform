@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import DevTools from './DevTools'
 
@@ -11,6 +12,16 @@ const semanticApiMocks = vi.hoisted(() => ({
   listViews: vi.fn(),
   listRecipes: vi.fn(),
   describeCube: vi.fn(),
+  createCubeDraftFromTable: vi.fn(),
+  createCube: vi.fn(),
+}))
+
+const datasourceMocks = vi.hoisted(() => ({
+  getDataSources: vi.fn(),
+}))
+
+const toastMocks = vi.hoisted(() => ({
+  toast: vi.fn(),
 }))
 
 vi.mock('@/api/semantic', async () => {
@@ -23,8 +34,39 @@ vi.mock('@/api/semantic', async () => {
     listViews: semanticApiMocks.listViews,
     listRecipes: semanticApiMocks.listRecipes,
     describeCube: semanticApiMocks.describeCube,
+    createCubeDraftFromTable: semanticApiMocks.createCubeDraftFromTable,
+    createCube: semanticApiMocks.createCube,
   }
 })
+
+vi.mock('@/api/datasources', () => ({
+  getDataSources: datasourceMocks.getDataSources,
+}))
+
+vi.mock('@/components/business', () => ({
+  SchemaBrowser: ({ onSelect }: { onSelect?: (node: any) => void }) => (
+    <div data-testid="schema-browser">
+      <button
+        type="button"
+        onClick={() => onSelect?.({
+          type: 'table',
+          name: 'answer_records',
+          metadata: {
+            database: 'dw',
+            schema: 'learning',
+            table: 'answer_records',
+            comment: '答题事实表',
+          },
+        })}
+      >
+        选择物理表
+      </button>
+    </div>
+  ),
+  useToast: () => ({
+    toast: toastMocks.toast,
+  }),
+}))
 
 vi.mock('@/components/Semantic/DevTools/YamlEditorTab', () => ({
   YamlEditorTab: ({
@@ -73,10 +115,16 @@ function renderPage(initialEntry = '/semantic/workbench') {
     },
   })
 
+  function LocationProbe() {
+    const location = useLocation()
+    return <div data-testid="location-probe">{location.pathname}{location.search}</div>
+  }
+
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <QueryClientProvider client={client}>
         <DevTools />
+        <LocationProbe />
       </QueryClientProvider>
     </MemoryRouter>,
   )
@@ -205,21 +253,197 @@ function mockLists() {
       },
     },
   }))
+  datasourceMocks.getDataSources.mockResolvedValue({
+    data: {
+      items: [{ id: 1, name: '学习数仓', source_type: 'maxcompute' }],
+    },
+  })
 }
 
 describe('DevTools page', () => {
-  it('工作台首屏显示 AI 辅助建模主任务区与继续工作区', async () => {
+  it('工作台首屏显示 AI 辅助建模主任务区、真实创建入口与继续工作区', async () => {
     mockLists()
     renderPage()
 
     await screen.findByRole('heading', { name: '语义工作台' })
 
     expect(screen.getAllByText('AI 辅助建模').length).toBeGreaterThan(0)
+    expect(screen.getByText('从物理表创建最小 Cube 草稿')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '选择物理表' })).toBeInTheDocument()
+    expect(screen.getByTestId('cube-generate-draft')).toBeDisabled()
     expect(screen.getByText('最近草稿')).toBeInTheDocument()
     expect(screen.getByText('最近发布')).toBeInTheDocument()
     expect(screen.getByText('继续工作')).toBeInTheDocument()
     expect(screen.queryByTestId('mock-playground-tab')).not.toBeInTheDocument()
     expect(screen.queryByTestId('mock-yaml-editor-answer_records')).not.toBeInTheDocument()
+  })
+
+  it('工作台首屏可从物理表生成草稿并保存后进入对象态', async () => {
+    const user = userEvent.setup()
+    mockLists()
+    semanticApiMocks.listCubes.mockReset()
+    semanticApiMocks.listCubes
+      .mockResolvedValueOnce({
+        data: {
+          cubes: [
+            {
+              name: 'answer_records',
+              title: '答题记录',
+              description: '',
+              table: 'answer_records',
+              dimensions: [],
+              measures: [],
+              dimension_count: 3,
+              measure_count: 2,
+              status: 'active',
+              state_summary: { sync_status: 'ok' },
+            },
+            {
+              name: 'answer_records__revision_draft',
+              title: '答题记录修订草稿',
+              description: '',
+              table: 'answer_records',
+              dimensions: [],
+              measures: [],
+              dimension_count: 1,
+              measure_count: 1,
+              status: 'draft',
+              state_summary: { sync_status: 'warn' },
+            },
+          ],
+          total: 2,
+        },
+      })
+      .mockResolvedValue({
+        data: {
+          cubes: [
+            {
+              name: 'answer_records__draft_saved',
+              title: '答题记录建模草稿',
+              description: '待补充',
+              table: 'answer_records',
+              dimensions: ['student_id'],
+              measures: ['answer_count'],
+              dimension_count: 1,
+              measure_count: 1,
+              status: 'draft',
+              source_id: 1,
+              source_database: 'dw',
+              source_schema: 'learning',
+              state_summary: { sync_status: 'warn' },
+            },
+            {
+              name: 'answer_records',
+              title: '答题记录',
+              description: '',
+              table: 'answer_records',
+              dimensions: [],
+              measures: [],
+              dimension_count: 3,
+              measure_count: 2,
+              status: 'active',
+              state_summary: { sync_status: 'ok' },
+            },
+          ],
+          total: 2,
+        },
+      })
+    semanticApiMocks.createCubeDraftFromTable.mockResolvedValueOnce({
+      data: {
+        name: 'answer_records__draft',
+        title: '答题记录草稿',
+        description: '待补充',
+        table: 'answer_records',
+        source_id: 1,
+        source_database: 'dw',
+        source_schema: 'learning',
+        data_source: '学习数仓',
+        status: 'draft',
+        dimensions: {
+          student_id: { title: '学生', type: 'string' },
+        },
+        measures: {
+          answer_count: { title: '答题次数', type: 'count' },
+        },
+      },
+    })
+    semanticApiMocks.createCube.mockResolvedValueOnce({
+      data: {
+        name: 'answer_records__draft_saved',
+        title: '答题记录建模草稿',
+        description: '待补充',
+        table: 'answer_records',
+        source_id: 1,
+        source_database: 'dw',
+        source_schema: 'learning',
+        data_source: '学习数仓',
+        status: 'draft',
+        dimensions: {
+          student_id: { title: '学生', type: 'string' },
+        },
+        measures: {
+          answer_count: { title: '答题次数', type: 'count' },
+        },
+      },
+    })
+    semanticApiMocks.describeCube.mockImplementation(async (name: string) => ({
+      data: {
+        name,
+        title: '答题记录建模草稿',
+        description: '待补充',
+        table: 'answer_records',
+        domain_ids: [],
+        domains: [],
+        domain_count: 0,
+        status: 'draft',
+        dimensions: {
+          student_id: { title: '学生', type: 'string' },
+        },
+        measures: {
+          answer_count: { title: '答题次数', type: 'count' },
+        },
+        segments: {},
+        joins: {},
+        source_binding_summary: {
+          source_name: '学习行为仓',
+        },
+        state_summary: {
+          status: 'draft',
+        },
+      },
+    }))
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: '语义工作台' })
+    await user.click(screen.getByRole('button', { name: '选择物理表' }))
+    await waitFor(() => expect(screen.getByTestId('cube-generate-draft')).not.toBeDisabled())
+    await user.click(screen.getByTestId('cube-generate-draft'))
+
+    await waitFor(() => expect(semanticApiMocks.createCubeDraftFromTable).toHaveBeenCalledWith({
+      source_id: 1,
+      database: 'dw',
+      schema: 'learning',
+      table: 'answer_records',
+    }))
+    expect(toastMocks.toast).toHaveBeenCalledWith({ title: 'Cube 草稿已生成' })
+
+    await user.clear(await screen.findByTestId('cube-draft-name'))
+    await user.type(screen.getByTestId('cube-draft-name'), 'answer_records__draft_saved')
+    await user.clear(screen.getByTestId('cube-draft-title'))
+    await user.type(screen.getByTestId('cube-draft-title'), '答题记录建模草稿')
+    await user.click(screen.getByTestId('cube-banner-save-draft'))
+
+    await waitFor(() => expect(semanticApiMocks.createCube).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'answer_records__draft_saved',
+      title: '答题记录建模草稿',
+      table: 'answer_records',
+      source_id: 1,
+    })))
+    await waitFor(() => expect(screen.getByTestId('location-probe')).toHaveTextContent(
+      '/semantic/workbench?cube=answer_records__draft_saved&tab=modeling',
+    ))
+    expect(await screen.findByTestId('devtools-tab-modeling')).toHaveAttribute('data-state', 'active')
   })
 
   it('草稿 Cube 在无显式 tab 时默认进入建模', async () => {

@@ -56,6 +56,20 @@ async function findCatalogCodeByName(page: Page, catalogName: string) {
   return catalog.code
 }
 
+async function findFirstActiveDatasourceId(page: Page) {
+  const payload = await apiRequest<{
+    data?: {
+      items?: Array<{ id: number; is_active?: boolean }>
+    }
+  }>(page, '/api/v1/data-center/datasources?is_active=true&page_size=20')
+
+  const datasource = payload.data?.items?.find((item) => item.is_active !== false) ?? payload.data?.items?.[0]
+  if (!datasource?.id) {
+    throw new Error('未找到可用数据源，无法为 E2E 自动准备 Cube')
+  }
+  return datasource.id
+}
+
 function extractCubeNameFromHref(href: string | null) {
   if (!href) return null
   const pathname = new URL(href, BASE_URL).pathname
@@ -79,7 +93,8 @@ function sanitizeSchemaNodeName(name: string) {
 }
 
 export async function selectFirstSchemaTable(page: Page) {
-  await expect(page.locator('h1').filter({ hasText: '新建 Cube' }).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: '语义工作台' })).toBeVisible()
+  await expect(page.getByTestId('cube-generate-draft')).toBeVisible()
 
   const tableLocator = page.locator('[data-testid^="schema-node-table-"]:visible')
   const schemaLocator = page.locator('[data-testid^="schema-node-schema-"]:visible')
@@ -206,16 +221,34 @@ export async function ensureCubeAvailable(page: Page) {
     return
   }
 
+  const datasourceId = await findFirstActiveDatasourceId(page)
   const cubeName = `playwright_cube_${Date.now()}`
   const cubeTitle = uniqueName('Playwright Cube 草稿')
-  await gotoSemantic(page, '/semantic/cubes/new')
-  await expect(page.getByRole('heading', { name: '新建 Cube' })).toBeVisible()
-  await selectFirstSchemaTable(page)
-  await page.getByTestId('cube-generate-draft').click()
-  await expect(page.getByText('Cube 草稿已生成', { exact: true }).first()).toBeVisible()
-  await page.getByTestId('cube-draft-name').fill(cubeName)
-  await page.getByTestId('cube-draft-title').fill(cubeTitle)
-  await page.getByTestId('cube-banner-save-draft').click()
-  await page.waitForURL(new RegExp(`/semantic/cubes/${cubeName}$`), { timeout: 15_000 })
-  await expect(page.getByRole('link', { name: '编辑基础信息' })).toBeVisible()
+
+  await apiRequest(page, '/api/v1/semantic/cubes', {
+    method: 'POST',
+    data: {
+      name: cubeName,
+      title: cubeTitle,
+      table: 'playwright.orders',
+      source_id: datasourceId,
+      dimensions: {
+        id: {
+          title: 'ID',
+          type: 'string',
+          sql: '{CUBE}.id',
+        },
+      },
+      measures: {
+        total_count: {
+          title: '总数',
+          type: 'count',
+          sql: '{CUBE}.id',
+        },
+      },
+    },
+  })
+
+  await gotoSemantic(page, '/semantic/cubes')
+  await expect(page.getByRole('heading', { name: 'Cube 管理' })).toBeVisible()
 }
