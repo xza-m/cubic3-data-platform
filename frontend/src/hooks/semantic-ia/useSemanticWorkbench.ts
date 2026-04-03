@@ -16,13 +16,16 @@ export interface UseSemanticWorkbenchOptions {
   requestedTab?: string | null
 }
 
-function normalizeWorkbenchTab(
+export function normalizeSemanticWorkbenchTab(
+  mode: SemanticWorkbenchMode,
   requestedTab: string | null | undefined,
   fallback: SemanticWorkbenchTab,
 ): SemanticWorkbenchTab {
+  if (mode === 'start') return 'modeling'
+
   const normalized = String(requestedTab || '').toLowerCase()
 
-  if (normalized === 'preview' || normalized === 'sync') return 'preview'
+  if (normalized === 'preview' || normalized === 'sync' || normalized === 'compiler') return 'preview'
   if (normalized === 'modeling' || normalized === 'editor') return 'modeling'
 
   return fallback
@@ -51,8 +54,8 @@ export function useSemanticWorkbench(options: UseSemanticWorkbenchOptions = {}) 
   const mode: SemanticWorkbenchMode = currentCube ? 'workspace' : 'start'
   const defaultTab: SemanticWorkbenchTab = currentCube?.status === 'active' ? 'preview' : 'modeling'
   const currentTab = useMemo(
-    () => normalizeWorkbenchTab(options.requestedTab, defaultTab),
-    [defaultTab, options.requestedTab],
+    () => normalizeSemanticWorkbenchTab(mode, options.requestedTab, defaultTab),
+    [defaultTab, mode, options.requestedTab],
   )
 
   const createRevisionMutation = useMutation({

@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useSemanticWorkbench } from '@/hooks/semantic-ia'
+import { buildSemanticWorkbenchHref, useSemanticWorkbench } from '@/hooks/semantic-ia'
 
 const semanticApiMocks = vi.hoisted(() => ({
   createCubeRevision: vi.fn(),
@@ -57,7 +57,30 @@ describe('useSemanticWorkbench', () => {
 
     expect(result.current.mode).toBe('start')
     expect(result.current.defaultTab).toBe('modeling')
+    expect(result.current.currentTab).toBe('modeling')
+    expect(result.current.workspaceHref).toBe('/semantic/workbench?tab=modeling')
     expect(result.current.currentCube).toBeNull()
+  })
+
+  it('start 模式下请求 preview/sync/compiler 仍强制回到建模 tab', () => {
+    const requestedTabs = ['preview', 'sync', 'compiler', 'unknown']
+
+    for (const requestedTab of requestedTabs) {
+      const { result } = renderHook(
+        () =>
+          useSemanticWorkbench({
+            requestedTab,
+          }),
+        {
+          wrapper: createWrapper(`/semantic/workbench?tab=${requestedTab}`),
+        },
+      )
+
+      expect(result.current.mode).toBe('start')
+      expect(result.current.defaultTab).toBe('modeling')
+      expect(result.current.currentTab).toBe('modeling')
+      expect(result.current.workspaceHref).toBe('/semantic/workbench?tab=modeling')
+    }
   })
 
   it('草稿 Cube 会作为当前工作对象并默认进入建模 tab', () => {
@@ -100,6 +123,27 @@ describe('useSemanticWorkbench', () => {
     expect(result.current.defaultTab).toBe('preview')
   })
 
+  it('workspace 模式会把 compiler 归一化成 preview', () => {
+    const { result } = renderHook(
+      () =>
+        useSemanticWorkbench({
+          currentCube: {
+            name: 'answer_records',
+            status: 'active',
+          },
+          requestedTab: 'compiler',
+        }),
+      {
+        wrapper: createWrapper('/semantic/workbench?cube=answer_records&tab=compiler'),
+      },
+    )
+
+    expect(result.current.mode).toBe('workspace')
+    expect(result.current.defaultTab).toBe('preview')
+    expect(result.current.currentTab).toBe('preview')
+    expect(result.current.workspaceHref).toBe('/semantic/workbench?cube=answer_records&tab=preview')
+  })
+
   it('已发布 Cube 发起修订后跳回工作台开发态', async () => {
     semanticApiMocks.createCubeRevision.mockResolvedValue({
       data: {
@@ -132,5 +176,15 @@ describe('useSemanticWorkbench', () => {
 
     expect(semanticApiMocks.createCubeRevision).toHaveBeenCalledWith('answer_records')
     expect(navigateMock).toHaveBeenCalledWith('/semantic/workbench?cube=answer_records__revision_draft&tab=modeling')
+  })
+})
+
+describe('buildSemanticWorkbenchHref', () => {
+  it('输出稳定的工作台链接', () => {
+    expect(buildSemanticWorkbenchHref()).toBe('/semantic/workbench')
+    expect(buildSemanticWorkbenchHref(null, 'modeling')).toBe('/semantic/workbench?tab=modeling')
+    expect(buildSemanticWorkbenchHref('answer_records', 'preview')).toBe(
+      '/semantic/workbench?cube=answer_records&tab=preview',
+    )
   })
 })

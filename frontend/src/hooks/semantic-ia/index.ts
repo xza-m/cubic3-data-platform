@@ -7,6 +7,7 @@ export { useDomainDirectorySelection, type UseDomainDirectorySelectionParams } f
 export { useDomainModelingEntry } from './useDomainModelingEntry'
 export {
   buildSemanticWorkbenchHref,
+  normalizeSemanticWorkbenchTab,
   useSemanticWorkbench,
   type SemanticWorkbenchCubeRef,
   type SemanticWorkbenchMode,
