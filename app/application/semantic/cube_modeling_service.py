@@ -143,6 +143,15 @@ class CubeModelingService:
         self._after_save(cube)
         return cube
 
+    def create_revision_draft(self, name: str) -> CubeDefinition:
+        cube = self._must_get_cube(name)
+        if cube.status != "active":
+            raise ApplicationException("只有已发布 Cube 才能发起修订")
+        revision = CubeDefinition(**{**cube.model_dump(mode="json"), "status": "draft"})
+        self._cube_repo.save(revision)
+        self._after_save(revision)
+        return revision
+
     def _must_get_cube(self, name: str) -> CubeDefinition:
         cube = self._cube_repo.get(name)
         if cube is None:

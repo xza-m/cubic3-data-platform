@@ -156,6 +156,31 @@ def test_create_activate_and_deprecate_cube_updates_registry():
     assert registry_repo.calls[-1][2]["status"] == "deprecated"
 
 
+def test_create_revision_draft_from_active_cube_returns_draft_copy():
+    cube_repo = _InMemoryCubeRepo()
+    cube_repo.save(
+        CubeDefinition(
+            name="answer_records",
+            title="答题记录",
+            table="dws.answer_records",
+            source_id=11,
+            status="active",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
+    service = CubeModelingService(
+        cube_repo=cube_repo,
+        runtime_binding_service=_FakeRuntime(),
+    )
+
+    draft = service.create_revision_draft("answer_records")
+
+    assert draft.name == "answer_records"
+    assert draft.status == "draft"
+    assert draft.title == "答题记录"
+
+
 def test_create_cube_requires_source_id():
     service = CubeModelingService(
         cube_repo=_InMemoryCubeRepo(),
