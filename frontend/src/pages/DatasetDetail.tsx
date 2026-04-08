@@ -14,11 +14,14 @@ import {
   Badge,
   useToast,
   PageCard,
-  CapabilityGateCard,
   DataCenterPageShell,
-  PreviewPanel,
 } from '@/components/business'
 import { Label } from '@/components/ui/label'
+import {
+  getDatasetSourceLabel,
+  getDatasetSourceObjectLabel,
+  getDatasetTypeLabel,
+} from '@/lib/datasetPresentation'
 import { cn } from '@/lib/utils'
 import type { DataTableColumn } from '@/components/business/DataTable'
 import type { BadgeProps } from '@/components/ui/badge'
@@ -57,18 +60,6 @@ export default function DatasetDetail() {
 
   const dataset = datasetRes?.data || null
   const fields = (dataset?.fields || []) as DatasetField[]
-  const previewRows = (dataset?.sample_rows ?? []) as Record<string, unknown>[]
-  const previewColumnKeys = dataset?.sample_columns?.length
-    ? dataset.sample_columns
-    : previewRows.length > 0
-      ? Object.keys(previewRows[0] ?? {})
-      : []
-  const hasPreviewData = previewRows.length > 0 && previewColumnKeys.length > 0
-  const governanceCards = [
-    { title: '血缘分析', reason: '血缘关系需要后端真实编排链路支撑，当前阶段仅展示禁用入口。' },
-    { title: '影响分析', reason: '影响分析依赖下游任务、订阅和消费关系汇总，当前阶段尚未接入。' },
-    { title: '质量评分', reason: '质量评分需要真实规则命中和监控结果，当前阶段仅保留占位说明。' },
-  ]
 
   const updateMutation = useMutation({
     mutationFn: (data: UpdateDatasetRequest) => updateDataset(Number(id), data),
@@ -248,6 +239,9 @@ export default function DatasetDetail() {
 
   const statusConfig = getSyncStatusConfig(dataset.sync_status)
   const StatusIcon = statusConfig.icon
+  const datasetTypeLabel = getDatasetTypeLabel(dataset.dataset_type)
+  const datasetSourceLabel = getDatasetSourceLabel(dataset.source_type)
+  const datasetSourceObjectLabel = getDatasetSourceObjectLabel(dataset)
 
   return (
     <DataCenterPageShell
@@ -259,6 +253,28 @@ export default function DatasetDetail() {
             <StatusIcon className="w-4 h-4" />
             <span className="font-medium">{statusConfig.label}</span>
           </div>
+          {isEditing ? (
+            <>
+              <FormButton variant="outline" onClick={handleCancel}>
+                <X className="w-4 h-4 mr-2" />
+                取消
+              </FormButton>
+              <FormButton
+                onClick={handleSave}
+                disabled={updateMutation.isPending}
+                loading={updateMutation.isPending}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                保存
+              </FormButton>
+            </>
+          ) : (
+            <FormButton onClick={handleEdit} className="bg-indigo-600 hover:bg-indigo-700">
+              <Edit2 className="w-4 h-4 mr-2" />
+              编辑
+            </FormButton>
+          )}
           <FormButton
             variant="outline"
             size="icon"
@@ -278,30 +294,6 @@ export default function DatasetDetail() {
             <FileText className="w-5 h-5 text-emerald-500" />
             基本信息
           </h2>
-          <div className="flex items-center gap-2">
-            {!isEditing ? (
-              <FormButton onClick={handleEdit} className="bg-indigo-600 hover:bg-indigo-700">
-                <Edit2 className="w-4 h-4 mr-2" />
-                编辑
-              </FormButton>
-            ) : (
-              <>
-                <FormButton variant="outline" onClick={handleCancel}>
-                  <X className="w-4 h-4 mr-2" />
-                  取消
-                </FormButton>
-                <FormButton
-                  onClick={handleSave}
-                  disabled={updateMutation.isPending}
-                  loading={updateMutation.isPending}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  保存
-                </FormButton>
-              </>
-            )}
-          </div>
         </div>
         {!isEditing ? (
           <div className="grid grid-cols-2 gap-6">
@@ -322,13 +314,20 @@ export default function DatasetDetail() {
             <div className="col-span-1 border-b border-gray-100 pb-4">
               <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
                 <Database className="w-4 h-4" />
-                物理表
+                类型
               </div>
-              <div className="font-mono text-[0.875rem] leading-5 text-gray-900">{dataset.physical_table}</div>
+              <div className="text-gray-900">{datasetTypeLabel}</div>
             </div>
             <div className="col-span-1 border-b border-gray-100 pb-4">
-              <div className="text-sm text-gray-500 mb-2">数据源类型</div>
-              <div className="text-gray-900">{dataset.source_type || '-'}</div>
+              <div className="text-sm text-gray-500 mb-2">来源</div>
+              <div className="text-gray-900">{datasetSourceLabel}</div>
+            </div>
+            <div className="col-span-2 border-b border-gray-100 pb-4">
+              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+                <Table2 className="w-4 h-4" />
+                物理表 / 来源对象
+              </div>
+              <div className="font-mono text-[0.875rem] leading-5 text-gray-900">{datasetSourceObjectLabel}</div>
             </div>
             <div className="col-span-1 border-b border-gray-100 pb-4">
               <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
@@ -353,9 +352,9 @@ export default function DatasetDetail() {
               <div className="text-gray-900">{dataset.description || <span className="text-gray-400">无描述</span>}</div>
             </div>
             {dataset.sync_error && (
-              <div className="col-span-2">
+              <div className="col-span-2 border-b border-gray-100 pb-4">
                 <div className="text-sm text-gray-500 mb-2">同步错误</div>
-                <div className="text-red-600">{dataset.sync_error}</div>
+                <div className="text-red-600 max-h-32 overflow-y-auto text-sm leading-relaxed break-words">{dataset.sync_error}</div>
               </div>
             )}
           </div>
@@ -375,8 +374,8 @@ export default function DatasetDetail() {
               />
             </div>
             <div className="col-span-2">
-              <Label>物理表</Label>
-              <FormInput value={dataset.physical_table} disabled className="mt-1 font-mono" />
+              <Label>物理表 / 来源对象</Label>
+              <FormInput value={datasetSourceObjectLabel} disabled className="mt-1 font-mono" />
             </div>
             <div className="col-span-1">
               <Label>负责人</Label>
@@ -388,8 +387,8 @@ export default function DatasetDetail() {
               />
             </div>
             <div className="col-span-1">
-              <Label>数据源类型</Label>
-              <FormInput value={dataset.source_type || '-'} disabled className="mt-1" />
+              <Label>来源</Label>
+              <FormInput value={datasetSourceLabel} disabled className="mt-1" />
             </div>
             <div className="col-span-2">
               <Label>描述</Label>
@@ -404,46 +403,6 @@ export default function DatasetDetail() {
           </div>
         )}
       </PageCard>
-
-      {hasPreviewData ? (
-        <PreviewPanel title="数据预览" state="ready">
-          <div className="overflow-hidden rounded-xl border border-slate-200">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    {previewColumnKeys.map((column) => (
-                      <th
-                        key={column}
-                        className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold text-slate-500"
-                      >
-                        {column}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {previewRows.map((row, rowIndex) => (
-                    <tr key={`preview-row-${rowIndex}`}>
-                      {previewColumnKeys.map((column) => (
-                        <td key={`${rowIndex}-${column}`} className="whitespace-nowrap px-4 py-3 text-slate-700">
-                          {toDisplayText(row[column])}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </PreviewPanel>
-      ) : (
-        <PreviewPanel
-          title="数据预览"
-          state="empty"
-          emptyDescription="当前数据集暂无可展示预览"
-        />
-      )}
 
       {/* 字段信息 */}
       <PageCard className="border-gray-200 bg-white shadow-sm">
@@ -468,12 +427,6 @@ export default function DatasetDetail() {
           </div>
         )}
       </PageCard>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        {governanceCards.map((card) => (
-          <CapabilityGateCard key={card.title} title={card.title} reason={card.reason} />
-        ))}
-      </div>
     </DataCenterPageShell>
   )
 }

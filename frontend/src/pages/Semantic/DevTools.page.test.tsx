@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import DevTools from './DevTools'
 
 const semanticApiMocks = vi.hoisted(() => ({
@@ -261,6 +261,10 @@ function mockLists() {
 }
 
 describe('DevTools page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('工作台首屏显示 AI 辅助建模主任务区、真实创建入口与继续工作区', async () => {
     mockLists()
     renderPage()
@@ -421,6 +425,7 @@ describe('DevTools page', () => {
     await user.click(screen.getByTestId('cube-generate-draft'))
 
     await waitFor(() => expect(semanticApiMocks.createCubeDraftFromTable).toHaveBeenCalledWith({
+      source_kind: 'physical_table',
       source_id: 1,
       database: 'dw',
       schema: 'learning',

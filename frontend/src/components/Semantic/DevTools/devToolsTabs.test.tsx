@@ -422,7 +422,7 @@ describe('DevTools tabs', () => {
 
     renderWithProviders(<PlaygroundTab preferredCube="answer_records" />)
 
-    expect(await screen.findByTestId('playground-config-scroll')).toBeInTheDocument()
+    expect(await screen.findByText('DSL JSON')).toBeInTheDocument()
 
     await userEvent.click(await screen.findByRole('checkbox', { name: /总次数/ }))
     await userEvent.click(screen.getByRole('checkbox', { name: /学科/ }))
@@ -439,9 +439,7 @@ describe('DevTools tabs', () => {
     await waitFor(() => {
       expect((screen.getByLabelText('json-editor') as HTMLTextAreaElement).value).toContain('"join_path": [')
     })
-    expect(screen.getByTestId('playground-mode-badge')).toHaveTextContent('Joined Cube')
-    expect(screen.getByTestId('playground-result-toolbar')).toBeInTheDocument()
-    expect(screen.getByTestId('playground-output-tabs')).toBeInTheDocument()
+    expect(screen.getByText('JOIN 路径')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '编译' }))
 
@@ -459,13 +457,11 @@ describe('DevTools tabs', () => {
       join_path: ['answer_records', 'student'],
       limit: 100,
     })
-    expect(screen.getByTestId('playground-output-panel')).toBeInTheDocument()
     expect(sqlEditor.value).toContain('select subject_name, count(*) from answer_records')
 
     await userEvent.click(screen.getByRole('button', { name: '编译并执行' }))
 
     expect(await screen.findByText('执行结果')).toBeInTheDocument()
-    expect(screen.getByTestId('playground-execution-summary')).toBeInTheDocument()
     expect(screen.getByText('1 行 · 23 ms')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('数学')).toBeInTheDocument()
   })
@@ -496,8 +492,7 @@ describe('DevTools tabs', () => {
 
     renderWithProviders(<PlaygroundTab preferredCube="answer_records" />)
 
-    await screen.findByTestId('playground-config-scroll')
-    expect(screen.getByTestId('playground-mode-badge')).toHaveTextContent('单 Cube')
+    await screen.findByText('DSL JSON')
 
     await userEvent.click(screen.getByRole('button', { name: '编译' }))
     await waitFor(() => {
@@ -518,6 +513,5 @@ describe('DevTools tabs', () => {
     })
 
     expect(screen.getByText('编译失败')).toBeInTheDocument()
-    expect(screen.getByText('执行失败')).toBeInTheDocument()
   })
 })

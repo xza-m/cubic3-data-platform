@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React, { createContext, useContext, type ReactNode } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RelationCanvas, {
   LegacyCubeWorkbenchRedirect,
   buildCreateCubeDraftRequest,
@@ -326,6 +326,10 @@ function buildDraft(overrides: Record<string, any> = {}) {
 }
 
 describe('RelationCanvas page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('旧的新建路由会回流到工作台起始态', async () => {
     renderLegacyRedirect('/semantic/cubes/new')
 
@@ -363,6 +367,7 @@ describe('RelationCanvas page', () => {
         table: 'answer_records',
       }),
     ).toEqual({
+      source_kind: 'physical_table',
       source_id: 1,
       database: 'dw',
       schema: 'learning',
@@ -435,6 +440,7 @@ describe('RelationCanvas page', () => {
 
     await waitFor(() => {
       expect(semanticApiMocks.createCubeDraftFromTable).toHaveBeenCalledWith({
+        source_kind: 'physical_table',
         source_id: 1,
         database: 'dw',
         schema: 'learning',

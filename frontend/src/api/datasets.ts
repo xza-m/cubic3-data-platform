@@ -46,6 +46,7 @@ export interface CreateDatasetRequest {
 export interface UpdateDatasetRequest {
   dataset_name?: string
   description?: string
+  owner?: string
   fields?: Array<{
     field_name?: string
     physical_name?: string

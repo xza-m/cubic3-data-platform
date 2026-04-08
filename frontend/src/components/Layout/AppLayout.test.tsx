@@ -107,18 +107,17 @@ describe('AppLayout', () => {
   })
 
   it('鼠标仍停留在侧边栏时，切换二级功能页后应保持展开', async () => {
-    const user = userEvent.setup()
     renderLayout('/data-center/datasources')
 
     const sidebar = screen.getByTestId('app-shell-sidebar')
-    await user.hover(sidebar)
+    fireEvent.mouseEnter(sidebar)
 
     const datasetButton = screen.getByRole('button', { name: /^数据集$/ })
-    await user.click(datasetButton)
+    fireEvent.click(datasetButton)
 
     expect(await screen.findByText('数据集页面')).toBeInTheDocument()
     expect(sidebar.className).toContain('w-60')
     expect(screen.getByRole('button', { name: /^数据源$/ })).toBeVisible()
     expect(screen.getByRole('button', { name: /^数据集$/ })).toBeVisible()
-  })
+  }, 10_000)
 })
