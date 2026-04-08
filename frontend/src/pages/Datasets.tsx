@@ -16,6 +16,7 @@ import {
   Code,
   FileText,
   ChevronDown,
+  LayoutDashboard,
   Loader2
 } from 'lucide-react'
 import { getDatasets, deleteDataset, getDatasetStatistics, syncDatasetSchema } from '../api/datasets'
@@ -39,6 +40,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  getDatasetSourceLabel,
+  getDatasetSourceObjectLabel,
+  getDatasetTypeLabel,
+} from '@/lib/datasetPresentation'
 import { cn } from '@/lib/utils'
 
 export default function Datasets() {
@@ -137,7 +143,7 @@ export default function Datasets() {
     { title: '影响分析', reason: '下游影响范围尚未接入真实任务和订阅关系，暂不开放操作。' },
     { title: '质量评分', reason: '质量评分依赖真实治理规则与监控结果回传，当前阶段仅显示禁用态。' },
   ]
-  const tableColumnsClass = 'grid grid-cols-[minmax(220px,1.9fr)_minmax(220px,1.5fr)_minmax(120px,0.8fr)_110px_minmax(120px,0.8fr)_120px] gap-4'
+  const tableColumnsClass = 'grid grid-cols-[minmax(220px,1.45fr)_minmax(220px,1.15fr)_minmax(140px,0.8fr)_minmax(120px,0.8fr)_110px_minmax(120px,0.8fr)_minmax(148px,1fr)] gap-4'
 
   return (
     <DataCenterPageShell
@@ -160,7 +166,7 @@ export default function Datasets() {
               <Database className="mr-2 h-4 w-4" />
               物理表数据集
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => navigate('/queries')}>
+            <DropdownMenuItem onClick={() => navigate('/queries?intent=create-virtual-dataset')}>
               <Code className="mr-2 h-4 w-4" />
               SQL 虚拟数据集
             </DropdownMenuItem>
@@ -227,8 +233,9 @@ export default function Datasets() {
             {/* Table Header */}
             <div className={`${tableColumnsClass} items-center border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3.5`}>
               <span className="min-w-0 text-xs font-semibold text-[#64748B]">数据集</span>
-              <span className="min-w-0 text-xs font-semibold text-[#64748B]">物理表</span>
-              <span className="text-xs font-semibold text-[#64748B]">数据源类型</span>
+              <span className="min-w-0 text-xs font-semibold text-[#64748B]">物理表 / 来源对象</span>
+              <span className="text-xs font-semibold text-[#64748B]">类型</span>
+              <span className="text-xs font-semibold text-[#64748B]">来源</span>
               <span className="text-xs font-semibold text-[#64748B]">同步状态</span>
               <span className="text-xs font-semibold text-[#64748B]">负责人</span>
               <span className="text-xs font-semibold text-[#64748B]">操作</span>
@@ -237,7 +244,7 @@ export default function Datasets() {
             {/* Table Rows */}
             {datasets.map((ds: Dataset, i: number) => {
               const syncStyle = getSyncStatusStyle(ds.sync_status)
-              const typeLabel = ds.dataset_type === 'virtual' ? 'SQL' : ds.dataset_type === 'file' ? '文件' : '物理表'
+              const typeLabel = getDatasetTypeLabel(ds.dataset_type)
               const syncReason = ds.sync_status === 'failed' ? (ds.sync_error || '同步失败，后端未返回具体原因') : null
               const isCurrentRowSyncing = syncingDatasetIds.includes(ds.id)
               return (
@@ -257,22 +264,24 @@ export default function Datasets() {
                   {/* Physical table */}
                   <span
                     className="block min-w-0 truncate pr-4 text-[13px] text-[#64748B]"
-                    title={
-                      ds.physical_table ||
-                      (ds.dataset_type === 'virtual'
-                        ? '视图'
-                        : ds.dataset_type === 'file'
-                          ? ds.file_metadata?.file_name || '-'
-                          : '-')
-                    }
+                    title={getDatasetSourceObjectLabel(ds)}
                   >
-                    {ds.physical_table || (ds.dataset_type === 'virtual' ? '视图' : ds.dataset_type === 'file' ? ds.file_metadata?.file_name : '-')}
+                    {getDatasetSourceObjectLabel(ds)}
                   </span>
 
-                  {/* Source type */}
-                  <span className="block min-w-0 truncate text-[13px] text-[#64748B]" title={ds.source_type || '-'}>
-                    {ds.source_type || '-'}
-                  </span>
+                  {/* Dataset type */}
+                  <div className="min-w-0">
+                    <span className="block truncate text-[13px] font-medium text-[#0F172A]" title={typeLabel}>
+                      {typeLabel}
+                    </span>
+                  </div>
+
+                  {/* Source */}
+                  <div className="min-w-0">
+                    <span className="block truncate text-[13px] text-[#64748B]" title={getDatasetSourceLabel(ds.source_type)}>
+                      {getDatasetSourceLabel(ds.source_type)}
+                    </span>
+                  </div>
 
                   {/* Sync status */}
                   <span className={`block min-w-0 truncate text-[13px] font-medium ${syncStyle.color}`}>
@@ -285,7 +294,16 @@ export default function Datasets() {
                   </span>
 
                   {/* Actions */}
-                  <div className="flex items-center justify-end gap-3 self-center">
+                  <div className="flex flex-wrap items-center justify-end gap-1.5 self-center">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/semantic/workbench?intent=dataset-modeling&datasetId=${ds.id}&datasetName=${encodeURIComponent(ds.dataset_name)}`)}
+                      className="rounded-md border border-[#E2E8F0] bg-white p-2 text-[#475569] transition-colors hover:bg-[#F8FAFC]"
+                      aria-label={`用于语义建模 ${ds.dataset_name}`}
+                      title="用于语义建模"
+                    >
+                      <LayoutDashboard className="h-4 w-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => syncMutation.mutate(ds.id)}

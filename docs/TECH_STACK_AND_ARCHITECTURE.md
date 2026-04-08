@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-03-28
+last_reviewed: 2026-04-03
 ---
 
 # 技术栈与架构说明
@@ -178,6 +178,9 @@ frontend/src/
 
 - 首页工作台不再由前端拼装多组统计请求，统一消费 `/api/v1/dashboard/overview`
 - 查询分析旧子页和语义中心旧别名路由只保留兼容重定向，不再作为主 IA
+- 语义中心当前以 `/semantic/workbench` 作为唯一开发主场：无对象时展示 AI 建模起始页，有对象时进入 `建模 / 预览 / YAML / PY` 对象态工作区
+- `/semantic/cubes` 当前回归为语义资产管理页，默认聚焦已发布与已废弃对象，通过详情抽屉承接“发起修订”和“去工作台查看”
+- `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 与 `/semantic/tools` 只保留兼容重定向，实际都会回流到 `/semantic/workbench`
 
 其中数据中心当前基线为：
 
@@ -236,8 +239,10 @@ frontend/src/
 当前语义对象边界同时固定为：
 
 - `Cube` 与 `Domain` 是正式建模对象，领域编排和对象治理围绕这两类对象展开。
+- `Semantic Workbench` 负责 `选数据源 -> 选物理表/数据集 -> 生成草稿 -> 微调 -> 调试 -> 发布` 的开发流；`Cube 管理` 负责正式资产浏览与修订入口。
 - `Domain.cubes[]` 与领域画布是 `Cube <-> Domain` 关系的唯一真相；同一个 Cube 可以被多个领域引用。
 - `Cube.domain_id` 仅保留为兼容投影字段，用于列表和详情摘要，不反向驱动领域关系持久化。
+- 已发布 Cube 不直接在资产页裸改；前端通过 `POST /api/v1/semantic/cubes/<cube_name>/revisions` 创建修订草稿，再回流工作台继续开发。
 - `View` 在工作台和摘要接口层按“特殊 Cube”收敛，继续走详情、编译与物化链路，但不升格为一级导航。
 - `Recipe` 保持轻量消费对象，主要通过详情和 `DevTools` 提供示例与上下文，不进入正式建模工作流。
 - 当前不支持“同一领域内重复实例化同一个 Cube 且使用不同 Join 条件”的高级建模能力。

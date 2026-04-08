@@ -26,7 +26,9 @@ const ExecutionMonitor = lazy(() => import('./pages/AppCenter/ExecutionMonitor')
 const Channels = lazy(() => import('./pages/ConfigCenter/Channels'))
 const Subscriptions = lazy(() => import('./pages/ConfigCenter/Subscriptions'))
 const CubeList = lazy(() => import('./pages/Semantic/CubeList'))
-const RelationCanvas = lazy(() => import('./pages/Semantic/RelationCanvas'))
+const LegacyCubeWorkbenchRedirect = lazy(() =>
+  import('./pages/Semantic/RelationCanvas').then((module) => ({ default: module.LegacyCubeWorkbenchRedirect })),
+)
 const DomainList = lazy(() => import('./pages/Semantic/DomainList'))
 const ModelingRedirect = lazy(() => import('./pages/Semantic/ModelingRedirect'))
 const DomainCanvas = lazy(() => import('./pages/Semantic/DomainCanvas'))
@@ -150,8 +152,8 @@ function App() {
               <Route path="workbench" element={<DevTools />} />
               <Route path="overview" element={<RedirectSemanticRoute to="/semantic/workbench" />} />
               <Route path="cubes" element={<CubeList />} />
-              <Route path="cubes/new" element={<RelationCanvas />} />
-              <Route path="cubes/:name/edit" element={<RelationCanvas />} />
+              <Route path="cubes/new" element={<LegacyCubeWorkbenchRedirect />} />
+              <Route path="cubes/:name/edit" element={<LegacyCubeWorkbenchRedirect />} />
               <Route path="cubes/:name" element={<RedirectLegacyCubeDetailRoute />} />
               <Route path="domains" element={<DomainList />} />
               <Route path="modeling" element={<ModelingRedirect />} />

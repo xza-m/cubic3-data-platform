@@ -226,6 +226,16 @@ def create_semantic_blueprint(
             return error(f"激活 Cube 失败: {str(exc)}")
         return success(data=cube.model_dump(mode="json"))
 
+    @bp.route('/cubes/<cube_name>/revisions', methods=['POST'])
+    def create_cube_revision(cube_name):
+        try:
+            cube = modeling_service.create_revision_draft(cube_name)
+        except Exception as exc:
+            if "未找到 Cube" in str(exc):
+                return not_found(str(exc))
+            return error(f"发起修订失败: {str(exc)}")
+        return created(data=cube.model_dump(mode="json"))
+
     @bp.route('/cubes/<cube_name>/deprecate', methods=['POST'])
     def deprecate_cube(cube_name):
         try:

@@ -5,8 +5,8 @@ import { SemanticObjectIdentity } from '@/components/Semantic/SemanticObjectIden
 import { SemanticPreviewFacts, SemanticPreviewPanel, SemanticPreviewSection } from '@/components/Semantic/SemanticPreviewPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { buildSemanticWorkbenchHref, useSemanticWorkbench } from '@/hooks/semantic-ia'
 import {
-  buildCubePreviewActions,
   formatSummaryTime,
   getCubeAttentionReasons,
   getCubePrimaryStatus,
@@ -42,26 +42,43 @@ export function CubePreviewPanel({
 }: CubePreviewPanelProps) {
   const activeCube = cubeDetail ?? selectedCube
   const attentionReasons = getCubeAttentionReasons(selectedCube)
-  const actions = buildCubePreviewActions(activeCube)
   const dimensionFields = cubeDetail ? Object.entries(cubeDetail.dimensions || {}).map(([key, value]) => value.title || key) : []
   const measureFields = cubeDetail ? Object.entries(cubeDetail.measures || {}).map(([key, value]) => value.title || key) : []
   const fieldSummary = cubeDetail
     ? [...dimensionFields.slice(0, 4), ...measureFields.slice(0, 4)].join(' · ')
     : `${selectedCube.dimension_count} 个维度，${selectedCube.measure_count} 个指标`
+  const { startRevision, isStartingRevision } = useSemanticWorkbench({
+    currentCube: {
+      name: activeCube.name,
+      status: activeCube.status,
+    },
+  })
+  const isPublished = (activeCube.status || '').toLowerCase() === 'active'
+  const workbenchHref = buildSemanticWorkbenchHref(activeCube.name, isPublished ? 'preview' : 'modeling')
 
   return (
     <SemanticPreviewPanel
       title="当前选择"
       actions={(
-        <div className="flex shrink-0 items-center">
-          {actions.map((action) => (
-            <Button key={action.href} asChild variant="default" size="sm" className="h-7 rounded-md px-2 text-[11px]">
-              <Link to={action.href}>
-                {action.label}
-                <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-              </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          {isPublished ? (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="h-7 rounded-md px-2 text-[11px]"
+              disabled={isStartingRevision}
+              onClick={() => startRevision(activeCube.name)}
+            >
+              发起修订
             </Button>
-          ))}
+          ) : null}
+          <Button asChild variant={isPublished ? 'outline' : 'default'} size="sm" className="h-7 rounded-md px-2 text-[11px]">
+            <Link to={workbenchHref}>
+              {isPublished ? '在工作台查看' : '去工作台继续'}
+              <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+            </Link>
+          </Button>
         </div>
       )}
     >

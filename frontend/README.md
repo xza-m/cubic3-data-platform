@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-03-28
+last_reviewed: 2026-04-03
 ---
 
 # CUBIC3 前端
@@ -135,6 +135,13 @@ src/
 
 - `/queries/editor`、`/queries/history`、`/queries/templates`、`/queries/visual`、`/queries/my`、`/queries/scheduled` 会统一重定向到 `/queries`
 - `/semantic/overview`、`/semantic/tools`、`/semantic/playground`、`/semantic/visual-model`、`/semantic/canvas`、`/semantic/ide`、`/semantic/devtools` 会统一重定向到新的语义中心主入口
+- `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 会统一回流到 `/semantic/workbench`，不再作为独立创建/编辑页保留
+
+语义中心当前页面职责：
+
+- `/semantic/workbench`：唯一开发主场。无对象时展示 AI 辅助建模起始页；有对象时进入 `建模 / 预览 / YAML / PY` 工作区。
+- `/semantic/cubes`：资产管理页。默认聚焦已发布与已废弃 Cube，通过详情抽屉承接“发起修订”和“去工作台查看”。
+- `/semantic/modeling`、`/semantic/domains/:id`：领域画布与建模画布，继续承接领域编排能力。
 
 当前数据中心 Phase 1 已落地的前端基线：
 
@@ -145,4 +152,4 @@ src/
 
 ## 构建产物
 
-`npm run build` 会生成 `dist/`。Docker 模式下，Nginx 会直接挂载该目录作为前端静态资源根目录，因此部署前需要确保 `dist/` 已更新。
+`npm run build` 会生成 `dist/`，用于本地预览或静态产物检查。Docker 模式下，`nginx` 镜像会在构建阶段自动执行前端打包并内置静态资源，不再依赖宿主机的 `dist/` 目录。

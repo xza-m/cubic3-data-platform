@@ -396,6 +396,18 @@ export interface PaginatedListMeta {
   page_count?: number
 }
 
+export interface CubeModelingSourceDraftRequest {
+  source_id?: number
+  database?: string
+  table?: string
+  schema?: string
+  dataset_id?: number
+  source_kind?: 'physical_table' | 'dataset'
+  name?: string
+  title?: string
+  description?: string
+}
+
 // Cube APIs
 export const listCubes = (params?: ListQueryParams) =>
   apiClient.get<{ cubes: CubeSummary[] } & PaginatedListMeta>('/semantic/cubes', { params })
@@ -403,21 +415,17 @@ export const listCubes = (params?: ListQueryParams) =>
 export const describeCube = (name: string) =>
   apiClient.get<CubeDetail>(`/semantic/cubes/${name}`)
 
-export const createCubeDraftFromTable = (payload: {
-  source_id: number
-  database: string
-  table: string
-  schema?: string
-  name?: string
-  title?: string
-  description?: string
-}) => apiClient.post<CubeDraftPayload>('/semantic/cubes/draft-from-table', payload)
+export const createCubeDraftFromTable = (payload: CubeModelingSourceDraftRequest) =>
+  apiClient.post<CubeDraftPayload>('/semantic/cubes/draft-from-table', payload)
 
 export const createCube = (payload: CubeDraftPayload) =>
   apiClient.post<CubeDraftPayload>('/semantic/cubes', payload)
 
 export const updateCube = (name: string, payload: Partial<CubeDraftPayload>) =>
   apiClient.put<CubeDraftPayload>(`/semantic/cubes/${name}`, payload)
+
+export const createCubeRevision = (name: string) =>
+  apiClient.post<CubeDraftPayload>(`/semantic/cubes/${name}/revisions`)
 
 export const activateCube = (name: string) =>
   apiClient.post<CubeDraftPayload>(`/semantic/cubes/${name}/activate`)

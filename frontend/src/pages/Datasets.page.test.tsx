@@ -58,7 +58,7 @@ describe('Datasets page', () => {
     vi.clearAllMocks()
   })
 
-  it('展示数据集同步摘要与三种类型标识', async () => {
+  it('展示数据集同步摘要、类型列与独立来源列', async () => {
     datasetMocks.getDatasets.mockResolvedValue({
       data: {
         items: [
@@ -116,7 +116,9 @@ describe('Datasets page', () => {
     expect(screen.getByText('总数据集')).toBeInTheDocument()
     expect(screen.getByText('已同步')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('搜索数据集名称或编码...')).toBeInTheDocument()
-    expect(await screen.findByText('数据源类型')).toBeInTheDocument()
+    expect(await screen.findByText('物理表 / 来源对象')).toBeInTheDocument()
+    expect(screen.getByText('类型')).toBeInTheDocument()
+    expect(screen.getByText('来源')).toBeInTheDocument()
     const physicalRow = (await screen.findByText('课堂进度')).parentElement?.parentElement
     const virtualRow = screen.getByText('行为细分').parentElement?.parentElement
     const fileRow = screen.getByText('成绩上传').parentElement?.parentElement
@@ -124,24 +126,27 @@ describe('Datasets page', () => {
     expect(virtualRow).not.toBeNull()
     expect(fileRow).not.toBeNull()
 
-    expect(within(physicalRow!).getByText('ID:9 · 物理表')).toBeInTheDocument()
+    expect(within(physicalRow!).getByText('物理数据集')).toBeInTheDocument()
     expect(within(physicalRow!).getByText('dwd_lesson_progress')).toBeInTheDocument()
     expect(within(physicalRow!).getByText('postgresql')).toBeInTheDocument()
     expect(within(physicalRow!).getByText('已同步')).toBeInTheDocument()
     expect(within(physicalRow!).getByText('data-team')).toBeInTheDocument()
 
-    expect(within(virtualRow!).getByText('ID:10 · SQL')).toBeInTheDocument()
+    expect(within(virtualRow!).getByText('虚拟数据集')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('视图')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('maxcompute')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('失败')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('schema_fetch_failed')).toBeInTheDocument()
     expect(within(virtualRow!).getByText('ops-team')).toBeInTheDocument()
 
-    expect(within(fileRow!).getByText('ID:11 · 文件')).toBeInTheDocument()
+    expect(within(fileRow!).getByText('文件数据集')).toBeInTheDocument()
     expect(within(fileRow!).getByText('scores.xlsx')).toBeInTheDocument()
     expect(within(fileRow!).getByText('-')).toBeInTheDocument()
     expect(within(fileRow!).getByText('同步中')).toBeInTheDocument()
     expect(within(fileRow!).getByText('teacher')).toBeInTheDocument()
+    expect(screen.queryByText('直接来自库表')).not.toBeInTheDocument()
+    expect(screen.queryByText('由 SQL 加工得到')).not.toBeInTheDocument()
+    expect(screen.queryByText('由文件导入')).not.toBeInTheDocument()
     expect(screen.getByText('血缘分析')).toBeInTheDocument()
     expect(screen.getByText('影响分析')).toBeInTheDocument()
     expect(screen.getByText('质量评分')).toBeInTheDocument()
@@ -177,7 +182,7 @@ describe('Datasets page', () => {
     await user.click(await screen.findByRole('menuitem', { name: /CSV \/ Excel 文件数据集/ }))
 
     expect(navigateMock).toHaveBeenCalledWith('/data-center/datasets/register/table')
-    expect(navigateMock).toHaveBeenCalledWith('/queries')
+    expect(navigateMock).toHaveBeenCalledWith('/queries?intent=create-virtual-dataset')
     expect(navigateMock).toHaveBeenCalledWith('/data-center/datasets/register/file')
 
     await user.type(screen.getByPlaceholderText('搜索数据集名称或编码...'), 'lesson')
@@ -186,6 +191,42 @@ describe('Datasets page', () => {
         expect.objectContaining({ page: 1, page_size: 10, search: 'lesson' }),
       )
     })
+  })
+
+  it('列表动作仅保留语义工作台图标入口', async () => {
+    const user = userEvent.setup()
+
+    datasetMocks.getDatasets.mockResolvedValue({
+      data: {
+        items: [
+          {
+            id: 9,
+            dataset_code: 'lesson_progress',
+            dataset_name: '课堂进度',
+            dataset_type: 'physical',
+            source_type: 'postgresql',
+            physical_table: 'dwd_lesson_progress',
+            description: '学生课程进度明细',
+            owner: 'data-team',
+            sync_status: 'synced',
+            created_at: '2026-03-20T10:00:00Z',
+            updated_at: '2026-03-24T10:00:00Z',
+          },
+        ],
+        total: 1,
+      },
+    })
+    datasetMocks.getDatasetStatistics.mockResolvedValue({
+      data: { total: 1, synced: 1, failed: 0, pending: 0 },
+    })
+
+    renderPage()
+
+    await screen.findByText('课堂进度')
+
+    expect(screen.queryByRole('button', { name: '在查询中心使用 课堂进度' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '用于语义建模 课堂进度' }))
+    expect(navigateMock).toHaveBeenCalledWith('/semantic/workbench?intent=dataset-modeling&datasetId=9&datasetName=%E8%AF%BE%E5%A0%82%E8%BF%9B%E5%BA%A6')
   })
 
   it('支持同步成功、编辑跳转与删除成功', async () => {

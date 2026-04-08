@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-03-26
+last_reviewed: 2026-04-03
 ---
 
 # 语义中心固定验证流程
@@ -56,8 +56,8 @@ make smoke-semantic
 `make test-regression-semantic` 当前除了单元测试外，还固定覆盖以下浏览器回归重点：
 
 - `domain-catalog.spec.ts`：校验目录治理摘要、`domain-list-search` 过滤、`domain-create-trigger` 跳转，以及选中领域后 `domain-summary-panel` 的更新。
-- `cube-browse.spec.ts`：校验 Cube 管理中的多领域摘要提示，或在详情页看到 `cube-domain-links` 领域投影链接。
-- `semantic.visual.spec.ts`：固定截图 `DomainList`、`RelationCanvas`、`ViewDetail` 与 `DevTools` 当前工作台首屏。
+- `cube-browse.spec.ts`：校验 `Cube 管理 -> 详情抽屉 -> 工作台对象态` 这条资产浏览链路，不再依赖旧的编辑画布入口。
+- `semantic.visual.spec.ts`：固定截图 `Cube 管理`、`语义工作台`、`DomainList`、`DomainCanvas` 与 `ViewDetail` 的当前主界面。
 - `domain-publish.spec.ts`：继续以 `publish-domain-button` 为入口校验领域发布流程不被回归破坏。
 
 这些回归用于保证 Phase 2 的对象治理摘要和跨页导航已经进入固定门槛，而不是只停留在局部组件测试绿色。
@@ -95,10 +95,10 @@ make smoke-semantic
 - 校验状态变为 `active`
 
 ### 3. `cube-draft-smoke`
-- 打开 `Cube 关系画布`
+- 打开 `语义工作台`
 - 从物理表结构中选择表
 - 生成 Cube 草稿
-- 保存为 Draft Cube
+- 保存为 Draft Cube，并跳到 `/semantic/workbench?cube=<name>&tab=modeling`
 
 ## 说明
 - 浏览器烟测使用 `playwright-cli`

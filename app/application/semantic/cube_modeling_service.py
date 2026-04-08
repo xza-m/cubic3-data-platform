@@ -143,6 +143,16 @@ class CubeModelingService:
         self._after_save(cube)
         return cube
 
+    def create_revision_draft(self, name: str) -> CubeDefinition:
+        cube = self._must_get_cube(name)
+        if cube.status != "active":
+            raise ApplicationException("只有已发布 Cube 才能发起修订")
+        revision_name = self._build_revision_draft_name(cube.name)
+        revision = CubeDefinition(**{**cube.model_dump(mode="json"), "name": revision_name, "status": "draft"})
+        self._cube_repo.save(revision)
+        self._after_save(revision)
+        return revision
+
     def _must_get_cube(self, name: str) -> CubeDefinition:
         cube = self._cube_repo.get(name)
         if cube is None:
@@ -167,6 +177,17 @@ class CubeModelingService:
                 certified_measure_list=[name for name, measure in cube.measures.items() if measure.certified],
             )
             self._registry_repo.commit()
+
+    def _build_revision_draft_name(self, base_name: str) -> str:
+        candidate = f"{base_name}__revision_draft"
+        if self._cube_repo.get(candidate) is None:
+            return candidate
+        suffix = 2
+        while True:
+            candidate = f"{base_name}__revision_draft_{suffix}"
+            if self._cube_repo.get(candidate) is None:
+                return candidate
+            suffix += 1
 
     @staticmethod
     def _normalize_name(name: str) -> str:

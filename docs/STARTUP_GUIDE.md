@@ -73,16 +73,15 @@ Phase 1 当前验证通过的主链路基线为：
 
 ```bash
 cp env.sample .env
-cd frontend && npm run build && cd ..
 docker compose up --build -d
 ```
 
 说明：
 
-- `docker-compose.yml` 当前没有独立的前端构建阶段
-- Nginx 会直接读取宿主机的 `frontend/dist`
-- 如果前端代码刚改过而未重新构建，Nginx 会继续提供旧资源
-- 当前交付口径是“容器可支撑联调与验证”，不是一键安装器或云原生收口
+- `docker-compose.yml` 当前会在 `nginx` 镜像构建阶段自动打包前端
+- `docker compose up --build` 会生成并内置最新的前端静态资源
+- Nginx 不再依赖宿主机的 `frontend/dist`
+- 当前交付口径是“容器可支撑联调与验证”，并具备更接近生产的可重复部署行为
 
 验证：
 

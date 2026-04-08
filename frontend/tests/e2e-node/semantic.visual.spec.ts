@@ -1,94 +1,112 @@
 import { expect, test, type Page } from '@playwright/test'
 import { ensureCubeAvailable, gotoSemantic, prepareAuthenticatedPage } from './helpers'
 
-const CUBE_DESIGN_DATASOURCE_FIXTURE = {
+const WORKBENCH_CUBES_FIXTURE = {
   data: {
-    items: [
+    cubes: [
       {
-        id: 17,
-        name: 'test_pg_17',
-        source_type: 'postgresql',
+        name: 'fixture_cube_draft',
+        title: 'Playwright Cube 草稿 01',
         description: '视觉基线固定夹具',
-        is_active: true,
+        table: 'answer_records',
+        domain_ids: [],
+        domains: [],
+        domain_count: 0,
+        dimensions: [],
+        measures: [],
+        dimension_count: 3,
+        measure_count: 3,
+        status: 'draft',
+        state_summary: {
+          sync_status: 'warn',
+        },
+      },
+      {
+        name: 'fixture_cube_active',
+        title: 'Playwright Cube 已发布 01',
+        description: '视觉基线固定夹具',
+        table: 'answer_records',
+        domain_ids: [],
+        domains: [],
+        domain_count: 0,
+        dimensions: [],
+        measures: [],
+        dimension_count: 4,
+        measure_count: 2,
+        status: 'active',
+        state_summary: {
+          sync_status: 'ok',
+        },
       },
     ],
+    total: 2,
   },
 }
 
-const CUBE_DESIGN_GRAPH_FIXTURE = {
-  data: {
-    nodes: Array.from({ length: 12 }, (_, index) => ({
-      id: `fixture_cube_${index + 1}`,
-      title: `Playwright Cube 草稿 ${String(index + 1).padStart(2, '0')}`,
-      type: index % 3 === 0 ? 'fact' : 'dimension',
-      dimensions: 3,
-      measures: 3,
-      status: 'draft',
-      source_id: 17,
-      source_binding_summary: {
-        source_name: 'test_pg_17',
-        source_type: 'postgresql',
-        database: 'appdb',
-        schema: 'public',
-      },
-      state_summary: {
-        sync_status: 'ok',
-      },
-    })),
-    edges: [],
-  },
-}
-
-async function mockCubeDesignVisualApis(page: Page) {
+async function mockWorkbenchVisualApis(page: Page) {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url())
 
-    if (url.pathname === '/api/v1/data-center/datasources') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(CUBE_DESIGN_DATASOURCE_FIXTURE),
-      })
-      return
-    }
-
-    if (url.pathname === '/api/v1/semantic/graph') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(CUBE_DESIGN_GRAPH_FIXTURE),
-      })
-      return
-    }
-
-    if (url.pathname === '/api/v1/data-center/datasources/17/databases') {
+    if (url.pathname === '/api/v1/semantic/catalogs') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: ['appdb', 'shop_db'],
+          data: {
+            catalogs: [],
+            total: 0,
+          },
         }),
       })
       return
     }
 
-    if (url.pathname === '/api/v1/data-center/datasources/17/schemas') {
+    if (url.pathname === '/api/v1/semantic/domains') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: [],
+          data: {
+            domains: [],
+            total: 0,
+          },
         }),
       })
       return
     }
 
-    if (url.pathname === '/api/v1/data-center/datasources/17/tables') {
+    if (url.pathname === '/api/v1/semantic/cubes') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(WORKBENCH_CUBES_FIXTURE),
+      })
+      return
+    }
+
+    if (url.pathname === '/api/v1/semantic/views') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: [],
+          data: {
+            views: [],
+            total: 0,
+          },
+        }),
+      })
+      return
+    }
+
+    if (url.pathname === '/api/v1/semantic/recipes') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            recipes: [],
+            total: 0,
+          },
         }),
       })
       return
@@ -124,11 +142,12 @@ test('Cube 管理首屏视觉基线', async ({ page }) => {
   await expect(page).toHaveScreenshot('semantic-cube-management.png', { fullPage: true, maxDiffPixels: 200 })
 })
 
-test('Cube 设计首屏视觉基线', async ({ page }) => {
-  await mockCubeDesignVisualApis(page)
-  await gotoSemantic(page, '/semantic/cubes/new')
-  await expect(page.getByRole('heading', { name: '新建 Cube' })).toBeVisible()
+test('Cube 工作台首屏视觉基线', async ({ page }) => {
+  await mockWorkbenchVisualApis(page)
+  await gotoSemantic(page, '/semantic/workbench')
+  await expect(page.getByRole('heading', { name: '语义工作台' })).toBeVisible()
   await expect(page.getByText('Playwright Cube 草稿 01')).toBeVisible()
+  await expect(page.getByText('Playwright Cube 已发布 01')).toBeVisible()
   await expect(page).toHaveScreenshot('semantic-cube-design.png', { fullPage: true })
 })
 

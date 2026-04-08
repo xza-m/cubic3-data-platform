@@ -53,30 +53,20 @@ cp env.sample .env
 - Superset 截图：`SUPERSET_*`
 - OSS 文件交付：`OSS_*`
 
-### 2.2 构建前端静态资源
-
-当前 `docker-compose.yml` 不负责构建前端，因此首次启动前应先生成 `frontend/dist`：
-
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-```
-
-说明：
-
-- 当前目标是“现有容器体系可支撑联调与验证”，不是一键部署收口
-- Web 进程会在启动时初始化 `APScheduler`
-- 长耗时目录同步、数据集同步等任务由 `rq_worker` 执行
-
-### 2.3 启动服务
+### 2.2 启动服务
 
 ```bash
 docker compose up --build -d
 ```
 
-### 2.4 验证服务
+说明：
+
+- `nginx` 镜像会在构建阶段自动执行前端 `npm ci && npm run build`
+- `docker compose up --build` 会同时拿到最新前端静态资源和当前 `nginx` 配置
+- Web 进程会在启动时初始化 `APScheduler`
+- 长耗时目录同步、数据集同步等任务由 `rq_worker` 执行
+
+### 2.3 验证服务
 
 ```bash
 curl http://localhost:5000/health

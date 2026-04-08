@@ -241,9 +241,9 @@ export default function AppLayout() {
     navigate('/login', { replace: true })
   }
 
-  const navigateWithinSidebar = async (path: string) => {
+  const navigateWithinSidebar = (path: string) => {
     preserveSidebarExpansion()
-    await preloadRoute(path)
+    void preloadRoute(path)
     startTransition(() => {
       navigate(path)
     })

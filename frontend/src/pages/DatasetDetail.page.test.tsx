@@ -42,6 +42,7 @@ const datasetFixture = {
   id: 7,
   dataset_code: 'answer_summary',
   dataset_name: '答题汇总',
+  dataset_type: 'physical',
   physical_table: 'dws.answer_summary',
   source_type: 'maxcompute',
   owner: '教学数据组',
@@ -90,16 +91,34 @@ describe('DatasetDetail page', () => {
     datasetDetailMocks.updateDataset.mockResolvedValue({ data: { ...datasetFixture, dataset_name: '答题汇总（新）' } })
   })
 
-  it('展示数据集基本信息和字段表格', async () => {
+  it('展示数据集基本信息和字段表格，并收口旧的跨页面 CTA', async () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { level: 1, name: '答题汇总' })).toBeInTheDocument()
     expect(datasetDetailMocks.getDataset).toHaveBeenCalledWith(7, true)
     expect(screen.getAllByText('answer_summary')).toHaveLength(2)
+    expect(screen.getByText('类型')).toBeInTheDocument()
+    expect(screen.getByText('物理数据集')).toBeInTheDocument()
+    expect(screen.getByText('来源')).toBeInTheDocument()
+    expect(screen.getByText('maxcompute')).toBeInTheDocument()
+    expect(screen.getByText('物理表 / 来源对象')).toBeInTheDocument()
     expect(screen.getByText('dws.answer_summary')).toBeInTheDocument()
     expect(screen.getByText('教学数据组')).toBeInTheDocument()
     expect(screen.getByText('学生ID')).toBeInTheDocument()
     expect(screen.getByText('内部')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '在查询中心使用' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '用于语义建模' })).not.toBeInTheDocument()
+  })
+
+  it('详情页头部保留编辑与返回动作', async () => {
+    const user = userEvent.setup()
+
+    renderPage()
+
+    await screen.findByRole('heading', { level: 1, name: '答题汇总' })
+    await user.click(screen.getByRole('button', { name: '编辑' }))
+    expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '取消' })).toBeInTheDocument()
   })
 
   it('数据集不存在时展示空态', async () => {
@@ -205,31 +224,44 @@ describe('DatasetDetail page', () => {
     expect(screen.getByText('暂无字段信息')).toBeInTheDocument()
   })
 
-  it('在详情页优先展示真实 sample_rows 预览，没有预览数据时展示明确空态', async () => {
-    datasetDetailMocks.getDataset.mockResolvedValueOnce({
-      data: {
-        ...datasetFixture,
-        sample_columns: ['student_id', 'score'],
-        sample_rows: [{ student_id: 's1', score: 95 }],
-      },
-    })
+  it('虚拟和文件数据集会使用统一的来源对象回退文案', async () => {
+    datasetDetailMocks.getDataset
+      .mockResolvedValueOnce({
+        data: {
+          ...datasetFixture,
+          dataset_type: 'virtual',
+          physical_table: '',
+          source_type: 'maxcompute',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          ...datasetFixture,
+          id: 8,
+          dataset_type: 'file',
+          physical_table: '',
+          source_type: '',
+          file_metadata: { file_name: 'scores.xlsx' },
+        },
+      })
 
-    renderPage()
+    const firstRender = renderPage()
+    expect(await screen.findByText('视图')).toBeInTheDocument()
 
-    expect(await screen.findByText('数据预览')).toBeInTheDocument()
-    expect(screen.getByText('s1')).toBeInTheDocument()
-    expect(screen.getByText('95')).toBeInTheDocument()
+    firstRender.unmount()
+    renderPage('/data-center/datasets/8')
+    expect(await screen.findByText('scores.xlsx')).toBeInTheDocument()
   })
 
-  it('没有 sample_rows 时展示明确预览空态，并将治理模块保持为禁用态', async () => {
+  it('详情页不再展示预览区和治理占位卡', async () => {
     renderPage()
 
-    expect(await screen.findByText('数据预览')).toBeInTheDocument()
-    expect(screen.getByText('当前数据集暂无可展示预览')).toBeInTheDocument()
-    expect(screen.getByText('血缘分析')).toBeInTheDocument()
-    expect(screen.getByText('影响分析')).toBeInTheDocument()
-    expect(screen.getByText('质量评分')).toBeInTheDocument()
-    expect(screen.getAllByText('当前阶段未接入后端能力').length).toBeGreaterThanOrEqual(3)
+    await screen.findByRole('heading', { level: 1, name: '答题汇总' })
+    expect(screen.queryByText('数据预览')).not.toBeInTheDocument()
+    expect(screen.queryByText('当前数据集暂无可展示预览')).not.toBeInTheDocument()
+    expect(screen.queryByText('血缘分析')).not.toBeInTheDocument()
+    expect(screen.queryByText('影响分析')).not.toBeInTheDocument()
+    expect(screen.queryByText('质量评分')).not.toBeInTheDocument()
   })
 
   it('取消编辑会重置表单，并为缺失字段信息显示占位符', async () => {
