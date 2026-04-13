@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -82,9 +83,6 @@ interface EntityListItem {
   subtitle: string
   status?: string
 }
-
-type PreviewSection = Record<string, unknown>
-type PreviewSectionList = Array<Record<string, unknown>>
 
 const TAB_LABELS: Record<OntologyTab, string> = {
   objects: '对象',
@@ -1812,12 +1810,12 @@ function PolicyForm({
 }
 
 function PreviewContent({ payload }: { payload: Record<string, unknown> }) {
-  const projection = payload.projection as PreviewSection | undefined
-  const links = payload.links as PreviewSection | undefined
-  const compiler = payload.compiler as PreviewSection | undefined
-  const consistency = payload.consistency as PreviewSection | undefined
-  const stale = payload.stale as PreviewSection | undefined
-  const governance = payload.governance as PreviewSection | undefined
+  const projection = payload.projection as Record<string, any> | undefined
+  const links = payload.links as Record<string, any> | undefined
+  const compiler = payload.compiler as Record<string, any> | undefined
+  const consistency = payload.consistency as Record<string, any> | undefined
+  const stale = payload.stale as Record<string, any> | undefined
+  const governance = payload.governance as Record<string, any> | undefined
 
   return (
     <div className="space-y-5">
@@ -2124,12 +2122,12 @@ function ObjectProjectionPanel({
   isLoading,
 }: {
   objectEntity: Partial<BusinessObject>
-  preview?: PreviewSection
+  preview?: Record<string, any>
   isLoading: boolean
 }) {
   const targets = Array.isArray(preview?.projection?.targets) ? preview.projection.targets : []
   const issues = Array.isArray(preview?.consistency?.issues) ? preview.consistency.issues : []
-  const traceability = (preview?.traceability || {}) as PreviewSection
+  const traceability = (preview?.traceability || {}) as Record<string, any>
   const status = String(preview?.consistency?.status || 'pending')
 
   return (
@@ -2231,8 +2229,8 @@ function MetricFederationPanel({
   isLoading,
 }: {
   metric: Partial<BusinessMetric>
-  links?: PreviewSection
-  backlinks: PreviewSectionList
+  links?: Record<string, any>
+  backlinks: Array<Record<string, any>>
   isLoading: boolean
 }) {
   const linkedMeasures = Array.isArray(links?.linked_measures) ? links?.linked_measures : []
@@ -2340,11 +2338,11 @@ function RelationProjectionPanel({
   isLoading,
 }: {
   relation: Partial<BusinessRelation>
-  preview?: PreviewSection
+  preview?: Record<string, any>
   isLoading: boolean
 }) {
   const targets = Array.isArray(preview?.projection?.targets) ? preview?.projection?.targets : []
-  const traceability = (preview?.traceability || {}) as PreviewSection
+  const traceability = (preview?.traceability || {}) as Record<string, any>
   const issues = Array.isArray(preview?.consistency?.issues) ? preview?.consistency?.issues : []
   const status = String(preview?.consistency?.status || 'pending')
 
@@ -2428,11 +2426,11 @@ function ActionProjectionPanel({
   isLoading,
 }: {
   action: Partial<BusinessAction>
-  preview?: PreviewSection
+  preview?: Record<string, any>
   isLoading: boolean
 }) {
   const targets = Array.isArray(preview?.projection?.targets) ? preview?.projection?.targets : []
-  const traceability = (preview?.traceability || {}) as PreviewSection
+  const traceability = (preview?.traceability || {}) as Record<string, any>
   const issues = Array.isArray(preview?.consistency?.issues) ? preview?.consistency?.issues : []
   const status = String(preview?.consistency?.status || 'pending')
 
@@ -2519,9 +2517,9 @@ function SemanticRouteRuntimePanel({
 }: {
   title: string
   question: string
-  route?: PreviewSection
-  plan?: PreviewSection
-  execution?: PreviewSection
+  route?: Record<string, any>
+  plan?: Record<string, any>
+  execution?: Record<string, any>
   isLoading: boolean
   isExecuting: boolean
   onExecute: () => void
@@ -2529,8 +2527,8 @@ function SemanticRouteRuntimePanel({
   const steps = Array.isArray(plan?.steps) ? plan.steps : []
   const planDependencies = Array.isArray(plan?.dependencies) ? plan.dependencies : []
   const expectedOutputs = Array.isArray(plan?.expected_outputs) ? plan.expected_outputs : []
-  const resolvedRoute = (plan?.route || route || {}) as PreviewSection
-  const traceability = (plan?.traceability || resolvedRoute?.traceability || route?.traceability || {}) as PreviewSection
+  const resolvedRoute = (plan?.route || route || {}) as Record<string, any>
+  const traceability = (plan?.traceability || resolvedRoute?.traceability || route?.traceability || {}) as Record<string, any>
   const routeType = String(resolvedRoute?.route_type || 'pending')
   const planningMode = String(plan?.planning_mode || resolvedRoute?.planning_mode || 'single_step')
   const targets = Array.isArray(resolvedRoute?.targets) ? resolvedRoute.targets : Array.isArray(route?.targets) ? route.targets : []
@@ -2694,8 +2692,8 @@ function ExecutionCompilePanel({
   entries: Array<{
     key: string
     label: string
-    compiler?: PreviewSection
-    plan?: PreviewSection
+    compiler?: Record<string, any>
+    plan?: Record<string, any>
     loading: boolean
   }>
   emptyMessage: string
@@ -2740,8 +2738,8 @@ function ExecutionCompileCard({
   loading,
 }: {
   label: string
-  compiler?: PreviewSection
-  plan?: PreviewSection
+  compiler?: Record<string, any>
+  plan?: Record<string, any>
   loading: boolean
 }) {
   const compilerStatus = String(compiler?.status || compiler?.policy?.status || (loading ? 'loading' : 'pending'))

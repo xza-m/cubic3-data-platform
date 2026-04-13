@@ -15,5 +15,6 @@ Object.defineProperty(HTMLElement.prototype, 'releasePointerCapture', {
 })
 Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
   configurable: true,
+  writable: true,
   value: () => {},
 })
