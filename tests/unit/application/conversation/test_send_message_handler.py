@@ -206,6 +206,51 @@ class TestSendMessageHandlerLegacyLlm:
 
 
 class TestSendMessageHandlerAgent:
+    def test_semantic_router_success_short_circuits_agent_and_legacy(self, mock_repos):
+        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
+        semantic_router_service = MagicMock()
+        handler = SendMessageHandler(
+            conversation_repository=conv_repo,
+            message_repository=msg_repo,
+            dataset_repository=dataset_repo,
+            llm_service=llm_service,
+            semantic_router_service=semantic_router_service,
+        )
+
+        conversation = MagicMock()
+        conversation.id = 1
+        conversation.user_id = "user_123"
+        conversation.dataset_id = 10
+        conv_repo.find_by_id.return_value = conversation
+
+        user_message = MagicMock()
+        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "查询销售额"}
+        ai_message = MagicMock()
+        ai_message.to_dict.return_value = {"id": 2, "role": "assistant", "content": "语义路由回答"}
+        msg_repo.create.side_effect = [user_message, ai_message]
+
+        semantic_router_service.execute_plan.return_value = {
+            "route": {"route_type": "cube"},
+            "execution_results": [
+                {
+                    "status": "executed",
+                    "target_type": "sql",
+                    "result": {"columns": [{"name": "gmv", "type": "number"}], "data": [{"gmv": 100}], "row_count": 1},
+                    "traceability": {
+                        "business_metric": {"title": "GMV"},
+                        "analysis_measure": {"cube_name": "orders"},
+                    },
+                }
+            ],
+            "traceability": {"ontology": {"matched_entities": [{"entity_type": "metric", "name": "gmv"}]}},
+        }
+
+        result = handler.handle(SendMessageCommand(conversation_id=1, user_id="user_123", content="查询销售额"))
+
+        assert result["ai_message"]["content"] == "语义路由回答"
+        semantic_router_service.execute_plan.assert_called_once()
+        llm_service.generate_sql.assert_not_called()
+
     def test_agent_success_returns_channel_response(self, handler, command, mock_repos):
         conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
 

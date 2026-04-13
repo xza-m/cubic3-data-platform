@@ -81,8 +81,8 @@ export default function DomainModelingEntry() {
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-20 rounded-2xl" />
-        <Skeleton className="h-[28rem] rounded-2xl" />
+        <Skeleton className="h-20 rounded-lg" />
+        <Skeleton className="h-[28rem] rounded-lg" />
       </div>
     )
   }
@@ -101,7 +101,7 @@ export default function DomainModelingEntry() {
           </>
         }
         actions={
-          <Button variant="outline" asChild className="h-10 rounded-full border-[hsl(var(--workbench-outline))] bg-white/84 px-4">
+          <Button variant="outline" asChild className="h-10 rounded-md border-[hsl(var(--workbench-outline))] bg-white/84 px-4">
             <Link to="/semantic/domains">返回领域目录</Link>
           </Button>
         }
@@ -109,7 +109,7 @@ export default function DomainModelingEntry() {
 
       <SemanticSurface bodyClassName="p-0">
         <div className="grid xl:grid-cols-[400px_minmax(0,1fr)]">
-          <aside className="border-b border-[hsl(var(--workbench-outline))] bg-[rgba(249,251,254,0.86)] p-6 xl:border-b-0 xl:border-r">
+          <aside className="border-b border-[hsl(var(--workbench-outline))] bg-[rgba(249,251,254,0.86)] p-4 xl:border-b-0 xl:border-r">
             <div className="space-y-1">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[hsl(var(--workbench-muted-foreground))]">
                 Create
@@ -125,7 +125,7 @@ export default function DomainModelingEntry() {
                 <label className="text-sm font-medium text-[hsl(var(--workbench-ink))]">所属目录</label>
                 <div className="flex gap-2">
                     <Select value={catalogCode} onValueChange={setCatalogCode}>
-                    <SelectTrigger data-testid="domain-create-catalog-select" className="h-11 flex-1 rounded-xl border-[hsl(var(--workbench-outline))] bg-white">
+                    <SelectTrigger data-testid="domain-create-catalog-select" className="h-11 flex-1 rounded-lg border-[hsl(var(--workbench-outline))] bg-white">
                       <SelectValue placeholder="选择目录" />
                     </SelectTrigger>
                     <SelectContent>
@@ -139,7 +139,7 @@ export default function DomainModelingEntry() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-11 rounded-xl border-[hsl(var(--workbench-outline))] bg-white"
+                    className="h-11 rounded-lg border-[hsl(var(--workbench-outline))] bg-white"
                     onClick={() => setCatalogDialogOpen(true)}
                   >
                     新建目录
@@ -160,7 +160,7 @@ export default function DomainModelingEntry() {
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   aria-label="领域名称"
-                  className="h-11 rounded-xl border-[hsl(var(--workbench-outline))] bg-white"
+                  className="h-11 rounded-lg border-[hsl(var(--workbench-outline))] bg-white"
                 />
               </div>
 
@@ -168,7 +168,7 @@ export default function DomainModelingEntry() {
                 data-testid="domain-create-submit"
                 onClick={() => createMutation.mutate()}
                 disabled={!name.trim() || createMutation.isPending}
-                className="h-11 w-full rounded-xl shadow-[0_14px_28px_rgba(67,97,238,0.14)]"
+                className="h-11 w-full rounded-lg shadow-sm"
               >
                 <PlusCircle className="mr-1.5 h-4 w-4" />
                 创建并进入画布
@@ -199,7 +199,7 @@ export default function DomainModelingEntry() {
             </div>
 
             <div className="grid gap-0 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-              <div className="border-b border-[hsl(var(--workbench-outline))] p-6 xl:border-b-0 xl:border-r">
+              <div className="border-b border-[hsl(var(--workbench-outline))] p-4 xl:border-b-0 xl:border-r">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">继续草稿建模</div>
@@ -238,7 +238,7 @@ export default function DomainModelingEntry() {
                 </div>
               </div>
 
-              <div className="p-6">
+              <div className="p-4">
                 <div className="mb-4">
                   <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">从已发布领域继续调整</div>
                   <p className="mt-1 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
@@ -263,7 +263,7 @@ export default function DomainModelingEntry() {
                             {domain.catalog_name || '默认目录'}
                           </div>
                         </div>
-                        <Button size="sm" variant="outline" asChild className="rounded-full border-[hsl(var(--workbench-outline))] bg-white/88">
+                        <Button size="sm" variant="outline" asChild className="rounded-md border-[hsl(var(--workbench-outline))] bg-white/88">
                           <Link to={`/semantic/domains/${domain.id || domain.code}`}>
                             <GitBranch className="mr-1.5 h-4 w-4" />
                             进入建模

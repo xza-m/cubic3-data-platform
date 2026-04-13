@@ -18,6 +18,7 @@ last_reviewed: 2026-03-24
 
 - [项目总览](../README.md)：关键入口、常用命令
 - [技术栈与架构](TECH_STACK_AND_ARCHITECTURE.md)：当前架构、部署拓扑、代码分层
+- [设计语言基线](DESIGN.md)：统一 UI/UX 风格语言、工作台范式与视觉约束
 - [架构设计目录](architecture/README.md)：当前系统设计、模块边界和 ADR
 - [快速开始](QUICK_START.md)：最短启动路径
 - [启动指南](STARTUP_GUIDE.md)：完整启动、端口、代理、排障说明
@@ -28,6 +29,7 @@ last_reviewed: 2026-03-24
 - [本地开发运行手册](runbooks/local-dev.md)：本地联调、专项验证与环境就绪要求
 - [文档对齐报告](DOC_ALIGNMENT_REPORT.md)：哪些文档可信、哪些只是历史记录
 - [语义中心验证流程](semantic_verification.md)：语义中心固定验证流程
+- [语义层统一术语表](semantic-glossary.md)：团队统一术语、页面与需求沟通默认口径
 - [知识库治理规范](KNOWLEDGE_BASE_GOVERNANCE.md)：文档分层、更新责任、维护节奏
 - [知识库维护 SOP](KNOWLEDGE_BASE_MAINTENANCE_SOP.md)：日常清洗、检查和修复流程
 - [前端说明](../frontend/README.md)：前端脚本、目录与代理约定
@@ -37,6 +39,7 @@ last_reviewed: 2026-03-24
 - 理解项目全貌：[README.md](../README.md)
 - 判断文档是否过期：[DOC_ALIGNMENT_REPORT.md](DOC_ALIGNMENT_REPORT.md)
 - 查看技术栈与分层：[TECH_STACK_AND_ARCHITECTURE.md](TECH_STACK_AND_ARCHITECTURE.md)
+- 查看统一设计语言与工作台风格：[DESIGN.md](DESIGN.md)
 - 查看当前系统设计与架构决策：[architecture/README.md](architecture/README.md)
 - 快速跑起项目：[QUICK_START.md](QUICK_START.md)
 - 排查启动、端口、构建、代理问题：[STARTUP_GUIDE.md](STARTUP_GUIDE.md)
@@ -47,6 +50,7 @@ last_reviewed: 2026-03-24
 - 查看本地联调与专项运行前提：[runbooks/local-dev.md](runbooks/local-dev.md)
 - 执行日常知识库维护：[KNOWLEDGE_BASE_MAINTENANCE_SOP.md](KNOWLEDGE_BASE_MAINTENANCE_SOP.md)
 - 查看语义中心专项验证：[semantic_verification.md](semantic_verification.md)
+- 查看语义层术语与统一口径：[semantic-glossary.md](semantic-glossary.md)
 - 查看产品范围与需求背景：[PRD 目录](prd/README.md)
 - 查看设计参考与工作草案：[reference-design/README.md](reference-design/README.md)
 - 查看历史迁移、修复与一次性总结：[archive/README.md](archive/README.md)
@@ -62,6 +66,7 @@ last_reviewed: 2026-03-24
 
 - [README.md](../README.md)
 - [TECH_STACK_AND_ARCHITECTURE.md](TECH_STACK_AND_ARCHITECTURE.md)
+- [DESIGN.md](DESIGN.md)
 - [QUICK_START.md](QUICK_START.md)
 - [STARTUP_GUIDE.md](STARTUP_GUIDE.md)
 - [quality/testing.md](quality/testing.md)
@@ -123,15 +128,16 @@ last_reviewed: 2026-03-24
 1. [README.md](../README.md)
 2. [DOC_ALIGNMENT_REPORT.md](DOC_ALIGNMENT_REPORT.md)
 3. [TECH_STACK_AND_ARCHITECTURE.md](TECH_STACK_AND_ARCHITECTURE.md)
-4. [architecture/README.md](architecture/README.md)
-5. [QUICK_START.md](QUICK_START.md)
-6. [STARTUP_GUIDE.md](STARTUP_GUIDE.md)
-7. [quality/testing.md](quality/testing.md)
-8. [quality/backend-coverage.md](quality/backend-coverage.md)
-9. [quality/frontend-coverage.md](quality/frontend-coverage.md)
-10. [quality/review.md](quality/review.md)
-11. [runbooks/local-dev.md](runbooks/local-dev.md)
-11. [frontend/README.md](../frontend/README.md)
+4. [DESIGN.md](DESIGN.md)
+5. [architecture/README.md](architecture/README.md)
+6. [QUICK_START.md](QUICK_START.md)
+7. [STARTUP_GUIDE.md](STARTUP_GUIDE.md)
+8. [quality/testing.md](quality/testing.md)
+9. [quality/backend-coverage.md](quality/backend-coverage.md)
+10. [quality/frontend-coverage.md](quality/frontend-coverage.md)
+11. [quality/review.md](quality/review.md)
+12. [runbooks/local-dev.md](runbooks/local-dev.md)
+13. [frontend/README.md](../frontend/README.md)
 
 ## 6. 维护规则
 

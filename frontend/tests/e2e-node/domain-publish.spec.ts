@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('拖入 Cube 后发布领域', async ({ page }) => {
-  const domainName = uniqueName('Playwright 领域发布')
+  const domainName = uniqueName('qa-domain-publish 领域发布')
   await createDomainViaUi(page, domainName)
 
   await expect(page.getByTestId('domain-canvas-page')).toBeVisible()

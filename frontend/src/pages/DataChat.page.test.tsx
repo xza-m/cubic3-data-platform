@@ -95,7 +95,16 @@ describe('DataChat page', () => {
         dataset_id: 9,
         dataset_name: '课堂进度',
         user_id: 'tester',
-        context: {},
+        context: {
+          semantic_plan: {
+            route: { route_type: 'cube' },
+            primary_traceability: {
+              business_metric: { title: '课堂进度' },
+              business_object: { title: '课堂' },
+              analysis_measure: { cube_name: 'classroom_progress' },
+            },
+          },
+        },
         created_at: '2026-03-24T09:00:00Z',
         updated_at: '2026-03-24T10:00:00Z',
         message_count: 2,
@@ -149,6 +158,12 @@ describe('DataChat page', () => {
 
     await user.click(await screen.findByRole('button', { name: '课堂进度分析' }))
     expect(await screen.findByText('当前课堂进度稳定。')).toBeInTheDocument()
+    expect(screen.getByTestId('semantic-traceability-card')).toBeInTheDocument()
+    expect(screen.getByText('语义执行来源')).toBeInTheDocument()
+    expect(screen.getByText('路径：cube')).toBeInTheDocument()
+    expect(screen.getByText('业务指标：课堂进度')).toBeInTheDocument()
+    expect(screen.getByText('业务对象：课堂')).toBeInTheDocument()
+    expect(screen.getByText('分析实体：classroom_progress')).toBeInTheDocument()
 
     const input = screen.getByPlaceholderText('输入您的数据问题...')
     await user.type(input, '请分析课堂进度')

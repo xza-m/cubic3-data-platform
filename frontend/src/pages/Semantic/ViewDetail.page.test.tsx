@@ -26,6 +26,20 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: semanticApiMocks.toast }),
 }))
 
+vi.mock('@/components/Semantic/DevTools/YamlEditorTab', () => ({
+  YamlEditorTab: ({
+    fileType,
+    fileName,
+  }: {
+    fileType?: string | null
+    fileName?: string
+  }) => (
+    <div data-testid="mock-yaml-editor">
+      {fileType}:{fileName}
+    </div>
+  ),
+}))
+
 function renderPage(initialEntry: string) {
   const client = new QueryClient({
     defaultOptions: {
@@ -220,8 +234,8 @@ describe('ViewDetail page', () => {
     renderPage('/semantic/views/learning_overview')
 
     await screen.findByRole('heading', { name: '学习总览' })
-    await user.click(screen.getByRole('tab', { name: '编译 SQL' }))
-    expect(screen.getByText('当前暂无编译 SQL。请先发布或重新发布 View 后查看。')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'SQL 预览' }))
+    expect(screen.getByText('当前暂无 SQL 预览。请先发布或重新发布 View 后查看。')).toBeInTheDocument()
 
     await user.click(screen.getByTestId('semantic-primary-action'))
 
@@ -234,6 +248,63 @@ describe('ViewDetail page', () => {
     })
 
     confirmSpy.mockRestore()
+  })
+
+  it('查看预览和查看 YAML 会停留在 View 详情页的可展示内容，不再跳到 workbench 空态', async () => {
+    const user = userEvent.setup()
+
+    semanticApiMocks.describeView.mockResolvedValue({
+      data: {
+        name: 'learning_overview',
+        title: '学习总览',
+        description: '学习汇总视图',
+        public: true,
+        cubes: [
+          { join_path: 'answer_records', includes: ['score'], excludes: [], prefix: false },
+        ],
+        diagnostics: [],
+        publish_summary: {
+          publish_status: 'published',
+          last_published_at: '2026-03-26T10:00:00Z',
+        },
+        drift_summary: {
+          last_drift_status: 'ok',
+          last_drift_checked_at: '2026-03-26T12:00:00Z',
+        },
+      },
+    })
+    semanticApiMocks.getMaterializeStatus.mockResolvedValue({
+      data: {
+        materialized: true,
+        publish_status: 'published',
+        published_at: '2026-03-26T10:00:00Z',
+        definition_summary: {
+          field_count: 1,
+          dimension_count: 1,
+          measure_count: 0,
+        },
+        field_mappings: [],
+        state_summary: {
+          last_drift_status: 'ok',
+        },
+      },
+    })
+
+    renderPage('/semantic/views/learning_overview')
+
+    await screen.findByRole('heading', { name: '学习总览' })
+
+    expect(screen.getByRole('link', { name: '查看预览' })).toHaveAttribute(
+      'href',
+      '/semantic/views/learning_overview?tab=sql',
+    )
+    expect(screen.getByRole('link', { name: '查看 YAML' })).toHaveAttribute(
+      'href',
+      '/semantic/views/learning_overview?tab=yaml',
+    )
+
+    await user.click(screen.getByRole('link', { name: '查看 YAML' }))
+    expect(await screen.findByTestId('mock-yaml-editor')).toHaveTextContent('views:learning_overview')
   })
 
   it('查询失败时展示未找到状态', async () => {

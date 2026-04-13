@@ -27,12 +27,14 @@ class SendMessageHandler:
         conversation_repository: IConversationRepository,
         message_repository: IMessageRepository,
         dataset_repository: DatasetRepository,
-        llm_service: OpenAIService
+        llm_service: OpenAIService,
+        semantic_router_service=None,
     ):
         self.conversation_repository = conversation_repository
         self.message_repository = message_repository
         self.dataset_repository = dataset_repository
         self.llm_service = llm_service
+        self.semantic_router_service = semantic_router_service
 
     def handle(self, command: SendMessageCommand) -> Dict[str, Any]:
         """
@@ -61,7 +63,15 @@ class SendMessageHandler:
         )
         user_message = self.message_repository.create(user_message)
 
-        # 2. 尝试通过 AgentService 处理
+        # 2. 尝试通过双层语义主链处理
+        try:
+            result = self._handle_via_semantic_router(command, conversation, user_message)
+            if result:
+                return result
+        except Exception as e:
+            logger.warning("Semantic Router 不可用，继续回退到 Agent", error=str(e))
+
+        # 3. 尝试通过 AgentService 处理
         try:
             result = self._handle_via_agent(command, conversation, user_message)
             if result:
@@ -69,8 +79,50 @@ class SendMessageHandler:
         except Exception as e:
             logger.warning("AgentService 不可用，回退到传统 LLM", error=str(e))
 
-        # 3. 回退：传统 LLM 调用
+        # 4. 回退：传统 LLM 调用
         return self._handle_via_legacy_llm(command, conversation, user_message)
+
+    def _handle_via_semantic_router(self, command, conversation, user_message) -> Dict[str, Any] | None:
+        """优先走双层语义 Router/Planner 主链。"""
+        if self.semantic_router_service is None:
+            return None
+        plan_result = self.semantic_router_service.execute_plan(
+            question=command.content,
+            viewer_roles=[],
+        )
+        execution_results = plan_result.get("execution_results") or []
+        if not execution_results:
+            return None
+
+        primary_result = execution_results[0]
+        primary_traceability = primary_result.get("traceability") or {}
+        ai_content = self._build_semantic_router_response(plan_result)
+        ai_message = Message(
+            conversation_id=command.conversation_id,
+            role='assistant',
+            content=ai_content,
+            generated_sql=self._extract_generated_sql(primary_result),
+            query_result=self._extract_query_result(primary_result),
+            visualization_config=None,
+            error=primary_result.get("reason") if primary_result.get("status") == "blocked" else None,
+            created_at=utcnow()
+        )
+        ai_message = self.message_repository.create(ai_message)
+
+        conversation.updated_at = utcnow()
+        context = dict(conversation.context or {})
+        context["semantic_plan"] = {
+            "route": plan_result.get("route", {}),
+            "traceability": plan_result.get("traceability", {}),
+            "primary_traceability": primary_traceability,
+        }
+        conversation.update_context(context)
+        self.conversation_repository.update(conversation)
+
+        return {
+            'user_message': user_message.to_dict(),
+            'ai_message': ai_message.to_dict()
+        }
 
     def _handle_via_agent(self, command, conversation, user_message) -> Dict[str, Any] | None:
         """通过 DataChatChannel + AgentService 处理"""
@@ -214,6 +266,41 @@ class SendMessageHandler:
                 'user_message': user_message.to_dict(),
                 'ai_message': error_message.to_dict()
             }
+
+    def _build_semantic_router_response(self, plan_result: Dict[str, Any]) -> str:
+        route_type = (plan_result.get("route") or {}).get("route_type") or "unknown"
+        execution_results = plan_result.get("execution_results") or []
+        primary = execution_results[0] if execution_results else {}
+        status = primary.get("status") or "unknown"
+        traceability = primary.get("traceability") or {}
+        business_metric = traceability.get("business_metric") or {}
+        measure = traceability.get("analysis_measure") or {}
+        if status == "blocked":
+            return f"该问题已命中语义权限限制，当前无法执行。原因：{primary.get('reason') or '未授权'}。"
+        if primary.get("target_type") == "sql":
+            title = business_metric.get("title") or business_metric.get("name") or "业务指标"
+            cube_name = measure.get("cube_name") or "分析实体"
+            return f"已通过语义路由执行 `{title}` 查询，当前命中分析实体 `{cube_name}`。"
+        if primary.get("target_type") == "retrieval":
+            return "已通过语义路由完成业务口径检索，可继续追问明细解释。"
+        if primary.get("target_type") == "tool":
+            return "已通过语义路由执行只读工具链，结果已返回。"
+        return f"已通过语义路由完成 `{route_type}` 路径执行。"
+
+    @staticmethod
+    def _extract_generated_sql(primary_result: Dict[str, Any]) -> str | None:
+        if primary_result.get("target_type") != "sql":
+            return None
+        execution_request = primary_result.get("execution_request") or {}
+        sql = execution_request.get("sql_query")
+        return str(sql) if sql else None
+
+    @staticmethod
+    def _extract_query_result(primary_result: Dict[str, Any]) -> Dict[str, Any] | None:
+        if primary_result.get("target_type") != "sql":
+            return None
+        result = primary_result.get("result")
+        return result if isinstance(result, dict) else None
 
     def _execute_query(self, dataset, sql: str) -> Dict[str, Any]:
         """执行 SQL 查询（传统路径）"""

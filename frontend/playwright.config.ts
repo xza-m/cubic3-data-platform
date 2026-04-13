@@ -4,9 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const baseURL = process.env.DOMAIN_SMOKE_BASE_URL ?? 'http://127.0.0.1:3100'
 const baseUrlObject = new URL(baseURL)
-const managedLocalHosts = new Set(['127.0.0.1', 'localhost'])
-const shouldManageLocalServer =
-  !process.env.DOMAIN_SMOKE_BASE_URL || managedLocalHosts.has(baseUrlObject.hostname)
+const shouldManageLocalServer = !process.env.DOMAIN_SMOKE_BASE_URL
 const managedServerPort = baseUrlObject.port || '3100'
 const configDir = path.dirname(fileURLToPath(import.meta.url))
 

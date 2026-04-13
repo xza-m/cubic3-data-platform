@@ -51,6 +51,7 @@ const preloadRoute = async (path: string) => {
     '/config/channels': () => import('../../pages/ConfigCenter/Channels'),
     '/config/subscriptions': () => import('../../pages/ConfigCenter/Subscriptions'),
     '/semantic/workbench': () => import('../../pages/Semantic/DevTools'),
+    '/semantic/ontology': () => import('../../pages/Semantic/OntologyWorkbench'),
     '/semantic/cubes': () => import('../../pages/Semantic/CubeList'),
     '/semantic/modeling': () => import('../../pages/Semantic/ModelingRedirect'),
     '/data-chat': () => import('../../pages/DataChat'),
@@ -109,6 +110,7 @@ const navigation: NavItem[] = [
     label: '语义中心',
     children: [
       { path: '/semantic/workbench', icon: LayoutDashboard, label: '语义工作台' },
+      { path: '/semantic/ontology', icon: Sparkles, label: '业务语义工作台' },
       { path: '/semantic/cubes', icon: Box, label: 'Cube 管理' },
       { path: '/semantic/modeling', icon: GitBranch, label: '领域建模' },
     ],

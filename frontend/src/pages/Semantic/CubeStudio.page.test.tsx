@@ -9,7 +9,7 @@ import CubeStudio from './CubeStudio'
 const semanticApiMocks = vi.hoisted(() => ({
   listDomains: vi.fn(),
   describeCube: vi.fn(),
-  createCubeDraftFromTable: vi.fn(),
+  createCubeDraftFromSource: vi.fn(),
   createCube: vi.fn(),
   updateCube: vi.fn(),
   activateCube: vi.fn(),
@@ -30,7 +30,7 @@ vi.mock('@/api/semantic', async () => {
     ...actual,
     listDomains: semanticApiMocks.listDomains,
     describeCube: semanticApiMocks.describeCube,
-    createCubeDraftFromTable: semanticApiMocks.createCubeDraftFromTable,
+    createCubeDraftFromSource: semanticApiMocks.createCubeDraftFromSource,
     createCube: semanticApiMocks.createCube,
     updateCube: semanticApiMocks.updateCube,
     activateCube: semanticApiMocks.activateCube,
@@ -372,7 +372,7 @@ describe('CubeStudio page', () => {
         domains: [{ id: 'learning', code: 'learning', name: '学习领域' }],
       },
     })
-    semanticApiMocks.createCubeDraftFromTable.mockResolvedValueOnce({
+    semanticApiMocks.createCubeDraftFromSource.mockResolvedValueOnce({
       data: buildDraft(),
     })
 
@@ -384,7 +384,8 @@ describe('CubeStudio page', () => {
     await user.click(screen.getByTestId('cube-banner-generate-draft'))
 
     await waitFor(() => {
-      expect(semanticApiMocks.createCubeDraftFromTable).toHaveBeenCalledWith({
+      expect(semanticApiMocks.createCubeDraftFromSource).toHaveBeenCalledWith({
+        source_kind: 'physical_table',
         source_id: 1,
         database: 'dw',
         schema: 'learning',
@@ -406,7 +407,7 @@ describe('CubeStudio page', () => {
         domains: [{ id: 'learning', code: 'learning', name: '学习领域' }],
       },
     })
-    semanticApiMocks.createCubeDraftFromTable
+    semanticApiMocks.createCubeDraftFromSource
       .mockResolvedValueOnce({
         data: buildDraft(),
       })
@@ -449,7 +450,7 @@ describe('CubeStudio page', () => {
         domains: [{ id: 'learning', code: 'learning', name: '学习领域' }],
       },
     })
-    semanticApiMocks.createCubeDraftFromTable.mockResolvedValueOnce({
+    semanticApiMocks.createCubeDraftFromSource.mockResolvedValueOnce({
       data: buildDraft(),
     })
 
@@ -485,7 +486,7 @@ describe('CubeStudio page', () => {
         domains: [{ id: 'learning', code: 'learning', name: '学习领域' }],
       },
     })
-    semanticApiMocks.createCubeDraftFromTable.mockResolvedValueOnce({
+    semanticApiMocks.createCubeDraftFromSource.mockResolvedValueOnce({
       data: buildDraft(),
     })
 
@@ -520,7 +521,7 @@ describe('CubeStudio page', () => {
     semanticApiMocks.describeCube.mockImplementationOnce(() => new Promise(() => {}))
 
     const view = renderPage('/semantic/cubes/answer_records/edit')
-    expect(view.container.querySelectorAll('.rounded-3xl')).toHaveLength(3)
+    expect(view.container.querySelectorAll('.rounded-lg')).toHaveLength(3)
   })
 
   it('新建模式可将当前草稿保存为 Draft Cube', async () => {
@@ -535,7 +536,7 @@ describe('CubeStudio page', () => {
         domains: [{ id: 'learning', code: 'learning', name: '学习领域' }],
       },
     })
-    semanticApiMocks.createCubeDraftFromTable.mockResolvedValueOnce({
+    semanticApiMocks.createCubeDraftFromSource.mockResolvedValueOnce({
       data: buildDraft(),
     })
     semanticApiMocks.createCube.mockResolvedValueOnce({
@@ -573,7 +574,7 @@ describe('CubeStudio page', () => {
         domains: [{ id: 'learning', code: 'learning', name: '学习领域' }],
       },
     })
-    semanticApiMocks.createCubeDraftFromTable.mockResolvedValueOnce({
+    semanticApiMocks.createCubeDraftFromSource.mockResolvedValueOnce({
       data: buildDraft(),
     })
     semanticApiMocks.createCube.mockRejectedValueOnce(new Error('create failed'))

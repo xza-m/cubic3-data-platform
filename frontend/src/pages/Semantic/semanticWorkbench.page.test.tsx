@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildSemanticWorkbenchHref, useSemanticWorkbench } from '@/hooks/semantic-ia'
+import { buildOntologyWorkbenchHref, buildSemanticWorkbenchHref, useSemanticWorkbench } from '@/hooks/semantic-ia'
 
 const semanticApiMocks = vi.hoisted(() => ({
   createCubeRevision: vi.fn(),
@@ -186,5 +186,13 @@ describe('buildSemanticWorkbenchHref', () => {
     expect(buildSemanticWorkbenchHref('answer_records', 'preview')).toBe(
       '/semantic/workbench?cube=answer_records&tab=preview',
     )
+  })
+})
+
+describe('buildOntologyWorkbenchHref', () => {
+  it('输出稳定的业务语义工作台链接', () => {
+    expect(buildOntologyWorkbenchHref()).toBe('/semantic/ontology')
+    expect(buildOntologyWorkbenchHref('objects')).toBe('/semantic/ontology?tab=objects')
+    expect(buildOntologyWorkbenchHref('metrics', 'gmv')).toBe('/semantic/ontology?tab=metrics&entity=gmv')
   })
 })

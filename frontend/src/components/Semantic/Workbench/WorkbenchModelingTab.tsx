@@ -1,80 +1,135 @@
-import { Bot, CalendarDays, Database, Gauge, Layers3, Sparkles } from 'lucide-react'
-import type { CubeDetail, CubeSummary } from '@/api/semantic'
+import { Plus } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import type { CubeDetail, CubeSummary, DimensionInfo, MeasureInfo } from '@/api/semantic'
+import { Button } from '@/components/ui/button'
 
-function pickRecommendedMeasures(cubeDetail?: CubeDetail) {
-  if (!cubeDetail) return []
-  return Object.entries(cubeDetail.measures).slice(0, 4)
+type FieldTone = 'dimension' | 'measure' | 'time'
+
+interface FieldDefinition {
+  name: string
+  title: string
+  semanticType: string
+  sourceDataType?: string | null
+  description?: string | null
+  recommendationReason?: string | null
+  confidence?: number | null
+  descriptionStatus?: string | null
+  tone: FieldTone
 }
 
-function pickRecommendedDimensions(cubeDetail?: CubeDetail) {
-  if (!cubeDetail) return []
-  return Object.entries(cubeDetail.dimensions).filter(([, item]) => item.type !== 'time').slice(0, 4)
+function normalizeFieldDefinitions(
+  entries: Array<[string, DimensionInfo | MeasureInfo]>,
+  tone: FieldTone,
+): FieldDefinition[] {
+  return entries.map(([name, item]) => ({
+    name,
+    title: item.title || name,
+    semanticType: item.type || (tone === 'measure' ? 'sum' : 'string'),
+    sourceDataType: item.source_data_type || null,
+    description: item.description || null,
+    recommendationReason: item.recommendation_reason || null,
+    confidence: item.confidence ?? null,
+    descriptionStatus: item.description_status || null,
+    tone,
+  }))
 }
 
-function pickTimeDimensions(cubeDetail?: CubeDetail) {
-  if (!cubeDetail) return []
-  return Object.entries(cubeDetail.dimensions).filter(([, item]) => item.type === 'time').slice(0, 3)
-}
-
-function MetricCard({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string
-  value: string
-  icon: typeof Database
-}) {
+function FieldTableRow({ field, expanded, onToggle }: { field: FieldDefinition; expanded: boolean; onToggle: () => void }) {
   return (
-    <div className="rounded-[22px] border border-[hsl(var(--workbench-outline))] bg-white px-4 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">
-        <Icon className="h-4 w-4" />
-        {label}
-      </div>
-      <div className="mt-3 text-lg font-semibold text-[hsl(var(--workbench-ink))]">{value}</div>
-    </div>
+    <>
+      <tr
+        className="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50/50"
+        onClick={onToggle}
+      >
+        <td className="px-4 py-2.5">
+          <div className="font-medium text-slate-900">{field.title}</div>
+          <div className="font-mono text-xs text-slate-400">{field.name}</div>
+        </td>
+        <td className="px-4 py-2.5">
+          <code className="text-xs text-slate-600">{field.semanticType}</code>
+        </td>
+        <td className="px-4 py-2.5 text-xs text-slate-500">{field.sourceDataType || '—'}</td>
+        <td className="px-4 py-2.5 text-sm text-slate-500">{field.description || '—'}</td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-slate-100 bg-slate-50/50">
+          <td colSpan={4} className="px-4 py-3">
+            <div className="grid gap-x-6 gap-y-2 text-xs text-slate-600 sm:grid-cols-3">
+              <div>
+                <span className="text-slate-400">来源类型</span>{' '}
+                <span className="font-medium text-slate-700">{field.sourceDataType || '未识别'}</span>
+              </div>
+              <div>
+                <span className="text-slate-400">置信度</span>{' '}
+                <span className="font-medium text-slate-700">
+                  {typeof field.confidence === 'number' ? `${Math.round(field.confidence * 100)}%` : '—'}
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400">推荐理由</span>{' '}
+                <span className="font-medium text-slate-700">{field.recommendationReason || '默认识别'}</span>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
 
-function RecommendationSection({
+function FieldTable({ fields }: { fields: FieldDefinition[] }) {
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
+
+  if (fields.length === 0) {
+    return <div className="px-4 py-6 text-center text-xs text-slate-400">暂无数据</div>
+  }
+
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b border-slate-200 text-left text-xs font-medium text-slate-500">
+          <th className="px-4 py-2">名称</th>
+          <th className="px-4 py-2">表达式 / 类型</th>
+          <th className="px-4 py-2">源类型</th>
+          <th className="px-4 py-2">描述</th>
+        </tr>
+      </thead>
+      <tbody>
+        {fields.map((field) => (
+          <FieldTableRow
+            key={field.name}
+            field={field}
+            expanded={expandedRow === field.name}
+            onToggle={() => setExpandedRow(expandedRow === field.name ? null : field.name)}
+          />
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function ModelingSection({
   title,
-  icon: Icon,
-  items,
-  emptyText,
+  count,
+  children,
 }: {
   title: string
-  icon: typeof Gauge
-  items: Array<[string, { title?: string; type?: string; description?: string | null; certified?: boolean }]>
-  emptyText: string
+  count: number
+  children: ReactNode
 }) {
   return (
-    <section className="rounded-[24px] border border-[hsl(var(--workbench-outline))] bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-      <div className="flex items-center gap-2 text-[15px] font-semibold text-[hsl(var(--workbench-ink))]">
-        <Icon className="h-4 w-4 text-[hsl(var(--workbench-accent))]" />
-        {title}
+    <section className="rounded-md border border-slate-200">
+      <div className="flex h-10 items-center justify-between border-b border-slate-200 px-4">
+        <div className="text-sm font-medium text-slate-900">
+          {title}
+          <span className="ml-1.5 text-xs text-slate-400">({count})</span>
+        </div>
+        <Button variant="ghost" size="sm" className="h-7 text-xs">
+          <Plus className="mr-1 h-3 w-3" />
+          添加
+        </Button>
       </div>
-      {items.length > 0 ? (
-        <div className="mt-4 space-y-3">
-          {items.map(([key, item]) => (
-            <div key={key} className="rounded-[18px] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">{item.title || key}</div>
-                <div className="font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{key}</div>
-                {item.certified ? (
-                  <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">推荐</span>
-                ) : null}
-              </div>
-              <div className="mt-1 text-sm text-[hsl(var(--workbench-muted-foreground))]">
-                {item.description || `类型：${item.type || '未标记'}`}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="mt-4 rounded-[18px] border border-dashed border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-5 text-sm text-[hsl(var(--workbench-muted-foreground))]">
-          {emptyText}
-        </div>
-      )}
+      {children}
     </section>
   )
 }
@@ -86,88 +141,35 @@ export function WorkbenchModelingTab({
   cube: CubeSummary
   cubeDetail?: CubeDetail
 }) {
-  const recommendedMeasures = pickRecommendedMeasures(cubeDetail)
-  const recommendedDimensions = pickRecommendedDimensions(cubeDetail)
-  const timeDimensions = pickTimeDimensions(cubeDetail)
-  const sourceSummary = cubeDetail?.source_binding_summary?.source_name
-    || cube.source_database
-    || '待选择数据源'
+  const dimensionEntries = Object.entries(cubeDetail?.dimensions || {})
+  const measureEntries = Object.entries(cubeDetail?.measures || {})
+  const timeEntries = normalizeFieldDefinitions(
+    dimensionEntries.filter(([, value]) => value.type === 'time'),
+    'time',
+  )
+  const plainDimensionEntries = normalizeFieldDefinitions(
+    dimensionEntries.filter(([, value]) => value.type !== 'time'),
+    'dimension',
+  )
+  const measureDefinitions = normalizeFieldDefinitions(measureEntries, 'measure')
 
   return (
-    <div className="space-y-5">
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-        <div className="rounded-[24px] border border-[hsl(var(--workbench-outline))] bg-[linear-gradient(180deg,rgba(248,251,255,0.98),rgba(255,255,255,0.96))] p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-          <div className="inline-flex items-center gap-2 rounded-full bg-[hsl(var(--workbench-accent-soft))] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[hsl(var(--workbench-accent))]">
-            <Bot className="h-3.5 w-3.5" />
-            建模
-          </div>
-          <div className="mt-4 space-y-3">
-            <h2 className="text-2xl font-semibold tracking-[-0.03em] text-[hsl(var(--workbench-ink))]">AI 辅助建模</h2>
-            <p className="max-w-3xl text-sm leading-7 text-[hsl(var(--workbench-muted-foreground))]">
-              先确认来源摘要，再采纳推荐指标、维度和日期属性。这里先承接结构化起始信息，后续再接入自动生成与会话式修改。
-            </p>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            <MetricCard label="来源摘要" value={sourceSummary} icon={Database} />
-            <MetricCard label="推荐指标" value={`${recommendedMeasures.length} 项`} icon={Gauge} />
-            <MetricCard label="推荐维度" value={`${recommendedDimensions.length} 项`} icon={Layers3} />
-          </div>
-        </div>
+    <div className="flex min-h-0 flex-col gap-4 p-4" data-testid="workbench-modeling-tab">
+      <div className="flex items-center gap-3 text-xs text-slate-500">
+        <span>维度 <strong className="text-slate-900">{dimensionEntries.length || cube.dimension_count}</strong></span>
+        <span className="h-3 w-px bg-slate-200" />
+        <span>指标 <strong className="text-slate-900">{measureEntries.length || cube.measure_count}</strong></span>
+        <span className="h-3 w-px bg-slate-200" />
+        <span>来源 <strong className="text-slate-900">{cubeDetail?.source_binding_summary?.display || cube.table}</strong></span>
+      </div>
 
-        <div className="rounded-[24px] border border-[hsl(var(--workbench-outline))] bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-          <div className="flex items-center gap-2 text-[15px] font-semibold text-[hsl(var(--workbench-ink))]">
-            <Sparkles className="h-4 w-4 text-[hsl(var(--workbench-accent))]" />
-            下一步建议
-          </div>
-          <div className="mt-4 space-y-3">
-            {[
-              `确认 ${cube.title} 的业务口径和主表命名。`,
-              '优先补齐关键时间字段，确保预览页能直接生成时间序列查询。',
-              '完成推荐项检查后，再进入 YAML 做精修与校验。',
-            ].map((item) => (
-              <div key={item} className="rounded-[18px] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-3 text-sm leading-6 text-[hsl(var(--workbench-muted-foreground))]">
-                {item}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <ModelingSection title="维度" count={plainDimensionEntries.length + timeEntries.length}>
+        <FieldTable fields={[...plainDimensionEntries, ...timeEntries]} />
+      </ModelingSection>
 
-      <section className="grid gap-5 xl:grid-cols-2">
-        <RecommendationSection
-          title="推荐指标"
-          icon={Gauge}
-          items={recommendedMeasures}
-          emptyText="当前还没有可推荐的指标。"
-        />
-        <RecommendationSection
-          title="推荐维度"
-          icon={Layers3}
-          items={recommendedDimensions}
-          emptyText="当前还没有可推荐的维度。"
-        />
-      </section>
-
-      <section className="rounded-[24px] border border-[hsl(var(--workbench-outline))] bg-white p-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-        <div className="flex items-center gap-2 text-[15px] font-semibold text-[hsl(var(--workbench-ink))]">
-          <CalendarDays className="h-4 w-4 text-[hsl(var(--workbench-accent))]" />
-          日期属性
-        </div>
-        {timeDimensions.length > 0 ? (
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {timeDimensions.map(([key, item]) => (
-              <div key={key} className="rounded-[18px] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-3">
-                <div className="text-sm font-semibold text-[hsl(var(--workbench-ink))]">{item.title || key}</div>
-                <div className="mt-1 font-mono text-xs text-[hsl(var(--workbench-muted-foreground))]">{key}</div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="mt-4 rounded-[18px] border border-dashed border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] px-4 py-5 text-sm text-[hsl(var(--workbench-muted-foreground))]">
-            当前还没有识别到日期属性。
-          </div>
-        )}
-      </section>
+      <ModelingSection title="指标" count={measureDefinitions.length}>
+        <FieldTable fields={measureDefinitions} />
+      </ModelingSection>
     </div>
   )
 }

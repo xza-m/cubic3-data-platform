@@ -11,6 +11,46 @@ import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
 export type YamlEditorFileType = 'cubes' | 'views' | 'recipes'
+const yamlDraftMemoryStore = new Map<string, string>()
+
+function buildYamlDraftStorageKey(fileType: YamlEditorFileType | null, fileName?: string) {
+  if (!fileType || !fileName) return null
+  return `semantic-yaml-draft:${fileType}:${fileName}`
+}
+
+function readDraftValue(storageKey: string | null) {
+  if (!storageKey || typeof window === 'undefined') return null
+  try {
+    const localDraft = window.localStorage?.getItem(storageKey)
+    if (localDraft != null) {
+      yamlDraftMemoryStore.set(storageKey, localDraft)
+      return localDraft
+    }
+  } catch {
+    // 继续尝试读取内存草稿。
+  }
+  return yamlDraftMemoryStore.get(storageKey) ?? null
+}
+
+function writeDraftValue(storageKey: string | null, value: string) {
+  if (!storageKey || typeof window === 'undefined') return
+  yamlDraftMemoryStore.set(storageKey, value)
+  try {
+    window.localStorage?.setItem(storageKey, value)
+  } catch {
+    // 本地草稿是增强能力，存储失败时退回内存态即可。
+  }
+}
+
+function removeDraftValue(storageKey: string | null) {
+  if (!storageKey || typeof window === 'undefined') return
+  yamlDraftMemoryStore.delete(storageKey)
+  try {
+    window.localStorage?.removeItem(storageKey)
+  } catch {
+    // 忽略存储异常，避免影响主编辑流。
+  }
+}
 
 export function YamlEditorTab({
   fileType,
@@ -31,6 +71,7 @@ export function YamlEditorTab({
   const queryClient = useQueryClient()
   const [editValue, setEditValue] = useState<string>('')
   const [dirty, setDirty] = useState(false)
+  const storageKey = buildYamlDraftStorageKey(fileType, fileName)
 
   const { data: fileContent, isLoading: contentLoading } = useQuery({
     queryKey: ['semantic', 'file', fileType, fileName],
@@ -43,9 +84,15 @@ export function YamlEditorTab({
 
   useEffect(() => {
     if (fileContent?.content == null) return
+    const storedDraft = readDraftValue(storageKey)
+    if (storedDraft != null) {
+      setEditValue(storedDraft)
+      setDirty(storedDraft !== fileContent.content)
+      return
+    }
     setEditValue(fileContent.content)
     setDirty(false)
-  }, [fileContent])
+  }, [fileContent, storageKey])
 
   useEffect(() => {
     onDirtyChange?.(dirty)
@@ -55,6 +102,7 @@ export function YamlEditorTab({
     mutationFn: async () => apiClient.put(`/semantic/files/${fileType}/${fileName}`, { content: editValue }),
     onSuccess: () => {
       setDirty(false)
+      removeDraftValue(storageKey)
       queryClient.invalidateQueries({ queryKey: ['semantic'] })
       toast({ title: '保存成功', description: `${fileType}/${fileName}.yml 已更新` })
     },
@@ -219,7 +267,13 @@ export function YamlEditorTab({
             onChange={(value) => {
               const nextValue = value ?? ''
               setEditValue(nextValue)
-              setDirty(nextValue !== fileContent?.content)
+              const nextDirty = nextValue !== fileContent?.content
+              setDirty(nextDirty)
+              if (nextDirty) {
+                writeDraftValue(storageKey, nextValue)
+              } else {
+                removeDraftValue(storageKey)
+              }
             }}
             options={{
               fontFamily: 'var(--font-mono)',

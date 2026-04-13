@@ -5,32 +5,34 @@ test.beforeEach(async ({ page }) => {
   await prepareAuthenticatedPage(page)
 })
 
-test('在开发工具中切换资源与工作区标签', async ({ page }) => {
+test('在语义工作台中切换三栏建模分区与高级视图', async ({ page }) => {
   await gotoSemantic(page, '/semantic/tools')
-  await expect(page).toHaveURL(/\/semantic\/workbench$/)
-  await expect(page.getByRole('heading', { name: '语义工作台' })).toBeVisible()
+  await expect(page).toHaveURL(/\/semantic\/workbench(?:\?.*)?$/)
+  await expect(page.getByText('语义工作台')).toBeVisible()
+  await expect(page.getByTestId('semantic-resource-pane')).toBeVisible()
+  await expect(page.getByTestId('semantic-main-pane')).toBeVisible()
+  await expect(page.getByTestId('semantic-inspector-pane')).toBeVisible()
 
-  let firstEditableResource = page.locator('[data-testid^="semantic-resource-item-cube-"]').first()
-  if (await firstEditableResource.count() === 0) {
-    firstEditableResource = page.locator('[data-testid^="semantic-resource-item-view-"]').first()
-  }
-  if (await firstEditableResource.count() === 0) {
-    await ensureCubeAvailable(page)
-    await gotoSemantic(page, '/semantic/workbench')
-    await expect(page.getByRole('heading', { name: '语义工作台' })).toBeVisible()
-    firstEditableResource = page.locator('[data-testid^="semantic-resource-item-cube-"]').first()
-  }
+  await ensureCubeAvailable(page)
+  const firstViewButton = page.getByRole('button', { name: '查看详情' }).first()
+  await expect(firstViewButton).toBeVisible()
+  await firstViewButton.click()
+  await page.getByRole('link', { name: /工作台/ }).first().click()
 
-  await expect(firstEditableResource).toBeVisible()
-  await firstEditableResource.click()
+  await expect(page).toHaveURL(/\/semantic\/workbench\?cube=.*&tab=(preview|modeling)$/)
+  const currentCubeName = new URL(page.url()).searchParams.get('cube')
+  await expect(page.getByTestId('semantic-workbench-title')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Measures' })).toBeVisible()
 
+  await page.getByRole('button', { name: 'Measures' }).click()
+  await expect(page.getByLabel('Measure name')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Dimensions' }).click()
+  await expect(page.getByLabel('Dimension name')).toBeVisible()
+
+  await page.getByRole('button', { name: '代码' }).click()
   await expect(page.getByTestId('yaml-editor-tab')).toBeVisible()
 
-  await page.getByTestId('devtools-tab-compiler').click()
-  await expect(page.getByText('DSL 输入', { exact: true })).toBeVisible()
-
-  await page.getByTestId('devtools-tab-sync').click()
-  await expect(page.getByText('DSL JSON', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '编译', exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '编译并执行', exact: true })).toBeVisible()
+  await gotoSemantic(page, `/semantic/workbench?cube=${currentCubeName}&tab=python`)
+  await expect(page.getByText('Python 实现预览')).toBeVisible()
 })

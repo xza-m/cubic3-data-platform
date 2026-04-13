@@ -17,6 +17,34 @@ export interface Conversation {
   message_count: number
 }
 
+export interface SemanticTraceabilityContext {
+  business_metric?: {
+    name?: string
+    title?: string
+  }
+  business_object?: {
+    name?: string
+    title?: string
+  }
+  analysis_measure?: {
+    cube_name?: string
+    measure_name?: string
+  }
+  analysis_cube?: {
+    cube_name?: string
+    title?: string
+  }
+}
+
+export interface SemanticPlanContext {
+  route?: {
+    route_type?: string
+    planning_mode?: string
+  }
+  traceability?: Record<string, any>
+  primary_traceability?: SemanticTraceabilityContext
+}
+
 export interface Message {
   id: number
   conversation_id: number

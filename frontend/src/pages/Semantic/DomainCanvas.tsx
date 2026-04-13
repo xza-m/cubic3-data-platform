@@ -317,7 +317,7 @@ function CanvasInner({
           type="button"
           onClick={onPublish}
           disabled={publishing}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-[0_2px_8px_#2563EB30] transition-colors hover:bg-blue-700 disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50"
         >
           <Save className="h-3.5 w-3.5" />
           保存
@@ -664,9 +664,9 @@ export default function DomainCanvas() {
   if (isLoading || governanceLoading) {
     return (
       <div className="flex h-full flex-col gap-2 p-4 xl:flex-row">
-        <Skeleton className="h-24 rounded-xl xl:h-full xl:w-[240px]" />
-        <Skeleton className="min-h-[32rem] flex-1 rounded-xl" />
-        <Skeleton className="h-28 rounded-xl xl:h-full xl:w-[280px]" />
+        <Skeleton className="h-24 rounded-lg xl:h-full xl:w-[240px]" />
+        <Skeleton className="min-h-[32rem] flex-1 rounded-lg" />
+        <Skeleton className="h-28 rounded-lg xl:h-full xl:w-[280px]" />
       </div>
     )
   }
@@ -736,7 +736,7 @@ export default function DomainCanvas() {
             <div className="px-4 py-3">
               <div className="flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1.5">
                 <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
-                <input
+                <Input
                   type="text"
                   placeholder={resourcePanelMode === 'library' ? '搜索 Cube...' : '搜索目录、领域、Cube...'}
                   value={resourcePanelMode === 'library' ? cubeSearch : treeSearch}
@@ -744,7 +744,7 @@ export default function DomainCanvas() {
                     if (resourcePanelMode === 'library') setCubeSearch(e.target.value)
                     else setTreeSearch(e.target.value)
                   }}
-                  className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs shadow-none outline-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
                 />
               </div>
             </div>
@@ -887,7 +887,7 @@ export default function DomainCanvas() {
         onDrop={handleDrop}
       >
         {!nodes.length ? (
-          <div className="absolute inset-x-8 top-20 z-10 rounded-xl border border-dashed border-border bg-white/92 px-5 py-5 text-sm leading-6 text-muted-foreground">
+          <div className="absolute inset-x-8 top-20 z-10 rounded-lg border border-dashed border-border bg-white/92 px-5 py-5 text-sm leading-6 text-muted-foreground">
             <div className="font-semibold text-foreground">空画布引导</div>
             <div className="mt-2">1. 从左侧拖入 Cube</div>
             <div>2. 在画布上连接两个节点</div>
@@ -1118,7 +1118,7 @@ export default function DomainCanvas() {
 
                   <button
                     type="button"
-                    className="flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-slate-100 py-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-slate-200/80"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-100 py-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-slate-200/80"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     新建 Join 关系
@@ -1126,7 +1126,7 @@ export default function DomainCanvas() {
                 </div>
               ) : (
                 <div className="space-y-5">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">领域说明</div>
                     <div className="mt-3 text-sm font-semibold text-slate-900">{data?.domain.name || '未命名领域'}</div>
                     <p className="mt-2 text-xs leading-6 text-slate-600">
@@ -1134,7 +1134,7 @@ export default function DomainCanvas() {
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="rounded-lg border border-slate-200 bg-white p-4">
                     <div className="flex items-center justify-between">
                       <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">当前资源</div>
                       <span className="text-[11px] text-slate-500">{nodes.length} Cubes</span>
@@ -1181,7 +1181,7 @@ export default function DomainCanvas() {
                         />
                       ))
                     ) : (
-                      <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">
+                      <div className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-xs text-slate-500">
                         当前领域还没有可展示的 Cube 关系
                       </div>
                     )}

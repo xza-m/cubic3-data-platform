@@ -17,6 +17,7 @@ function renderLayout(initialEntry = '/dashboard') {
         <Route path="/login" element={<div>登录页</div>} />
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<div>工作台页面</div>} />
+          <Route path="/semantic/ontology" element={<div>业务语义页面</div>} />
           <Route path="/semantic/cubes" element={<div>Cube 页面</div>} />
           <Route path="/data-center/datasources" element={<div>数据源页面</div>} />
           <Route path="/data-center/datasets" element={<div>数据集页面</div>} />
@@ -55,6 +56,7 @@ describe('AppLayout', () => {
     await user.hover(screen.getByTestId('app-shell-sidebar'))
 
     expect(screen.getByText('语义工作台')).toBeInTheDocument()
+    expect(screen.getByText('业务语义工作台')).toBeInTheDocument()
     expect(screen.getByText('Cube 管理')).toBeInTheDocument()
     expect(screen.getByText('领域建模')).toBeInTheDocument()
     expect(screen.queryByText('总览')).not.toBeInTheDocument()

@@ -63,6 +63,10 @@ vi.mock('./pages/Semantic/CubeList', () => ({
   default: () => <div>Cube 列表页</div>,
 }))
 
+vi.mock('./pages/Semantic/OntologyWorkbench', () => ({
+  default: () => <div>业务语义工作台页</div>,
+}))
+
 vi.mock('./pages/Semantic/DevTools', () => ({
   default: () => <div>语义工作台页</div>,
 }))
@@ -150,6 +154,13 @@ describe('App routes', () => {
     renderApp('/semantic/tools?tab=sync')
     expect(await screen.findByText('语义工作台页')).toBeInTheDocument()
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench?tab=sync')
+  })
+
+  it('业务语义工作台有独立正式入口', async () => {
+    renderApp('/semantic/ontology')
+
+    expect(await screen.findByText('业务语义工作台页')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/ontology')
   })
 
   it('Cube 主路径使用新界面：列表走 Cube 列表，旧入口回流到工作台对象态', async () => {

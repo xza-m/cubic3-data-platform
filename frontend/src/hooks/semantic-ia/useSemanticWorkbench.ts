@@ -48,6 +48,23 @@ export function buildSemanticWorkbenchHref(
   return query ? `/semantic/workbench?${query}` : '/semantic/workbench'
 }
 
+export function buildOntologyWorkbenchHref(
+  tab?: 'objects' | 'properties' | 'metrics' | 'relations' | 'actions' | 'glossary' | 'policies' | null,
+  entity?: string | null,
+): string {
+  const params = new URLSearchParams()
+
+  if (tab) {
+    params.set('tab', tab)
+  }
+  if (entity) {
+    params.set('entity', entity)
+  }
+
+  const query = params.toString()
+  return query ? `/semantic/ontology?${query}` : '/semantic/ontology'
+}
+
 export function useSemanticWorkbench(options: UseSemanticWorkbenchOptions = {}) {
   const navigate = useNavigate()
   const currentCube = options.currentCube ?? null

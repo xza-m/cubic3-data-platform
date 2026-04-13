@@ -1,18 +1,10 @@
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowRight, Pencil } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { CubeDetail, CubeSummary } from '@/api/semantic'
-import { SemanticObjectIdentity } from '@/components/Semantic/SemanticObjectIdentity'
-import { SemanticPreviewFacts, SemanticPreviewPanel, SemanticPreviewSection } from '@/components/Semantic/SemanticPreviewPanel'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { formatSummaryTime } from '@/components/Semantic/CubeList/cubeListUtils'
 import { buildSemanticWorkbenchHref, useSemanticWorkbench } from '@/hooks/semantic-ia'
-import {
-  formatSummaryTime,
-  getCubeAttentionReasons,
-  getCubePrimaryStatus,
-  getCubeSyncLabel,
-  inferCubeCategory,
-} from './cubeListUtils'
+import { getSemanticStatusLabel } from '@/lib/semantic-status'
 
 interface CubePreviewPanelProps {
   selectedCube: CubeSummary
@@ -20,17 +12,40 @@ interface CubePreviewPanelProps {
   cubeDetailLoading?: boolean
 }
 
-function EmptyPreview({
-  title,
-  description,
+function InfoRow({
+  label,
+  value,
+  mono,
 }: {
-  title: string
-  description: string
+  label: string
+  value: string
+  mono?: boolean
 }) {
   return (
-    <div className="rounded-[var(--workbench-radius-sm)] border border-dashed border-[hsl(var(--workbench-outline))] bg-white/72 px-3 py-3 text-[12px] leading-5 text-[hsl(var(--workbench-muted-foreground))]">
-      <div className="font-medium text-[hsl(var(--workbench-ink))]">{title}</div>
-      <div className="mt-0.5">{description}</div>
+    <div className="space-y-1">
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className={`text-sm text-slate-900 ${mono ? 'font-mono' : ''}`}>{value || '—'}</div>
+    </div>
+  )
+}
+
+function SummaryCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone: 'blue' | 'purple'
+}) {
+  const palette = tone === 'blue'
+    ? 'bg-blue-50 text-blue-700'
+    : 'bg-purple-50 text-purple-700'
+
+  return (
+    <div className={`rounded-lg px-4 py-3 ${palette}`}>
+      <div className="text-xs">{label}</div>
+      <div className="mt-1 text-lg font-semibold">{value}</div>
     </div>
   )
 }
@@ -40,121 +55,80 @@ export function CubePreviewPanel({
   cubeDetail,
   cubeDetailLoading,
 }: CubePreviewPanelProps) {
-  const activeCube = cubeDetail ?? selectedCube
-  const attentionReasons = getCubeAttentionReasons(selectedCube)
-  const dimensionFields = cubeDetail ? Object.entries(cubeDetail.dimensions || {}).map(([key, value]) => value.title || key) : []
-  const measureFields = cubeDetail ? Object.entries(cubeDetail.measures || {}).map(([key, value]) => value.title || key) : []
-  const fieldSummary = cubeDetail
-    ? [...dimensionFields.slice(0, 4), ...measureFields.slice(0, 4)].join(' · ')
-    : `${selectedCube.dimension_count} 个维度，${selectedCube.measure_count} 个指标`
+  const activeCube = cubeDetail
+    ? { ...selectedCube, ...cubeDetail }
+    : selectedCube
+  const isPublished = (activeCube.status || '').toLowerCase() === 'active'
+  const statusLabel = getSemanticStatusLabel(activeCube.status)
+  const domainLabel = activeCube.domain_name?.trim() || '未归属'
+  const recentChangeLabel = formatSummaryTime(
+    activeCube.state_summary?.updated_at
+      ?? activeCube.state_summary?.last_published_at
+      ?? activeCube.state_summary?.last_loaded_at,
+  )
+  const fieldSummary = {
+    dimensions: cubeDetail ? Object.keys(cubeDetail.dimensions || {}).length : selectedCube.dimension_count,
+    measures: cubeDetail ? Object.keys(cubeDetail.measures || {}).length : selectedCube.measure_count,
+  }
   const { startRevision, isStartingRevision } = useSemanticWorkbench({
     currentCube: {
       name: activeCube.name,
       status: activeCube.status,
     },
   })
-  const isPublished = (activeCube.status || '').toLowerCase() === 'active'
   const workbenchHref = buildSemanticWorkbenchHref(activeCube.name, isPublished ? 'preview' : 'modeling')
 
   return (
-    <SemanticPreviewPanel
-      title="当前选择"
-      actions={(
-        <div className="flex shrink-0 items-center gap-2">
-          {isPublished ? (
+    <div className="space-y-5">
+      <section className="space-y-4">
+        <div className="text-sm font-semibold text-slate-900">基础信息</div>
+        <InfoRow label="Cube 名称" value={activeCube.name} />
+        <InfoRow label="SQL 表" value={activeCube.table || '—'} mono />
+        <InfoRow label="状态" value={statusLabel} />
+        <InfoRow label="所属领域" value={domainLabel} />
+        <InfoRow label="最近变更" value={recentChangeLabel} />
+      </section>
+
+      <div className="h-px bg-slate-200" />
+
+      <section className="space-y-3">
+        <div className="text-sm font-semibold text-slate-900">字段摘要</div>
+        <div className="grid grid-cols-2 gap-3">
+          <SummaryCard label="维度" value={String(fieldSummary.dimensions)} tone="blue" />
+          <SummaryCard label="指标" value={String(fieldSummary.measures)} tone="purple" />
+        </div>
+        {cubeDetailLoading ? (
+          <div className="text-xs text-slate-400">正在加载字段摘要...</div>
+        ) : null}
+      </section>
+
+      <div className="h-px bg-slate-200" />
+
+      <section className="space-y-3">
+        <div className="text-sm font-semibold text-slate-900">操作</div>
+        {isPublished ? (
+          <>
             <Button
               type="button"
-              variant="default"
-              size="sm"
-              className="h-7 rounded-md px-2 text-[11px]"
+              className="w-full justify-center gap-2"
               disabled={isStartingRevision}
               onClick={() => startRevision(activeCube.name)}
             >
-              发起修订
+              <Pencil className="h-4 w-4" />
+              新建修订版
             </Button>
-          ) : null}
-          <Button asChild variant={isPublished ? 'outline' : 'default'} size="sm" className="h-7 rounded-md px-2 text-[11px]">
-            <Link to={workbenchHref}>
-              {isPublished ? '在工作台查看' : '去工作台继续'}
-              <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-            </Link>
-          </Button>
-        </div>
-      )}
-    >
-      <SemanticPreviewSection label="当前对象">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <SemanticObjectIdentity
-              title={activeCube.title}
-              code={activeCube.name}
-              description={activeCube.description}
-              meta={[inferCubeCategory(selectedCube)]}
-              className="flex-1"
-            />
-            <Badge variant="outline" className="h-5.5 border-transparent bg-[hsl(var(--workbench-accent-soft))] px-2 text-[10px] text-[hsl(var(--workbench-accent))]">
-              {getCubePrimaryStatus(activeCube)}
-            </Badge>
-          </div>
-        </div>
-      </SemanticPreviewSection>
-
-      <SemanticPreviewSection label="阻塞项">
-        {attentionReasons.length ? (
-          <div className="space-y-2">
-            {attentionReasons.map((reason) => (
-              <div
-                key={reason}
-                className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--semantic-warn))]/20 bg-[hsl(var(--semantic-warn))]/8 px-2.5 py-1.5 text-[11px] leading-5 text-[hsl(var(--semantic-warn))]"
-              >
-                {reason}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--semantic-ok))]/15 bg-[hsl(var(--semantic-ok))]/8 px-2.5 py-1.5 text-[11px] leading-5 text-[hsl(var(--semantic-ok))]">
-            当前没有阻塞项，可以继续校对定义或进入设计页。
-          </div>
-        )}
-      </SemanticPreviewSection>
-
-      {cubeDetailLoading ? (
-        <EmptyPreview title="正在加载摘要" description="稍后显示字段、属性和所属领域。" />
-      ) : null}
-
-      <SemanticPreviewSection label="字段列表">
-        <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-white/84 px-3 py-2.5 text-[12px] leading-5 text-[hsl(var(--workbench-ink))]">
-          {fieldSummary || '当前没有可展示字段。'}
-        </div>
-      </SemanticPreviewSection>
-
-      <SemanticPreviewSection label="属性摘要">
-        <SemanticPreviewFacts
-          items={[
-            { label: '模型类型', value: inferCubeCategory(selectedCube) },
-            { label: '同步状态', value: getCubeSyncLabel(selectedCube) },
-            { label: '结构规模', value: `${selectedCube.dimension_count} 维度 / ${selectedCube.measure_count} 指标` },
-          ]}
-        />
-      </SemanticPreviewSection>
-
-      <SemanticPreviewSection label="所属领域">
-        <SemanticPreviewFacts
-          items={[
-            { label: '当前领域', value: selectedCube.domain_name || '未纳入领域' },
-            { label: 'Join', value: typeof selectedCube.join_count === 'number' ? `${selectedCube.join_count} 条` : '待补充' },
-          ]}
-        />
-      </SemanticPreviewSection>
-
-      <SemanticPreviewSection label="最近变更">
-        <SemanticPreviewFacts
-          items={[
-            { label: '最近修改', value: formatSummaryTime(selectedCube.state_summary?.updated_at) },
-            { label: '最近发布', value: formatSummaryTime(selectedCube.state_summary?.last_published_at) },
-          ]}
-        />
-      </SemanticPreviewSection>
-    </SemanticPreviewPanel>
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+              不会影响当前发布版本
+            </div>
+          </>
+        ) : null}
+        <Button asChild variant="outline" className="w-full justify-center gap-2">
+          <Link to={workbenchHref}>
+            <ArrowRight className="h-4 w-4" />
+            {isPublished ? '去工作台查看' : '去工作台继续建模'}
+          </Link>
+        </Button>
+      </section>
+    </div>
   )
 }

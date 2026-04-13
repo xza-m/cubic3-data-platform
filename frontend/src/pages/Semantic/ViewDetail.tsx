@@ -11,6 +11,7 @@ import {
 } from '@/api/semantic'
 import { fmtDate } from '@/lib/format'
 import { useToast } from '@/hooks/use-toast'
+import { YamlEditorTab } from '@/components/Semantic/DevTools/YamlEditorTab'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,9 +29,9 @@ import { useUrlState } from '@/hooks/useUrlState'
 function DetailSkeleton() {
   return (
     <div className="space-y-5">
-      <Skeleton className="h-28 rounded-3xl" />
-      <Skeleton className="h-40 rounded-3xl" />
-      <Skeleton className="h-[28rem] rounded-3xl" />
+      <Skeleton className="h-28 rounded-lg" />
+      <Skeleton className="h-40 rounded-lg" />
+      <Skeleton className="h-[28rem] rounded-lg" />
     </div>
   )
 }
@@ -89,7 +90,7 @@ interface ViewData {
   }
 }
 
-type ViewDetailTab = 'mapping' | 'cubes' | 'sql' | 'diagnostics'
+type ViewDetailTab = 'mapping' | 'cubes' | 'sql' | 'yaml' | 'diagnostics'
 
 function buildSummary(view: ViewData, matStatus?: MaterializeStatus | null): SemanticValidationSummary {
   const blockers: string[] = []
@@ -98,7 +99,7 @@ function buildSummary(view: ViewData, matStatus?: MaterializeStatus | null): Sem
   const driftStatus = (view.drift_summary?.last_drift_status || matStatus?.state_summary?.last_drift_status || '').toLowerCase()
 
   if (hasErrorDiagnostic) {
-    blockers.push('当前 View 诊断存在 error，建议先检查 Join 路径、字段映射或编译结果。')
+    blockers.push('当前 View 诊断存在 error，建议先检查 Join 路径、字段映射或 SQL 预览结果。')
   }
   if (driftStatus === 'error') {
     blockers.push('最近一次漂移检测显示 error，发布前应先确认底层物理结构是否已变化。')
@@ -192,7 +193,7 @@ export default function ViewDetail() {
 
   if (error || !view) {
     return (
-      <div className="py-20 text-center">
+      <div className="py-10 text-center">
         <p className="text-muted-foreground">未找到 View: {name}</p>
         <Button asChild variant="outline" className="mt-4">
           <Link to="/semantic/cubes?kind=view">返回 Cube 模块</Link>
@@ -244,13 +245,13 @@ export default function ViewDetail() {
         actions={
           <>
             <Button variant="outline" asChild>
-              <Link to="/semantic/workbench?tab=compiler">
+              <Link to={`/semantic/views/${encodeURIComponent(view.name)}?tab=sql`}>
                 <AlertTriangle className="mr-1.5 h-4 w-4" />
-                查看诊断
+                查看预览
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link to={`/semantic/workbench?tab=editor&kind=view&resource=${encodeURIComponent(view.name)}&file=${encodeURIComponent(view.name)}`}>
+              <Link to={`/semantic/views/${encodeURIComponent(view.name)}?tab=yaml`}>
                 <FileCode className="mr-1.5 h-4 w-4" />
                 查看 YAML
               </Link>
@@ -277,24 +278,24 @@ export default function ViewDetail() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="space-y-5">
-          <section className="rounded-[var(--workbench-radius)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-5 shadow-sm">
+          <section className="rounded-[var(--workbench-radius)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-4 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
+              <div className="rounded-lg border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
                 <div className="text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">View 标识</div>
                 <div className="mt-2 font-mono text-sm text-[hsl(var(--workbench-ink))]">{view.name}</div>
                 <div className="mt-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">{view.cubes.length} 条引用路径</div>
               </div>
-              <div className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
+              <div className="rounded-lg border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
                 <div className="text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">数据集状态</div>
                 <div className="mt-2 text-sm font-semibold text-[hsl(var(--workbench-ink))]">{isMaterialized ? '已发布' : '未发布'}</div>
                 <div className="mt-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">{matStatus?.dataset_code || '尚未生成数据集编码'}</div>
               </div>
-              <div className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
+              <div className="rounded-lg border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
                 <div className="text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">最近发布</div>
                 <div className="mt-2 text-sm font-semibold text-[hsl(var(--workbench-ink))]">{fmtDate(matStatus?.published_at || view.publish_summary?.last_published_at) || '尚未发布'}</div>
                 <div className="mt-1 text-xs text-[hsl(var(--workbench-muted-foreground))]">{matStatus?.publish_status || view.publish_summary?.publish_status || '未进入发布链路'}</div>
               </div>
-              <div className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
+              <div className="rounded-lg border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
                 <div className="text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">发布规模</div>
                 <div className="mt-2 text-sm font-semibold text-[hsl(var(--workbench-ink))]">
                   {matStatus?.definition_summary?.field_count ?? fieldMappings.length} 字段
@@ -306,13 +307,13 @@ export default function ViewDetail() {
             </div>
             <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
               <div
-                className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4"
+                className="rounded-lg border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4"
                 data-testid="view-related-cubes"
               >
                 <div className="text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">相关 Cube</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {relatedCubeNames.map((cubeName) => (
-                    <Button key={cubeName} asChild variant="outline" size="sm" className="h-8 rounded-full px-3">
+                    <Button key={cubeName} asChild variant="outline" size="sm" className="h-8 rounded-md px-3">
                       <Link to={`/semantic/cubes/${cubeName}`}>
                         {cubeName}
                       </Link>
@@ -321,7 +322,7 @@ export default function ViewDetail() {
                 </div>
               </div>
               <div
-                className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4"
+                className="rounded-lg border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4"
                 data-testid="view-publish-status"
               >
                 <div className="text-[11px] uppercase tracking-[0.14em] text-[hsl(var(--workbench-muted-foreground))]">发布状态</div>
@@ -360,12 +361,13 @@ export default function ViewDetail() {
             }
           />
 
-          <section className="rounded-[var(--workbench-radius)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-5 shadow-sm">
+          <section className="rounded-[var(--workbench-radius)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-4 shadow-sm">
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>
                 <TabsTrigger value="mapping">字段映射</TabsTrigger>
                 <TabsTrigger value="cubes">引用路径</TabsTrigger>
-                <TabsTrigger value="sql">编译 SQL</TabsTrigger>
+                <TabsTrigger value="sql">SQL 预览</TabsTrigger>
+                <TabsTrigger value="yaml">YAML</TabsTrigger>
                 <TabsTrigger value="diagnostics">诊断</TabsTrigger>
               </TabsList>
 
@@ -381,7 +383,7 @@ export default function ViewDetail() {
                     ])}
                   />
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-[hsl(var(--workbench-outline))] px-6 py-12 text-center text-sm text-[hsl(var(--workbench-muted-foreground))]">
+                  <div className="rounded-lg border border-dashed border-[hsl(var(--workbench-outline))] px-6 py-8 text-center text-sm text-[hsl(var(--workbench-muted-foreground))]">
                     当前还没有可展示的字段映射。请先发布 View，或在发布后刷新状态。
                   </div>
                 )}
@@ -401,11 +403,15 @@ export default function ViewDetail() {
 
               <TabsContent value="sql" className="mt-4">
                 <div className="rounded-[var(--workbench-radius-sm)] border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-4">
-                  <div className="mb-2 text-sm font-medium text-[hsl(var(--workbench-ink))]">最近编译 SQL</div>
-                  <pre className="max-h-[26rem] overflow-auto whitespace-pre-wrap break-all rounded-2xl bg-[hsl(var(--workbench-surface))] p-4 font-mono text-xs leading-6 text-[hsl(var(--workbench-ink))]">
-                    {matStatus?.sql_query || '当前暂无编译 SQL。请先发布或重新发布 View 后查看。'}
+                  <div className="mb-2 text-sm font-medium text-[hsl(var(--workbench-ink))]">最近 SQL 预览</div>
+                  <pre className="max-h-[26rem] overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[hsl(var(--workbench-surface))] p-4 font-mono text-xs leading-6 text-[hsl(var(--workbench-ink))]">
+                    {matStatus?.sql_query || '当前暂无 SQL 预览。请先发布或重新发布 View 后查看。'}
                   </pre>
                 </div>
+              </TabsContent>
+
+              <TabsContent value="yaml" className="mt-4">
+                <YamlEditorTab fileType="views" fileName={view.name} />
               </TabsContent>
 
               <TabsContent value="diagnostics" className="mt-4">
@@ -416,7 +422,7 @@ export default function ViewDetail() {
                       return (
                         <div
                           key={`${item.kind || 'diag'}-${item.field || index}`}
-                          className="rounded-2xl border px-4 py-3"
+                          className="rounded-lg border px-4 py-3"
                         >
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant={isError ? 'destructive' : 'outline'}>{item.level}</Badge>
@@ -429,7 +435,7 @@ export default function ViewDetail() {
                     })}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-[hsl(var(--workbench-outline))] px-6 py-12 text-center text-sm text-[hsl(var(--workbench-muted-foreground))]">
+                  <div className="rounded-lg border border-dashed border-[hsl(var(--workbench-outline))] px-6 py-8 text-center text-sm text-[hsl(var(--workbench-muted-foreground))]">
                     当前没有诊断项，可继续检查字段映射或发布状态。
                   </div>
                 )}
@@ -444,7 +450,7 @@ export default function ViewDetail() {
           testId="domain-inspector-panel"
         >
           <div className="space-y-4 text-sm">
-            <div className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
+            <div className="rounded-lg border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
               <div className="flex items-center gap-2 font-medium text-[hsl(var(--workbench-ink))]">
                 <Eye className="h-4 w-4 text-[hsl(var(--workbench-muted-foreground))]" />
                 数据集摘要
@@ -469,7 +475,7 @@ export default function ViewDetail() {
               </dl>
             </div>
 
-            <div className="rounded-2xl border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
+            <div className="rounded-lg border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-surface))] p-3">
               <div className="text-sm font-medium text-[hsl(var(--workbench-ink))]">建议动作</div>
               <ul className="mt-3 space-y-2 text-xs leading-5 text-[hsl(var(--workbench-muted-foreground))]">
                 <li>发布前先确认字段映射与数据集编码是否符合下游约定。</li>

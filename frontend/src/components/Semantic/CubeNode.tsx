@@ -35,8 +35,8 @@ export function CubeNode({ data, selected }: NodeProps) {
       className={cn(
         'w-[200px] rounded-[10px] bg-white shadow-sm transition-all',
         selected
-          ? 'border-2 border-blue-500 shadow-[0_4px_16px_#2563EB18] ring-1 ring-blue-300/30'
-          : 'border border-border shadow-[0_2px_12px_#0F172A0A]',
+          ? 'border-2 border-blue-500 shadow-sm ring-1 ring-blue-300/30'
+          : 'border border-border shadow-sm',
       )}
       role="button"
       tabIndex={0}

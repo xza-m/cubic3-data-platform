@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-04-03
+last_reviewed: 2026-04-08
 ---
 
 # CUBIC3 前端
@@ -139,7 +139,8 @@ src/
 
 语义中心当前页面职责：
 
-- `/semantic/workbench`：唯一开发主场。无对象时展示 AI 辅助建模起始页；有对象时进入 `建模 / 预览 / YAML / PY` 工作区。
+- `/semantic/workbench`：唯一开发主场。无对象时展示资源浏览与 AI 建模起始页；有对象时进入三栏工作台：
+  左栏为资源与字段索引，中栏承载 `Preview / Measures / Dimensions / Filters / Joins`，右栏作为属性检查器；高级视图继续保留 `YAML / PY`。
 - `/semantic/cubes`：资产管理页。默认聚焦已发布与已废弃 Cube，通过详情抽屉承接“发起修订”和“去工作台查看”。
 - `/semantic/modeling`、`/semantic/domains/:id`：领域画布与建模画布，继续承接领域编排能力。
 

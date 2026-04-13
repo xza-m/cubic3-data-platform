@@ -18,7 +18,7 @@ import { ArrowRight, Layout, PlusCircle, Save, Wand2 } from 'lucide-react'
 import {
   activateCube,
   createCube,
-  createCubeDraftFromTable,
+  createCubeDraftFromSource,
   deprecateCube,
   describeCube,
   getGraph,
@@ -105,6 +105,7 @@ export function buildLegacyCubeWorkbenchHref({
     }
   } else if (pathname.endsWith('/cubes/new')) {
     params.delete('cube')
+    params.delete('tab')
   }
 
   const query = params.toString()
@@ -355,7 +356,7 @@ export default function RelationCanvas() {
   const createDraftMutation = useMutation({
     mutationFn: async () => {
       return (
-        await createCubeDraftFromTable(buildCreateCubeDraftRequest(selectedSource, selectedTable))
+        await createCubeDraftFromSource(buildCreateCubeDraftRequest(selectedSource, selectedTable))
       ).data
     },
     onSuccess: (payload) => {
@@ -489,7 +490,7 @@ export default function RelationCanvas() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{pageTitle}</h1>
+          <h1 className="text-base font-semibold">{pageTitle}</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">{pageDescription}</p>
         </div>
         <div className="flex gap-2">

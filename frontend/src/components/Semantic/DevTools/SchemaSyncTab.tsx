@@ -164,14 +164,14 @@ export function SchemaSyncTab({
       </div>
 
       {!report && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 text-center">
           <RefreshCw className="mb-3 h-10 w-10 text-muted-foreground/30" aria-hidden="true" />
           <p className="text-sm text-muted-foreground">点击“立即检测”执行真实 Schema Drift 检测</p>
         </div>
       )}
 
       {report && drifts.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="flex flex-col items-center justify-center py-8 text-center">
           <CheckCircle2 className="mb-4 h-12 w-12 text-[hsl(var(--semantic-ok))]/50" aria-hidden="true" />
           <h2 className="mb-1 text-lg font-semibold">当前未发现 Schema 漂移</h2>
           <p className="text-sm text-muted-foreground">
@@ -251,7 +251,7 @@ export function SchemaSyncTab({
             </tbody>
           </table>
           {filtered.length === 0 && (
-            <div className="border-t px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="border-t px-4 py-4 text-center text-sm text-muted-foreground">
               当前筛选条件下没有匹配的问题项。
             </div>
           )}

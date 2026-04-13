@@ -30,5 +30,5 @@ test('在 Cube 管理中浏览资产并进入工作台对象态', async ({ page 
   await workbenchLink.click()
 
   await expect(page).toHaveURL(/\/semantic\/workbench\?cube=.*&tab=(preview|modeling)$/)
-  await expect(page.getByRole('heading', { name: '语义工作台' })).toBeVisible()
+  await expect(page.getByTestId('semantic-workbench-title')).toBeVisible()
 })

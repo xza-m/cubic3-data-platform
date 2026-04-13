@@ -118,7 +118,7 @@ import {
   compileDsl,
   createCatalog,
   createCube,
-  createCubeDraftFromTable,
+  createCubeDraftFromSource,
   createDomain,
   deprecateCube,
   deleteCatalog,
@@ -143,6 +143,34 @@ import {
   updateCube,
   updateDomain,
 } from './semantic'
+import {
+  applyOntologyTemplate,
+  getBusinessAction,
+  getCubeBacklinks,
+  getBusinessMetricLinks,
+  getOntologyTemplate,
+  getPolicyAudit,
+  getPolicyImpact,
+  getBusinessRelation,
+  getExecutionCompilePreview,
+  getExecutionExecute,
+  getExecutionPlanPreview,
+  getOntologyEntityHistory,
+  getOntologyEntityImpact,
+  getSemanticExecutePlan,
+  getSemanticExecutePlanPreview,
+  getSemanticPlanPreview,
+  getSemanticRoutePreview,
+  getSemanticConsistencyReport,
+  listBusinessActions,
+  listBusinessMetrics,
+  listBusinessObjects,
+  listBusinessRelations,
+  publishOntologyEntity,
+  saveBusinessAction,
+  saveBusinessMetric,
+  saveBusinessRelation,
+} from './ontology'
 
 vi.mock('./client', () => ({
   default: {
@@ -938,13 +966,15 @@ describe('api wrappers', () => {
       expect(mockedClient.get).toHaveBeenNthCalledWith(2, '/semantic/cubes/answer_records')
 
       await expect(
-        createCubeDraftFromTable({
+        createCubeDraftFromSource({
+          source_kind: 'physical_table',
           source_id: 1,
           database: 'dw',
           table: 'answer_records',
         }),
       ).resolves.toEqual({ data: { name: 'draft_cube' } })
-      expect(mockedClient.post).toHaveBeenNthCalledWith(1, '/semantic/cubes/draft-from-table', {
+      expect(mockedClient.post).toHaveBeenNthCalledWith(1, '/semantic/cubes/draft-from-source', {
+        source_kind: 'physical_table',
         source_id: 1,
         database: 'dw',
         table: 'answer_records',
@@ -1106,6 +1136,216 @@ describe('api wrappers', () => {
       expect(mockedClient.post).toHaveBeenNthCalledWith(5, '/semantic/domains/domain-1/publish', {
         cubes: ['answer_records'],
         joins: [joinPayload],
+      })
+    })
+  })
+
+  describe('ontology api', () => {
+    it('Ontology 与编译预览接口透传请求', async () => {
+      mockedClient.get.mockResolvedValueOnce({ data: { items: [{ name: 'order', title: '订单' }], total: 1 } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { items: [{ name: 'gmv', title: 'GMV' }], total: 1 } } as never)
+      mockedClient.post.mockResolvedValueOnce({ data: { name: 'gmv', title: 'GMV' } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { metric_name: 'gmv', linked_measures: [] } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { items: [{ name: 'order_submit_order', title: '客户下单' }], total: 1 } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { name: 'order_submit_order', title: '客户下单' } } as never)
+      mockedClient.post.mockResolvedValueOnce({ data: { name: 'order_submit_order', title: '客户下单' } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { items: [{ name: 'pay', title: '支付' }], total: 1 } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { name: 'pay', title: '支付' } } as never)
+      mockedClient.post.mockResolvedValueOnce({ data: { name: 'pay', title: '支付' } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { summary: { issue_count: 0 }, items: [] } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { cube_name: 'orders', linked_objects: [], linked_metrics: [] } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { target_type: 'metric', target_name: 'gmv', linked_entity_count: 2 } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { entity_type: 'metrics', entity_name: 'gmv', items: [{ id: 'evt-1', action: 'saved' }], total: 1 } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { policy_name: 'gmv_policy', items: [{ id: 'audit-1', decision: 'allow' }], total: 1 } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { name: 'order-domain', title: '订单域模板', summary: { objects: 2 } } } as never)
+      mockedClient.get.mockResolvedValueOnce({ data: { entity_type: 'metrics', entity_name: 'gmv', projection: { targets: [] }, consistency: { status: 'ok', issues: [] } } } as never)
+      mockedClient.post.mockResolvedValueOnce({ data: { status: 'ready', pseudo_sql: 'SELECT 1' } } as never)
+      mockedClient.post.mockResolvedValueOnce({ data: { entity: { name: 'gmv', status: 'active' }, validation: { preview_status: 'ok', issues: [] } } } as never)
+      mockedClient.post.mockResolvedValueOnce({ data: { template: 'order-domain', summary: { created: 10, skipped: 0 } } } as never)
+
+      await expect(listBusinessObjects()).resolves.toEqual({ data: { items: [{ name: 'order', title: '订单' }], total: 1 } })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(1, '/ontology/objects')
+
+      await expect(listBusinessMetrics()).resolves.toEqual({ data: { items: [{ name: 'gmv', title: 'GMV' }], total: 1 } })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(2, '/ontology/metrics')
+
+      await expect(saveBusinessMetric({ name: 'gmv', title: 'GMV' })).resolves.toEqual({ data: { name: 'gmv', title: 'GMV' } })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(1, '/ontology/metrics', { name: 'gmv', title: 'GMV' })
+
+      await expect(getBusinessMetricLinks('gmv')).resolves.toEqual({ data: { metric_name: 'gmv', linked_measures: [] } })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(3, '/ontology/metrics/gmv/links')
+
+      await expect(listBusinessRelations()).resolves.toEqual({
+        data: { items: [{ name: 'order_submit_order', title: '客户下单' }], total: 1 },
+      })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(4, '/ontology/relations')
+
+      await expect(getBusinessRelation('order_submit_order')).resolves.toEqual({
+        data: { name: 'order_submit_order', title: '客户下单' },
+      })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(5, '/ontology/relations/order_submit_order')
+
+      await expect(saveBusinessRelation({ name: 'order_submit_order', title: '客户下单' })).resolves.toEqual({
+        data: { name: 'order_submit_order', title: '客户下单' },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(2, '/ontology/relations', {
+        name: 'order_submit_order',
+        title: '客户下单',
+      })
+
+      await expect(listBusinessActions()).resolves.toEqual({
+        data: { items: [{ name: 'pay', title: '支付' }], total: 1 },
+      })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(6, '/ontology/actions')
+
+      await expect(getBusinessAction('pay')).resolves.toEqual({ data: { name: 'pay', title: '支付' } })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(7, '/ontology/actions/pay')
+
+      await expect(saveBusinessAction({ name: 'pay', title: '支付' })).resolves.toEqual({
+        data: { name: 'pay', title: '支付' },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(3, '/ontology/actions', {
+        name: 'pay',
+        title: '支付',
+      })
+
+      await expect(getSemanticConsistencyReport()).resolves.toEqual({ data: { summary: { issue_count: 0 }, items: [] } })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(8, '/semantic-mapper/consistency-report')
+
+      await expect(getCubeBacklinks('orders')).resolves.toEqual({ data: { cube_name: 'orders', linked_objects: [], linked_metrics: [] } })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(9, '/semantic-mapper/cube-backlinks', {
+        params: { cube_name: 'orders' },
+      })
+
+      await expect(getPolicyImpact('gmv_policy')).resolves.toEqual({ data: { target_type: 'metric', target_name: 'gmv', linked_entity_count: 2 } })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(10, '/ontology/policies/gmv_policy/impact')
+
+      await expect(getOntologyEntityHistory('metrics', 'gmv')).resolves.toEqual({
+        data: { entity_type: 'metrics', entity_name: 'gmv', items: [{ id: 'evt-1', action: 'saved' }], total: 1 },
+      })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(11, '/ontology/metrics/gmv/history')
+
+      await expect(getPolicyAudit('gmv_policy', { decision: 'allow', route_type: 'direct' })).resolves.toEqual({
+        data: { policy_name: 'gmv_policy', items: [{ id: 'audit-1', decision: 'allow' }], total: 1 },
+      })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(12, '/ontology/policies/gmv_policy/audit', {
+        params: {
+          target_type: undefined,
+          target_name: undefined,
+          decision: 'allow',
+          route_type: 'direct',
+        },
+      })
+
+      await expect(getOntologyTemplate('order-domain')).resolves.toEqual({
+        data: { name: 'order-domain', title: '订单域模板', summary: { objects: 2 } },
+      })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(13, '/ontology/templates/order-domain')
+
+      await expect(getOntologyEntityImpact('metrics', 'gmv')).resolves.toEqual({
+        data: { entity_type: 'metrics', entity_name: 'gmv', projection: { targets: [] }, consistency: { status: 'ok', issues: [] } },
+      })
+      expect(mockedClient.get).toHaveBeenNthCalledWith(14, '/ontology/metrics/gmv/impact')
+
+      await expect(getExecutionCompilePreview('gmv', ['finance'])).resolves.toEqual({ data: { status: 'ready', pseudo_sql: 'SELECT 1' } })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(4, '/execution-compiler/compile-preview', {
+        metric_name: 'gmv',
+        viewer_roles: ['finance'],
+      })
+
+      await expect(publishOntologyEntity('metrics', 'gmv')).resolves.toEqual({
+        data: { entity: { name: 'gmv', status: 'active' }, validation: { preview_status: 'ok', issues: [] } },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(5, '/ontology/metrics/gmv/publish', {})
+
+      await expect(applyOntologyTemplate('order-domain')).resolves.toEqual({
+        data: { template: 'order-domain', summary: { created: 10, skipped: 0 } },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(6, '/ontology/templates/order-domain/apply', {})
+
+      mockedClient.post.mockResolvedValueOnce({
+        data: {
+          metric_name: 'gmv',
+          target_type: 'sql',
+          steps: [{ step_type: 'compile_sql', title: 'SQL 预览', status: 'ready' }],
+        },
+      } as never)
+      await expect(getExecutionPlanPreview('gmv')).resolves.toEqual({
+        data: {
+          metric_name: 'gmv',
+          target_type: 'sql',
+          steps: [{ step_type: 'compile_sql', title: 'SQL 预览', status: 'ready' }],
+        },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(7, '/execution-compiler/plan-preview', {
+        metric_name: 'gmv',
+      })
+
+      mockedClient.post.mockResolvedValueOnce({
+        data: {
+          status: 'executed',
+          target_type: 'sql',
+          governance_trace: { status: 'allow', execution_status: 'executed' },
+        },
+      } as never)
+      await expect(getExecutionExecute('gmv', ['finance'])).resolves.toEqual({
+        data: {
+          status: 'executed',
+          target_type: 'sql',
+          governance_trace: { status: 'allow', execution_status: 'executed' },
+        },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(8, '/execution-compiler/execute', {
+        metric_name: 'gmv',
+        viewer_roles: ['finance'],
+      })
+
+      mockedClient.post.mockResolvedValueOnce({ data: { route_type: 'cube', targets: ['cube'] } } as never)
+      await expect(getSemanticRoutePreview('查看 GMV', ['finance'])).resolves.toEqual({
+        data: { route_type: 'cube', targets: ['cube'] },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(9, '/semantic-router/route', {
+        question: '查看 GMV',
+        viewer_roles: ['finance'],
+      })
+
+      mockedClient.post.mockResolvedValueOnce({ data: { route: { route_type: 'hybrid' }, steps: [] } } as never)
+      await expect(getSemanticPlanPreview('解释 GMV 口径并查看趋势', ['finance'])).resolves.toEqual({
+        data: { route: { route_type: 'hybrid' }, steps: [] },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(10, '/semantic-router/plan', {
+        question: '解释 GMV 口径并查看趋势',
+        viewer_roles: ['finance'],
+      })
+
+      mockedClient.post.mockResolvedValueOnce({
+        data: {
+          execution_targets: [{ target_type: 'sql', target_name: 'orders.gmv' }],
+        },
+      } as never)
+      await expect(getSemanticExecutePlanPreview('解释 GMV 口径并查看趋势', ['finance'])).resolves.toEqual({
+        data: {
+          execution_targets: [{ target_type: 'sql', target_name: 'orders.gmv' }],
+        },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(11, '/semantic-router/execute-plan-preview', {
+        question: '解释 GMV 口径并查看趋势',
+        viewer_roles: ['finance'],
+      })
+
+      mockedClient.post.mockResolvedValueOnce({
+        data: {
+          execution_results: [{ status: 'executed', target_type: 'sql' }],
+        },
+      } as never)
+      await expect(getSemanticExecutePlan('解释 GMV 口径并查看趋势', ['finance'])).resolves.toEqual({
+        data: {
+          execution_results: [{ status: 'executed', target_type: 'sql' }],
+        },
+      })
+      expect(mockedClient.post).toHaveBeenNthCalledWith(12, '/semantic-router/execute-plan', {
+        question: '解释 GMV 口径并查看趋势',
+        viewer_roles: ['finance'],
       })
     })
   })

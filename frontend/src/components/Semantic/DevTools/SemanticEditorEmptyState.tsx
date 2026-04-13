@@ -13,8 +13,8 @@ export function SemanticEditorEmptyState({
   const isDomain = kind === 'domain'
   const title = '当前对象暂不支持在线 YAML 编辑'
   const description = isDomain
-    ? '领域对象在领域建模页维护。这里显示资源上下文、编译调试和 Schema 同步。'
-    : '目录对象已并入领域建模页维护。这里显示资源树、编译调试和 Schema 同步。'
+    ? '领域对象在领域建模页维护。这里显示资源上下文、预览和 Schema 同步。'
+    : '目录对象已并入领域建模页维护。这里显示资源树、预览和 Schema 同步。'
   const actionHref = isDomain && selectionCode ? `/semantic/domains/${selectionCode}` : '/semantic/domains'
   const actionLabel = isDomain ? '打开领域模块' : '打开领域建模'
 

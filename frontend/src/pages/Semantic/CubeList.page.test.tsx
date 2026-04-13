@@ -111,7 +111,7 @@ describe('CubeList page', () => {
 
     await screen.findByTestId('cube-management-page')
     expect(screen.getByRole('heading', { name: 'Cube 管理' })).toBeInTheDocument()
-    expect(screen.getByText('管理已发布与已废弃的语义资产')).toBeInTheDocument()
+    expect(screen.getByText('只管理已发布与已废弃的正式语义资产')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('搜索 Cube 名称...')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '新建 Cube' })).not.toBeInTheDocument()
     expect(screen.getByText('Cube 名称')).toBeInTheDocument()
@@ -119,12 +119,13 @@ describe('CubeList page', () => {
     expect(screen.getByText('维度')).toBeInTheDocument()
     expect(screen.getByText('指标')).toBeInTheDocument()
     expect(screen.getByText('字段')).toBeInTheDocument()
-    const [statusSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
-    expect(statusSelect).toHaveValue('active')
+    const [statusSelect] = screen.getAllByRole('combobox')
+    expect(statusSelect).toHaveTextContent('已发布')
+    expect(screen.queryByRole('option', { name: '草稿' })).not.toBeInTheDocument()
     expect(screen.getByText('学生答题记录')).toBeInTheDocument()
     expect(screen.queryByText('答题记录修订草稿')).not.toBeInTheDocument()
     expect(screen.getByText('answer_records')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '查看' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '查看详情' })).toBeInTheDocument()
   })
 
   it('搜索关键字会过滤 Cube 列表并展示空态', async () => {
@@ -143,9 +144,10 @@ describe('CubeList page', () => {
 
     await screen.findByTestId('cube-management-page')
     const searchInput = screen.getByPlaceholderText('搜索 Cube 名称...')
-    const [statusSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
+    const [statusSelect] = screen.getAllByRole('combobox')
 
-    await user.selectOptions(statusSelect, 'all')
+    await user.click(statusSelect)
+    await user.click(screen.getByRole('option', { name: '全部状态' }))
 
     await user.type(searchInput, '课程')
     await waitFor(() => {
@@ -160,7 +162,7 @@ describe('CubeList page', () => {
     })
   })
 
-  it('状态筛选支持切换已发布与草稿列表', async () => {
+  it('状态筛选支持切换已发布与全部资产列表', async () => {
     const user = userEvent.setup()
     mockCubeInventory([
       buildCube('active_cube', '已发布模型', {
@@ -174,18 +176,13 @@ describe('CubeList page', () => {
     renderPage()
 
     await screen.findByTestId('cube-management-page')
-    const [statusSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
-    await user.selectOptions(statusSelect, 'draft')
+    const [statusSelect] = screen.getAllByRole('combobox')
+    await user.click(statusSelect)
+    await user.click(screen.getByRole('option', { name: '全部状态' }))
 
     await waitFor(() => {
       expect(screen.getByText('草稿模型')).toBeInTheDocument()
-      expect(screen.queryByText('已发布模型')).not.toBeInTheDocument()
-    })
-
-    await user.selectOptions(statusSelect, 'active')
-    await waitFor(() => {
       expect(screen.getByText('已发布模型')).toBeInTheDocument()
-      expect(screen.queryByText('草稿模型')).not.toBeInTheDocument()
     })
   })
 
@@ -205,16 +202,19 @@ describe('CubeList page', () => {
     renderPage()
 
     await screen.findByTestId('cube-management-page')
-    const [statusSelect, domainSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
-    await user.selectOptions(statusSelect, 'all')
-    await user.selectOptions(domainSelect, 'assigned')
+    const [statusSelect, domainSelect] = screen.getAllByRole('combobox')
+    await user.click(statusSelect)
+    await user.click(screen.getByRole('option', { name: '全部状态' }))
+    await user.click(domainSelect)
+    await user.click(screen.getByRole('option', { name: '已分配' }))
 
     await waitFor(() => {
       expect(screen.getByText('已纳域模型')).toBeInTheDocument()
       expect(screen.queryByText('未纳域模型')).not.toBeInTheDocument()
     })
 
-    await user.selectOptions(domainSelect, 'unassigned')
+    await user.click(domainSelect)
+    await user.click(screen.getByRole('option', { name: '未分配' }))
     await waitFor(() => {
       expect(screen.getByText('未纳域模型')).toBeInTheDocument()
       expect(screen.queryByText('已纳域模型')).not.toBeInTheDocument()
@@ -240,9 +240,9 @@ describe('CubeList page', () => {
 
     await screen.findByTestId('cube-management-page')
     expect(screen.getByPlaceholderText('搜索 Cube 名称...')).toHaveValue('维度')
-    const [statusSelect, domainSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
-    expect(statusSelect).toHaveValue('active')
-    expect(domainSelect).toHaveValue('assigned')
+    const [statusSelect, domainSelect] = screen.getAllByRole('combobox')
+    expect(statusSelect).toHaveTextContent('已发布')
+    expect(domainSelect).toHaveTextContent('已分配')
     expect(screen.getByText('A 维度模型')).toBeInTheDocument()
     expect(screen.queryByText('Z 事实模型')).not.toBeInTheDocument()
   })
@@ -294,10 +294,57 @@ describe('CubeList page', () => {
 
     await screen.findByTestId('cube-management-page')
     await user.click(screen.getByRole('button', { name: '学生答题记录' }))
-    await screen.findByText('查看当前 Cube 的字段摘要、状态、所属领域与最近变更。')
-    await user.click(screen.getByRole('button', { name: '发起修订' }))
+    await screen.findByText('基础信息')
+    expect(screen.getByText('字段摘要')).toBeInTheDocument()
+    expect(screen.getAllByText('操作').length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: '去工作台查看' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '新建修订版' }))
 
     await waitFor(() => expect(semanticApiMocks.createCubeRevision).toHaveBeenCalledWith('answer_records'))
     expect(navigateMock).toHaveBeenCalledWith('/semantic/workbench?cube=answer_records__revision_draft&tab=modeling')
+  })
+
+  it('草稿 Cube 的详情抽屉会提示继续建模并保留真实空态', async () => {
+    const user = userEvent.setup()
+    mockCubeInventory([
+      buildCube('answer_records__revision_draft', '学生答题记录修订草稿', {
+        table: 'answer_records',
+        dimension_count: 1,
+        measure_count: 1,
+        status: 'draft',
+      }),
+    ])
+    semanticApiMocks.describeCube.mockResolvedValue({
+      data: {
+        name: 'answer_records__revision_draft',
+        title: '学生答题记录修订草稿',
+        description: '待补充',
+        table: 'answer_records',
+        domain_ids: [],
+        domains: [],
+        domain_count: 0,
+        status: 'draft',
+        dimensions: {},
+        measures: {},
+        segments: {},
+        joins: {},
+        state_summary: {
+          status: 'draft',
+          updated_at: '2026-04-01T12:30:00Z',
+        },
+      },
+    })
+
+    renderPage('/?status=all')
+
+    await screen.findByTestId('cube-management-page')
+    await user.click(screen.getByRole('button', { name: '学生答题记录修订草稿' }))
+
+    await screen.findByText('基础信息')
+    expect(screen.getByText('未归属')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '去工作台继续建模' })).toHaveAttribute(
+      'href',
+      '/semantic/workbench?cube=answer_records__revision_draft&tab=modeling',
+    )
   })
 })

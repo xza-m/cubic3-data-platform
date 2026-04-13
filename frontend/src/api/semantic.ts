@@ -44,6 +44,15 @@ export interface CubeSummary {
 export interface DimensionInfo {
   title: string
   type: string
+  sql?: string
+  description?: string | null
+  source_data_type?: string | null
+  format?: string | null
+  synonyms?: string[]
+  tags?: string[]
+  recommendation_reason?: string | null
+  confidence?: number | null
+  description_status?: string | null
   enum?: Record<string, string>
   primary_key?: boolean
 }
@@ -52,7 +61,14 @@ export interface MeasureInfo {
   name?: string
   title: string
   type: string
+  sql?: string
   description?: string | null
+  source_data_type?: string | null
+  synonyms?: string[]
+  tags?: string[]
+  recommendation_reason?: string | null
+  confidence?: number | null
+  description_status?: string | null
   certified?: boolean
   format?: string
   unit?: string
@@ -106,7 +122,7 @@ export interface CubeDetail {
   dimensions: Record<string, DimensionInfo>
   measures: Record<string, MeasureInfo>
   segments: Record<string, { title: string }>
-  joins: Record<string, { target_cube: string; type: string }>
+  joins: Record<string, { target_cube: string; type: string; relationship?: string; sql?: string }>
   partition?: { field: string; format: string }
   default_filters?: Array<{ sql: string; description?: string }>
   examples?: Array<{ question: string; dsl: Record<string, any>; notes?: string }>
@@ -383,6 +399,25 @@ export interface CubeDraftPayload {
   joins?: Record<string, { cube: string; type: string; relationship?: string; sql: string }>
 }
 
+export type CubeModelingSourceDraftRequest =
+  | {
+    source_kind: 'physical_table'
+    source_id: number
+    database: string
+    table: string
+    schema?: string
+    name?: string
+    title?: string
+    description?: string
+  }
+  | {
+    source_kind: 'dataset'
+    dataset_id: number
+    name?: string
+    title?: string
+    description?: string
+  }
+
 export interface ListQueryParams {
   q?: string
   page?: number
@@ -415,8 +450,8 @@ export const listCubes = (params?: ListQueryParams) =>
 export const describeCube = (name: string) =>
   apiClient.get<CubeDetail>(`/semantic/cubes/${name}`)
 
-export const createCubeDraftFromTable = (payload: CubeModelingSourceDraftRequest) =>
-  apiClient.post<CubeDraftPayload>('/semantic/cubes/draft-from-table', payload)
+export const createCubeDraftFromSource = (payload: CubeModelingSourceDraftRequest) =>
+  apiClient.post<CubeDraftPayload>('/semantic/cubes/draft-from-source', payload)
 
 export const createCube = (payload: CubeDraftPayload) =>
   apiClient.post<CubeDraftPayload>('/semantic/cubes', payload)

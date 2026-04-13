@@ -14,7 +14,7 @@ import RelationCanvas, {
 const semanticApiMocks = vi.hoisted(() => ({
   getGraph: vi.fn(),
   describeCube: vi.fn(),
-  createCubeDraftFromTable: vi.fn(),
+  createCubeDraftFromSource: vi.fn(),
   createCube: vi.fn(),
   updateCube: vi.fn(),
   activateCube: vi.fn(),
@@ -45,7 +45,7 @@ vi.mock('@/api/semantic', async () => {
     ...actual,
     getGraph: semanticApiMocks.getGraph,
     describeCube: semanticApiMocks.describeCube,
-    createCubeDraftFromTable: semanticApiMocks.createCubeDraftFromTable,
+    createCubeDraftFromSource: semanticApiMocks.createCubeDraftFromSource,
     createCube: semanticApiMocks.createCube,
     updateCube: semanticApiMocks.updateCube,
     activateCube: semanticApiMocks.activateCube,
@@ -358,6 +358,13 @@ describe('RelationCanvas page', () => {
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench')
   })
 
+  it('旧的新建路由会清理无效 tab 再回到工作台起始态', async () => {
+    renderLegacyRedirect('/semantic/cubes/new?tab=sync')
+
+    expect(await screen.findByTestId('workbench-destination')).toBeInTheDocument()
+    expect(screen.getByTestId('location-probe')).toHaveTextContent('/semantic/workbench')
+  })
+
   it('创建草稿前要求已选择数据源与物理表', () => {
     expect(() => buildCreateCubeDraftRequest()).toThrow('请先选择数据源和物理表')
     expect(
@@ -422,7 +429,7 @@ describe('RelationCanvas page', () => {
         items: [{ id: 1, name: '学习数仓', source_type: 'maxcompute' }],
       },
     })
-    semanticApiMocks.createCubeDraftFromTable.mockResolvedValueOnce({
+    semanticApiMocks.createCubeDraftFromSource.mockResolvedValueOnce({
       data: buildDraft(),
     })
     semanticApiMocks.createCube.mockResolvedValueOnce({
@@ -439,7 +446,7 @@ describe('RelationCanvas page', () => {
     fireEvent.click(screen.getByTestId('cube-generate-draft'))
 
     await waitFor(() => {
-      expect(semanticApiMocks.createCubeDraftFromTable).toHaveBeenCalledWith({
+      expect(semanticApiMocks.createCubeDraftFromSource).toHaveBeenCalledWith({
         source_kind: 'physical_table',
         source_id: 1,
         database: 'dw',
@@ -469,7 +476,7 @@ describe('RelationCanvas page', () => {
         items: [{ id: 1, name: '学习数仓', source_type: 'maxcompute' }],
       },
     })
-    semanticApiMocks.createCubeDraftFromTable.mockResolvedValueOnce({
+    semanticApiMocks.createCubeDraftFromSource.mockResolvedValueOnce({
       data: buildDraft(),
     })
     semanticApiMocks.createCube.mockRejectedValueOnce(new Error('Draft Cube 创建失败'))
@@ -646,7 +653,7 @@ describe('RelationCanvas page', () => {
         },
       }),
     })
-    semanticApiMocks.createCubeDraftFromTable.mockRejectedValueOnce(new Error('表结构解析失败'))
+    semanticApiMocks.createCubeDraftFromSource.mockRejectedValueOnce(new Error('表结构解析失败'))
 
     renderPage('/semantic/cubes/new')
 

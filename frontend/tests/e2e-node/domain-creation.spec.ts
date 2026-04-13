@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('创建领域后进入领域画布', async ({ page }) => {
-  const domainName = uniqueName('Playwright 领域草稿')
+  const domainName = uniqueName('qa-domain-draft 领域草稿')
   await createDomainViaUi(page, domainName)
 
   await expect(page.getByTestId('domain-canvas-page')).toBeVisible()

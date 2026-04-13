@@ -5,7 +5,7 @@ import { Save, Wand2 } from 'lucide-react'
 import {
   activateCube,
   createCube,
-  createCubeDraftFromTable,
+  createCubeDraftFromSource,
   deprecateCube,
   updateCube,
   type CubeDetail,
@@ -274,7 +274,8 @@ export default function CubeStudio() {
         throw new Error('请先选择数据源和物理表')
       }
       return (
-        await createCubeDraftFromTable({
+        await createCubeDraftFromSource({
+          source_kind: 'physical_table',
           source_id: Number(selectedSource),
           database: selectedTable.database,
           schema: selectedTable.schema,
@@ -452,9 +453,9 @@ export default function CubeStudio() {
   if (isEditMode && isLoading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-28 rounded-3xl" />
-        <Skeleton className="h-40 rounded-3xl" />
-        <Skeleton className="h-[calc(100vh-16rem)] rounded-3xl" />
+        <Skeleton className="h-28 rounded-lg" />
+        <Skeleton className="h-40 rounded-lg" />
+        <Skeleton className="h-[calc(100vh-16rem)] rounded-lg" />
       </div>
     )
   }

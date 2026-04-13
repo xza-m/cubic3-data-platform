@@ -25,6 +25,7 @@ import {
   sendMessage,
   type Conversation,
   type Message,
+  type SemanticPlanContext,
 } from '../api/conversations'
 import DatasetSelector from '../components/Chat/DatasetSelector'
 
@@ -81,6 +82,7 @@ export default function DataChat() {
     onSuccess: (response) => {
       const { user_message, ai_message } = response.data
       setMessages((prev) => [...prev, user_message, ai_message])
+      queryClient.invalidateQueries({ queryKey: ['conversation', currentConversation] })
       queryClient.invalidateQueries({ queryKey: ['conversations'] })
       setSendingMessage(false)
     },
@@ -117,6 +119,15 @@ export default function DataChat() {
   const hasConversations = conversations.length > 0
   const hasCurrentConversation = typeof currentConversation === 'number'
   const hasMessages = messages.length > 0
+  const semanticPlan = (conversationData?.data?.context?.semantic_plan || activeConversation?.context?.semantic_plan || null) as SemanticPlanContext | null
+  const semanticRouteType = semanticPlan?.route?.route_type || 'unknown'
+  const primaryTraceability = semanticPlan?.primary_traceability || {}
+  const semanticMetricTitle = primaryTraceability.business_metric?.title || primaryTraceability.business_metric?.name
+  const semanticObjectTitle = primaryTraceability.business_object?.title || primaryTraceability.business_object?.name
+  const semanticCubeTitle =
+    primaryTraceability.analysis_measure?.cube_name ||
+    primaryTraceability.analysis_cube?.title ||
+    primaryTraceability.analysis_cube?.cube_name
 
   return (
     <div className="flex h-full w-full" data-testid="data-chat-layout">
@@ -206,6 +217,18 @@ export default function DataChat() {
             </div>
           </div>
         </div>
+
+        {semanticPlan ? (
+          <div className="border-b border-[#E2E8F0] bg-[#F8FAFC] px-5 py-3" data-testid="semantic-traceability-card">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-[#DBEAFE] px-2.5 py-1 text-[11px] font-medium text-[#1D4ED8]">语义执行来源</span>
+              <span className="text-xs text-[#64748B]">路径：{semanticRouteType}</span>
+              {semanticMetricTitle ? <span className="text-xs text-[#64748B]">业务指标：{semanticMetricTitle}</span> : null}
+              {semanticObjectTitle ? <span className="text-xs text-[#64748B]">业务对象：{semanticObjectTitle}</span> : null}
+              {semanticCubeTitle ? <span className="text-xs text-[#64748B]">分析实体：{semanticCubeTitle}</span> : null}
+            </div>
+          </div>
+        ) : null}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-5">

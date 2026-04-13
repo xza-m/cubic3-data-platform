@@ -6,6 +6,7 @@ export { useDomainCanvas } from './useDomainCanvas'
 export { useDomainDirectorySelection, type UseDomainDirectorySelectionParams } from './useDomainDirectorySelection'
 export { useDomainModelingEntry } from './useDomainModelingEntry'
 export {
+  buildOntologyWorkbenchHref,
   buildSemanticWorkbenchHref,
   normalizeSemanticWorkbenchTab,
   useSemanticWorkbench,

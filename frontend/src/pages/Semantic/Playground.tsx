@@ -68,11 +68,11 @@ interface ViewData {
 function PlaygroundSkeleton() {
   return (
     <div className="space-y-4">
-      <Skeleton className="h-20 rounded-2xl" />
+      <Skeleton className="h-20 rounded-lg" />
       <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_260px]">
-        <Skeleton className="h-[44rem] rounded-2xl" />
-        <Skeleton className="h-[44rem] rounded-2xl" />
-        <Skeleton className="h-[44rem] rounded-2xl" />
+        <Skeleton className="h-[44rem] rounded-lg" />
+        <Skeleton className="h-[44rem] rounded-lg" />
+        <Skeleton className="h-[44rem] rounded-lg" />
       </div>
     </div>
   )
@@ -112,7 +112,7 @@ function ObjectBrowser({
       {/* toolbar */}
       <div className="border-b border-[hsl(var(--workbench-outline))] px-3 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex rounded-full border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-0.5">
+          <div className="flex rounded-md border border-[hsl(var(--workbench-outline))] bg-[hsl(var(--workbench-panel))] p-0.5">
             {([
               { value: 'cube' as const, label: 'Cubes', icon: Blocks },
               { value: 'view' as const, label: 'Views', icon: Eye },
@@ -122,7 +122,7 @@ function ObjectBrowser({
                 type="button"
                 onClick={() => setKind(item.value)}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                  'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                   kind === item.value
                     ? 'bg-[hsl(var(--workbench-accent))] text-white'
                     : 'text-[hsl(var(--workbench-muted-foreground))] hover:text-[hsl(var(--workbench-ink))]',

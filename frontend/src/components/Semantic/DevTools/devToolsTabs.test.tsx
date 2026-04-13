@@ -219,6 +219,13 @@ describe('DevTools tabs', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useRealTimers()
+    if (typeof window.localStorage?.clear === 'function') {
+      window.localStorage.clear()
+    } else {
+      Object.keys(window.localStorage || {}).forEach((key) => {
+        window.localStorage.removeItem(key)
+      })
+    }
     Object.assign(navigator, {
       clipboard: {
         writeText: vi.fn().mockResolvedValue(undefined),
@@ -364,6 +371,41 @@ describe('DevTools tabs', () => {
     expect(screen.getByText('未修改')).toBeInTheDocument()
   })
 
+  it('YamlEditorTab 在重新挂载后会恢复未保存草稿，避免切换标签丢失编辑', async () => {
+    const onDirtyChange = vi.fn()
+    devToolsTabMocks.apiGet.mockResolvedValue({
+      data: { content: 'name: orders_cube\nkind: cube\n' },
+    })
+
+    const firstRender = renderWithProviders(
+      <YamlEditorTab
+        fileType="cubes"
+        fileName="orders_cube"
+        onDirtyChange={onDirtyChange}
+      />,
+    )
+
+    const editor = await screen.findByLabelText('yaml-editor')
+    fireEvent.change(editor, {
+      target: { value: 'name: orders_cube\nkind: cube\ntitle: 新标题\n' },
+    })
+
+    expect(screen.getByText('有未保存修改')).toBeInTheDocument()
+    firstRender.unmount()
+
+    renderWithProviders(
+      <YamlEditorTab
+        fileType="cubes"
+        fileName="orders_cube"
+        onDirtyChange={onDirtyChange}
+      />,
+    )
+
+    expect(await screen.findByLabelText('yaml-editor')).toHaveValue('name: orders_cube\nkind: cube\ntitle: 新标题\n')
+    expect(screen.getByText('有未保存修改')).toBeInTheDocument()
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+  })
+
   it('YamlEditorTab 在未选择文件时展示空态', () => {
     renderWithProviders(<YamlEditorTab fileType={null} />)
 
@@ -371,7 +413,7 @@ describe('DevTools tabs', () => {
     expect(screen.getByText('当前页支持 Cube / View / Recipe 的在线 YAML 编辑，并显示定义文件、校验结果和保存动作。')).toBeInTheDocument()
   })
 
-  it('PlaygroundTab 支持统一配置滚动区、共享 DSL/SQL 面板以及编译执行结果', async () => {
+  it('PlaygroundTab 支持统一配置滚动区、共享 DSL/SQL 面板以及预览执行结果', async () => {
     devToolsTabMocks.listCubes.mockResolvedValue({
       data: {
         cubes: [{ name: 'answer_records', title: '答题记录' }],
@@ -441,7 +483,7 @@ describe('DevTools tabs', () => {
     })
     expect(screen.getByText('JOIN 路径')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: '编译' }))
+    await userEvent.click(screen.getByRole('button', { name: '生成预览' }))
 
     const sqlEditor = (await screen.findByLabelText('sql-editor')) as HTMLTextAreaElement
     expect(devToolsTabMocks.compileDsl).toHaveBeenCalledWith({
@@ -459,14 +501,14 @@ describe('DevTools tabs', () => {
     })
     expect(sqlEditor.value).toContain('select subject_name, count(*) from answer_records')
 
-    await userEvent.click(screen.getByRole('button', { name: '编译并执行' }))
+    await userEvent.click(screen.getByRole('button', { name: '预览并执行' }))
 
     expect(await screen.findByText('执行结果')).toBeInTheDocument()
     expect(screen.getByText('1 行 · 23 ms')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('数学')).toBeInTheDocument()
   })
 
-  it('PlaygroundTab 在单 Cube 模式下支持编译失败和执行失败提示', async () => {
+  it('PlaygroundTab 在单 Cube 模式下支持预览失败和执行失败提示', async () => {
     devToolsTabMocks.listCubes.mockResolvedValue({
       data: {
         cubes: [{ name: 'answer_records', title: '答题记录' }],
@@ -487,23 +529,23 @@ describe('DevTools tabs', () => {
         joins: {},
       },
     })
-    devToolsTabMocks.compileDsl.mockRejectedValue(new Error('编译器炸了'))
+    devToolsTabMocks.compileDsl.mockRejectedValue(new Error('预览器炸了'))
     devToolsTabMocks.querySemantic.mockRejectedValue(new Error('执行器炸了'))
 
     renderWithProviders(<PlaygroundTab preferredCube="answer_records" />)
 
     await screen.findByText('DSL JSON')
 
-    await userEvent.click(screen.getByRole('button', { name: '编译' }))
+    await userEvent.click(screen.getByRole('button', { name: '生成预览' }))
     await waitFor(() => {
       expect(devToolsTabMocks.toast).toHaveBeenCalledWith({
-        title: '编译失败',
-        description: '编译器炸了',
+        title: '预览失败',
+        description: '预览器炸了',
         variant: 'destructive',
       })
     })
 
-    await userEvent.click(screen.getByRole('button', { name: '编译并执行' }))
+    await userEvent.click(screen.getByRole('button', { name: '预览并执行' }))
     await waitFor(() => {
       expect(devToolsTabMocks.toast).toHaveBeenCalledWith({
         title: '执行失败',
@@ -512,6 +554,7 @@ describe('DevTools tabs', () => {
       })
     })
 
-    expect(screen.getByText('编译失败')).toBeInTheDocument()
+    expect(screen.getByText('预览失败')).toBeInTheDocument()
+    expect(screen.getByText('执行失败')).toBeInTheDocument()
   })
 })

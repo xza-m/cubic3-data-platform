@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { RefreshCw, Search } from 'lucide-react'
 import type { CubeSummary } from '@/api/semantic'
 import { CubePreviewPanel } from '@/components/Semantic/CubeList/CubePreviewPanel'
@@ -10,6 +10,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type {
   CubeDomainFilter,
   CubeFocusFilter,
@@ -91,7 +99,7 @@ function CubeRow({
       </div>
       {/* 操作 */}
       <div className="flex w-[112px] shrink-0 items-center justify-center gap-3 text-xs text-muted-foreground">
-        <button type="button" onClick={() => onSelect(cube.name)} className="hover:text-foreground">查看</button>
+        <button type="button" onClick={() => onSelect(cube.name)} className="hover:text-foreground">查看详情</button>
       </div>
     </div>
   )
@@ -101,10 +109,10 @@ function CubeRow({
 
 function CubeManagementSkeleton() {
   return (
-    <div className="space-y-6 px-10 py-8">
-      <Skeleton className="h-14 w-[400px] rounded-xl" />
-      <Skeleton className="h-10 w-full rounded-xl" />
-      <Skeleton className="h-[32rem] rounded-xl" />
+    <div className="space-y-6 px-6 py-5">
+      <Skeleton className="h-14 w-[400px] rounded-lg" />
+      <Skeleton className="h-10 w-full rounded-lg" />
+      <Skeleton className="h-[32rem] rounded-lg" />
     </div>
   )
 }
@@ -154,12 +162,12 @@ export default function CubeList() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-6 px-10 py-8" data-testid="cube-management-page">
+    <div className="flex h-full flex-col gap-6 px-6 py-5" data-testid="cube-management-page">
       {/* ── Header row ── */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <h1 className="text-xl font-bold text-foreground">Cube 管理</h1>
-          <p className="text-sm text-muted-foreground">管理已发布与已废弃的语义资产</p>
+          <h1 className="text-base font-semibold text-foreground">Cube 管理</h1>
+          <p className="text-sm text-muted-foreground">只管理已发布与已废弃的正式语义资产</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -177,41 +185,48 @@ export default function CubeList() {
         {/* Search */}
         <div className="flex w-[280px] items-center gap-2 rounded-lg bg-muted px-3.5 py-2">
           <Search className="h-3.5 w-3.5 text-muted-foreground" />
-          <input
+          <Input
             type="text"
             placeholder="搜索 Cube 名称..."
             defaultValue={query}
             onChange={(e) => updateListState({ q: e.target.value, page: '1', name: '' })}
-            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+            className="h-8 min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13px] shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 md:text-[13px]"
           />
         </div>
 
         {/* Status filter */}
-        <select
+        <Select
           value={status}
-          onChange={(e) => updateListState({ status: e.target.value, page: '1', name: '' })}
-          className="rounded-lg bg-muted px-3.5 py-2 text-[13px] text-muted-foreground outline-none"
+          onValueChange={(v) => updateListState({ status: v, page: '1', name: '' })}
         >
-          <option value="all">全部状态</option>
-          <option value="active">已发布</option>
-          <option value="draft">草稿</option>
-          <option value="deprecated">已废弃</option>
-        </select>
+          <SelectTrigger className="h-9 w-auto min-w-[7rem] rounded-lg border-0 bg-muted px-3.5 py-2 text-[13px] text-muted-foreground shadow-none focus:ring-2 focus:ring-ring focus:ring-offset-0 [&>svg]:opacity-50">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">已发布</SelectItem>
+            <SelectItem value="deprecated">已废弃</SelectItem>
+            <SelectItem value="all">全部状态</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* Domain filter */}
-        <select
+        <Select
           value={domain}
-          onChange={(e) => updateListState({ domain: e.target.value, page: '1', name: '' })}
-          className="rounded-lg bg-muted px-3.5 py-2 text-[13px] text-muted-foreground outline-none"
+          onValueChange={(v) => updateListState({ domain: v, page: '1', name: '' })}
         >
-          <option value="all">所属领域</option>
-          <option value="assigned">已分配</option>
-          <option value="unassigned">未分配</option>
-        </select>
+          <SelectTrigger className="h-9 w-auto min-w-[7rem] rounded-lg border-0 bg-muted px-3.5 py-2 text-[13px] text-muted-foreground shadow-none focus:ring-2 focus:ring-ring focus:ring-offset-0 [&>svg]:opacity-50">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">所属领域</SelectItem>
+            <SelectItem value="assigned">已分配</SelectItem>
+            <SelectItem value="unassigned">未分配</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* ── Table ── */}
-      <div className="flex-1 overflow-hidden rounded-xl bg-white shadow-[0_2px_24px_#0F172A08]">
+      <div className="flex-1 overflow-hidden rounded-lg bg-white shadow-sm">
         {/* Table header */}
         <div className="flex items-center gap-4 border-b border-border bg-slate-50/80 px-5 py-3.5">
           <div className="min-w-0 flex-1 text-xs font-semibold text-muted-foreground">Cube 名称</div>
@@ -226,8 +241,14 @@ export default function CubeList() {
         {/* Table body */}
         <div className="overflow-y-auto">
           {currentCubes.length === 0 ? (
-            <div className="px-5 py-12 text-center text-sm text-muted-foreground">
-              没有命中当前条件的 Cube
+            <div className="flex flex-col items-center justify-center gap-3 px-5 py-16 text-center">
+              <div className="text-sm text-muted-foreground">没有命中当前条件的 Cube</div>
+              <Link
+                to="/semantic/workbench"
+                className="inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm text-foreground transition-colors hover:bg-muted"
+              >
+                去工作台查看
+              </Link>
             </div>
           ) : (
             currentCubes.map((cube) => (

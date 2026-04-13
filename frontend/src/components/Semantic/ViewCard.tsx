@@ -220,7 +220,7 @@ export function ViewCard({ view, materializeStatus, style }: ViewCardProps) {
               </AlertDialogTitle>
               <AlertDialogDescription>
                 {isMaterialized
-                  ? `将重新编译 "${view.title}" 的 SQL 并更新已有数据集。`
+                  ? `将重新生成 "${view.title}" 的 SQL 预览并更新已有数据集。`
                   : `将 "${view.title}" 展开为 SQL 查询并创建虚拟数据集（dataset_code: view_${view.name}）。`}
               </AlertDialogDescription>
             </AlertDialogHeader>

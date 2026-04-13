@@ -26,6 +26,7 @@ const ExecutionMonitor = lazy(() => import('./pages/AppCenter/ExecutionMonitor')
 const Channels = lazy(() => import('./pages/ConfigCenter/Channels'))
 const Subscriptions = lazy(() => import('./pages/ConfigCenter/Subscriptions'))
 const CubeList = lazy(() => import('./pages/Semantic/CubeList'))
+const OntologyWorkbench = lazy(() => import('./pages/Semantic/OntologyWorkbench'))
 const LegacyCubeWorkbenchRedirect = lazy(() =>
   import('./pages/Semantic/RelationCanvas').then((module) => ({ default: module.LegacyCubeWorkbenchRedirect })),
 )
@@ -150,6 +151,7 @@ function App() {
             <Route path="semantic">
               <Route index element={<Navigate to="workbench" replace />} />
               <Route path="workbench" element={<DevTools />} />
+              <Route path="ontology" element={<OntologyWorkbench />} />
               <Route path="overview" element={<RedirectSemanticRoute to="/semantic/workbench" />} />
               <Route path="cubes" element={<CubeList />} />
               <Route path="cubes/new" element={<LegacyCubeWorkbenchRedirect />} />
