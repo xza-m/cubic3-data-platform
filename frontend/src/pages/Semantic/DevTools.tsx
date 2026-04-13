@@ -654,7 +654,7 @@ function ExpressionModeToggle({
   onChange: (next: ExpressionMode) => void
 }) {
   return (
-    <div className="inline-flex rounded border border-[#E0E0E0] bg-[#F5F5F5] p-0.5">
+    <div className="inline-flex rounded-md bg-[#F0F0F0] p-0.5">
       {(['builder', 'custom'] as const).map((item) => (
         <button
           key={item}
@@ -662,8 +662,8 @@ function ExpressionModeToggle({
           aria-pressed={mode === item}
           onClick={() => onChange(item)}
           className={cn(
-            'rounded px-2 py-0.5 text-[10px] font-medium transition whitespace-nowrap',
-            mode === item ? 'bg-white text-[#1B3139] shadow-sm' : 'text-[#8C8C8C]',
+            'rounded px-2.5 py-0.5 text-[10px] font-medium transition whitespace-nowrap',
+            mode === item ? 'bg-white text-[#1B3139] shadow-sm' : 'text-[#8C8C8C] hover:text-[#6E6E6E]',
           )}
         >
           {item === 'builder' ? '表单模式' : '自定义模式'}
@@ -1933,14 +1933,14 @@ export default function DevTools() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             {selectedMeasure ? (
               <div>
-                <div className="flex items-center justify-between border-b border-[#E0E0E0] px-4 py-2">
+                <div className="flex items-center justify-between px-4 py-2.5">
                   <div className="text-[11px] font-semibold text-[#6E6E6E]">Measure · {selectedMeasure.displayName}</div>
                   <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => handleModeChange('dsl')}>
                     <Eye className="mr-1 h-3 w-3" />
                     预览
                   </Button>
                 </div>
-                <div className="space-y-2 px-4 py-3">
+                <div className="space-y-3 px-4 pb-4">
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="measure-name">Measure name</label>
                     <Input id="measure-name" aria-label="Measure name" className="h-8 text-xs" value={selectedMeasure.name} onChange={(event) => updateMeasure(selectedMeasure.id, { name: event.target.value })} />
 
@@ -2000,16 +2000,19 @@ export default function DevTools() {
                       </div>
                     ) : null}
 
+                    <div className="mt-1 border-t border-[#F0F0F0] pt-3 space-y-3">
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="measure-display-name">显示名称</label>
                     <Input id="measure-display-name" aria-label="Display name" className="h-8 text-xs" value={selectedMeasure.displayName} onChange={(event) => updateMeasure(selectedMeasure.id, { displayName: event.target.value })} />
 
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="measure-comment">备注</label>
                     <Textarea id="measure-comment" aria-label="Comment" className="min-h-[60px] text-xs" value={selectedMeasure.comment} onChange={(event) => updateMeasure(selectedMeasure.id, { comment: event.target.value })} />
+                    </div>
 
+                    <div className="mt-1 border-t border-[#F0F0F0] pt-3 space-y-3">
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="measure-synonyms">同义词</label>
                     <TagInput id="measure-synonyms" ariaLabel="Synonyms" value={selectedMeasure.synonyms} onChange={(val) => updateMeasure(selectedMeasure.id, { synonyms: val })} placeholder="输入同义词后按 Enter" />
 
-                    <div className="border-t border-[#E0E0E0] pt-2">
+                    <div>
                       <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]">格式</label>
                       <Popover>
                         <PopoverTrigger asChild>
@@ -2143,18 +2146,19 @@ export default function DevTools() {
 
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="measure-tags">标签</label>
                     <TagInput id="measure-tags" ariaLabel="Tags" value={selectedMeasure.tags} onChange={(val) => updateMeasure(selectedMeasure.id, { tags: val })} placeholder="输入标签后按 Enter" />
+                    </div>
                 </div>
               </div>
             ) : selectedDimension ? (
               <div>
-                <div className="flex items-center justify-between border-b border-[#E0E0E0] px-4 py-2">
+                <div className="flex items-center justify-between px-4 py-2.5">
                   <div className="text-[11px] font-semibold text-[#6E6E6E]">Dimension · {selectedDimension.displayName}</div>
                   <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => handleModeChange('dsl')}>
                     <Eye className="mr-1 h-3 w-3" />
                     预览
                   </Button>
                 </div>
-                <div className="space-y-2 px-4 py-3">
+                <div className="space-y-3 px-4 pb-4">
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="dimension-name">Dimension name</label>
                     <Input id="dimension-name" aria-label="Dimension name" className="h-8 text-xs" value={selectedDimension.name} onChange={(event) => updateDimension(selectedDimension.id, { name: event.target.value })} />
 
@@ -2211,12 +2215,15 @@ export default function DevTools() {
                       </div>
                     ) : null}
 
+                    <div className="mt-1 border-t border-[#F0F0F0] pt-3 space-y-3">
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="dimension-display-name">显示名称</label>
                     <Input id="dimension-display-name" aria-label="Display name" className="h-8 text-xs" value={selectedDimension.displayName} onChange={(event) => updateDimension(selectedDimension.id, { displayName: event.target.value })} />
 
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="dimension-comment">描述</label>
                     <Textarea id="dimension-comment" aria-label="Description" className="min-h-[60px] text-xs" value={selectedDimension.comment} onChange={(event) => updateDimension(selectedDimension.id, { comment: event.target.value })} />
+                    </div>
 
+                    <div className="mt-1 border-t border-[#F0F0F0] pt-3 space-y-3">
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="dimension-synonyms">同义词</label>
                     <TagInput id="dimension-synonyms" ariaLabel="Synonyms" value={selectedDimension.synonyms} onChange={(val) => updateDimension(selectedDimension.id, { synonyms: val })} placeholder="输入同义词后按 Enter" />
 
@@ -2225,19 +2232,20 @@ export default function DevTools() {
 
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="dimension-tags">标签</label>
                     <TagInput id="dimension-tags" ariaLabel="Tags" value={selectedDimension.tags} onChange={(val) => updateDimension(selectedDimension.id, { tags: val })} placeholder="输入标签后按 Enter" />
+                    </div>
                 </div>
               </div>
             ) : selectedFilter ? (
               <div>
-                <div className="border-b border-[#E0E0E0] px-4 py-3">
+                <div className="px-4 py-2.5">
                   <div className="flex items-center justify-between">
-                    <div className="text-xs font-medium text-[#6E6E6E]">Filter · {selectedFilter.name}</div>
-                    <div className="inline-flex rounded border border-[#E0E0E0] bg-[#F5F5F5] p-0.5">
+                    <div className="text-[11px] font-semibold text-[#6E6E6E]">Filter · {selectedFilter.name}</div>
+                    <div className="inline-flex rounded-md bg-[#F0F0F0] p-0.5">
                       <button
                         type="button"
                         aria-pressed={selectedFilter.mode === 'form'}
                         onClick={() => updateFilter(selectedFilter.id, { mode: 'form' })}
-                        className={cn('rounded px-2 py-0.5 text-[10px] font-medium whitespace-nowrap transition', selectedFilter.mode === 'form' ? 'bg-white shadow-sm text-[#1B3139]' : 'text-[#8C8C8C]')}
+                        className={cn('rounded px-2.5 py-0.5 text-[10px] font-medium whitespace-nowrap transition', selectedFilter.mode === 'form' ? 'bg-white shadow-sm text-[#1B3139]' : 'text-[#8C8C8C] hover:text-[#6E6E6E]')}
                       >
                         表单模式
                       </button>
@@ -2245,7 +2253,7 @@ export default function DevTools() {
                         type="button"
                         aria-pressed={selectedFilter.mode === 'custom'}
                         onClick={() => updateFilter(selectedFilter.id, { mode: 'custom' })}
-                        className={cn('rounded px-2 py-0.5 text-[10px] font-medium whitespace-nowrap transition', selectedFilter.mode === 'custom' ? 'bg-white shadow-sm text-[#1B3139]' : 'text-[#8C8C8C]')}
+                        className={cn('rounded px-2.5 py-0.5 text-[10px] font-medium whitespace-nowrap transition', selectedFilter.mode === 'custom' ? 'bg-white shadow-sm text-[#1B3139]' : 'text-[#8C8C8C] hover:text-[#6E6E6E]')}
                       >
                       自定义模式
                     </button>
