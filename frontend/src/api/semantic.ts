@@ -431,18 +431,6 @@ export interface PaginatedListMeta {
   page_count?: number
 }
 
-export interface CubeModelingSourceDraftRequest {
-  source_id?: number
-  database?: string
-  table?: string
-  schema?: string
-  dataset_id?: number
-  source_kind?: 'physical_table' | 'dataset'
-  name?: string
-  title?: string
-  description?: string
-}
-
 // Cube APIs
 export const listCubes = (params?: ListQueryParams) =>
   apiClient.get<{ cubes: CubeSummary[] } & PaginatedListMeta>('/semantic/cubes', { params })
