@@ -109,6 +109,7 @@ export default function ExecutionTable({
       columns={columns}
       data={executions}
       loading={loading}
+      density="compact"
       pagination={
         total
           ? {

@@ -55,14 +55,16 @@ vi.mock('@/components/business', () => ({
     disabled,
     loading,
     className,
+    ...props
   }: {
     children: ReactNode
     onClick?: () => void
     disabled?: boolean
     loading?: boolean
     className?: string
+    [key: string]: unknown
   }) => (
-    <button type="button" onClick={onClick} disabled={disabled || loading} className={className}>
+    <button type="button" onClick={onClick} disabled={disabled || loading} className={className} {...props}>
       {children}
     </button>
   ),
@@ -89,6 +91,7 @@ vi.mock('@/components/business', () => ({
   DataTable: ({
     columns,
     data,
+    density,
     pagination,
     onRow,
   }: {
@@ -99,10 +102,11 @@ vi.mock('@/components/business', () => ({
       render?: (value: unknown, record: Record<string, unknown>) => ReactNode
     }>
     data: Array<Record<string, unknown>>
+    density?: string
     pagination?: { onChange?: (page: number, pageSize: number) => void; pageSize: number }
     onRow?: (record: Record<string, unknown>) => { onClick?: () => void }
   }) => (
-    <div data-testid="data-table">
+    <div data-testid="data-table" data-density={density || 'default'}>
       {data.map((record, rowIndex) => (
         <div
           key={record.id as number}
@@ -303,6 +307,7 @@ describe('AppCenter components', () => {
     )
 
     expect(screen.getByText('日报任务')).toBeInTheDocument()
+    expect(screen.getByTestId('data-table')).toHaveAttribute('data-density', 'compact')
     expect(screen.getByText('定时')).toBeInTheDocument()
     expect(screen.getByText('等待中')).toBeInTheDocument()
     expect(screen.getByText('5.12s')).toBeInTheDocument()
@@ -423,7 +428,7 @@ describe('AppCenter components', () => {
       expect(appCenterComponentMocks.enableInstance).toHaveBeenCalledWith(202)
       expect(appCenterComponentMocks.toast).toHaveBeenCalledWith({
         title: '操作失败',
-        description: 'enable denied',
+        description: '无权限启停该实例，请联系应用管理员或检查当前账号权限。',
         variant: 'destructive',
       })
     })

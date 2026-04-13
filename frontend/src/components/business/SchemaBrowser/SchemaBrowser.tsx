@@ -39,6 +39,7 @@ export default function SchemaBrowser({
     const [localSearch, setLocalSearch] = useState('')
     const searchInputRef = useRef<HTMLInputElement>(null)
     const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+    const initialAutoExpandDoneRef = useRef(false)
 
     const {
         nodes,
@@ -63,9 +64,14 @@ export default function SchemaBrowser({
         }
     }, [datasourceId, loadDatabases])
 
+    useEffect(() => {
+        initialAutoExpandDoneRef.current = false
+    }, [datasourceId, sourceType])
+
     // 在需要时自动展开第一层数据库 / schema，保持语义建模场景可以直接定位到首个物理表。
     useEffect(() => {
         if (!autoExpandInitial) return
+        if (initialAutoExpandDoneRef.current) return
         if (!initialized || rootKeys.length === 0) return
 
         const firstRootKey = rootKeys[0]
@@ -76,7 +82,10 @@ export default function SchemaBrowser({
         }
 
         const firstChildKey = firstRootNode?.children?.[0]
-        if (!firstChildKey) return
+        if (!firstChildKey) {
+            initialAutoExpandDoneRef.current = true
+            return
+        }
 
         const firstChildNode = nodes.get(firstChildKey)
         if (firstChildNode && (firstChildNode.type === 'schema' || firstChildNode.type === 'database') && !firstChildNode.expanded) {
@@ -88,12 +97,18 @@ export default function SchemaBrowser({
             ? firstChildNode
             : firstRootNode
         const firstTableKey = tableParent?.children?.[0]
-        if (!firstTableKey) return
+        if (!firstTableKey) {
+            initialAutoExpandDoneRef.current = true
+            return
+        }
 
         const firstTableNode = nodes.get(firstTableKey)
         if (firstTableNode && (firstTableNode.type === 'table' || firstTableNode.type === 'view') && !firstTableNode.expanded) {
             void toggleExpand(firstTableKey)
+            return
         }
+
+        initialAutoExpandDoneRef.current = true
     }, [autoExpandInitial, initialized, nodes, rootKeys, toggleExpand])
 
     useEffect(() => {
@@ -165,14 +180,14 @@ export default function SchemaBrowser({
         <div className={`flex w-full min-w-0 flex-col overflow-hidden bg-white transition-all duration-300 ease-in-out ${className}`}>
             {/* 标题栏 */}
             {showTitle ? (
-                <div className="flex items-center justify-between px-3 py-3 border-b border-gray-200">
-                    <span className="text-[0.9375rem] font-medium leading-6 text-gray-700 flex items-center gap-1.5">
-                        <Database size={14} className="text-indigo-500" />
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[#E0E0E0]">
+                    <span className="text-[12px] font-semibold leading-4 text-[#1B3139] flex items-center gap-1.5">
+                        <Database size={13} className="text-[#2272B4]" />
                         {title}
                     </span>
                     {collapsible && (
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setCollapsed(true)}>
-                            <PanelRightClose size={14} className="text-gray-400" />
+                        <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setCollapsed(true)}>
+                            <PanelRightClose size={13} className="text-[#8C8C8C]" />
                         </Button>
                     )}
                 </div>
@@ -180,22 +195,22 @@ export default function SchemaBrowser({
 
             {/* 搜索栏 + 过滤器 */}
             {showSearch ? (
-            <div className="px-3 py-2.5 border-b border-gray-200">
+            <div className="px-2 py-1.5 border-b border-gray-200">
                 <div className="relative flex gap-1">
                     <div className="relative flex-1">
-                        <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8C8C8C]" />
                         <Input
                             ref={searchInputRef}
                             value={localSearch}
                             onChange={(e) => handleSearchChange(e.target.value)}
-                            placeholder="搜索表名或字段..."
-                            className="h-10 rounded-xl border-gray-200 bg-gray-50 pl-7 pr-7 text-[0.875rem] leading-5"
+                            placeholder="搜索表名或字段…"
+                            className="h-7 rounded-md border-[#E0E0E0] bg-[#FAFAFA] pl-7 pr-6 text-[12px] leading-4 placeholder:text-[#ADADAD]"
                         />
                         {localSearch && (
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className="absolute right-0.5 top-1/2 -translate-y-1/2 h-5 w-5 p-0"
+                                className="absolute right-0.5 top-1/2 -translate-y-1/2 h-4 w-4 p-0 text-[#8C8C8C]"
                                 onClick={() => { handleSearchChange(''); setLocalSearch('') }}
                             >
                                 ×
@@ -207,28 +222,30 @@ export default function SchemaBrowser({
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className={`h-10 w-10 rounded-xl p-0 flex-shrink-0 ${!allTypesSelected ? 'text-indigo-500 bg-indigo-50' : 'text-gray-400'}`}
+                                className={`h-7 w-7 rounded-md p-0 flex-shrink-0 ${!allTypesSelected ? 'text-[#2272B4] bg-[#E8F0FE]' : 'text-[#8C8C8C]'}`}
                             >
-                                <Filter size={14} />
+                                <Filter size={13} />
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-44 p-2" align="end">
-                            <p className="mb-1.5 px-1 text-[0.75rem] font-medium uppercase tracking-[0.08em] text-gray-500">对象类型</p>
-                            <label className="flex items-center gap-2 px-1 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                        <PopoverContent className="w-40 p-1.5" align="end">
+                            <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8C8C8C]">对象类型</p>
+                            <label className="flex items-center gap-2 px-1 py-1 rounded hover:bg-[#F5F5F5] cursor-pointer">
                                 <Checkbox
                                     checked={typeFilters.has('table')}
                                     onCheckedChange={() => toggleTypeFilter('table')}
+                                    className="h-3.5 w-3.5"
                                 />
-                                <Table2 size={14} className="text-green-500" />
-                                <span className="text-[0.875rem] leading-5 text-gray-700">表</span>
+                                <Table2 size={12} className="text-green-500" />
+                                <span className="text-[12px] leading-4 text-[#2E2E2E]">表</span>
                             </label>
-                            <label className="flex items-center gap-2 px-1 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                            <label className="flex items-center gap-2 px-1 py-1 rounded hover:bg-[#F5F5F5] cursor-pointer">
                                 <Checkbox
                                     checked={typeFilters.has('view')}
                                     onCheckedChange={() => toggleTypeFilter('view')}
+                                    className="h-3.5 w-3.5"
                                 />
-                                <Eye size={14} className="text-cyan-500" />
-                                <span className="text-[0.875rem] leading-5 text-gray-700">视图</span>
+                                <Eye size={12} className="text-cyan-500" />
+                                <span className="text-[12px] leading-4 text-[#2E2E2E]">视图</span>
                             </label>
                         </PopoverContent>
                     </Popover>
@@ -240,9 +257,9 @@ export default function SchemaBrowser({
             <ScrollArea className="flex-1">
                 {!datasourceId ? (
                     <div className="flex flex-col items-center justify-center h-48 text-center px-4">
-                        <Database size={48} className="text-gray-300 mb-3" />
-                        <p className="text-[0.9375rem] font-medium leading-6 text-gray-500">请先选择数据源</p>
-                        <p className="mt-1 text-[0.8125rem] leading-5 text-gray-400">选择后将显示数据库结构</p>
+                        <Database size={36} className="text-[#D9D9D9] mb-2" />
+                        <p className="text-[12px] font-medium leading-4 text-[#6E6E6E]">请先选择数据源</p>
+                        <p className="mt-1 text-[11px] leading-4 text-[#ADADAD]">选择后将显示数据库结构</p>
                     </div>
                 ) : !initialized ? (
                     <div className="p-3 space-y-2">
@@ -257,10 +274,10 @@ export default function SchemaBrowser({
                         ))}
                     </div>
                 ) : visibleRootKeys.length === 0 && (searchTerm || !allTypesSelected) ? (
-                    <div className="flex flex-col items-center justify-center h-32 text-center px-4">
-                        <Search size={32} className="text-gray-300 mb-2" />
-                        <p className="text-[0.9375rem] leading-6 text-gray-500">未找到匹配的表或字段</p>
-                        <p className="mt-1 text-[0.8125rem] leading-5 text-gray-400">尝试使用其他关键字或调整过滤器</p>
+                    <div className="flex flex-col items-center justify-center h-28 text-center px-4">
+                        <Search size={24} className="text-[#D9D9D9] mb-1.5" />
+                        <p className="text-[12px] leading-4 text-[#6E6E6E]">未找到匹配结果</p>
+                        <p className="mt-0.5 text-[11px] leading-4 text-[#ADADAD]">尝试其他关键字</p>
                     </div>
                 ) : (
                     <SchemaContextMenu
@@ -280,6 +297,7 @@ export default function SchemaBrowser({
                                         node={node}
                                         depth={0}
                                         isSelected={selectedKey === key}
+                                        selectedKey={selectedKey}
                                         compact={compactTree}
                                         searchTerm={searchTerm}
                                         nodes={nodes}
@@ -298,7 +316,7 @@ export default function SchemaBrowser({
 
             {/* 状态栏 */}
             {showStatusBar && initialized && visibleRootKeys.length > 0 && (
-                <div className="border-t border-gray-200 px-3 py-1.5 text-[0.75rem] leading-4 text-gray-400">
+                <div className="border-t border-[#E0E0E0] px-3 py-1 text-[10px] leading-3 text-[#8C8C8C]">
                     {(() => {
                         let tableCount = 0
                         let viewCount = 0

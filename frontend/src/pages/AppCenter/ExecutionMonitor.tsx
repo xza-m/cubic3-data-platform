@@ -68,7 +68,7 @@ export default function ExecutionMonitor() {
   ]
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-8 px-10">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto px-10 pb-24 pt-8">
       {/* 页面标题 */}
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">

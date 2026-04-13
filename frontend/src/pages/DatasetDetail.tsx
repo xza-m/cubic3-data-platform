@@ -2,19 +2,16 @@
  * DatasetDetail - Migrated to shadcn/ui
  */
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Table2, Database, Calendar, User, CheckCircle, Clock, AlertCircle, FileText, Hash, Type, Tag, Edit2, Save, X, RefreshCw, Loader2, Inbox } from 'lucide-react'
+import { Table2, Database, Calendar, User, CheckCircle, Clock, AlertCircle, Hash, Type, Tag, Edit2, Save, X, RefreshCw, Loader2, Inbox } from 'lucide-react'
 import { getDataset, updateDataset, type UpdateDatasetRequest } from '@/api/datasets'
 import {
   FormButton,
   FormInput,
   FormTextarea,
-  DataTable,
   Badge,
   useToast,
-  PageCard,
-  DataCenterPageShell,
 } from '@/components/business'
 import { Label } from '@/components/ui/label'
 import {
@@ -23,7 +20,6 @@ import {
   getDatasetTypeLabel,
 } from '@/lib/datasetPresentation'
 import { cn } from '@/lib/utils'
-import type { DataTableColumn } from '@/components/business/DataTable'
 import type { BadgeProps } from '@/components/ui/badge'
 
 interface DatasetField {
@@ -46,7 +42,6 @@ const toDisplayText = (value: unknown) => {
 
 export default function DatasetDetail() {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { toast } = useToast()
   const [isEditing, setIsEditing] = useState(false)
@@ -166,60 +161,6 @@ export default function DatasetDetail() {
     return <Badge variant={variants[level] || 'default'}>{label}</Badge>
   }
 
-  const columns: DataTableColumn<DatasetField>[] = [
-    {
-      key: 'field_order',
-      title: '排序',
-      dataIndex: 'field_order',
-    },
-    {
-      key: 'physical_name',
-      title: '物理字段名',
-      dataIndex: 'physical_name',
-      render: (value) => (
-        <div className="flex items-center gap-2">
-          <Hash className="w-4 h-4 text-gray-400" />
-          <span className="font-mono text-sm">{toDisplayText(value)}</span>
-        </div>
-      ),
-    },
-    {
-      key: 'display_name',
-      title: '显示名称',
-      dataIndex: 'display_name',
-      render: (value) => toDisplayText(value) === '-' ? <span className="text-gray-400">-</span> : toDisplayText(value),
-    },
-    {
-      key: 'data_type',
-      title: '数据类型',
-      dataIndex: 'data_type',
-      render: (value) => (
-        <div className="flex items-center gap-2">
-          <Type className="w-4 h-4 text-gray-400" />
-          <span className="font-mono text-xs text-gray-600">{toDisplayText(value)}</span>
-        </div>
-      ),
-    },
-    {
-      key: 'business_type',
-      title: '业务类型',
-      dataIndex: 'business_type',
-      render: (value) => getBusinessTypeBadge(String(value ?? '')),
-    },
-    {
-      key: 'sensitivity_level',
-      title: '敏感级别',
-      dataIndex: 'sensitivity_level',
-      render: (value) => getSensitivityBadge(String(value ?? '')),
-    },
-    {
-      key: 'comment',
-      title: '备注',
-      dataIndex: 'comment',
-      render: (value) => toDisplayText(value) === '-' ? <span className="text-gray-400">-</span> : toDisplayText(value),
-    },
-  ]
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -244,189 +185,221 @@ export default function DatasetDetail() {
   const datasetSourceObjectLabel = getDatasetSourceObjectLabel(dataset)
 
   return (
-    <DataCenterPageShell
-      title={dataset.dataset_name}
-      description={dataset.dataset_code}
-      actions={(
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className={cn('rounded-xl px-4 py-2 flex items-center gap-2', statusConfig.bg, statusConfig.color)}>
-            <StatusIcon className="w-4 h-4" />
-            <span className="font-medium">{statusConfig.label}</span>
+    <div className="flex h-screen bg-gray-50">
+      {/* 内容区域 */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-8 lg:p-10 space-y-6">
+          {/* 面包屑 */}
+          <div className="flex items-center gap-1 text-sm">
+            <span className="text-gray-500">数据集管理</span>
+            <span className="text-gray-400">/</span>
+            <span className="text-gray-900 font-medium">{dataset.dataset_name}</span>
           </div>
-          {isEditing ? (
-            <>
-              <FormButton variant="outline" onClick={handleCancel}>
-                <X className="w-4 h-4 mr-2" />
-                取消
-              </FormButton>
-              <FormButton
-                onClick={handleSave}
-                disabled={updateMutation.isPending}
-                loading={updateMutation.isPending}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                保存
-              </FormButton>
-            </>
-          ) : (
-            <FormButton onClick={handleEdit} className="bg-indigo-600 hover:bg-indigo-700">
-              <Edit2 className="w-4 h-4 mr-2" />
-              编辑
-            </FormButton>
-          )}
-          <FormButton
-            variant="outline"
-            size="icon"
-            onClick={() => navigate('/data-center/datasets')}
-            className="w-10 h-10 rounded-xl"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </FormButton>
-        </div>
-      )}
-    >
 
-      {/* 基本信息 */}
-      <PageCard className="border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-workbench-display text-[1.25rem] font-semibold tracking-[-0.02em] text-gray-900 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-emerald-500" />
-            基本信息
-          </h2>
-        </div>
-        {!isEditing ? (
-          <div className="grid grid-cols-2 gap-6">
-            <div className="col-span-1 border-b border-gray-100 pb-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                <Tag className="w-4 h-4" />
-                数据集编码
+          {/* 标题行 */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-gray-900">{dataset.dataset_name}</h1>
+              <div className={cn('rounded-md px-2.5 py-1 flex items-center gap-1.5', statusConfig.bg)}>
+                <StatusIcon className={cn('w-3.5 h-3.5', statusConfig.color)} />
+                <span className={cn('text-sm font-medium', statusConfig.color)}>{statusConfig.label}</span>
               </div>
-              <div className="font-mono text-[0.9375rem] leading-6 text-gray-900">{dataset.dataset_code}</div>
             </div>
-            <div className="col-span-1 border-b border-gray-100 pb-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                <Table2 className="w-4 h-4" />
-                数据集名称
+            {isEditing ? (
+              <div className="flex items-center gap-2">
+                <FormButton variant="outline" onClick={handleCancel} size="sm">
+                  <X className="w-4 h-4 mr-1.5" />
+                  取消
+                </FormButton>
+                <FormButton
+                  onClick={handleSave}
+                  disabled={updateMutation.isPending}
+                  loading={updateMutation.isPending}
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <Save className="w-4 h-4 mr-1.5" />
+                  保存
+                </FormButton>
               </div>
-              <div className="text-gray-900">{dataset.dataset_name}</div>
+            ) : (
+              <FormButton onClick={handleEdit} size="sm" variant="outline">
+                <Edit2 className="w-3.5 h-3.5 mr-1.5" />
+                编辑
+              </FormButton>
+            )}
+          </div>
+
+          {/* 基本信息 */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-[15px] font-semibold text-gray-900">基本信息</h2>
             </div>
-            <div className="col-span-1 border-b border-gray-100 pb-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                <Database className="w-4 h-4" />
-                类型
+            {!isEditing ? (
+              <div className="divide-y divide-gray-100">
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Tag className="w-4 h-4" />
+                    数据集编码
+                  </div>
+                  <div className="font-mono text-sm text-gray-900">{dataset.dataset_code}</div>
+                </div>
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Table2 className="w-4 h-4" />
+                    数据集名称
+                  </div>
+                  <div className="text-sm text-gray-900">{dataset.dataset_name}</div>
+                </div>
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Database className="w-4 h-4" />
+                    类型
+                  </div>
+                  <div className="text-sm text-gray-900">{datasetTypeLabel}</div>
+                </div>
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="text-sm text-gray-500">来源</div>
+                  <div className="text-sm text-gray-900">{datasetSourceLabel}</div>
+                </div>
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Table2 className="w-4 h-4" />
+                    物理表 / 来源对象
+                  </div>
+                  <div className="font-mono text-sm text-gray-900">{datasetSourceObjectLabel}</div>
+                </div>
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <User className="w-4 h-4" />
+                    负责人
+                  </div>
+                  <div className="text-sm text-gray-900">{dataset.owner || '-'}</div>
+                </div>
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Calendar className="w-4 h-4" />
+                    创建时间
+                  </div>
+                  <div className="text-sm text-gray-900">{new Date(dataset.created_at).toLocaleString('zh-CN')}</div>
+                </div>
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="text-sm text-gray-500">最后同步时间</div>
+                  <div className="text-sm text-gray-900">{dataset.last_sync_at ? new Date(dataset.last_sync_at).toLocaleString('zh-CN') : '未同步'}</div>
+                </div>
+                <div className="px-5 py-3">
+                  <div className="text-sm text-gray-500 mb-2">描述</div>
+                  <div className="text-sm text-gray-900">{dataset.description || <span className="text-gray-400">无描述</span>}</div>
+                </div>
+                {dataset.sync_error && (
+                  <div className="px-5 py-3">
+                    <div className="text-sm text-gray-500 mb-2">同步错误</div>
+                    <div className="text-red-600 max-h-32 overflow-y-auto text-sm leading-relaxed break-words">{dataset.sync_error}</div>
+                  </div>
+                )}
               </div>
-              <div className="text-gray-900">{datasetTypeLabel}</div>
-            </div>
-            <div className="col-span-1 border-b border-gray-100 pb-4">
-              <div className="text-sm text-gray-500 mb-2">来源</div>
-              <div className="text-gray-900">{datasetSourceLabel}</div>
-            </div>
-            <div className="col-span-2 border-b border-gray-100 pb-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                <Table2 className="w-4 h-4" />
-                物理表 / 来源对象
-              </div>
-              <div className="font-mono text-[0.875rem] leading-5 text-gray-900">{datasetSourceObjectLabel}</div>
-            </div>
-            <div className="col-span-1 border-b border-gray-100 pb-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                <User className="w-4 h-4" />
-                负责人
-              </div>
-              <div className="text-gray-900">{dataset.owner || '-'}</div>
-            </div>
-            <div className="col-span-1 border-b border-gray-100 pb-4">
-              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                <Calendar className="w-4 h-4" />
-                创建时间
-              </div>
-              <div className="text-gray-900">{new Date(dataset.created_at).toLocaleString('zh-CN')}</div>
-            </div>
-            <div className="col-span-2 border-b border-gray-100 pb-4">
-              <div className="text-sm text-gray-500 mb-2">最后同步时间</div>
-              <div className="text-gray-900">{dataset.last_sync_at ? new Date(dataset.last_sync_at).toLocaleString('zh-CN') : '未同步'}</div>
-            </div>
-            <div className="col-span-2 pb-4">
-              <div className="text-sm text-gray-500 mb-2">描述</div>
-              <div className="text-gray-900">{dataset.description || <span className="text-gray-400">无描述</span>}</div>
-            </div>
-            {dataset.sync_error && (
-              <div className="col-span-2 border-b border-gray-100 pb-4">
-                <div className="text-sm text-gray-500 mb-2">同步错误</div>
-                <div className="text-red-600 max-h-32 overflow-y-auto text-sm leading-relaxed break-words">{dataset.sync_error}</div>
+            ) : (
+              <div className="p-5 space-y-4">
+                <div>
+                  <Label className="text-sm text-gray-700">数据集编码</Label>
+                  <FormInput value={dataset.dataset_code} disabled className="mt-1.5 font-mono text-sm" />
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-700">数据集名称 *</Label>
+                  <FormInput
+                    value={formData.dataset_name}
+                    onChange={(e) => setFormData({ ...formData, dataset_name: e.target.value })}
+                    placeholder="请输入数据集名称"
+                    className="mt-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-700">物理表 / 来源对象</Label>
+                  <FormInput value={datasetSourceObjectLabel} disabled className="mt-1.5 font-mono text-sm" />
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-700">负责人</Label>
+                  <FormInput
+                    value={formData.owner}
+                    onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                    placeholder="请输入负责人"
+                    className="mt-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-700">来源</Label>
+                  <FormInput value={datasetSourceLabel} disabled className="mt-1.5 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-700">描述</Label>
+                  <FormTextarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={3}
+                    placeholder="请输入描述"
+                    className="mt-1.5 text-sm"
+                  />
+                </div>
               </div>
             )}
           </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-6">
-            <div className="col-span-1">
-              <Label>数据集编码</Label>
-              <FormInput value={dataset.dataset_code} disabled className="mt-1 font-mono" />
-            </div>
-            <div className="col-span-1">
-              <Label>数据集名称 *</Label>
-              <FormInput
-                value={formData.dataset_name}
-                onChange={(e) => setFormData({ ...formData, dataset_name: e.target.value })}
-                placeholder="请输入数据集名称"
-                className="mt-1"
-              />
-            </div>
-            <div className="col-span-2">
-              <Label>物理表 / 来源对象</Label>
-              <FormInput value={datasetSourceObjectLabel} disabled className="mt-1 font-mono" />
-            </div>
-            <div className="col-span-1">
-              <Label>负责人</Label>
-              <FormInput
-                value={formData.owner}
-                onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
-                placeholder="请输入负责人"
-                className="mt-1"
-              />
-            </div>
-            <div className="col-span-1">
-              <Label>来源</Label>
-              <FormInput value={datasetSourceLabel} disabled className="mt-1" />
-            </div>
-            <div className="col-span-2">
-              <Label>描述</Label>
-              <FormTextarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-                placeholder="请输入描述"
-                className="mt-1"
-              />
-            </div>
-          </div>
-        )}
-      </PageCard>
 
-      {/* 字段信息 */}
-      <PageCard className="border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-workbench-display text-[1.25rem] font-semibold tracking-[-0.02em] text-gray-900 flex items-center gap-2">
-            <Hash className="w-5 h-5 text-emerald-500" />
-            字段信息
-            <span className="ml-2 text-[0.875rem] font-normal leading-5 text-gray-500">({fields.length} 个字段)</span>
-          </h2>
-        </div>
-        {fields.length > 0 ? (
-          <DataTable
-            columns={columns}
-            data={fields}
-            pageSize={20}
-            showPagination={true}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-64">
-            <Inbox className="w-16 h-16 text-gray-300 mb-4" />
-            <p className="text-[0.9375rem] leading-6 text-gray-500">暂无字段信息</p>
+          {/* 字段信息 */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-[15px] font-semibold text-gray-900">
+                字段信息
+                <span className="ml-2 text-sm font-normal text-gray-500">({fields.length} 个字段)</span>
+              </h2>
+            </div>
+            {fields.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 border-b border-gray-100">排序</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 border-b border-gray-100">物理字段名</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 border-b border-gray-100">显示名称</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 border-b border-gray-100">数据类型</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 border-b border-gray-100">业务类型</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 border-b border-gray-100">敏感级别</th>
+                      <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 border-b border-gray-100">备注</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {fields.map((field) => (
+                      <tr key={field.id} className="hover:bg-gray-50">
+                        <td className="px-5 py-3 text-sm text-gray-900">{field.field_order}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <Hash className="w-4 h-4 text-gray-400" />
+                            <span className="font-mono text-sm text-gray-900">{field.physical_name}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-sm text-gray-900">{toDisplayText(field.display_name)}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <Type className="w-4 h-4 text-gray-400" />
+                            <span className="font-mono text-xs text-gray-600">{field.data_type}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3">{getBusinessTypeBadge(field.business_type)}</td>
+                        <td className="px-5 py-3">{getSensitivityBadge(field.sensitivity_level)}</td>
+                        <td className="px-5 py-3 text-sm text-gray-900">{toDisplayText(field.comment)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64">
+                <Inbox className="w-16 h-16 text-gray-300 mb-4" />
+                <p className="text-sm text-gray-500">暂无字段信息</p>
+              </div>
+            )}
           </div>
-        )}
-      </PageCard>
-    </DataCenterPageShell>
+        </div>
+      </div>
+    </div>
   )
 }

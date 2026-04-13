@@ -87,8 +87,9 @@ export interface ExecuteQueryResponse {
   code: number
   message: string
   data: {
-    columns: string[]
-    data: (string | number | boolean | null)[][]
+    columns: Array<string | { name: string; type?: string }>
+    data?: Array<Record<string, unknown>> | (string | number | boolean | null)[][]
+    rows?: (string | number | boolean | null)[][]
     row_count: number
     execution_time_ms: number
     status: string

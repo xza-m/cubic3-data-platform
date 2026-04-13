@@ -40,7 +40,7 @@ export default function Subscriptions() {
     const [subscriptionToDelete, setSubscriptionToDelete] = useState<Subscription | null>(null)
 
     // 获取订阅列表
-    const { data, isLoading, refetch } = useQuery({
+    const { data, isLoading, isFetching, refetch } = useQuery({
         queryKey: ['subscriptions'],
         queryFn: () => getSubscriptions()
     })
@@ -114,6 +114,19 @@ export default function Subscriptions() {
     const handleCreate = () => {
         setEditingSubscription(null)
         setFormVisible(true)
+    }
+
+    const handleRefresh = async () => {
+        const result = await refetch()
+        if (result.error) {
+            toast({
+                title: '刷新失败',
+                description: result.error.message,
+                variant: 'destructive',
+            })
+            return
+        }
+        toast({ title: '订阅列表已刷新' })
     }
 
     const handleFormClose = () => {
@@ -229,21 +242,22 @@ export default function Subscriptions() {
                     <p className="text-sm text-slate-500">配置应用执行结果的推送规则</p>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => refetch()}
-                        disabled={isLoading}
-                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-[13px] font-medium text-slate-900 hover:bg-slate-50 disabled:opacity-50"
+                    <FormButton
+                        variant="outline"
+                        onClick={() => void handleRefresh()}
+                        loading={isFetching}
+                        icon={<RefreshCw className="h-3.5 w-3.5 text-slate-500" />}
+                        className="rounded-lg border-slate-200 px-4 text-[13px] font-medium text-slate-900 hover:bg-slate-50"
                     >
-                        <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
                         刷新
-                    </button>
-                    <button
+                    </FormButton>
+                    <FormButton
                         onClick={handleCreate}
-                        className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(37,99,235,0.19)] hover:bg-blue-700"
+                        icon={<Plus className="h-3.5 w-3.5" />}
+                        className="rounded-lg bg-blue-600 px-4 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(37,99,235,0.19)] hover:bg-blue-700"
                     >
-                        <Plus className="h-3.5 w-3.5" />
-                        创建订阅
-                    </button>
+                        新建
+                    </FormButton>
                 </div>
             </div>
 
@@ -293,13 +307,13 @@ export default function Subscriptions() {
                                 : '创建订阅规则，自动推送应用执行结果'}
                         </p>
                         {!appFilter && !channelFilter && (
-                            <button
+                            <FormButton
                                 onClick={handleCreate}
-                                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(37,99,235,0.19)]"
+                                icon={<Plus className="h-3.5 w-3.5" />}
+                                className="rounded-lg bg-blue-600 px-4 text-[13px] font-medium text-white shadow-[0_2px_8px_rgba(37,99,235,0.19)] hover:bg-blue-700"
                             >
-                                <Plus className="h-3.5 w-3.5" />
-                                立即创建
-                            </button>
+                                新建
+                            </FormButton>
                         )}
                     </div>
                 ) : (

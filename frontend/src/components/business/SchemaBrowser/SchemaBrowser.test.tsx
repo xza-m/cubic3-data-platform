@@ -201,7 +201,7 @@ describe('SchemaBrowser', () => {
     )
     rerender(<SchemaBrowser datasourceId={1} />)
 
-    expect(screen.getByText('未找到匹配的表或字段')).toBeInTheDocument()
+    expect(screen.getByText('未找到匹配结果')).toBeInTheDocument()
   })
 
   it('支持折叠展开、搜索清空、类型过滤，并透传选择与双击回调', async () => {
@@ -225,9 +225,9 @@ describe('SchemaBrowser', () => {
     fireEvent.click(screen.getAllByRole('button')[0])
     expect(screen.getByText('Schema Browser')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Schema Browser'))
-    expect(screen.getByPlaceholderText('搜索表名或字段...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('搜索表名或字段…')).toBeInTheDocument()
 
-    const searchInput = screen.getByPlaceholderText('搜索表名或字段...')
+    const searchInput = screen.getByPlaceholderText('搜索表名或字段…')
     fireEvent.change(searchInput, { target: { value: 'orders' } })
     await vi.advanceTimersByTimeAsync(250)
     expect(hookValue.setSearchTerm).toHaveBeenLastCalledWith('orders')
@@ -246,5 +246,86 @@ describe('SchemaBrowser', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /双击 orders/i }))
     expect(onDoubleClick).toHaveBeenCalledWith(expect.objectContaining({ name: 'orders' }), 'orders')
+  })
+
+  it('初始自动展开完成后，手动收起首个表不会被再次自动展开', () => {
+    const toggleExpand = vi.fn()
+    const datasourceKey = 'datasource:1'
+    const databaseKey = 'database:analytics'
+    const schemaKey = 'schema:public'
+    const tableKey = 'table:orders'
+
+    const expandedTree = new Map<string, TreeNode>([
+      [datasourceKey, {
+        key: datasourceKey,
+        type: 'datasource',
+        name: '数据源 #1',
+        parentKey: null,
+        children: [databaseKey],
+        loaded: true,
+        loading: false,
+        expanded: true,
+      }],
+      [databaseKey, {
+        key: databaseKey,
+        type: 'database',
+        name: 'analytics',
+        parentKey: datasourceKey,
+        children: [schemaKey],
+        loaded: true,
+        loading: false,
+        expanded: true,
+      }],
+      [schemaKey, {
+        key: schemaKey,
+        type: 'schema',
+        name: 'public',
+        parentKey: databaseKey,
+        children: [tableKey],
+        loaded: true,
+        loading: false,
+        expanded: true,
+      }],
+      [tableKey, {
+        key: tableKey,
+        type: 'table',
+        name: 'orders',
+        parentKey: schemaKey,
+        children: [],
+        loaded: true,
+        loading: false,
+        expanded: true,
+      }],
+    ])
+
+    schemaBrowserMocks.useSchemaTree.mockReturnValueOnce(createHookValue({
+      nodes: expandedTree,
+      rootKeys: [databaseKey],
+      initialized: true,
+      toggleExpand,
+    }))
+
+    const { rerender } = render(
+      <SchemaBrowser datasourceId={1} sourceType="postgresql" />,
+    )
+
+    expect(toggleExpand).not.toHaveBeenCalled()
+
+    const collapsedTree = new Map(expandedTree)
+    collapsedTree.set(tableKey, {
+      ...collapsedTree.get(tableKey)!,
+      expanded: false,
+    })
+
+    schemaBrowserMocks.useSchemaTree.mockReturnValueOnce(createHookValue({
+      nodes: collapsedTree,
+      rootKeys: [databaseKey],
+      initialized: true,
+      toggleExpand,
+    }))
+
+    rerender(<SchemaBrowser datasourceId={1} sourceType="postgresql" />)
+
+    expect(toggleExpand).not.toHaveBeenCalled()
   })
 })

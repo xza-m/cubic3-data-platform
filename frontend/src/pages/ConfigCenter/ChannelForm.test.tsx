@@ -25,14 +25,25 @@ vi.mock('@/components/business', () => ({
     description,
     children,
     footer,
+    width,
+    className,
+    bodyClassName,
   }: {
     open: boolean
     title: string
     description?: string
     children: React.ReactNode
     footer?: React.ReactNode
+    width?: string
+    className?: string
+    bodyClassName?: string
   }) => (open ? (
-    <div>
+    <div
+      data-testid="channel-form-modal"
+      data-width={width}
+      data-classname={className}
+      data-bodyclassname={bodyClassName}
+    >
       <h1>{title}</h1>
       {description ? <p>{description}</p> : null}
       {children}
@@ -154,6 +165,25 @@ describe('ChannelForm', () => {
       })
     })
     expect(toastMocks.toast).toHaveBeenCalledWith({ title: '渠道创建成功' })
+  })
+
+  it('创建态会使用更稳的弹窗宽度和可滚动布局参数', () => {
+    renderForm()
+
+    const modal = screen.getByTestId('channel-form-modal')
+    expect(modal).toHaveAttribute('data-width', 'min(720px,calc(100vw-2rem))')
+    expect(modal).toHaveAttribute(
+      'data-classname',
+      expect.stringContaining('top-4'),
+    )
+    expect(modal).toHaveAttribute(
+      'data-classname',
+      expect.stringContaining('sm:translate-y-[-50%]'),
+    )
+    expect(modal).toHaveAttribute(
+      'data-bodyclassname',
+      expect.stringContaining('pr-1'),
+    )
   })
 
   it('切到 Webhook 时先校验 URL，再按配置创建', async () => {

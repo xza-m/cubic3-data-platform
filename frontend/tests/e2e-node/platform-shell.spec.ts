@@ -113,7 +113,6 @@ test('平台壳层支持模块导航', async ({ page }) => {
   if (!(await datasourceButton.isVisible())) {
     await sidebar.getByRole('button', { name: /^数据中心$/ }).click()
   }
-
   await datasourceButton.click()
   await expect(page).toHaveURL(/\/data-center\/datasources$/)
 })

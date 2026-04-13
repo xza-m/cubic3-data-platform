@@ -270,6 +270,7 @@ describe('AppMarket page', () => {
     expect(await screen.findByRole('dialog', { name: '日报推送' })).toBeInTheDocument()
     expect(screen.getByText('实例列表')).toBeInTheDocument()
     expect(screen.getByText('实例数：1')).toBeInTheDocument()
+    expect(screen.getByTestId('app-detail-header-actions')).toHaveClass('mr-12')
     expect(screen.getByRole('button', { name: '编辑 日报实例' })).toBeInTheDocument()
   })
 
@@ -386,5 +387,19 @@ describe('AppMarket page', () => {
     expect(await screen.findAllByTestId('skeleton')).toHaveLength(24)
     expect(screen.getByRole('button', { name: 'BI集成' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '数据报告' })).toBeInTheDocument()
+  })
+
+  it('分类标签对外展示中文名称，并保留专业词大小写', async () => {
+    appMarketMocks.getCategories.mockResolvedValueOnce([
+      { category: 'system_maintenance', display_name: 'system_maintenance', app_count: 2 },
+      { category: 'agent', display_name: 'agent', app_count: 1 },
+    ])
+
+    renderPage()
+
+    expect(await screen.findByRole('button', { name: '系统维护' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Agent' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'system_maintenance' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'agent' })).not.toBeInTheDocument()
   })
 })

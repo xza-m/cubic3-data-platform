@@ -68,12 +68,16 @@ def test_app_definition_service_get_categories_formats_display_name():
     repo = MagicMock()
     repo.get_categories_with_count.return_value = [
         SimpleNamespace(category="data_report", app_count=2),
+        SimpleNamespace(category="system_maintenance", app_count=1),
+        SimpleNamespace(category="agent", app_count=1),
         SimpleNamespace(category="custom", app_count=1),
     ]
     service = AppDefinitionService(repo)
 
     assert service.get_categories() == [
         {"category": "data_report", "app_count": 2, "display_name": "数据报告"},
+        {"category": "system_maintenance", "app_count": 1, "display_name": "系统维护"},
+        {"category": "agent", "app_count": 1, "display_name": "Agent"},
         {"category": "custom", "app_count": 1, "display_name": "custom"},
     ]
 

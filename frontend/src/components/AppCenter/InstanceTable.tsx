@@ -44,6 +44,14 @@ export default function InstanceTable({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [instanceToDelete, setInstanceToDelete] = useState<AppInstance | null>(null)
 
+  const getToggleErrorDescription = (error: AxiosError<{ message?: string }>) => {
+    const message = error.response?.data?.message?.trim()
+    if (error.response?.status === 403 || (message && /无权限|permission|denied/i.test(message))) {
+      return '无权限启停该实例，请联系应用管理员或检查当前账号权限。'
+    }
+    return message || '实例启停失败，请稍后重试。'
+  }
+
   // 启用/禁用实例
   const toggleMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) => {
@@ -54,10 +62,10 @@ export default function InstanceTable({
       queryClient.invalidateQueries({ queryKey: ['app-instances'] })
     },
     onError: (error: AxiosError<{ message?: string }>) => {
-      toast({ 
-        title: "操作失败", 
-        description: error.response?.data?.message || '操作失败',
-        variant: "destructive" 
+      toast({
+        title: "操作失败",
+        description: getToggleErrorDescription(error),
+        variant: "destructive"
       })
     },
   })
@@ -196,36 +204,44 @@ export default function InstanceTable({
     {
       key: 'actions',
       title: '操作',
-      width: 200,
+      width: 156,
       render: (_, record) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <FormButton
             variant="ghost"
             size="sm"
             icon={<PlayCircle className="w-4 h-4" />}
+            aria-label="执行"
+            title="执行"
+            className="h-9 w-9 rounded-full px-0"
             onClick={() => executeMutation.mutate(record.id)}
             loading={executeMutation.isPending}
             disabled={!record.enabled}
           >
-            执行
+            <span className="sr-only">执行</span>
           </FormButton>
           <FormButton
             variant="ghost"
             size="sm"
             icon={<Edit className="w-4 h-4" />}
+            aria-label="编辑"
+            title="编辑"
+            className="h-9 w-9 rounded-full px-0"
             onClick={() => onEdit?.(record)}
           >
-            编辑
+            <span className="sr-only">编辑</span>
           </FormButton>
           <FormButton
             variant="ghost"
             size="sm"
             icon={<Trash2 className="w-4 h-4" />}
+            aria-label="删除"
+            title="删除"
             onClick={() => handleDeleteClick(record)}
             loading={deleteMutation.isPending}
-            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            className="h-9 w-9 rounded-full px-0 text-red-600 hover:bg-red-50 hover:text-red-700"
           >
-            删除
+            <span className="sr-only">删除</span>
           </FormButton>
         </div>
       ),

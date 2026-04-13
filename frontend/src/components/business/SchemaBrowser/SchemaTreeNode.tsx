@@ -29,6 +29,7 @@ interface SchemaTreeNodeProps {
     node: TreeNode
     depth: number
     isSelected: boolean
+    selectedKey: NodeKey | null
     compact?: boolean
     searchTerm: string
     nodes: Map<NodeKey, TreeNode>
@@ -109,6 +110,7 @@ export default function SchemaTreeNode({
     node,
     depth,
     isSelected,
+    selectedKey,
     compact = false,
     searchTerm,
     nodes,
@@ -119,7 +121,7 @@ export default function SchemaTreeNode({
     onContextMenu,
 }: SchemaTreeNodeProps) {
     const hasChildren = node.type !== 'column'
-    const indent = depth * 16
+    const indent = depth * 14
     const childrenRef = useRef<HTMLDivElement>(null)
     const comment = node.metadata?.comment?.trim()
     const tooltipLabel = comment
@@ -150,14 +152,14 @@ export default function SchemaTreeNode({
             <div
                 data-testid={`schema-node-${node.type}-${node.name.replace(/[^a-zA-Z0-9_-]+/g, '_')}`}
                 className={`
-          relative flex items-center gap-1 cursor-pointer select-none
-          transition-colors duration-150 group
+          relative flex items-center gap-1.5 cursor-pointer select-none
+          transition-colors duration-100 group
           ${isSelected
-                        ? 'bg-indigo-50 border-l-2 border-l-indigo-500'
-                        : 'border-l-2 border-l-transparent hover:bg-gray-100'
+                        ? 'bg-[#E8F0FE] text-[#1B3139]'
+                        : 'hover:bg-[#F5F5F5]'
                     }
         `}
-                style={{ height: compact ? 44 : 28, paddingLeft: indent + (compact ? 10 : 4), paddingRight: compact ? 12 : 8 }}
+                style={{ height: compact ? 40 : 26, paddingLeft: indent + (compact ? 10 : 6), paddingRight: compact ? 12 : 8 }}
                 onClick={() => {
                     onSelect(node.key)
                     if (hasChildren) onToggle(node.key)
@@ -165,14 +167,6 @@ export default function SchemaTreeNode({
                 onDoubleClick={() => onDoubleClick(node)}
                 onContextMenu={(e) => onContextMenu(e, node)}
             >
-                {/* 缩进引导线 */}
-                {!compact ? Array.from({ length: depth }, (_, i) => (
-                    <span
-                        key={i}
-                        className="absolute top-0 bottom-0 border-l border-gray-200"
-                        style={{ left: i * 16 + 12 }}
-                    />
-                )) : null}
 
                 {/* Chevron (旋转动画) */}
                 <span className="w-4 flex-shrink-0 flex items-center justify-center">
@@ -195,7 +189,7 @@ export default function SchemaTreeNode({
                     <TooltipProvider delayDuration={150}>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <span className="flex-1 truncate text-[0.875rem] leading-5 text-gray-700">
+                                <span className="flex-1 truncate text-[12px] leading-4 text-[#2E2E2E]">
                                     {highlightMatch(node.name, searchTerm)}
                                 </span>
                             </TooltipTrigger>
@@ -205,27 +199,22 @@ export default function SchemaTreeNode({
                         </Tooltip>
                     </TooltipProvider>
                 ) : (
-                    <span className="flex-1 truncate text-[0.875rem] leading-5 text-gray-700">
+                    <span className="flex-1 truncate text-[12px] leading-4 text-[#2E2E2E]">
                         {highlightMatch(node.name, searchTerm)}
                     </span>
                 )}
 
                 {/* Badges */}
                 {node.type === 'column' && node.metadata?.dataType && (
-                    <span className="flex-shrink-0 font-mono text-[0.75rem] uppercase leading-4 text-gray-400">
+                    <span className="flex-shrink-0 font-mono text-[10px] uppercase leading-3 text-[#8C8C8C]">
                         {node.metadata.dataType}
                     </span>
                 )}
                 {node.type === 'column' && node.metadata?.isPrimaryKey && (
-                    <span className="text-[10px] text-yellow-600 flex-shrink-0">🔑</span>
+                    <Key size={10} className="flex-shrink-0 text-yellow-500" />
                 )}
                 {node.type === 'column' && node.metadata?.isPartition && (
-                    <span className="text-[10px] text-pink-500 flex-shrink-0">🧩</span>
-                )}
-                {(node.type === 'table' || node.type === 'view') && node.metadata?.comment && (
-                    <span className="hidden max-w-[88px] flex-shrink-0 truncate text-[0.75rem] leading-4 text-gray-400 group-hover:inline">
-                        {node.metadata.comment}
-                    </span>
+                    <span className="flex-shrink-0 rounded bg-pink-50 px-1 py-px text-[9px] font-medium text-pink-500">P</span>
                 )}
             </div>
 
@@ -257,7 +246,8 @@ export default function SchemaTreeNode({
                                 key={childKey}
                                 node={childNode}
                                 depth={depth + 1}
-                                isSelected={false}
+                                isSelected={selectedKey === childKey}
+                                selectedKey={selectedKey}
                                 compact={compact}
                                 searchTerm={searchTerm}
                                 nodes={nodes}

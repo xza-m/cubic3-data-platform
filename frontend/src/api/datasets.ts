@@ -152,6 +152,7 @@ export const previewDataset = (data: {
     }>
     sample_rows: Record<string, unknown>[]
     sample_columns: string[]
+    preview_error?: string | null
     statistics: {
       total_fields: number
       partition_fields: number

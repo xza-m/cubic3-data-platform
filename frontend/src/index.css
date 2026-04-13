@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo+SemiCondensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&family=Archivo+SemiCondensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -38,8 +38,8 @@
     --semantic-error: 4 72% 57%;
     /* 等宽字体 */
     --font-mono: 'IBM Plex Mono', 'SFMono-Regular', 'Cascadia Mono', 'JetBrains Mono', ui-monospace, monospace;
-    --font-workbench-display: 'Archivo SemiCondensed', 'IBM Plex Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
-    --font-workbench-body: 'IBM Plex Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+    --font-workbench-display: 'Roboto', 'Archivo SemiCondensed', 'IBM Plex Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+    --font-workbench-body: 'Roboto', 'IBM Plex Sans', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
     --font-workbench-mono: 'IBM Plex Mono', 'SFMono-Regular', 'Cascadia Mono', 'JetBrains Mono', ui-monospace, monospace;
     --text-display: 2rem;
     --text-title: 1.5rem;
@@ -55,16 +55,18 @@
     --tracking-display: -0.04em;
     --tracking-tight: -0.02em;
     --tracking-caps: 0.16em;
-    --workbench-bg: 220 29% 97%;
-    --workbench-surface: 0 0% 100%;
-    --workbench-surface-2: 220 23% 98%;
-    --workbench-panel: 220 23% 96%;
-    --workbench-outline: 220 16% 88%;
-    --workbench-ink: 223 28% 15%;
-    --workbench-muted: 220 20% 93%;
-    --workbench-muted-foreground: 220 10% 43%;
-    --workbench-accent: 202 92% 46%;
+    /* Workbench 变量桥接 → Nitro 设计系统 */
+    --workbench-bg: var(--background);
+    --workbench-surface: var(--card);
+    --workbench-surface-2: var(--secondary);
+    --workbench-panel: var(--muted);
+    --workbench-outline: var(--border);
+    --workbench-ink: var(--foreground);
+    --workbench-muted: var(--accent);
+    --workbench-muted-foreground: var(--muted-foreground);
+    --workbench-accent: var(--primary);
     --workbench-accent-soft: 201 100% 96%;
+    --workbench-accent-strong: var(--primary);
     --workbench-radius: 1rem;
     --workbench-radius-sm: 0.875rem;
     --workbench-radius-lg: 1.25rem;
@@ -95,16 +97,18 @@
     --semantic-fact-bg: 224 47% 11%;
     --semantic-dim: 166 72% 40%;
     --semantic-dim-bg: 166 40% 10%;
-    --workbench-bg: 220 18% 10%;
-    --workbench-surface: 220 20% 12%;
-    --workbench-surface-2: 220 18% 15%;
-    --workbench-panel: 220 18% 14%;
-    --workbench-outline: 220 12% 24%;
-    --workbench-ink: 210 22% 96%;
-    --workbench-muted: 220 18% 18%;
-    --workbench-muted-foreground: 214 13% 68%;
-    --workbench-accent: 205 79% 56%;
+    /* Workbench 变量桥接 → Nitro 设计系统 (dark) */
+    --workbench-bg: var(--background);
+    --workbench-surface: var(--card);
+    --workbench-surface-2: var(--secondary);
+    --workbench-panel: var(--muted);
+    --workbench-outline: var(--border);
+    --workbench-ink: var(--foreground);
+    --workbench-muted: var(--accent);
+    --workbench-muted-foreground: var(--muted-foreground);
+    --workbench-accent: var(--primary);
     --workbench-accent-soft: 210 30% 20%;
+    --workbench-accent-strong: var(--primary);
   }
 }
 

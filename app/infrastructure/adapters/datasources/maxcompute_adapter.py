@@ -160,8 +160,8 @@ class MaxComputeAdapter(DataSourceAdapter):
             
             start_time = time.time()
             
-            # 执行查询
-            instance = odps.execute_sql(safe_sql)
+            hints = {'odps.sql.allow.antique.date': 'true'}
+            instance = odps.execute_sql(safe_sql, hints=hints)
             
             # 等待执行完成
             instance.wait_for_success()
@@ -228,6 +228,58 @@ class MaxComputeAdapter(DataSourceAdapter):
         except Exception as e:
             raise Exception(f"流式查询失败: {str(e)}")
     
+    @staticmethod
+    def _safe_value(val):
+        """将 PyODPS 原生类型转为 JSON 可序列化的 Python 原生类型。"""
+        if val is None:
+            return None
+        from datetime import datetime, date
+        if isinstance(val, (datetime, date)):
+            return val.isoformat()
+        try:
+            if hasattr(val, 'isoformat'):
+                return val.isoformat()
+            if hasattr(val, 'strftime'):
+                return str(val)
+        except Exception:
+            pass
+        if isinstance(val, bytes):
+            return val.decode('utf-8', errors='replace')
+        if isinstance(val, (int, float, str, bool)):
+            return val
+        return str(val)
+
+    def preview_table(self, table: str, limit: int = 20, partition_spec: str | None = None) -> Dict[str, Any]:
+        """使用 PyODPS table.head() 读取预览数据，绕过 SQL 解析问题。"""
+        try:
+            odps = self._get_odps_client()
+            table_obj = odps.get_table(table)
+            start_time = time.time()
+
+            if partition_spec is None and table_obj.schema.partitions:
+                parts = list(table_obj.partitions)
+                if parts:
+                    partition_spec = parts[-1].name
+
+            records = list(table_obj.head(limit, partition=partition_spec))
+
+            columns = [{'name': col.name, 'type': str(col.type).lower()} for col in table_obj.schema.columns]
+            col_names = [col.name for col in table_obj.schema.columns]
+
+            rows = []
+            for record in records:
+                rows.append([self._safe_value(record[c]) for c in col_names])
+
+            execution_time_ms = int((time.time() - start_time) * 1000)
+            return {
+                'columns': columns,
+                'rows': rows,
+                'row_count': len(rows),
+                'execution_time_ms': execution_time_ms,
+            }
+        except Exception as e:
+            raise Exception(f"预览数据失败: {str(e)}")
+
     def get_partitions(self, table: str) -> List[str]:
         """获取表的分区列表"""
         try:

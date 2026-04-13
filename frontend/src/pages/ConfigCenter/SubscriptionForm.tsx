@@ -158,7 +158,9 @@ export default function SubscriptionForm({ open, subscription, onClose, onSucces
             open={open}
             onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
             title={isEditing ? '编辑订阅' : '创建订阅'}
-            width="500px"
+            width="min(720px,calc(100vw-2rem))"
+            className="top-4 translate-y-0 sm:top-[50%] sm:translate-y-[-50%]"
+            bodyClassName="pr-1"
             footer={
                 <div className="flex justify-end gap-2">
                     <FormButton variant="outline" onClick={onClose}>

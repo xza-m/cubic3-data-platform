@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
@@ -123,12 +123,14 @@ vi.mock('@/components/business', async () => {
     DataTable: ({
       data,
       columns,
+      emptyText,
     }: {
       data: Array<Record<string, unknown>>
-      columns: Array<{ accessorKey?: string | number }>
+      columns: Array<{ accessorKey?: string | number; title?: string }>
+      emptyText?: string
     }) => (
       <div data-testid="dashboard-query-result-table">
-        rows:{data.length}; cols:{columns.length}; headers:{columns.map((column) => String(column.accessorKey ?? '')).join('|')}
+        rows:{data.length}; cols:{columns.length}; headers:{columns.map((column) => String(column.title ?? column.accessorKey ?? '')).join('|')}; empty:{emptyText ?? ''}
       </div>
     ),
     SchemaBrowser: ({
@@ -280,6 +282,9 @@ describe('QueryCenter Dashboard page', () => {
     renderPage()
 
     expect(await screen.findByTestId('query-center-dashboard-layout')).toBeInTheDocument()
+    expect(screen.queryByText('推荐路径：先选择数据源，再编辑或替换示例 SQL，最后运行并查看结果。')).not.toBeInTheDocument()
+    expect(screen.getByText('示例 SQL，可直接修改')).toBeInTheDocument()
+    expect(screen.getByTestId('query-editor-resize-handle')).toBeInTheDocument()
     expect(screen.getByTestId('query-center-dashboard-layout')).toHaveClass('flex-col')
     expect(screen.getByTestId('query-center-schema-panel')).toBeInTheDocument()
     expect(screen.getByTestId('query-center-template-panel')).toBeInTheDocument()
@@ -299,7 +304,62 @@ describe('QueryCenter Dashboard page', () => {
     })
 
     await user.click(screen.getByRole('button', { name: '运行' }))
-    expect(await screen.findByTestId('dashboard-query-result-table')).toHaveTextContent('rows:1; cols:2; headers:order_id|revenue')
+    expect(await screen.findByTestId('dashboard-query-result-table')).toHaveTextContent('rows:1; cols:2; headers:123 order_id|123 revenue')
+  })
+
+  it('支持拖拽调整编辑器与结果区高度', async () => {
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    const editorPane = screen.getByTestId('query-editor-pane')
+    const splitter = screen.getByTestId('query-editor-resize-handle')
+
+    expect(editorPane.style.height).toBe('52%')
+
+    Object.defineProperty(splitter.parentElement, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ top: 0, height: 1000 }),
+    })
+
+    fireEvent.mouseDown(splitter, { clientY: 620 })
+    fireEvent.mouseMove(window, { clientY: 620 })
+    fireEvent.mouseUp(window)
+
+    expect(Number.parseFloat(editorPane.style.height)).toBeGreaterThan(60)
+  })
+
+  it('查询成功但无数据时仍保留原始字段列头', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.executeQuery.mockResolvedValueOnce({
+      data: {
+        columns: [
+          { name: 'subject_id', type: 'bigint' },
+          { name: 'subject_name', type: 'string' },
+        ],
+        rows: [],
+        row_count: 0,
+        execution_time_ms: 88,
+      },
+    })
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    await user.click(screen.getByRole('button', { name: '运行' }))
+
+    expect(await screen.findByTestId('dashboard-query-result-table')).toHaveTextContent('rows:0; cols:2; headers:123 subject_id|ABC subject_name')
+    expect(screen.getByTestId('dashboard-query-result-table')).toHaveTextContent('empty:查询成功，当前条件下没有返回数据')
+  })
+
+  it('仅保留虚拟数据集入口的明确引导', async () => {
+    const firstRender = renderPage('/queries?intent=create-virtual-dataset')
+    expect(await screen.findByText('你正在从 SQL 虚拟数据集入口进入，请先选择数据源并完善 SQL，再决定是否沉淀为数据集。')).toBeInTheDocument()
+
+    firstRender.unmount()
+    renderPage('/queries?intent=dataset-query&datasetId=7&datasetName=%E7%AD%94%E9%A2%98%E6%B1%87%E6%80%BB')
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    expect(screen.queryByText('已基于数据集“答题汇总”打开查询工作台，可继续完善 SQL 并验证结果。')).not.toBeInTheDocument()
   })
 
   it('支持结构树插入和表预览', async () => {
@@ -312,7 +372,7 @@ describe('QueryCenter Dashboard page', () => {
     expect((screen.getByLabelText('sql-editor') as HTMLTextAreaElement).value).toContain('public.orders')
 
     await user.click(screen.getByTestId('schema-preview'))
-    expect(await screen.findByTestId('dashboard-query-result-table')).toHaveTextContent('rows:1; cols:1; headers:id')
+    expect(await screen.findByTestId('dashboard-query-result-table')).toHaveTextContent('rows:1; cols:1; headers:123 id')
   })
 
   it('支持保存查询', async () => {

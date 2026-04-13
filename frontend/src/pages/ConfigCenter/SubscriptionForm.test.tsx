@@ -40,13 +40,24 @@ vi.mock('@/components/business', () => ({
     title,
     children,
     footer,
+    width,
+    className,
+    bodyClassName,
   }: {
     open: boolean
     title: string
     children: React.ReactNode
     footer?: React.ReactNode
+    width?: string
+    className?: string
+    bodyClassName?: string
   }) => (open ? (
-    <div>
+    <div
+      data-testid="subscription-form-modal"
+      data-width={width}
+      data-classname={className}
+      data-bodyclassname={bodyClassName}
+    >
       <h1>{title}</h1>
       {children}
       {footer}
@@ -194,6 +205,25 @@ describe('SubscriptionForm', () => {
       })
     })
     expect(toastMocks.toast).toHaveBeenCalledWith({ title: '订阅创建成功' })
+  })
+
+  it('创建态会使用更稳的弹窗宽度和可滚动布局参数', () => {
+    renderForm()
+
+    const modal = screen.getByTestId('subscription-form-modal')
+    expect(modal).toHaveAttribute('data-width', 'min(720px,calc(100vw-2rem))')
+    expect(modal).toHaveAttribute(
+      'data-classname',
+      expect.stringContaining('top-4'),
+    )
+    expect(modal).toHaveAttribute(
+      'data-classname',
+      expect.stringContaining('sm:translate-y-[-50%]'),
+    )
+    expect(modal).toHaveAttribute(
+      'data-bodyclassname',
+      expect.stringContaining('pr-1'),
+    )
   })
 
   it('创建前按顺序校验名称、实例和渠道', async () => {

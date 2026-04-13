@@ -62,8 +62,12 @@ class PreviewDatasetHandler:
                 'is_partition': False
             })
         
-        # 标记分区字段
-        partition_names = [p['name'] for p in schema_info.get('partitions', [])]
+        # 标记分区字段（兼容 list[str] 和 list[dict] 两种适配器返回格式）
+        raw_partitions = schema_info.get('partitions', [])
+        if raw_partitions and isinstance(raw_partitions[0], dict):
+            partition_names = [p['name'] for p in raw_partitions]
+        else:
+            partition_names = list(raw_partitions)
         for field in fields_to_identify:
             if field['name'] in partition_names:
                 field['is_partition'] = True
@@ -79,16 +83,26 @@ class PreviewDatasetHandler:
                 datasource_repository=self.datasource_repository
             )
 
-        preview_result = self.preview_table_data_handler.handle(
-            PreviewTableDataQuery(
-                datasource_id=query.datasource_id,
-                database=query.database,
-                table=query.table,
-                limit=PREVIEW_LIMIT,
+        sample_rows: list = []
+        sample_columns: list = []
+        preview_error: str | None = None
+        try:
+            preview_result = self.preview_table_data_handler.handle(
+                PreviewTableDataQuery(
+                    datasource_id=query.datasource_id,
+                    database=query.database,
+                    table=query.table,
+                    limit=PREVIEW_LIMIT,
+                )
             )
-        )
-        sample_rows = list(preview_result.get('data') or [])
-        sample_columns = [column.get('name') for column in preview_result.get('columns') or [] if column.get('name')]
+            sample_rows = list(preview_result.get('data') or [])
+            sample_columns = [
+                column.get('name')
+                for column in preview_result.get('columns') or []
+                if column.get('name')
+            ]
+        except Exception as preview_exc:
+            preview_error = str(preview_exc)
 
         return {
             'preview_limit': PREVIEW_LIMIT,
@@ -104,5 +118,6 @@ class PreviewDatasetHandler:
             'fields': identified_fields,
             'sample_rows': sample_rows,
             'sample_columns': sample_columns,
+            'preview_error': preview_error,
             'statistics': statistics
         }

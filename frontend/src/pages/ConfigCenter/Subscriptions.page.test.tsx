@@ -62,12 +62,17 @@ vi.mock('@/components/business', async () => {
       children,
       onClick,
       disabled,
+      loading,
+      icon,
     }: {
       children?: ReactNode
       onClick?: () => void
       disabled?: boolean
+      loading?: boolean
+      icon?: ReactNode
     }) => (
-      <button type="button" onClick={onClick} disabled={disabled}>
+      <button type="button" onClick={onClick} disabled={disabled || loading}>
+        {loading ? '加载中' : icon}
         {children}
       </button>
     ),
@@ -187,6 +192,16 @@ function makeSubscription(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('Subscriptions page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -235,7 +250,7 @@ describe('Subscriptions page', () => {
     subscriptionPageMocks.toggleSubscription.mockResolvedValue(undefined)
   })
 
-  it('展示列表并支持应用筛选、渠道筛选和状态切换', async () => {
+  it('展示列表并支持应用筛选、渠道筛选、刷新和状态切换', async () => {
     const user = userEvent.setup()
 
     renderPage()
@@ -264,6 +279,54 @@ describe('Subscriptions page', () => {
       expect(subscriptionPageMocks.toggleSubscription).toHaveBeenCalledWith(1, false)
     })
     expect(subscriptionPageMocks.toast).toHaveBeenCalledWith({ title: '状态更新成功' })
+
+    const refreshDeferred = createDeferred<{
+      data: {
+        items: Array<Record<string, unknown>>
+      }
+    }>()
+    subscriptionPageMocks.getSubscriptions.mockClear()
+    subscriptionPageMocks.getSubscriptions.mockReturnValueOnce(refreshDeferred.promise)
+
+    const refreshButton = screen.getByRole('button', { name: '刷新' })
+    await user.click(refreshButton)
+    await waitFor(() => {
+      expect(subscriptionPageMocks.getSubscriptions).toHaveBeenCalledTimes(1)
+    })
+    expect(refreshButton).toBeDisabled()
+
+    refreshDeferred.resolve({
+      data: {
+        items: [
+          makeSubscription(),
+          makeSubscription({
+            id: 2,
+            name: '失败告警',
+            app_instance_id: 202,
+            channel_id: 12,
+            enabled: false,
+            event_types: ['app.execution.failed', 'app.instance.disabled'],
+            event_filter: { event_types: ['app.execution.failed', 'app.instance.disabled'] },
+            app_instance: {
+              id: 202,
+              name: '数据助手实例',
+              app_code: 'data-agent',
+              app_name: '数据助手',
+            },
+            channel: {
+              id: 12,
+              name: 'Webhook 渠道',
+              channel_type: 'webhook',
+            },
+          }),
+        ],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '刷新' })).not.toBeDisabled()
+    })
+    expect(subscriptionPageMocks.toast).toHaveBeenCalledWith({ title: '订阅列表已刷新' })
   })
 
   it('支持创建与编辑订阅', async () => {
@@ -271,7 +334,7 @@ describe('Subscriptions page', () => {
 
     renderPage()
 
-    await user.click(await screen.findByRole('button', { name: '创建订阅' }))
+    await user.click(await screen.findByRole('button', { name: '新建' }))
     expect(screen.getByRole('dialog', { name: '订阅表单' })).toHaveTextContent('创建订阅')
     await user.click(screen.getByRole('button', { name: '提交表单' }))
     await waitFor(() => {
@@ -308,7 +371,10 @@ describe('Subscriptions page', () => {
     subscriptionPageMocks.getSubscriptions.mockResolvedValueOnce({ data: { items: [] } })
     page.unmount()
     renderPage()
-    expect(await screen.findByText('还没有订阅')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '立即创建' })).toBeInTheDocument()
+    const emptyTitle = await screen.findByText('还没有订阅')
+    expect(emptyTitle).toBeInTheDocument()
+    const emptyState = emptyTitle.closest('div')
+    expect(emptyState).not.toBeNull()
+    expect(within(emptyState as HTMLElement).getByRole('button', { name: '新建' })).toBeInTheDocument()
   })
 })

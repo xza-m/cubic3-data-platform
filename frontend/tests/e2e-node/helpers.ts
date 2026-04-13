@@ -2,15 +2,46 @@ import { expect, type Page } from '@playwright/test'
 
 const AUTH_TOKEN = process.env.DOMAIN_SMOKE_AUTH_TOKEN ?? 'playwright-smoke-token'
 const BASE_URL = process.env.DOMAIN_SMOKE_BASE_URL ?? 'http://127.0.0.1:3100'
+const AUTH_USERNAME = process.env.DOMAIN_SMOKE_USERNAME ?? 'admin'
+const AUTH_PASSWORD = process.env.DOMAIN_SMOKE_PASSWORD ?? 'admin123'
 
 export function uniqueName(prefix: string) {
   return `${prefix} ${Date.now()}`
 }
 
+async function resolveAuthToken(page: Page) {
+  if (process.env.DOMAIN_SMOKE_AUTH_TOKEN) {
+    return AUTH_TOKEN
+  }
+
+  try {
+    const response = await page.request.fetch(new URL('/api/v1/auth/login', BASE_URL).toString(), {
+      method: 'POST',
+      data: {
+        username: AUTH_USERNAME,
+        password: AUTH_PASSWORD,
+      },
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    if (!response.ok()) {
+      return AUTH_TOKEN
+    }
+
+    const payload = await response.json()
+    return payload?.token || payload?.data?.token || AUTH_TOKEN
+  } catch {
+    return AUTH_TOKEN
+  }
+}
+
 export async function prepareAuthenticatedPage(page: Page) {
+  const token = await resolveAuthToken(page)
   await page.addInitScript((token: string) => {
     window.localStorage.setItem('auth_token', token)
-  }, AUTH_TOKEN)
+  }, token)
 }
 
 export async function gotoSemantic(page: Page, path: string) {
@@ -93,7 +124,7 @@ function sanitizeSchemaNodeName(name: string) {
 }
 
 export async function selectFirstSchemaTable(page: Page) {
-  await expect(page.getByRole('heading', { name: '语义工作台' })).toBeVisible()
+  await expect(page.getByTestId('semantic-workbench-title')).toBeVisible()
   await expect(page.getByTestId('cube-generate-draft')).toBeVisible()
 
   const tableLocator = page.locator('[data-testid^="schema-node-table-"]:visible')
@@ -222,8 +253,8 @@ export async function ensureCubeAvailable(page: Page) {
   }
 
   const datasourceId = await findFirstActiveDatasourceId(page)
-  const cubeName = `playwright_cube_${Date.now()}`
-  const cubeTitle = uniqueName('Playwright Cube 草稿')
+  const cubeName = `qa_cube_${Date.now()}`
+  const cubeTitle = uniqueName('QA Cube 草稿')
 
   await apiRequest(page, '/api/v1/semantic/cubes', {
     method: 'POST',

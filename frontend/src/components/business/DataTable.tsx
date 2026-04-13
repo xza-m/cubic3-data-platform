@@ -53,6 +53,7 @@ export interface DataTableProps<T = Record<string, unknown>> {
   columns: DataTableColumn<T>[] | ColumnDef<T>[]
   data?: T[]
   loading?: boolean
+  density?: "default" | "compact"
   pagination?: {
     current: number
     pageSize: number
@@ -83,6 +84,7 @@ export function DataTable<T = Record<string, unknown>>({
   columns,
   data = [],
   loading = false,
+  density = "default",
   pagination,
   pageSize = 10,
   showPagination = false,
@@ -216,6 +218,7 @@ export function DataTable<T = Record<string, unknown>>({
   const currentPageNumber = pagination?.current || currentPage
   const shouldShowPagination = pagination || (showPagination && data.length > pageSize)
   const pageSizeOptions = pagination?.pageSizeOptions ?? []
+  const compactMode = density === "compact"
 
   return (
     <div className="space-y-4">
@@ -226,7 +229,10 @@ export function DataTable<T = Record<string, unknown>>({
               {normalizedColumns.map((column) => (
                 <TableHead
                   key={column.key}
-                  className="h-10 px-4 text-[0.75rem] font-semibold uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]"
+                  className={cn(
+                    "font-semibold uppercase tracking-[0.12em] text-[hsl(var(--workbench-muted-foreground))]",
+                    compactMode ? "h-8 px-3 text-[0.6875rem]" : "h-10 px-4 text-[0.75rem]",
+                  )}
                   style={{ width: column.width, textAlign: column.align }}
                 >
                   {column.title}
@@ -237,7 +243,10 @@ export function DataTable<T = Record<string, unknown>>({
           <TableBody>
             {paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={normalizedColumns.length} className="py-10 text-center text-[0.9375rem] leading-6 text-[hsl(var(--workbench-muted-foreground))]">
+                <TableCell colSpan={normalizedColumns.length} className={cn(
+                  "text-center text-[hsl(var(--workbench-muted-foreground))]",
+                  compactMode ? "py-8 text-[0.875rem] leading-5" : "py-10 text-[0.9375rem] leading-6",
+                )}>
                   {emptyText}
                 </TableCell>
               </TableRow>
@@ -255,7 +264,10 @@ export function DataTable<T = Record<string, unknown>>({
                     {normalizedColumns.map((column) => (
                       <TableCell
                         key={column.key}
-                        className="px-4 py-3 align-top text-[0.9375rem] leading-6 text-[hsl(var(--workbench-ink))]"
+                        className={cn(
+                          "align-top text-[hsl(var(--workbench-ink))]",
+                          compactMode ? "px-3 py-2 text-[0.875rem] leading-5" : "px-4 py-3 text-[0.9375rem] leading-6",
+                        )}
                         style={{ textAlign: column.align }}
                       >
                         {getCellValue(record, column, index)}

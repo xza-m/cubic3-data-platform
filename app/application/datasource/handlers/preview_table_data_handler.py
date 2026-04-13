@@ -66,9 +66,9 @@ class PreviewTableDataHandler:
         
         try:
             # 3. 先获取表的元数据（包含字段注释）
+            table_schema = None
             try:
                 table_schema = adapter.get_table_schema(query.database, query.table)
-                # 构建字段名到注释的映射
                 field_comments = {
                     col['name']: col.get('comment', '') 
                     for col in table_schema.get('columns', [])
@@ -77,16 +77,40 @@ class PreviewTableDataHandler:
                 logger.warning(f"Failed to get table schema, will continue without comments: {schema_error}")
                 field_comments = {}
             
-            # 4. 生成查询SQL（简单的 SELECT * LIMIT）
-            # 对于PostgreSQL，如果表名包含schema，需要分别引用
-            # 例如：public.chat -> "public"."chat" 或直接 public.chat（如果表名无特殊字符）
-            # 这里使用双引号包裹整个表名，对于大多数数据库都兼容
-            if '.' in query.table:
-                # 如果包含schema，分别引用
-                parts = query.table.split('.', 1)
-                sql = f'SELECT * FROM "{parts[0]}"."{parts[1]}" LIMIT {query.limit}'
+            # 4. 生成查询SQL（按数据源类型选择标识符引号）
+            source_type_lower = (datasource.source_type or '').lower()
+            if source_type_lower in ('maxcompute', 'odps'):
+                if hasattr(adapter, 'preview_table'):
+                    result = adapter.preview_table(query.table, limit=query.limit)
+                    columns_info = []
+                    for col in result.get('columns', []):
+                        col_name = col['name'] if isinstance(col, dict) else col
+                        col_type = col.get('type', 'unknown') if isinstance(col, dict) else 'unknown'
+                        columns_info.append({
+                            'name': col_name,
+                            'type': col_type,
+                            'comment': field_comments.get(col_name, ''),
+                        })
+                    raw_data = result.get('rows', [])
+                    return {
+                        'columns': columns_info,
+                        'data': raw_data,
+                        'row_count': len(raw_data),
+                        'table_name': query.table,
+                    }
+                sql = f'SELECT * FROM {query.table} LIMIT {query.limit}'
+            elif source_type_lower in ('mysql',):
+                if '.' in query.table:
+                    parts = query.table.split('.', 1)
+                    sql = f'SELECT * FROM `{parts[0]}`.`{parts[1]}` LIMIT {query.limit}'
+                else:
+                    sql = f'SELECT * FROM `{query.table}` LIMIT {query.limit}'
             else:
-                sql = f'SELECT * FROM "{query.table}" LIMIT {query.limit}'
+                if '.' in query.table:
+                    parts = query.table.split('.', 1)
+                    sql = f'SELECT * FROM "{parts[0]}"."{parts[1]}" LIMIT {query.limit}'
+                else:
+                    sql = f'SELECT * FROM "{query.table}" LIMIT {query.limit}'
             
             logger.debug(f"Generated preview SQL", sql=sql)
             
@@ -113,10 +137,11 @@ class PreviewTableDataHandler:
                         'comment': field_comments.get(col_name, '')  # 新增：添加字段注释
                     })
             
+            raw_data = result.get('data') or result.get('rows', [])
             return {
                 'columns': columns_info,
-                'data': result.get('data', []),
-                'row_count': len(result.get('data', [])),
+                'data': raw_data,
+                'row_count': len(raw_data),
                 'table_name': query.table
             }
             

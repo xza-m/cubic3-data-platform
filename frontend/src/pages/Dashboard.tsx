@@ -51,8 +51,8 @@ interface HealthItem {
 }
 
 const quickActions: QuickAction[] = [
-  { label: '新建查询', icon: FilePlus, iconColor: 'text-[#2563EB]', iconBg: 'bg-[#EFF6FF]', path: '/queries' },
-  { label: '创建模型', icon: Boxes, iconColor: 'text-[#6366F1]', iconBg: 'bg-[#EEF2FF]', path: '/semantic/cubes' },
+  { label: '打开查询工作台', icon: FilePlus, iconColor: 'text-[#2563EB]', iconBg: 'bg-[#EFF6FF]', path: '/queries' },
+  { label: '打开语义工作台', icon: Boxes, iconColor: 'text-[#6366F1]', iconBg: 'bg-[#EEF2FF]', path: '/semantic/workbench' },
   { label: '导入数据源', icon: Database, iconColor: 'text-[#10B981]', iconBg: 'bg-[#ECFDF5]', path: '/data-center/datasources' },
   { label: '智能问数', icon: Bot, iconColor: 'text-[#6366F1]', iconBg: 'bg-[#EEF2FF]', path: '/data-chat' },
 ]

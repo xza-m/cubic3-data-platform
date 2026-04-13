@@ -160,6 +160,60 @@ def test_execute_query_handler_covers_validation_limit_success_and_failure(monke
         handler.handle(ExecuteQueryCommand(source_id=99, sql_query="SELECT 1"))
 
 
+def test_execute_query_handler_normalizes_rows_payload_from_warehouse_adapters(monkeypatch):
+    query_repository = MagicMock()
+    datasource_repository = MagicMock()
+    datasource_repository.find_by_id.return_value = SimpleNamespace(
+        source_type="maxcompute",
+        connection_config={"project": "dw"},
+    )
+    handler = ExecuteQueryHandler(
+        query_repository=query_repository,
+        datasource_repository=datasource_repository,
+    )
+
+    monkeypatch.setattr(
+        "app.application.query.handlers.execute_query_handler.validate_sql_safety",
+        lambda sql: (True, []),
+    )
+    adapter = MagicMock()
+    adapter.execute_query.return_value = {
+        "columns": [
+            {"name": "subject_id", "type": "bigint"},
+            {"name": "subject_name", "type": "string"},
+        ],
+        "rows": [
+            [1, "语文"],
+            [2, "数学"],
+        ],
+        "row_count": 2,
+        "execution_time_ms": 88,
+    }
+    monkeypatch.setattr(
+        "app.application.query.handlers.execute_query_handler.AdapterFactory.create_adapter",
+        lambda *_args, **_kwargs: adapter,
+    )
+    times = iter([500.0, 500.1])
+    monkeypatch.setattr("app.application.query.handlers.execute_query_handler.time.time", lambda: next(times))
+
+    result = handler.handle(
+        ExecuteQueryCommand(source_id=1, sql_query="SELECT * FROM result_table", limit=100, executed_by="alice")
+    )
+
+    assert result["row_count"] == 2
+    assert result["columns"] == [
+        {"name": "subject_id", "type": "bigint"},
+        {"name": "subject_name", "type": "string"},
+    ]
+    assert result["data"] == [
+        {"subject_id": 1, "subject_name": "语文"},
+        {"subject_id": 2, "subject_name": "数学"},
+    ]
+
+    saved_history = query_repository.save_history.call_args.args[0]
+    assert saved_history.result_rows == 2
+
+
 def test_execute_sql_preview_command_and_handler_cover_core_paths(monkeypatch):
     assert ExecuteSQLPreviewCommand(source_id=1, sql_query="SELECT 1", limit=-1).limit == 100
     assert ExecuteSQLPreviewCommand(source_id=1, sql_query="SELECT 1", limit=2000).limit == 1000

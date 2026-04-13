@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Editor from '@monaco-editor/react'
 import {
@@ -48,10 +48,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import type { ColumnDef } from '@tanstack/react-table'
+interface QueryResultColumn {
+  name: string
+  type?: string
+}
 
 interface QueryResults {
-  columns: string[]
+  columns: QueryResultColumn[]
   data: Record<string, unknown>[]
   row_count?: number
   execution_time_ms?: number
@@ -106,6 +109,10 @@ const queryToolbarIconButtonClass =
   'flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-md bg-slate-100 p-0 text-slate-500 transition-colors hover:bg-slate-200'
 
 const COMPACT_VIEWPORT_QUERY = '(max-width: 1279px)'
+const QUERY_EDITOR_HEIGHT_STORAGE_KEY = 'query-center.editor-height-ratio'
+const DEFAULT_EDITOR_HEIGHT_RATIO = 52
+const MIN_EDITOR_HEIGHT_RATIO = 32
+const MAX_EDITOR_HEIGHT_RATIO = 78
 
 function useCompactViewport() {
   const [isCompact, setIsCompact] = useState(false)
@@ -124,24 +131,39 @@ function useCompactViewport() {
   return isCompact
 }
 
-const normalizeQueryColumns = (columns: unknown): string[] => {
+const readStoredEditorHeightRatio = () => {
+  if (typeof window === 'undefined') return DEFAULT_EDITOR_HEIGHT_RATIO
+  if (!window.localStorage || typeof window.localStorage.getItem !== 'function') {
+    return DEFAULT_EDITOR_HEIGHT_RATIO
+  }
+  const saved = window.localStorage.getItem(QUERY_EDITOR_HEIGHT_STORAGE_KEY)
+  const parsed = saved ? Number.parseFloat(saved) : Number.NaN
+  if (!Number.isFinite(parsed)) return DEFAULT_EDITOR_HEIGHT_RATIO
+  return Math.min(MAX_EDITOR_HEIGHT_RATIO, Math.max(MIN_EDITOR_HEIGHT_RATIO, parsed))
+}
+
+const normalizeQueryColumns = (columns: unknown): QueryResultColumn[] => {
   if (!Array.isArray(columns)) return []
   return columns.map((column) => {
-    if (typeof column === 'string') return column
+    if (typeof column === 'string') return { name: column }
     if (typeof column === 'object' && column !== null && 'name' in column) {
-      return String((column as { name: unknown }).name)
+      const typedColumn = column as { name: unknown; type?: unknown }
+      return {
+        name: String(typedColumn.name),
+        type: typedColumn.type ? String(typedColumn.type) : undefined,
+      }
     }
-    return String(column ?? '')
+    return { name: String(column ?? '') }
   })
 }
 
-const normalizeQueryRows = (columns: string[], rows: unknown): Record<string, unknown>[] => {
+const normalizeQueryRows = (columns: QueryResultColumn[], rows: unknown): Record<string, unknown>[] => {
   if (!Array.isArray(rows)) return []
 
   return rows.map((row) => {
     if (Array.isArray(row)) {
       return columns.reduce<Record<string, unknown>>((acc, column, index) => {
-        acc[column] = row[index]
+        acc[column.name] = row[index]
         return acc
       }, {})
     }
@@ -162,12 +184,38 @@ const buildQueryResults = ({
   executionTimeMs?: number
 }): QueryResults => {
   const normalizedColumns = normalizeQueryColumns(columns)
+  const normalizedRows = normalizeQueryRows(normalizedColumns, rows)
   return {
     columns: normalizedColumns,
-    data: normalizeQueryRows(normalizedColumns, rows),
-    row_count: rowCount,
+    data: normalizedRows,
+    row_count: rowCount ?? normalizedRows.length,
     execution_time_ms: executionTimeMs,
   }
+}
+
+const isNumericColumnType = (value?: string | null) => Boolean(value && /(int|decimal|numeric|float|double|real|bigint|smallint|tinyint|number)/i.test(value))
+
+const isStringColumnType = (value?: string | null) => Boolean(value && /(char|text|string|varchar)/i.test(value))
+
+const inferColumnTypeFromData = (columnName: string, rows: Record<string, unknown>[]) => {
+  const firstValue = rows.find((row) => row[columnName] !== null && row[columnName] !== undefined)?.[columnName]
+  if (typeof firstValue === 'number') return 'number'
+  if (typeof firstValue === 'string') return 'string'
+  return undefined
+}
+
+const buildColumnHeaderTitle = (column: QueryResultColumn, rows: Record<string, unknown>[]) => {
+  const inferredType = column.type || inferColumnTypeFromData(column.name, rows)
+
+  if (isNumericColumnType(inferredType)) {
+    return `123 ${column.name}`
+  }
+
+  if (isStringColumnType(inferredType) || inferredType === 'string') {
+    return `ABC ${column.name}`
+  }
+
+  return column.name
 }
 
 export default function QueryCenterDashboard() {
@@ -189,6 +237,17 @@ export default function QueryCenterDashboard() {
   const [saveFormData, setSaveFormData] = useState({ query_name: '', description: '' })
   const [activeQueryId, setActiveQueryId] = useState<number>()
   const [legacyView, setLegacyView] = useState<LegacyQueryView | null>(null)
+  const [editorHeightRatio, setEditorHeightRatio] = useState(readStoredEditorHeightRatio)
+  const [isResizingEditor, setIsResizingEditor] = useState(false)
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
+  const splitLayoutRef = useRef<HTMLDivElement | null>(null)
+  const queryIntent = searchParams.get('intent')
+  const intentBanner = useMemo(() => {
+    if (queryIntent === 'create-virtual-dataset') {
+      return '你正在从 SQL 虚拟数据集入口进入，请先选择数据源并完善 SQL，再决定是否沉淀为数据集。'
+    }
+    return null
+  }, [queryIntent])
 
   useEffect(() => {
     if (isCompactViewport) {
@@ -200,6 +259,34 @@ export default function QueryCenterDashboard() {
     setSchemaCollapsed(false)
     setTemplateCollapsed(true)
   }, [isCompactViewport])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!window.localStorage || typeof window.localStorage.setItem !== 'function') return
+    window.localStorage.setItem(QUERY_EDITOR_HEIGHT_STORAGE_KEY, String(editorHeightRatio))
+  }, [editorHeightRatio])
+
+  useEffect(() => {
+    if (!isResizingEditor) return
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!splitLayoutRef.current) return
+      const rect = splitLayoutRef.current.getBoundingClientRect()
+      if (rect.height <= 0) return
+      const nextRatio = ((event.clientY - rect.top) / rect.height) * 100
+      const clamped = Math.min(MAX_EDITOR_HEIGHT_RATIO, Math.max(MIN_EDITOR_HEIGHT_RATIO, nextRatio))
+      setEditorHeightRatio(clamped)
+    }
+
+    const handleMouseUp = () => setIsResizingEditor(false)
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizingEditor])
 
   const { data: datasourcesData } = useQuery({
     queryKey: ['datasources'],
@@ -263,7 +350,6 @@ export default function QueryCenterDashboard() {
       | null
       | undefined
 
-    const searchParams = new URLSearchParams(location.search)
     const nextLegacyView = parseLegacyQueryView(searchParams.get('legacy'))
     const sourceIdFromSearch = searchParams.get('sourceId') || searchParams.get('source_id')
     const normalizedSourceId = sourceIdFromSearch ? Number(sourceIdFromSearch) : undefined
@@ -315,7 +401,6 @@ export default function QueryCenterDashboard() {
       | { sql?: string; sourceId?: number; source_id?: number; name?: string }
       | null
       | undefined
-    const searchParams = new URLSearchParams(location.search)
     const hasSqlFromRoute = Boolean(state?.sql || searchParams.get('sql'))
     const hasSourceFromRoute = Boolean(
       state?.sourceId
@@ -381,7 +466,7 @@ export default function QueryCenterDashboard() {
       const payload = result.data
       const normalized = buildQueryResults({
         columns: payload?.columns,
-        rows: payload?.data,
+        rows: payload?.data ?? payload?.rows,
         rowCount: payload?.row_count,
         executionTimeMs: payload?.execution_time_ms,
       })
@@ -390,7 +475,7 @@ export default function QueryCenterDashboard() {
       queryClient.invalidateQueries({ queryKey: ['query-histories'] })
       toast({
         title: '查询成功',
-        description: `返回 ${normalized.row_count || normalized.data.length} 行，耗时 ${normalized.execution_time_ms || 0}ms`,
+        description: `返回 ${normalized.row_count ?? normalized.data.length} 行，耗时 ${normalized.execution_time_ms || 0}ms`,
       })
     } catch (error) {
       const err = error as { response?: { data?: { message?: string } }; message?: string }
@@ -499,9 +584,10 @@ export default function QueryCenterDashboard() {
     }
   }
 
-  const resultColumns: ColumnDef<Record<string, unknown>>[] = results?.columns.map((column) => ({
-    accessorKey: column,
-    header: column,
+  const resultColumns = results?.columns.map((column) => ({
+    key: column.name,
+    title: buildColumnHeaderTitle(column, results.data),
+    dataIndex: column.name,
   })) || []
 
   const resultData = results?.data.map((row, index) => ({ id: index, ...row })) || []
@@ -585,6 +671,11 @@ export default function QueryCenterDashboard() {
             <div className="mt-1 text-xs text-blue-700">{LEGACY_QUERY_VIEW_COPY[legacyView].description}</div>
           </div>
         ) : null}
+        {intentBanner ? (
+          <div className="border-b border-emerald-100 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-800">
+            {intentBanner}
+          </div>
+        ) : null}
         <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">
             <FormButton onClick={handleExecute} disabled={executing} loading={executing} className="h-[30px] rounded-lg bg-blue-600 px-3 text-xs font-medium">
@@ -625,27 +716,51 @@ export default function QueryCenterDashboard() {
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-[1_1_70%] flex-col border-b border-slate-200 bg-[#1E293B]">
-          <div className="min-h-[430px] flex-1">
-            <Editor
-              height="100%"
-              defaultLanguage="sql"
-              value={sql}
-              onChange={(value) => setSql(value || '')}
-              theme="vs-dark"
-              options={{
-                minimap: { enabled: false },
-                fontSize: 13,
-                lineNumbers: 'on',
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                wordWrap: 'on',
-              }}
-            />
+        <div ref={splitLayoutRef} className="flex min-h-0 flex-1 flex-col">
+          <div
+            data-testid="query-editor-pane"
+            className="flex min-h-0 flex-col border-b border-slate-200 bg-[#1E293B]"
+            style={{ height: `${editorHeightRatio}%` }}
+          >
+            <div className="border-b border-slate-700 bg-slate-900 px-4 py-2 text-xs text-slate-300">
+              示例 SQL，可直接修改
+            </div>
+            <div className="min-h-[280px] flex-1">
+              <Editor
+                height="100%"
+                defaultLanguage="sql"
+                value={sql}
+                onChange={(value) => setSql(value || '')}
+                theme="vs-dark"
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  lineNumbers: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  wordWrap: 'on',
+                }}
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="min-h-0 flex-[1_1_30%] bg-white">
+          <button
+            type="button"
+            data-testid="query-editor-resize-handle"
+            aria-label="调整编辑器与结果区高度"
+            onMouseDown={(event) => {
+              event.preventDefault()
+              setIsResizingEditor(true)
+            }}
+            className="group flex h-3 shrink-0 cursor-row-resize items-center justify-center bg-white"
+          >
+            <span className={cn(
+              'h-[3px] w-14 rounded-full bg-slate-200 transition-colors',
+              isResizingEditor ? 'bg-blue-500' : 'group-hover:bg-slate-300',
+            )} />
+          </button>
+
+          <div className="min-h-0 bg-white" style={{ height: `${100 - editorHeightRatio}%` }}>
           <div className="flex h-9 items-end border-b border-slate-200 px-3">
             <button
               type="button"
@@ -690,13 +805,20 @@ export default function QueryCenterDashboard() {
               <div className="flex h-full flex-col">
                 <div className="flex h-9 items-center justify-between border-b border-slate-200 bg-slate-50 px-4 text-xs text-slate-500">
                   <div className="flex items-center gap-4">
-                    <span>返回 {results.row_count || resultData.length} 行</span>
+                    <span>返回 {results.row_count ?? resultData.length} 行</span>
                     <span>耗时 {results.execution_time_ms || 0}ms</span>
                   </div>
                   <span>{datasources.find((item) => item.id === selectedSource)?.name || '未选择数据源'}</span>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto">
-                  <DataTable columns={resultColumns} data={resultData} pageSize={10} showPagination={true} />
+                  <DataTable
+                    columns={resultColumns}
+                    data={resultData}
+                    density="compact"
+                    pageSize={10}
+                    showPagination={true}
+                    emptyText="查询成功，当前条件下没有返回数据"
+                  />
                 </div>
               </div>
             ) : (
@@ -708,6 +830,7 @@ export default function QueryCenterDashboard() {
               </div>
             )}
           </div>
+        </div>
         </div>
       </section>
 

@@ -22,6 +22,35 @@ import {
   type UpdateInstanceInput,
 } from '../../api/appCenter'
 
+const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
+  agent: 'Agent',
+  ai: 'AI',
+  bi: 'BI',
+  bi_integration: 'BI集成',
+  data_alert: '数据告警',
+  data_notification: '数据通知',
+  data_report: '数据报告',
+  report: '数据报告',
+  system_maintenance: '系统维护',
+}
+
+function getCategoryDisplayName(category: string, displayName?: string) {
+  const normalizedCategory = category.trim().toLowerCase()
+  const normalizedDisplayName = displayName?.trim()
+
+  if (normalizedDisplayName) {
+    const mappedDisplayName = CATEGORY_DISPLAY_NAMES[normalizedDisplayName.toLowerCase()]
+    if (mappedDisplayName) {
+      return mappedDisplayName
+    }
+    if (/[\u4e00-\u9fff]/.test(normalizedDisplayName)) {
+      return normalizedDisplayName
+    }
+  }
+
+  return CATEGORY_DISPLAY_NAMES[normalizedCategory] || normalizedDisplayName || category
+}
+
 export default function AppMarket() {
   const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
@@ -96,7 +125,11 @@ export default function AppMarket() {
       { label: '实例总数', value: selectedAppTotal, icon: Users },
       { label: '应用状态', value: selectedApp.enabled ? '已启用' : '未启用', icon: CheckCircle2 },
       { label: '版本', value: selectedApp.version || '-', icon: Sparkles },
-      { label: '分类', value: selectedApp.category || '-', icon: Search },
+      {
+        label: '分类',
+        value: selectedApp.category ? getCategoryDisplayName(selectedApp.category) : '-',
+        icon: Search,
+      },
     ]
   }, [selectedApp, selectedAppTotal])
 
@@ -137,6 +170,7 @@ export default function AppMarket() {
   const categories = [
     { key: 'all', label: '全部' },
     ...(categoriesData || [
+      { category: 'system_maintenance', display_name: '系统维护', app_count: 0 },
       { category: 'bi_integration', display_name: 'BI集成', app_count: 0 },
       { category: 'data_alert', display_name: '数据告警', app_count: 0 },
       { category: 'agent', display_name: 'Agent', app_count: 0 },
@@ -144,7 +178,7 @@ export default function AppMarket() {
       { category: 'data_report', display_name: '数据报告', app_count: 0 },
     ]).map((cat: { category: string; display_name: string; app_count: number }) => ({
       key: cat.category,
-      label: cat.display_name || cat.category,
+      label: getCategoryDisplayName(cat.category, cat.display_name),
     })),
   ]
 
@@ -240,12 +274,15 @@ export default function AppMarket() {
                     {selectedApp.description}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button
-                    type="button"
-                    className="rounded-lg bg-[#2563EB] px-4 py-2 text-sm font-medium text-white shadow-[0_2px_8px_#2563EB30] hover:bg-[#1D4ED8]"
-                    onClick={openCreateInstance}
-                  >
+              <div
+                data-testid="app-detail-header-actions"
+                className="mr-12 flex shrink-0 items-center gap-2 sm:mr-14"
+              >
+                <Button
+                  type="button"
+                  className="rounded-lg bg-[#2563EB] px-4 py-2 text-sm font-medium text-white shadow-[0_2px_8px_#2563EB30] hover:bg-[#1D4ED8]"
+                  onClick={openCreateInstance}
+                >
                     新建实例
                   </Button>
                 </div>
@@ -270,30 +307,28 @@ export default function AppMarket() {
                 })}
               </div>
 
-              <div className="mx-5 mb-5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-[0_2px_24px_#0F172A08] sm:mx-6 sm:mb-6">
-                <div className="flex items-center justify-between border-b border-[#E2E8F0] px-5 py-4">
+              <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+                <div className="mb-3 flex items-center justify-between border-b border-[#E2E8F0] pb-3">
                   <div>
                     <h3 className="text-sm font-semibold text-[#0F172A]">实例列表</h3>
                     <p className="mt-1 text-xs text-[#64748B]">查看、编辑和启停当前应用的实例配置</p>
                   </div>
                   <span className="text-xs text-[#94A3B8]">{selectedAppTotal} 条</span>
                 </div>
-                <div className="min-h-0 flex-1 overflow-auto">
-                  <InstanceTable
-                    instances={selectedAppInstances}
-                    loading={instancesLoading}
-                    total={instanceData?.total}
-                    page={instanceData?.page || instancePage}
-                    pageSize={instanceData?.page_size || instancePageSize}
-                    onPageChange={(page, pageSize) => {
-                      setInstancePage(page)
-                      if (pageSize !== instancePageSize) {
-                        setInstancePage(1)
-                      }
-                    }}
-                    onEdit={openEditInstance}
-                  />
-                </div>
+                <InstanceTable
+                  instances={selectedAppInstances}
+                  loading={instancesLoading}
+                  total={instanceData?.total}
+                  page={instanceData?.page || instancePage}
+                  pageSize={instanceData?.page_size || instancePageSize}
+                  onPageChange={(page, pageSize) => {
+                    setInstancePage(page)
+                    if (pageSize !== instancePageSize) {
+                      setInstancePage(1)
+                    }
+                  }}
+                  onEdit={openEditInstance}
+                />
               </div>
             </div>
           ) : null}

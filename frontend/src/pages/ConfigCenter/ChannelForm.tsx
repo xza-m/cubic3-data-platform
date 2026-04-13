@@ -201,7 +201,9 @@ export default function ChannelForm({ open, channel, onClose, onSuccess }: Chann
             onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
             title={isEditing ? '编辑渠道' : '创建渠道'}
             description="配置渠道类型、目标地址和发送参数。"
-            width="500px"
+            width="min(720px,calc(100vw-2rem))"
+            className="top-4 translate-y-0 sm:top-[50%] sm:translate-y-[-50%]"
+            bodyClassName="pr-1"
             footer={
                 <div className="flex justify-end gap-2">
                     <FormButton variant="outline" onClick={onClose}>

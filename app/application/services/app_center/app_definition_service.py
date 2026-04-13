@@ -148,9 +148,11 @@ class AppDefinitionService:
     def _get_category_display_name(self, category: str) -> str:
         """获取分类显示名称"""
         names = {
+            'agent': 'Agent',
             'bi_integration': 'BI 集成',
             'data_notification': '数据通知',
             'data_report': '数据报告',
-            'data_alert': '数据告警'
+            'data_alert': '数据告警',
+            'system_maintenance': '系统维护',
         }
         return names.get(category, category)

@@ -72,6 +72,7 @@ describe('SchemaTreeNode', () => {
         node={tableNode}
         depth={0}
         isSelected
+        selectedKey={tableNode.key}
         searchTerm="ord"
         nodes={nodes}
         isNodeVisible={(key) => key !== hiddenChild.key}
@@ -97,8 +98,8 @@ describe('SchemaTreeNode', () => {
     expect(screen.queryByTestId('schema-node-column-hidden_col')).not.toBeInTheDocument()
     expect(screen.getByText((content) => content.includes('订单主键'))).toBeInTheDocument()
     expect(screen.getByText('bigint')).toBeInTheDocument()
-    expect(screen.getByText('🔑')).toBeInTheDocument()
-    expect(screen.getByText('🧩')).toBeInTheDocument()
+    expect(container.querySelector('.lucide-key')).toBeInTheDocument()
+    expect(screen.getByText('P')).toBeInTheDocument()
     expect(container.querySelector('mark')).toHaveTextContent('ord')
   })
 
@@ -119,6 +120,7 @@ describe('SchemaTreeNode', () => {
         node={schemaNode}
         depth={1}
         isSelected={false}
+        selectedKey={null}
         searchTerm=""
         nodes={new Map([[schemaNode.key, schemaNode]])}
         isNodeVisible={() => true}

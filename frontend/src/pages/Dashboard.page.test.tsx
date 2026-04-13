@@ -207,8 +207,11 @@ describe('Dashboard page', () => {
 
     renderPage()
 
-    await user.click(screen.getByRole('button', { name: /新建查询/ }))
+    await user.click(screen.getByRole('button', { name: /打开查询工作台/ }))
     expect(navigateMock).toHaveBeenCalledWith('/queries')
+
+    await user.click(screen.getByRole('button', { name: /打开语义工作台/ }))
+    expect(navigateMock).toHaveBeenCalledWith('/semantic/workbench')
 
     await user.click(screen.getByRole('button', { name: /导入数据源/ }))
     expect(navigateMock).toHaveBeenCalledWith('/data-center/datasources')
