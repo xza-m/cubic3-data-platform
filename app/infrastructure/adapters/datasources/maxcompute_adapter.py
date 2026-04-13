@@ -111,27 +111,30 @@ class MaxComputeAdapter(DataSourceAdapter):
             odps = self._get_odps_client()
             table_obj = odps.get_table(table)
             
-            # 解析列信息
             columns = []
             partition_columns = []
+            seen_names: set = set()
             
-            # 普通列
             for col in table_obj.schema.columns:
-                # MaxCompute 类型转小写以保持一致性
+                seen_names.add(col.name)
                 columns.append({
                     'name': col.name,
                     'type': str(col.type).lower(),
                     'comment': col.comment or '',
-                    'is_nullable': True,  # MaxCompute默认可空
+                    'is_nullable': True,
                     'is_partition': False,
                     'default_value': None
                 })
             
-            # 分区列
             if table_obj.schema.partitions:
                 for col in table_obj.schema.partitions:
                     partition_columns.append(col.name)
-                    # MaxCompute 类型转小写以保持一致性
+                    if col.name in seen_names:
+                        for existing in columns:
+                            if existing['name'] == col.name:
+                                existing['is_partition'] = True
+                                break
+                        continue
                     columns.append({
                         'name': col.name,
                         'type': str(col.type).lower(),
@@ -233,21 +236,27 @@ class MaxComputeAdapter(DataSourceAdapter):
         """将 PyODPS 原生类型转为 JSON 可序列化的 Python 原生类型。"""
         if val is None:
             return None
+        if isinstance(val, (int, float, str, bool)):
+            return val
         from datetime import datetime, date
         if isinstance(val, (datetime, date)):
             return val.isoformat()
+        if isinstance(val, bytes):
+            return val.decode('utf-8', errors='replace')
         try:
             if hasattr(val, 'isoformat'):
                 return val.isoformat()
-            if hasattr(val, 'strftime'):
-                return str(val)
         except Exception:
             pass
-        if isinstance(val, bytes):
-            return val.decode('utf-8', errors='replace')
-        if isinstance(val, (int, float, str, bool)):
-            return val
-        return str(val)
+        try:
+            if hasattr(val, 'item'):
+                return val.item()
+        except Exception:
+            pass
+        try:
+            return str(val)
+        except Exception:
+            return None
 
     def preview_table(self, table: str, limit: int = 20, partition_spec: str | None = None) -> Dict[str, Any]:
         """使用 PyODPS table.head() 读取预览数据，绕过 SQL 解析问题。"""

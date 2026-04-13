@@ -435,7 +435,7 @@ def test_generate_cube_draft_covers_non_maxcompute_blank_columns_and_measure_fal
     assert set(draft["dimensions"].keys()) == {"row_id"}
     assert draft["dimensions"]["row_id"]["title"] == "行主键"
     assert draft["dimensions"]["row_id"]["type"] == "string"
-    assert draft["dimensions"]["row_id"]["sql"] == "{CUBE}.row_id"
+    assert draft["dimensions"]["row_id"]["sql"] == "`row_id`"
     assert draft["dimensions"]["row_id"]["primary_key"] is True
     assert draft["measures"]["total_count"]["sql"] == "COUNT(`row_id`)"
 

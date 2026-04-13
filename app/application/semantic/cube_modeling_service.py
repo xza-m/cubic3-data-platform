@@ -281,7 +281,7 @@ class CubeModelingService:
             dimensions[field_name] = {
                 "title": str(column.get("comment") or self._humanize_name(field_name)),
                 "type": self._infer_dimension_type(field_name, col_type),
-                "sql": f"{{CUBE}}.{field_name}",
+                "sql": f"`{field_name}`",
                 "description": column_comment,
                 "source_data_type": col_type,
                 "primary_key": bool(column.get("is_primary_key")) or lower_name in {"id", "pk"} or lower_name.endswith("_id"),
@@ -348,6 +348,17 @@ class CubeModelingService:
         """
         ID_PATTERNS = ('_id', '_key', '_code', '_no', '_seq')
         if any(lower_name.endswith(p) for p in ID_PATTERNS) or lower_name in {"id", "pk"}:
+            return False
+
+        DIM_NAME_PATTERNS = (
+            '_type', '_status', '_level', '_grade', '_class', '_category',
+            '_flag', '_mode', '_kind', '_state', '_tag', '_role', '_rank',
+            '_phase', '_stage', '_step', '_version', '_priority',
+        )
+        BOOL_NAME_PATTERNS = ('is_', 'has_', 'can_', 'should_', 'allow_', 'enable_')
+        if any(lower_name.endswith(p) for p in DIM_NAME_PATTERNS):
+            return False
+        if any(lower_name.startswith(p) for p in BOOL_NAME_PATTERNS):
             return False
 
         DIM_COMMENT_KEYWORDS = (
