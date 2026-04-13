@@ -1698,6 +1698,8 @@ def test_semantic_routes_cover_error_and_validation_variants(monkeypatch, tmp_pa
     modeling_service.create_cube.side_effect = RuntimeError('create exploded')
     modeling_service.activate_cube.side_effect = RuntimeError('activate exploded')
     modeling_service.deprecate_cube.side_effect = Exception('未找到 Cube')
+    modeling_source_service = MagicMock()
+    modeling_source_service.generate_cube_draft_from_source.side_effect = RuntimeError('draft exploded')
 
     domain_modeling_service = MagicMock()
     domain_modeling_service.DEFAULT_CATALOG_CODE = 'default'
@@ -1737,6 +1739,7 @@ def test_semantic_routes_cover_error_and_validation_variants(monkeypatch, tmp_pa
             publish_service=publish_service,
             registry_repo=MagicMock(),
             modeling_service=modeling_service,
+            modeling_source_service=modeling_source_service,
             domain_modeling_service=domain_modeling_service,
             domain_canvas_service=domain_canvas_service,
         )
@@ -1744,10 +1747,10 @@ def test_semantic_routes_cover_error_and_validation_variants(monkeypatch, tmp_pa
     register_error_handlers(app)
     client = app.test_client()
 
-    assert client.post('/api/v1/semantic/cubes/draft-from-table', json={}).status_code == 400
+    assert client.post('/api/v1/semantic/cubes/draft-from-source', json={}).status_code == 400
     assert client.post(
-        '/api/v1/semantic/cubes/draft-from-table',
-        json={'source_id': 1, 'database': 'ods', 'table': 'orders'},
+        '/api/v1/semantic/cubes/draft-from-source',
+        json={'source_kind': 'physical_table', 'source_id': 1, 'database': 'ods', 'table': 'orders'},
     ).status_code == 400
     assert client.post('/api/v1/semantic/cubes', json={'name': 'orders'}).status_code == 400
     assert client.post('/api/v1/semantic/cubes/orders/activate').status_code == 400

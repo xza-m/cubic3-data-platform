@@ -1,0 +1,8 @@
+name: order_amount
+title: 订单金额
+object_name: order
+property_type: number
+description: 订单支付金额，可作为 GMV 等经营指标的输入属性。
+aliases:
+- 支付金额
+status: draft

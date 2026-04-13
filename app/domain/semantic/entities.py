@@ -26,6 +26,11 @@ class DimensionDef(BaseModel):
     title: str
     type: Literal["string", "number", "time", "boolean"]
     sql: str
+    description: Optional[str] = None
+    source_data_type: Optional[str] = None
+    format: Optional[str] = None
+    synonyms: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
     primary_key: bool = False
     foreign_key: Optional[ForeignKeyDef] = None
     enum: Optional[Dict[Union[int, str], str]] = None
@@ -37,6 +42,9 @@ class MeasureDef(BaseModel):
     type: Literal["count", "count_distinct", "sum", "avg", "min", "max", "number"]
     sql: str
     description: Optional[str] = None
+    source_data_type: Optional[str] = None
+    synonyms: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
     certified: bool = False
     format: Optional[str] = None
     unit: Optional[str] = None
@@ -82,6 +90,9 @@ class CubeDefinition(BaseModel):
     source_id: Optional[int] = None
     source_database: Optional[str] = None
     source_schema: Optional[str] = None
+    source_sql: Optional[str] = None
+    source_dataset_id: Optional[int] = None
+    source_dataset_type: Optional[str] = None
     data_source: str = "maxcompute"
     status: Literal["draft", "active", "deprecated"] = "active"
     grain: Optional[str] = None

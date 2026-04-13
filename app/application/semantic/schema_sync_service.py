@@ -128,6 +128,9 @@ class SchemaSyncService:
 
     def _check_cube(self, cube: CubeDefinition, report: SyncReport) -> bool:
         """返回 True 表示成功检查，False 表示跳过"""
+        if cube.source_sql:
+            report.skipped_cubes.append(cube.name)
+            return False
         inspector = self._resolve_inspector(cube)
         try:
             physical_cols = inspector.get_table_columns(cube.table)

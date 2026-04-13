@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-03
+last_reviewed: 2026-04-13
 ---
 
 # 技术栈与架构说明
@@ -142,6 +142,74 @@ app/
 
 这是典型的 `Hexagonal Architecture + DDD + CQRS 风格拆分`。
 
+### 4.1 双层语义架构补充
+
+当前平台在原有 `Cube` 分析语义层之上，新增了收缩版业务语义层骨架（内部实现为 `Ontology`），以及三类最小中间能力：
+
+- `业务语义层（内部实现为 Ontology Layer）`
+  - `BusinessObject`
+  - `BusinessProperty`
+  - `BusinessMetric`
+  - `Glossary / Alias`
+- `对齐检查（内部实现为 Semantic Mapper）`
+  - 只读投影
+  - 一致性检测
+  - stale / impact 告警
+- `执行预览（内部实现为 Execution Compiler Preview）`
+  - 伪 SQL 与执行计划预览
+- `语义路由与执行规划（内部实现为 Semantic Router / Planner）`
+  - 基于对象、关系、动作、业务指标和最小意图词的多意图路由
+  - 输出 `cube / knowledge / hybrid / tool / blocked` 路由结果
+  - 输出 `planning_mode`、多步 planning steps、`dependencies`、`expected_outputs` 与最小可回溯执行计划
+  - 已补入最小真实执行入口：`/api/v1/semantic-router/execute-plan`
+- `Metric Federation`
+  - `BusinessMetric -> Measure / Cube` 双向追踪
+  - `Measure -> BusinessMetric` 反向引用查询
+  - `Cube -> Object / Metric` 反向引用查询
+  - Measure 引用 stale 检测与一致性摘要
+- `Relation / Action Projection Preview`
+  - `BusinessRelation -> Join Path`
+  - `BusinessAction -> Event Fact Cubes`
+  - 关系/动作投影的最小 stale 校验
+- `统一执行预览（内部实现为 Execution Compiler）`
+  - 统一预览 `SQL / Retrieval / Tool Call`
+  - 统一输出执行预览与计划预览结构
+  - 已补入最小运行时入口：`/api/v1/execution-compiler/execute`
+  - 当前支持 `SQL / Retrieval / Tool` 的最小真实执行，其中 `Tool` 仅开放只读工具链
+  - `execute` 会附带统一 `governance_trace` 与 `audit_trace_id`，记录命中策略、角色、目标与执行状态
+- `语义权限（内部实现为 Policy Metadata）`
+  - 支持对象 / 动作 / 业务指标的最小语义权限声明
+  - 语义路由与执行预览可基于 `viewer_roles` 返回 `allow / blocked`
+  - `Policy Impact` 可汇总受影响分析实体、治理挂点状态与当前问题清单
+
+当前前端已把这条主链收口到两个工作台的最小联动：
+
+- `业务语义工作台` 可从对象投影视图直接跳到 `语义工作台 / Cube 管理`
+- `语义工作台` 可从 Cube 标题区回看来源业务对象
+- stale / impact 告警已在 `业务语义工作台` 收口为可定位的实体提示
+- `业务语义工作台` 的对象 / 关系 / 动作 / 业务指标页已接入运行时路由预演，可直接展示 `route_type`、`planning_mode`、多意图命中结果、planning steps 与 traceability
+- `业务语义工作台` 的权限页已支持影响范围说明和真实治理挂点预演，可直接展示 `viewer_roles` 在语义路由与执行预览上的 `allow / blocked` 结果与原因
+- `业务语义工作台` 的权限页已接入 `Policy Impact` 治理影响总览，可集中查看受影响的 Cube / Measure / Event Cube、治理挂点状态与当前问题列表
+- `业务语义工作台` 的业务指标页与权限页已接入统一执行预览，可直接查看编译产物、Bindings、Traceability 与执行计划
+- `业务语义工作台` 的权限页已接入“最近治理执行结果”卡片，可直接查看真实执行下的 `governance_trace`、命中策略与执行状态
+- `业务语义工作台` 已补入统一的“发布 / 影响 / 历史”面板，可直接消费 `/publish`、`/impact`、`/history` 结果
+- `业务语义工作台` 的权限页已补入“最近审计记录”，可直接查看 `/api/v1/ontology/policies/<name>/audit` 返回的策略命中历史
+- `业务语义工作台` 的治理链已可回看 `/api/v1/governance/audit-traces` 返回的最近审计记录列表，并支持按 `decision / route_type` 做最小筛选
+- `业务语义工作台` 的“发布 / 影响 / 历史”面板已补入最近一次发布失败的内联反馈，发布阻断不再只通过 toast 呈现
+- `业务语义工作台` 已补入订单域模板预览与一键应用入口，可直接消费 `/api/v1/ontology/templates/order-domain` 与 `/apply`，快速生成订单域对象、属性、业务指标、关系、动作、术语与权限基线
+- 智能问数后端消息主链已优先尝试走语义路由与统一执行运行时，仅在未命中或执行失败时回退 Agent / 传统 LLM
+- `DataChat` 已开始消费对话上下文中的 `semantic_plan`，在聊天头部展示当前回答的语义执行来源、命中业务指标/对象与分析实体
+- `Cube` 激活时已补入最小业务语义优先准入校验：对 `certified=true` 的 Measure，必须存在至少一个 `BusinessMetric.measure_refs` 反向引用
+- 业务语义资产发布链已收紧：业务指标、关系、动作、权限在发布前会额外校验依赖对象是否已激活、是否具备最小投影依据，校验失败会直接阻断发布
+
+当前阶段明确不做：
+
+- 独立 Mapping 工作台
+- 完整 Policy 执行引擎
+
+这意味着平台当前采用的是“业务语义真相源 + 分析执行真相源 + 只读投影与预览 + 最小路由骨架 + 最小统一执行编译层”的收缩版双层语义架构。
+当前已进入 Phase 7/8 的最小落地区间：在保持对齐检查只读投影定位不变的前提下，平台已经具备 `Metric Federation`、`Relation / Action Projection Preview`、最小语义路由、统一执行预览与最小运行时执行，以及最小语义权限、`governance_trace`、`audit_trace`、发布/影响/历史查询链和订单域模板基线；但尚未进入完整 Agent 运行时、平台级审计中心、脱敏/血缘联动与最终产品化阶段。
+
 ## 5. 前端结构
 
 ```text
@@ -178,7 +246,7 @@ frontend/src/
 
 - 首页工作台不再由前端拼装多组统计请求，统一消费 `/api/v1/dashboard/overview`
 - 查询分析旧子页和语义中心旧别名路由只保留兼容重定向，不再作为主 IA
-- 语义中心当前以 `/semantic/workbench` 作为唯一开发主场：无对象时展示 AI 建模起始页，有对象时进入 `建模 / 预览 / YAML / PY` 对象态工作区
+- 语义中心当前以 `/semantic/workbench` 作为唯一开发主场：无对象时展示资源浏览 + AI 建模起始页；有对象时进入 Databricks 风格三栏工作台，UI 主分区为 `Preview / Measures / Dimensions / Filters / Joins`，并继续保留 `YAML / PY` 高级视图
 - `/semantic/cubes` 当前回归为语义资产管理页，默认聚焦已发布与已废弃对象，通过详情抽屉承接“发起修订”和“去工作台查看”
 - `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 与 `/semantic/tools` 只保留兼容重定向，实际都会回流到 `/semantic/workbench`
 
@@ -204,6 +272,10 @@ frontend/src/
 - `/api/v1/conversations`
 - `/api/v1/files`
 - `/api/v1/semantic`
+- `/api/v1/ontology`
+- `/api/v1/semantic-mapper`
+- `/api/v1/semantic-router`
+- `/api/v1/execution-compiler`
 - `/api/v1/apps`
 - `/api/v1/app-instances`
 - `/api/v1/app-executions`
@@ -217,6 +289,50 @@ frontend/src/
 - 数据中心 API 使用 `/api/v1/data-center/*`
 - 首页工作台聚合 API 使用 `/api/v1/dashboard/overview`
 - 登录页通过 `/api/v1/auth/login` 和 `/api/v1/auth/feishu/*`
+- 业务语义 / 对齐检查 / 执行预览相关接口当前分别承接：
+  - `/api/v1/ontology/*`：业务对象、属性、业务指标、术语注册与读取
+  - `/api/v1/ontology/policies`：最小语义权限定义与查询
+  - `/api/v1/semantic-mapper/*`：只读投影预览、一致性报告、stale 检查、Measure 反向引用
+  - `/api/v1/semantic-router/*`：最小语义路由、执行路径规划与回溯预览
+  - `/api/v1/execution-compiler/*`：统一的 SQL / Retrieval / Tool 执行预览、计划预览与最小运行时执行
+- `/semantic/ontology`：业务语义工作台前端首期版本，已覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模与投影预览
+
+其中与 Phase 2 直接相关的已实现接口包括：
+
+- `/api/v1/ontology/metrics/<name>/links`
+- `/api/v1/semantic-mapper/measure-backlinks`
+
+与 Phase 3 直接相关的已实现接口包括：
+
+- `/api/v1/ontology/relations`
+- `/api/v1/ontology/actions`
+
+与 Phase 4 直接相关的已实现接口包括：
+
+- `/api/v1/semantic-router/route`
+- `/api/v1/semantic-router/plan`
+- `/api/v1/semantic-router/execute-plan-preview`
+- `/api/v1/semantic-router/execute-plan`
+- 其中 `plan` 结构已稳定化，补齐 `dependencies / expected_outputs / execution_targets / step_key`
+
+与 Phase 5 直接相关的已实现接口包括：
+
+- `/api/v1/execution-compiler/compile-preview`
+- `/api/v1/execution-compiler/plan-preview`
+- `/api/v1/execution-compiler/execute`
+- `业务语义工作台` 运行时面板已接入 `execute-plan`，可查看最近执行结果、审计记录与执行回溯
+- `/api/v1/ontology/<entity>/<name>/publish`
+- `/api/v1/ontology/<entity>/<name>/impact`
+- `/api/v1/ontology/<entity>/<name>/history`
+- `/api/v1/ontology/policies/<name>/audit`
+- `/api/v1/governance/audit-traces`
+- `/api/v1/governance/audit-traces/<id>`
+
+与 Phase 6 直接相关的已实现接口包括：
+
+- `/api/v1/ontology/policies`
+- `/api/v1/semantic-router/route`：支持按 `viewer_roles` 做对象 / 动作 / 业务指标的最小权限阻断
+- `/api/v1/execution-compiler/compile-preview`：支持按 `viewer_roles` 返回 `allow / blocked`
 
 ## 7. 语义层落地方式
 

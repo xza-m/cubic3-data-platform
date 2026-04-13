@@ -1,0 +1,8 @@
+name: gmv_policy
+target_type: metric
+target_name: gmv
+visibility: restricted
+allowed_roles:
+- finance
+description: GMV 仅财务与授权角色可见。
+status: draft

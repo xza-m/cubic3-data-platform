@@ -1,0 +1,10 @@
+name: pay
+title: 支付
+object_name: order
+trigger_time_property: pay_time
+description: 订单完成支付的关键动作，用于事件事实和口径解释。
+event_cube_refs:
+- payment_events
+aliases:
+- 完成支付
+status: draft

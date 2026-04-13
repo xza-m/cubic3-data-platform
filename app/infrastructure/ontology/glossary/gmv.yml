@@ -1,0 +1,7 @@
+term: 成交额
+canonical_name: gmv
+entry_type: metric
+aliases:
+- GMV
+description: 订单域中最常用的经营指标术语。
+status: draft

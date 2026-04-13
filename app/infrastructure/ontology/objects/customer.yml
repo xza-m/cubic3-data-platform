@@ -1,0 +1,7 @@
+name: customer
+title: 客户
+description: 订单域中的客户对象，用于描述提交订单的业务主体。
+aliases:
+- 用户
+- 购买用户
+status: draft

@@ -228,6 +228,23 @@ def mock_modeling_service():
 
 
 @pytest.fixture
+def mock_modeling_source_service():
+    service = MagicMock()
+    service.generate_cube_draft_from_source.return_value = {
+        "name": "orders_draft",
+        "title": "Orders Draft",
+        "table": "ods.orders",
+        "domain_id": "academic",
+        "source_id": 1,
+        "source_database": "mock_project",
+        "status": "draft",
+        "dimensions": {"id": {"title": "ID", "type": "string", "sql": "{CUBE}.id"}},
+        "measures": {"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+    }
+    return service
+
+
+@pytest.fixture
 def mock_domain_modeling_service():
     service = MagicMock()
     service.list_domains.return_value = [
@@ -321,7 +338,7 @@ def mock_domain_canvas_service():
 
 
 @pytest.fixture
-def semantic_client(mock_semantic_service, mock_dataset_repo, mock_dataset_handler, mock_publish_service, mock_modeling_service, mock_domain_modeling_service, mock_domain_canvas_service):
+def semantic_client(mock_semantic_service, mock_dataset_repo, mock_dataset_handler, mock_publish_service, mock_modeling_service, mock_modeling_source_service, mock_domain_modeling_service, mock_domain_canvas_service):
     """Create a minimal Flask app with only the semantic blueprint registered."""
     app = Flask(__name__)
     app.config["TESTING"] = True
@@ -330,6 +347,7 @@ def semantic_client(mock_semantic_service, mock_dataset_repo, mock_dataset_handl
         semantic_service=mock_semantic_service,
         publish_service=mock_publish_service,
         modeling_service=mock_modeling_service,
+        modeling_source_service=mock_modeling_source_service,
         domain_modeling_service=mock_domain_modeling_service,
         domain_canvas_service=mock_domain_canvas_service,
         dataset_repo=mock_dataset_repo,
@@ -368,15 +386,15 @@ class TestCubesEndpoint:
         resp = semantic_client.get("/api/v1/semantic/cubes/ghost")
         assert resp.status_code == 404
 
-    def test_draft_cube_from_table_returns_200(self, semantic_client, mock_modeling_service):
+    def test_draft_cube_from_source_returns_200(self, semantic_client, mock_modeling_source_service):
         resp = semantic_client.post(
-            "/api/v1/semantic/cubes/draft-from-table",
-            json={"source_id": 1, "database": "mock_project", "table": "orders"},
+            "/api/v1/semantic/cubes/draft-from-source",
+            json={"source_kind": "physical_table", "source_id": 1, "database": "mock_project", "table": "orders"},
         )
         assert resp.status_code == 200
         data = resp.get_json()["data"]
         assert data["status"] == "draft"
-        mock_modeling_service.generate_cube_draft.assert_called_once()
+        mock_modeling_source_service.generate_cube_draft_from_source.assert_called_once()
 
     def test_create_cube_returns_201(self, semantic_client, mock_modeling_service):
         resp = semantic_client.post(

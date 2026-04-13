@@ -1,0 +1,8 @@
+name: order_status
+title: 订单状态
+object_name: order
+property_type: enum
+description: 订单当前状态，例如待支付、已支付、已退款。
+aliases:
+- 状态
+status: draft

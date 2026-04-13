@@ -36,6 +36,11 @@ from .interfaces.api.v1.subscriptions import app_instance_subscriptions_bp
 
 # 语义层 API v1
 from .interfaces.api.v1.semantic import create_semantic_blueprint
+from .interfaces.api.v1.ontology import create_ontology_blueprint
+from .interfaces.api.v1.semantic_mapper import create_semantic_mapper_blueprint
+from .interfaces.api.v1.semantic_router import create_semantic_router_blueprint
+from .interfaces.api.v1.execution_compiler import create_execution_compiler_blueprint
+from .interfaces.api.v1.governance import create_governance_blueprint
 
 from .infrastructure.scheduler import init_jobs
 
@@ -131,11 +136,30 @@ def create_app(role: str = "web") -> Flask:
             semantic_service=container.semantic_service(),
             publish_service=container.view_publish_service(),
             modeling_service=container.cube_modeling_service(),
+            modeling_source_service=container.cube_modeling_source_service(),
             domain_modeling_service=container.domain_modeling_service(),
             domain_canvas_service=container.domain_canvas_service(),
             dataset_repo=container.dataset_repository(),
             dataset_handler=container.create_dataset_handler(),
             registry_repo=container.semantic_registry_repository(),
+        ))
+        app.register_blueprint(create_ontology_blueprint(
+            container.ontology_definition_service(),
+            container.semantic_mapper_preview_service(),
+            container.ontology_audit_trace_repository(),
+        ))
+        app.register_blueprint(create_semantic_mapper_blueprint(
+            container.semantic_mapper_preview_service(),
+        ))
+        app.register_blueprint(create_execution_compiler_blueprint(
+            container.execution_compiler_preview_service(),
+            container.execution_compiler_runtime_service(),
+        ))
+        app.register_blueprint(create_semantic_router_blueprint(
+            container.semantic_router_preview_service(),
+        ))
+        app.register_blueprint(create_governance_blueprint(
+            container.ontology_audit_trace_repository(),
         ))
 
         # 全局错误处理器

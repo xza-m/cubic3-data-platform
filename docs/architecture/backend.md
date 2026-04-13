@@ -106,6 +106,16 @@ last_reviewed: 2026-03-24
 
 它们通过 `semantic.py` blueprint 暴露能力，并通过 YAML 仓储和数据集仓储协同工作。
 
+### CubeModelingService 维度/指标自动识别
+
+当前 `CubeModelingService._build_dimensions()` / `_build_measures()` 使用**基于规则的启发式算法**自动推断维度和指标：
+
+- **正向命中制**: 只有字段名后缀或注释命中「可度量语义」（如 `_amount`, `_count`, `_rate`, `金额`, `数量`, `比率`）的数值字段才被标记为 Measure；其余数值字段归入 Dimension
+- **反向排除**: 字段注释含 `ID`, `状态`, `类型`, `编码`, `分类` 等关键词的数值字段不会被误判为 Measure
+- 分区字段自动排除
+
+**已知局限**: 纯规则方案无法覆盖所有业务语义。**后续可引入 LLM 辅助生成**：将 `table_schema`（字段名、类型、注释）作为 prompt context 传入 LLM，让模型返回结构化的 `{dimensions: [...], measures: [...]}` JSON，再由 `CubeModelingService` 校验和落库。这一方案依赖语义层稳定性和 LLM 集成就绪后实施。
+
 ## 8. 变更规则
 
 涉及后端架构变更时，至少同步检查这些文档：

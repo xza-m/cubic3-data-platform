@@ -1,0 +1,9 @@
+name: customer_submits_order
+title: 客户下单
+source_object_name: customer
+target_object_name: order
+relation_type: submits
+description: 客户对订单发起下单行为，是订单域最核心的对象关系。
+aliases:
+- 客户提交订单
+status: draft

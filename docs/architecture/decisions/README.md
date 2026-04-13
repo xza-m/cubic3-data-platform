@@ -24,3 +24,6 @@ last_reviewed: 2026-03-24
 - [ADR-004 语义中心采用固定的工作台页面模型，而非资源优先导航](ADR-004-semantic-workbench-page-model.md)
 - [ADR-005 HTTP API 采用按业务域分组的 `/api/v1` 契约边界](ADR-005-domain-oriented-api-boundary.md)
 - [ADR-006 应用中心与配置中心保持职责分离，通过实例与订阅关联](ADR-006-app-center-config-center-separation.md)
+- [ADR-007 Semantic Mapper 只承担只读投影与一致性检测](ADR-007-semantic-mapper-read-only-projection.md)
+- [ADR-008 BusinessMetric 采用语义公式而非执行公式](ADR-008-business-metric-semantic-formula.md)
+- [ADR-009 第一阶段引入最小 Execution Compiler Preview 验证闭环](ADR-009-minimal-execution-compiler-preview.md)

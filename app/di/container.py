@@ -99,6 +99,7 @@ from app.application.services.dashboard.overview_service import DashboardOvervie
 # Application - Semantic Layer
 from app.application.semantic.metric_semantics_service import MetricSemanticsService
 from app.application.semantic.cube_modeling_service import CubeModelingService
+from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
@@ -106,11 +107,26 @@ from app.application.semantic.semantic_query_service import SemanticQueryService
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
 from app.application.semantic.semantic_service import SemanticLayerService
 from app.application.semantic.view_publish_service import ViewPublishService
+from app.application.ontology.definition_service import OntologyDefinitionService
+from app.application.ontology.policy_guard_service import PolicyGuardService
+from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
+from app.application.semantic_router.preview_service import SemanticRouterPreviewService
+from app.application.execution_compiler.preview_service import ExecutionCompilerPreviewService
+from app.application.execution_compiler.runtime_service import ExecutionCompilerRuntimeService
 from app.infrastructure.semantic.yaml_catalog_repository import YamlCatalogRepository
 from app.infrastructure.semantic.yaml_cube_repository import YamlCubeRepository
 from app.infrastructure.semantic.yaml_domain_repository import YamlDomainRepository
 from app.infrastructure.semantic.yaml_view_repository import YamlViewRepository
 from app.infrastructure.semantic.yaml_recipe_repository import YamlRecipeRepository
+from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
+from app.infrastructure.ontology.yaml_action_repository import YamlBusinessActionRepository
+from app.infrastructure.ontology.yaml_audit_trace_repository import YamlGovernanceAuditTraceRepository
+from app.infrastructure.ontology.yaml_history_repository import YamlOntologyHistoryRepository
+from app.infrastructure.ontology.yaml_metric_repository import YamlBusinessMetricRepository
+from app.infrastructure.ontology.yaml_object_repository import YamlBusinessObjectRepository
+from app.infrastructure.ontology.yaml_policy_repository import YamlPolicyMetadataRepository
+from app.infrastructure.ontology.yaml_property_repository import YamlBusinessPropertyRepository
+from app.infrastructure.ontology.yaml_relation_repository import YamlBusinessRelationRepository
 
 # Infrastructure - Conversation Repositories
 from app.infrastructure.repositories.conversation_repository import ConversationRepository, MessageRepository
@@ -269,6 +285,10 @@ class Container(containers.DeclarativeContainer):
         _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
         "infrastructure", "semantic",
     )
+    _ontology_base = _os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+        "infrastructure", "ontology",
+    )
 
     cube_repository = providers.Singleton(
         YamlCubeRepository,
@@ -293,6 +313,51 @@ class Container(containers.DeclarativeContainer):
     catalog_repository = providers.Singleton(
         YamlCatalogRepository,
         catalogs_dir=_os.path.join(_semantic_base, "catalogs"),
+    )
+
+    ontology_object_repository = providers.Singleton(
+        YamlBusinessObjectRepository,
+        objects_dir=_os.path.join(_ontology_base, "objects"),
+    )
+
+    ontology_property_repository = providers.Singleton(
+        YamlBusinessPropertyRepository,
+        properties_dir=_os.path.join(_ontology_base, "properties"),
+    )
+
+    ontology_metric_repository = providers.Singleton(
+        YamlBusinessMetricRepository,
+        metrics_dir=_os.path.join(_ontology_base, "metrics"),
+    )
+
+    ontology_relation_repository = providers.Singleton(
+        YamlBusinessRelationRepository,
+        relations_dir=_os.path.join(_ontology_base, "relations"),
+    )
+
+    ontology_action_repository = providers.Singleton(
+        YamlBusinessActionRepository,
+        actions_dir=_os.path.join(_ontology_base, "actions"),
+    )
+
+    ontology_glossary_repository = providers.Singleton(
+        YamlGlossaryRepository,
+        glossary_dir=_os.path.join(_ontology_base, "glossary"),
+    )
+
+    ontology_policy_repository = providers.Singleton(
+        YamlPolicyMetadataRepository,
+        policies_dir=_os.path.join(_ontology_base, "policies"),
+    )
+
+    ontology_history_repository = providers.Singleton(
+        YamlOntologyHistoryRepository,
+        history_dir=_os.path.join(_ontology_base, "history"),
+    )
+
+    ontology_audit_trace_repository = providers.Singleton(
+        YamlGovernanceAuditTraceRepository,
+        audit_dir=_os.path.join(_ontology_base, "audit_traces"),
     )
 
     metric_semantics_service = providers.Singleton(MetricSemanticsService)
@@ -400,6 +465,14 @@ class Container(containers.DeclarativeContainer):
         runtime_binding_service=semantic_runtime_binding_service,
         definition_service=semantic_definition_service,
         registry_repo=semantic_registry_repository,
+        metric_repository=ontology_metric_repository,
+    )
+
+    cube_modeling_source_service = providers.Singleton(
+        CubeModelingSourceService,
+        cube_modeling_service=cube_modeling_service,
+        dataset_repository=dataset_repository,
+        datasource_repository=datasource_repository,
     )
 
     domain_modeling_service = providers.Singleton(
@@ -427,6 +500,52 @@ class Container(containers.DeclarativeContainer):
         view_repo=view_repository,
     )
 
+    ontology_definition_service = providers.Singleton(
+        OntologyDefinitionService,
+        object_repository=ontology_object_repository,
+        property_repository=ontology_property_repository,
+        metric_repository=ontology_metric_repository,
+        glossary_repository=ontology_glossary_repository,
+        relation_repository=ontology_relation_repository,
+        action_repository=ontology_action_repository,
+        policy_repository=ontology_policy_repository,
+        history_repository=ontology_history_repository,
+    )
+
+    ontology_policy_guard_service = providers.Singleton(
+        PolicyGuardService,
+        policy_repository=ontology_policy_repository,
+    )
+
+    semantic_mapper_preview_service = providers.Singleton(
+        SemanticMapperPreviewService,
+        object_repository=ontology_object_repository,
+        metric_repository=ontology_metric_repository,
+        glossary_repository=ontology_glossary_repository,
+        relation_repository=ontology_relation_repository,
+        action_repository=ontology_action_repository,
+        cube_repository=cube_repository,
+    )
+
+    execution_compiler_preview_service = providers.Singleton(
+        ExecutionCompilerPreviewService,
+        metric_repository=ontology_metric_repository,
+        cube_repository=cube_repository,
+        policy_guard_service=ontology_policy_guard_service,
+    )
+
+    semantic_router_preview_service = providers.Singleton(
+        SemanticRouterPreviewService,
+        object_repository=ontology_object_repository,
+        metric_repository=ontology_metric_repository,
+        glossary_repository=ontology_glossary_repository,
+        relation_repository=ontology_relation_repository,
+        action_repository=ontology_action_repository,
+        mapper_preview_service=semantic_mapper_preview_service,
+        compiler_preview_service=execution_compiler_preview_service,
+        policy_guard_service=ontology_policy_guard_service,
+    )
+
     tool_registry = providers.Singleton(
         ToolRegistry,
         knowledge_service=knowledge_service,
@@ -446,6 +565,18 @@ class Container(containers.DeclarativeContainer):
         ExecuteQueryHandler,
         query_repository=query_repository,
         datasource_repository=datasource_repository
+    )
+
+    execution_compiler_runtime_service = providers.Singleton(
+        ExecutionCompilerRuntimeService,
+        preview_service=execution_compiler_preview_service,
+        execute_query_handler_factory=execute_query_handler.provider,
+        knowledge_service=knowledge_service,
+        semantic_service=semantic_service,
+        audit_trace_repository=ontology_audit_trace_repository,
+    )
+    semantic_router_preview_service.add_kwargs(
+        runtime_service=execution_compiler_runtime_service,
     )
     
     execute_sql_preview_handler = providers.Factory(
@@ -785,7 +916,8 @@ class Container(containers.DeclarativeContainer):
         conversation_repository=conversation_repository,
         message_repository=message_repository,
         dataset_repository=dataset_repository,
-        llm_service=llm_service
+        llm_service=llm_service,
+        semantic_router_service=semantic_router_preview_service,
     )
     
     # Queries

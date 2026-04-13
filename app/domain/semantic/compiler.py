@@ -213,7 +213,7 @@ class QueryCompiler:
             order_by_parts.append(f"`{alias}` {direction.upper()}")
 
         # ── 组装 SQL ──
-        from_clause = f"{primary.table} {primary.name}"
+        from_clause = f"{self._source_relation(primary)} {primary.name}"
         join_clauses: List[str] = []
         for edge in join_edges:
             target_cube = cubes[edge.target]
@@ -227,7 +227,7 @@ class QueryCompiler:
             on_parts = [self._resolve_join_sql(edge.join_def.sql, edge.source, cubes)]
             on_parts.extend(join_on_parts.get(edge.target, []))
             on_expr = " AND ".join(on_parts)
-            join_clauses.append(f"  {jt} {target_cube.table} {target_cube.name} ON {on_expr}")
+            join_clauses.append(f"  {jt} {self._source_relation(target_cube)} {target_cube.name} ON {on_expr}")
 
         limit_val = dsl.limit or self._dialect.default_limit()
 
@@ -298,6 +298,15 @@ class QueryCompiler:
             cube_name = dsl.dimensions[0].split(".")[0]
             return cubes[cube_name]
         raise CompilationError("DSL must have at least one measure or dimension")
+
+    @staticmethod
+    def _source_relation(cube: CubeDefinition) -> str:
+        source_sql = str(cube.source_sql or "").strip()
+        if source_sql:
+            if source_sql.endswith(";"):
+                source_sql = source_sql[:-1].rstrip()
+            return f"(\n{source_sql}\n)"
+        return cube.table
 
     @staticmethod
     def _parse_ref(ref: str) -> Tuple[str, str]:

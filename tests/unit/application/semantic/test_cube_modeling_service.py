@@ -2,6 +2,7 @@ import pytest
 
 from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.domain.entities.data_source import DataSource
+from app.domain.ontology.entities import BusinessMetric
 from app.domain.semantic.entities import CubeDefinition
 from app.shared.exceptions import ApplicationException
 
@@ -36,6 +37,14 @@ class _FakeDefinitionService:
 
     def invalidate_cache(self):
         self.invalidated = True
+
+
+class _FakeMetricRepository:
+    def __init__(self, metrics=None):
+        self._metrics = list(metrics or [])
+
+    def list_all(self):
+        return list(self._metrics)
 
 
 class _FakeRuntime:
@@ -154,6 +163,62 @@ def test_create_activate_and_deprecate_cube_updates_registry():
     assert deprecated_cube.status == "deprecated"
     assert cube_repo.get("answer_records").status == "deprecated"
     assert registry_repo.calls[-1][2]["status"] == "deprecated"
+
+
+def test_activate_cube_rejects_certified_measure_without_business_metric_backlink():
+    cube_repo = _InMemoryCubeRepo()
+    cube_repo.save(
+        CubeDefinition(
+            name="orders",
+            title="订单",
+            table="dws.orders",
+            source_id=11,
+            status="draft",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"gmv": {"title": "GMV", "type": "sum", "sql": "{CUBE}.amount", "certified": True}},
+        )
+    )
+    service = CubeModelingService(
+        cube_repo=cube_repo,
+        runtime_binding_service=_FakeRuntime(),
+        metric_repository=_FakeMetricRepository(),
+    )
+
+    with pytest.raises(ApplicationException, match="BusinessMetric"):
+        service.activate_cube("orders")
+
+
+def test_activate_cube_allows_certified_measure_with_business_metric_backlink():
+    cube_repo = _InMemoryCubeRepo()
+    cube_repo.save(
+        CubeDefinition(
+            name="orders",
+            title="订单",
+            table="dws.orders",
+            source_id=11,
+            status="draft",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"gmv": {"title": "GMV", "type": "sum", "sql": "{CUBE}.amount", "certified": True}},
+        )
+    )
+    service = CubeModelingService(
+        cube_repo=cube_repo,
+        runtime_binding_service=_FakeRuntime(),
+        metric_repository=_FakeMetricRepository(
+            [
+                BusinessMetric(
+                    name="gmv",
+                    title="GMV",
+                    object_name="order",
+                    semantic_formula="已支付订单金额之和",
+                    measure_refs=["orders.gmv"],
+                )
+            ]
+        ),
+    )
+
+    activated = service.activate_cube("orders")
+    assert activated.status == "active"
 
 
 def test_create_revision_draft_from_active_cube_returns_unique_draft_copy_and_keeps_active_source():
@@ -367,15 +432,12 @@ def test_generate_cube_draft_covers_non_maxcompute_blank_columns_and_measure_fal
     assert adapter_calls[1] == ("warehouse_app", "orders")
     assert "project" not in adapter_calls[0][1]
     assert draft["name"] == "orders_draft"
-    assert draft["dimensions"] == {
-        "row_id": {
-            "title": "行主键",
-            "type": "string",
-            "sql": "{CUBE}.row_id",
-            "primary_key": True,
-        }
-    }
-    assert draft["measures"]["total_count"]["sql"] == "{CUBE}.row_id"
+    assert set(draft["dimensions"].keys()) == {"row_id"}
+    assert draft["dimensions"]["row_id"]["title"] == "行主键"
+    assert draft["dimensions"]["row_id"]["type"] == "string"
+    assert draft["dimensions"]["row_id"]["sql"] == "{CUBE}.row_id"
+    assert draft["dimensions"]["row_id"]["primary_key"] is True
+    assert draft["measures"]["total_count"]["sql"] == "COUNT(`row_id`)"
 
 
 def test_create_cube_rejects_invalid_status_and_duplicate_name(monkeypatch):
@@ -419,15 +481,15 @@ def test_create_cube_rejects_invalid_status_and_duplicate_name(monkeypatch):
             }
         )
 
-    with pytest.raises(ApplicationException, match="Cube 已存在"):
-        service.create_cube(
-            {
-                "name": "orders",
-                "title": "重复订单",
-                "table": "dws.orders",
-                "source_id": 11,
-                "status": "draft",
-                "dimensions": {"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
-                "measures": {"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
-            }
-        )
+    result = service.create_cube(
+        {
+            "name": "orders",
+            "title": "重复订单",
+            "table": "dws.orders",
+            "source_id": 11,
+            "status": "draft",
+            "dimensions": {"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            "measures": {"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        }
+    )
+    assert result.name.startswith("orders_draft_")

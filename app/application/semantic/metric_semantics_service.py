@@ -14,7 +14,11 @@ class MetricSemanticsService:
             "name": name,
             "title": measure.title,
             "type": measure.type,
+            "sql": getattr(measure, "sql", None),
             "description": measure.description,
+            "source_data_type": getattr(measure, "source_data_type", None),
+            "synonyms": list(getattr(measure, "synonyms", []) or []),
+            "tags": list(getattr(measure, "tags", []) or []),
             "certified": bool(getattr(measure, "certified", False)),
         }
         if getattr(measure, "format", None):

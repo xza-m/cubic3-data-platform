@@ -53,9 +53,9 @@ last_reviewed: 2026-03-26
 - `DevTools`
 - `ViewDetail`
 
-当前主路由中，`/semantic/workbench`、`/semantic/cubes`、`/semantic/domains`、`/semantic/modeling`、`/semantic/domains/:id`、`/semantic/views/:name` 构成在线主 IA；`/semantic/cubes/new`、`/semantic/cubes/:name/edit` 进入 `RelationCanvas`，`/semantic/cubes/:name` 只保留到编辑页的兼容重定向，旧 `Overview`、`Playground`、`CubeDetail` 等页面不再作为在线主入口。
+当前主路由中，`/semantic/workbench`、`/semantic/cubes`、`/semantic/domains`、`/semantic/modeling`、`/semantic/domains/:id`、`/semantic/views/:name` 构成在线主 IA；`/semantic/cubes/new`、`/semantic/cubes/:name/edit` 已统一回流到 `/semantic/workbench`，`/semantic/cubes/:name` 只保留到编辑页的兼容重定向，旧 `Overview`、`Playground`、`CubeDetail` 等页面不再作为在线主入口。
 
-这套页面模型已经稳定为“按任务类型组织”，而不是只按资源对象组织。
+这套页面模型已经稳定为“按任务类型组织”，而不是只按资源对象组织；其中 `/semantic/workbench` 当前采用三栏工作台：左栏负责资源与字段索引，中栏承载建模主任务，右栏承载属性检查与模型元信息。
 
 ## 4. 共享壳层与组件分层
 

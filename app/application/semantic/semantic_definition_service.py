@@ -377,7 +377,16 @@ class SemanticDefinitionService:
     ) -> Dict[str, Dict[str, Any]]:
         dims = {}
         for key, dim in cube.dimensions.items():
-            info: Dict[str, Any] = {"title": dim.title, "type": dim.type}
+            info: Dict[str, Any] = {
+                "title": dim.title,
+                "type": dim.type,
+                "sql": dim.sql,
+                "description": dim.description,
+                "source_data_type": dim.source_data_type,
+                "format": dim.format,
+                "synonyms": list(dim.synonyms or []),
+                "tags": list(dim.tags or []),
+            }
             if dim.enum:
                 info["enum"] = {str(enum_key): enum_val for enum_key, enum_val in dim.enum.items()}
             elif dim.enum_source:

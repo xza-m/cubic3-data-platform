@@ -222,7 +222,17 @@ def test_describe_cube_reports_binding_join_foreign_key_and_enum_issues():
         entity_key="missing_entity",
         joins={},
         dimensions={
-            "id": DimensionDef(title="ID", type="number", sql="{CUBE}.id", primary_key=True),
+            "id": DimensionDef(
+                title="ID",
+                type="number",
+                sql="{CUBE}.id",
+                description="订单主键",
+                source_data_type="bigint",
+                format="identity",
+                synonyms=["订单ID"],
+                tags=["主键"],
+                primary_key=True,
+            ),
             "status": DimensionDef(
                 title="状态",
                 type="string",
@@ -242,7 +252,17 @@ def test_describe_cube_reports_binding_join_foreign_key_and_enum_issues():
                 foreign_key=ForeignKeyDef(cube="customers", field="ghost_id"),
             ),
         },
-        measures={"total_count": MeasureDef(title="总数", type="count", sql="{CUBE}.id")},
+        measures={
+            "total_count": MeasureDef(
+                title="总数",
+                type="count",
+                sql="COUNT({CUBE}.id)",
+                description="订单总数",
+                source_data_type="bigint",
+                synonyms=["订单量"],
+                tags=["核心指标"],
+            )
+        },
         default_filters=[DefaultFilterDef(sql="{CUBE}.is_deleted = 0", description="过滤删除数据")],
     )
     cube.joins["customer"] = types.SimpleNamespace(cube="ghost_cube", type="left")
@@ -273,6 +293,17 @@ def test_describe_cube_reports_binding_join_foreign_key_and_enum_issues():
     assert "missing_join_target_cube" in kinds
     assert "missing_foreign_key_cube" in kinds
     assert "missing_foreign_key_field" in kinds
+    assert result["dimensions"]["id"]["sql"] == "{CUBE}.id"
+    assert result["dimensions"]["id"]["description"] == "订单主键"
+    assert result["dimensions"]["id"]["source_data_type"] == "bigint"
+    assert result["dimensions"]["id"]["format"] == "identity"
+    assert result["dimensions"]["id"]["synonyms"] == ["订单ID"]
+    assert result["dimensions"]["id"]["tags"] == ["主键"]
+    assert result["measures"]["total_count"]["sql"] == "COUNT({CUBE}.id)"
+    assert result["measures"]["total_count"]["description"] == "订单总数"
+    assert result["measures"]["total_count"]["source_data_type"] == "bigint"
+    assert result["measures"]["total_count"]["synonyms"] == ["订单量"]
+    assert result["measures"]["total_count"]["tags"] == ["核心指标"]
     assert result["default_filters"][0]["sql"] == "{CUBE}.is_deleted = 0"
 
 

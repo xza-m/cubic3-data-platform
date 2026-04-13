@@ -1,0 +1,6 @@
+name: order
+title: 订单
+description: 订单域核心业务对象，承载下单、支付、退款等关键行为。
+aliases:
+- 交易订单
+status: draft

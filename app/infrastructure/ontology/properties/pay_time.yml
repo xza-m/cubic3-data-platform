@@ -1,0 +1,8 @@
+name: pay_time
+title: 支付时间
+object_name: order
+property_type: time
+description: 订单完成支付的时间点。
+aliases:
+- 支付完成时间
+status: draft

@@ -90,6 +90,19 @@ class TestCubeDefinition:
                            enum={1: "简单", 2: "困难"})
         assert dim.enum[1] == "简单"
 
+    def test_dimension_accepts_synonyms_and_tags(self):
+        dim = DimensionDef(
+            title="客户",
+            type="string",
+            sql="{CUBE}.customer_id",
+            format="identity",
+            synonyms=["会员ID", "顾客ID"],
+            tags=["主键", "维度"],
+        )
+        assert dim.format == "identity"
+        assert dim.synonyms == ["会员ID", "顾客ID"]
+        assert dim.tags == ["主键", "维度"]
+
     def test_dimension_with_foreign_key(self):
         dim = DimensionDef(title="学生ID", type="string", sql="x",
                            foreign_key={"cube": "student", "field": "user_id"})
@@ -116,6 +129,17 @@ class TestCubeDefinition:
         )
         assert m.description == "已支付订单金额汇总"
         assert m.certified is True
+
+    def test_measure_accepts_synonyms_and_tags(self):
+        m = MeasureDef(
+            title="总金额",
+            type="sum",
+            sql="{CUBE}.amount",
+            synonyms=["GMV", "成交额"],
+            tags=["核心指标", "营收"],
+        )
+        assert m.synonyms == ["GMV", "成交额"]
+        assert m.tags == ["核心指标", "营收"]
 
     def test_join_defaults(self):
         j = JoinDef(cube="other", sql="a=b")

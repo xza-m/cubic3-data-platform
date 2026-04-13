@@ -44,6 +44,7 @@ def create_semantic_blueprint(
     publish_service=None,
     registry_repo=None,
     modeling_service=None,
+    modeling_source_service=None,
     domain_modeling_service=None,
     domain_canvas_service=None,
     query_adapter_getter=None,
@@ -83,6 +84,16 @@ def create_semantic_blueprint(
             runtime_binding_service=runtime_binding,
             definition_service=semantic_service._definition_service,
             registry_repo=registry_repo,
+        )
+    if modeling_source_service is None:
+        from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
+        from app.infrastructure.repositories.datasource_repository import DatasourceRepository
+        from app.extensions import db
+
+        modeling_source_service = CubeModelingSourceService(
+            cube_modeling_service=modeling_service,
+            dataset_repository=dataset_repo,
+            datasource_repository=DatasourceRepository(db.session),
         )
     if domain_modeling_service is None or domain_canvas_service is None:
         from app.application.semantic.domain_canvas_service import DomainCanvasService
@@ -175,19 +186,20 @@ def create_semantic_blueprint(
             return not_found(result["error"])
         return success(data=result)
 
-    @bp.route('/cubes/draft-from-table', methods=['POST'])
-    def draft_cube_from_table():
+    @bp.route('/cubes/draft-from-source', methods=['POST'])
+    def draft_cube_from_source():
         body = request.get_json(silent=True) or {}
-        required = ("source_id", "database", "table")
-        missing = [key for key in required if not body.get(key)]
-        if missing:
-            return error(f"请求体缺少必填字段: {', '.join(missing)}")
+        source_kind = body.get("source_kind")
+        if not source_kind:
+            return error("请求体缺少必填字段: source_kind")
         try:
-            result = modeling_service.generate_cube_draft(
-                source_id=body["source_id"],
-                database=body["database"],
-                table=body["table"],
+            result = modeling_source_service.generate_cube_draft_from_source(
+                source_kind=source_kind,
+                source_id=body.get("source_id"),
+                dataset_id=body.get("dataset_id"),
+                database=body.get("database"),
                 schema=body.get("schema"),
+                table=body.get("table"),
                 name=body.get("name"),
                 title=body.get("title"),
                 description=body.get("description"),
