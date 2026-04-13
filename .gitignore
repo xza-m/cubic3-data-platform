@@ -159,6 +159,7 @@ dmypy.json
 # Local Tooling & Agent State
 # ============================================================================
 .worktrees/
+.superpowers/
 .agent/
 .planning/debug/
 .backup/
@@ -174,9 +175,20 @@ output/
 # ============================================================================
 # Generated Semantic Test Fixtures
 # ============================================================================
+app/infrastructure/ontology/history/
 app/infrastructure/semantic/catalogs/playwright_catalog_*.yml
+app/infrastructure/semantic/catalogs/qa_catalog_*.yml
 app/infrastructure/semantic/cubes/playwright_cube_*.yml
+app/infrastructure/semantic/cubes/qa_cube_*.yml
 app/infrastructure/semantic/domains/domain_playwright_*.yml
+app/infrastructure/semantic/domains/domain_qa_*.yml
 app/infrastructure/semantic/domains/domain_debug_*.yml
 app/infrastructure/semantic/domains/domain_test*.yml
 app/infrastructure/semantic/domains/domain_[0-9]*.yml
+
+# ============================================================================
+# Local Debug Assets
+# ============================================================================
+frontend/scripts/sidebar-hover-debug.mjs
+/image.png
+/image-1.png
