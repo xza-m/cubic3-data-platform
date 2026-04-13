@@ -96,7 +96,7 @@ describe('DatasetDetail page', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: '答题汇总' })).toBeInTheDocument()
     expect(datasetDetailMocks.getDataset).toHaveBeenCalledWith(7, true)
-    expect(screen.getAllByText('answer_summary')).toHaveLength(2)
+    expect(screen.getAllByText('answer_summary')).toHaveLength(1)
     expect(screen.getByText('类型')).toBeInTheDocument()
     expect(screen.getByText('物理数据集')).toBeInTheDocument()
     expect(screen.getByText('来源')).toBeInTheDocument()
