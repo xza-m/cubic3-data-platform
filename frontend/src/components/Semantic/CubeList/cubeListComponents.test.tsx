@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
+import type { CubeSummary } from '@/api/semantic'
 import { CubeTable } from './CubeTable'
 import { CubeToolbar } from './CubeToolbar'
 
@@ -153,13 +154,19 @@ vi.mock('@/components/ui/select', () => ({
   },
 }))
 
-function makeCube(overrides: Record<string, unknown> = {}) {
+function makeCube(overrides: Partial<CubeSummary> & Record<string, unknown> = {}): CubeSummary {
   return {
     name: 'orders_cube',
     title: '订单主题',
     description: '订单事实模型',
+    table: 'mart.orders',
     status: 'draft',
     type: 'fact',
+    domain_id: 'sales',
+    domain_ids: ['sales'],
+    domains: [{ code: 'sales', name: '销售域' }],
+    dimensions: ['customer_id', 'region', 'status'],
+    measures: ['gmv', 'order_count', 'pay_count', 'refund_amount', 'discount_amount'],
     dimension_count: 3,
     measure_count: 5,
     view_count: 2,
@@ -181,7 +188,7 @@ function makeCube(overrides: Record<string, unknown> = {}) {
       },
     },
     ...overrides,
-  }
+  } as CubeSummary
 }
 
 describe('CubeList components', () => {
@@ -233,7 +240,7 @@ describe('CubeList components', () => {
     expect(screen.getByText('草稿 / 待发布 · 待检查')).toBeInTheDocument()
     expect(screen.getByText('库存主题')).toBeInTheDocument()
     expect(screen.getByText('维度模型 / 未纳入领域')).toBeInTheDocument()
-    expect(screen.getByText('活跃 / 未绑定数据源 · 未纳入领域 · 同步异常')).toBeInTheDocument()
+    expect(screen.getByText('活跃 / 未绑定数据源 · 同步异常')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '编辑 订单主题' })).toHaveAttribute(
       'href',
       '/semantic/cubes/orders_cube/edit',

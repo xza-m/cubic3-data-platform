@@ -11,6 +11,8 @@ vi.mock('./client', () => ({
 describe('dashboard api', () => {
   it('请求 dashboard overview 并返回 data 字段', async () => {
     vi.mocked(apiClient.get).mockResolvedValue({
+      code: 0,
+      message: 'ok',
       data: {
         stats: {
           datasource_total: 2,

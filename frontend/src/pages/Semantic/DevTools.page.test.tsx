@@ -699,7 +699,7 @@ describe('DevTools page', () => {
       expression: 'source.user_id = users_cube.id',
     })
 
-    const nextState = {
+    const nextState: Parameters<typeof serializeDraftState>[0] = {
       ...state,
       dimensions: [
         ...state.dimensions,
@@ -944,7 +944,7 @@ describe('DevTools page', () => {
 
     expect(renderExpressionModeLabel('form')).toBe('表单模式')
     expect(renderExpressionModeLabel('custom')).toBe('自定义模式')
-    expect(renderExpressionModeLabel('graph')).toBe('关系画布')
+    expect(renderExpressionModeLabel('canvas')).toBe('关系画布')
   })
 
   it('骨架屏保持三栏占位布局', () => {
