@@ -330,6 +330,28 @@ describe('DatasetRegister page', () => {
     })
   })
 
+  it('preview 失败时阻止进入下一步，并提示先修复元数据问题', async () => {
+    const user = userEvent.setup()
+    datasetRegisterMocks.previewDataset.mockRejectedValueOnce({
+      response: { data: { message: 'schema offline' } },
+    })
+
+    renderPage()
+
+    await screen.findByRole('option', { name: '教学 PostgreSQL (postgresql)' })
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据源' }), '1')
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据库' }), 'learning')
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据表' }), 'lesson_progress')
+    expect(await screen.findByText('元数据加载失败')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+
+    expect(datasetRegisterMocks.toast).toHaveBeenCalledWith({
+      title: '请先修复元数据加载失败问题',
+      variant: 'warning',
+    })
+  })
+
   it('在未完成前置条件时阻止继续下一步', async () => {
     const user = userEvent.setup()
 
@@ -423,6 +445,40 @@ describe('DatasetRegister page', () => {
     expect(await screen.findByText('样本预览（前 20 行）')).toBeInTheDocument()
   })
 
+  it('真实物理表未返回样本行时展示空预览提示', async () => {
+    const user = userEvent.setup()
+    datasetRegisterMocks.previewDataset.mockResolvedValueOnce({
+      data: {
+        preview_limit: 20,
+        sample_columns: [],
+        sample_rows: [],
+        fields: [
+          { physical_name: 'user_id', data_type: 'string', business_type: 'dimension', sensitivity_level: 'public' },
+        ],
+        statistics: {
+          total_fields: 1,
+          partition_fields: 0,
+          measure_fields: 0,
+          sensitive_fields: 0,
+        },
+        table_info: {
+          database: 'learning',
+          table: 'lesson_progress',
+        },
+      },
+    })
+
+    renderPage()
+
+    await screen.findByRole('option', { name: '教学 PostgreSQL (postgresql)' })
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据源' }), '1')
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据库' }), 'learning')
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据表' }), 'lesson_progress')
+
+    expect(await screen.findByText('暂无样本数据')).toBeInTheDocument()
+    expect(screen.getByText('当前物理表没有返回可展示的样本行，请确认表数据或稍后重试。')).toBeInTheDocument()
+  })
+
   it('支持完成多步骤注册并提交创建数据集', async () => {
     const user = userEvent.setup()
 
@@ -473,6 +529,42 @@ describe('DatasetRegister page', () => {
       })
     })
     expect(datasetRegisterMocks.toast).toHaveBeenCalledWith({ title: '数据集注册成功' })
+  })
+
+  it('字段识别为空时在字段步骤展示空配置提示', async () => {
+    const user = userEvent.setup()
+    datasetRegisterMocks.previewDataset.mockResolvedValueOnce({
+      data: {
+        preview_limit: 20,
+        sample_columns: ['user_id'],
+        sample_rows: [{ user_id: 'alice' }],
+        fields: [],
+        statistics: {
+          total_fields: 0,
+          partition_fields: 0,
+          measure_fields: 0,
+          sensitive_fields: 0,
+        },
+        table_info: {
+          database: 'learning',
+          table: 'lesson_progress',
+        },
+      },
+    })
+
+    renderPage()
+
+    await screen.findByRole('option', { name: '教学 PostgreSQL (postgresql)' })
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据源' }), '1')
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据库' }), 'learning')
+    await user.selectOptions(await screen.findByRole('combobox', { name: '请选择数据表' }), 'lesson_progress')
+    await screen.findByText('元数据加载成功，共 0 个字段')
+
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.type(screen.getByRole('textbox', { name: '例如: 用户订单数据集' }), '空字段数据集')
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+
+    expect(await screen.findByText('当前没有可配置字段，请先修复元数据加载问题或重新选择数据表。')).toBeInTheDocument()
   })
 
   it('在创建失败时展示 destructive 提示', async () => {

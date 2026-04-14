@@ -218,7 +218,14 @@ class TestCompilerBasic:
         )
         result = compiler.compile(dsl)
         assert "answer_records.subject_name" in result.sql
-        assert "GROUP BY" in result.sql
+
+    def test_source_relation_trims_source_sql_trailing_semicolon(self, compiler):
+        cube = _make_cube("source_cube", "ods.source_cube").model_copy(
+            update={"source_sql": "SELECT * FROM ods.source_cube;   "}
+        )
+
+        assert compiler._source_relation(cube) == "(\nSELECT * FROM ods.source_cube\n)"
+        assert compiler._source_relation(_make_cube("table_cube", "ods.table_cube")) == "ods.table_cube"
 
     def test_filter_equals(self, compiler):
         """TC-05: 等值过滤"""

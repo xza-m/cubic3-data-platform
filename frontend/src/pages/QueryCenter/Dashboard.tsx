@@ -490,13 +490,8 @@ export default function QueryCenterDashboard() {
   }
 
   const saveMutation = useMutation({
-    mutationFn: ({
-      queryId,
-      payload,
-    }: {
-      queryId?: number
-      payload: CreateQueryRequest & UpdateQueryRequest
-    }) => (queryId ? updateQuery(queryId, payload) : createQuery(payload)),
+    mutationFn: ({ queryId, payload }: { queryId?: number; payload: CreateQueryRequest & UpdateQueryRequest }) =>
+      (queryId ? updateQuery(queryId, payload) : createQuery(payload)),
     onSuccess: (_result, variables) => {
       toast({ title: variables.queryId ? '查询已更新' : '查询已保存' })
       queryClient.invalidateQueries({ queryKey: ['queries'] })

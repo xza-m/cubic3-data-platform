@@ -1,4 +1,5 @@
 import pytest
+import time
 
 from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.domain.entities.data_source import DataSource
@@ -493,3 +494,142 @@ def test_create_cube_rejects_invalid_status_and_duplicate_name(monkeypatch):
         }
     )
     assert result.name.startswith("orders_draft_")
+
+
+def test_build_cube_payload_covers_optional_fields_partition_and_measure_helpers():
+    service = CubeModelingService(
+        cube_repo=_InMemoryCubeRepo(),
+        runtime_binding_service=_FakeRuntime(),
+    )
+
+    payload = service.build_cube_draft_payload(
+        source_id=11,
+        database="warehouse_prod",
+        schema="dws",
+        table="orders",
+        columns=[
+            {"name": "id", "type": "bigint", "comment": "主键", "is_primary_key": True},
+            {"name": "success_rate", "type": "double", "comment": "成功率"},
+            {"name": "ds", "type": "string", "comment": "分区", "is_partition": True},
+            {"name": "status_code", "type": "int", "comment": "状态"},
+        ],
+        partitions=[{"name": "ds"}],
+        source_sql="select * from orders",
+        source_dataset_id=9,
+        source_dataset_type="virtual",
+    )
+
+    assert payload["source_sql"] == "select * from orders"
+    assert payload["source_dataset_id"] == 9
+    assert payload["source_dataset_type"] == "virtual"
+    assert payload["partition"]["field"] == "ds"
+    assert payload["partition"]["format"] == "yyyyMMdd"
+    assert payload["measures"]["avg_success_rate"]["type"] == "avg"
+    assert "ds" not in payload["measures"]
+
+    measures = service._build_measures(
+        [{"name": "partition_amount", "type": "double", "comment": "分区金额", "is_partition": True}],
+        {"id": {"primary_key": True}},
+    )
+    assert list(measures.keys()) == ["total_count"]
+
+    assert service._is_likely_measure("order_status", "") is False
+    assert service._is_likely_measure("is_active", "") is False
+    assert service._is_likely_measure("custom_value", "状态") is False
+    assert service._is_likely_measure("amount_total", "") is True
+    assert service._is_likely_measure("custom_field", "") is False
+
+
+def test_create_cube_revision_and_activation_cover_remaining_helper_branches(monkeypatch):
+    cube_repo = _InMemoryCubeRepo()
+    cube_repo.save(
+        CubeDefinition(
+            name="orders",
+            title="订单",
+            table="dws.orders",
+            source_id=11,
+            status="draft",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
+    cube_repo.save(
+        CubeDefinition(
+            name="orders_draft_1",
+            title="旧草稿",
+            table="dws.orders",
+            source_id=11,
+            status="draft",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
+    service = CubeModelingService(
+        cube_repo=cube_repo,
+        runtime_binding_service=_FakeRuntime(),
+    )
+    time_values = iter([1, 1])
+    monkeypatch.setattr(time, "time", lambda: next(time_values))
+
+    duplicate = service.create_cube(
+        {
+            "name": "orders",
+            "title": "重复订单",
+            "table": "dws.orders",
+            "source_id": 11,
+            "status": "draft",
+            "dimensions": {"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            "measures": {"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        }
+    )
+    assert duplicate.name == "orders_draft_2"
+
+    assert service._build_revision_draft_name("payments") == "payments__revision_draft"
+
+    cube_repo.save(
+        CubeDefinition(
+            name="payments",
+            title="支付",
+            table="dws.payments",
+            source_id=11,
+            status="active",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
+    cube_repo.save(
+        CubeDefinition(
+            name="payments__revision_draft",
+            title="支付",
+            table="dws.payments",
+            source_id=11,
+            status="draft",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
+    cube_repo.save(
+        CubeDefinition(
+            name="payments__revision_draft_2",
+            title="支付",
+            table="dws.payments",
+            source_id=11,
+            status="draft",
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
+
+    revision = service.create_revision_draft("payments")
+    assert revision.name == "payments__revision_draft_3"
+
+    activated = service.activate_cube("payments")
+    assert activated.status == "active"
+
+    metric_guarded_service = CubeModelingService(
+        cube_repo=cube_repo,
+        runtime_binding_service=_FakeRuntime(),
+        metric_repository=_FakeMetricRepository([]),
+    )
+    activated_without_certified = metric_guarded_service.activate_cube("orders")
+    assert activated_without_certified.status == "active"

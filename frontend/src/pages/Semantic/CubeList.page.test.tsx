@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -126,6 +126,9 @@ describe('CubeList page', () => {
     expect(screen.queryByText('答题记录修订草稿')).not.toBeInTheDocument()
     expect(screen.getByText('answer_records')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '查看详情' })).toBeInTheDocument()
+    const activeRow = screen.getByText('学生答题记录').closest('div[class*="border-b"]')
+    const activeStatus = within(activeRow as HTMLElement).getByText('活跃').closest('span.inline-flex')
+    expect(activeStatus).toHaveClass('bg-emerald-50', 'text-emerald-700')
   })
 
   it('搜索关键字会过滤 Cube 列表并展示空态', async () => {
@@ -184,6 +187,48 @@ describe('CubeList page', () => {
       expect(screen.getByText('草稿模型')).toBeInTheDocument()
       expect(screen.getByText('已发布模型')).toBeInTheDocument()
     })
+  })
+
+  it('非激活状态显示兜底样式，并在缺失物理表时回退为占位符', async () => {
+    const user = userEvent.setup()
+    mockCubeInventory([
+      buildCube('draft_cube', '草稿模型', {
+        status: 'draft',
+        table: '',
+      }),
+    ])
+
+    renderPage()
+
+    await screen.findByTestId('cube-management-page')
+    const [statusSelect] = screen.getAllByRole('combobox')
+    await user.click(statusSelect)
+    await user.click(screen.getByRole('option', { name: '全部状态' }))
+    expect(screen.getByText('草稿模型')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+    const draftRow = screen.getByText('草稿模型').closest('div[class*="border-b"]')
+    const draftStatus = within(draftRow as HTMLElement).getByText('草稿').closest('span.inline-flex')
+    expect(draftStatus).toHaveClass('bg-amber-50', 'text-amber-700')
+  })
+
+  it('未知状态会回退为默认文案并沿用非激活样式', async () => {
+    const user = userEvent.setup()
+    mockCubeInventory([
+      buildCube('unknown_cube', '待判定模型', {
+        status: undefined,
+      }),
+    ])
+
+    renderPage()
+
+    await screen.findByTestId('cube-management-page')
+    const [statusSelect] = screen.getAllByRole('combobox')
+    await user.click(statusSelect)
+    await user.click(screen.getByRole('option', { name: '全部状态' }))
+
+    const unknownRow = screen.getByText('待判定模型').closest('div[class*="border-b"]')
+    const unknownStatus = within(unknownRow as HTMLElement).getByText('未知').closest('span.inline-flex')
+    expect(unknownStatus).toHaveClass('bg-amber-50', 'text-amber-700')
   })
 
   it('领域筛选支持切换已分配和未分配列表', async () => {
@@ -346,5 +391,73 @@ describe('CubeList page', () => {
       'href',
       '/semantic/workbench?cube=answer_records__revision_draft&tab=modeling',
     )
+  })
+
+  it('关闭详情抽屉后会清空当前选中的 Cube', async () => {
+    const user = userEvent.setup()
+    mockCubeInventory([
+      buildCube('answer_records', '学生答题记录', {
+        status: 'active',
+      }),
+    ])
+    semanticApiMocks.describeCube.mockResolvedValue({
+      data: {
+        name: 'answer_records',
+        title: '学生答题记录',
+        description: '答题事实表',
+        table: 'answer_records',
+        domain_ids: [],
+        domains: [],
+        domain_count: 0,
+        status: 'active',
+        dimensions: {},
+        measures: {},
+        segments: {},
+        joins: {},
+      },
+    })
+
+    renderPage()
+
+    await screen.findByTestId('cube-management-page')
+    await user.click(screen.getByRole('button', { name: '学生答题记录' }))
+    await screen.findByText('基础信息')
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(screen.queryByText('基础信息')).not.toBeInTheDocument()
+    })
+  })
+
+  it('缺少标题时使用 Cube 名称作为列表入口和详情标题', async () => {
+    const user = userEvent.setup()
+    mockCubeInventory([
+      buildCube('fallback_cube', '', {
+        status: 'active',
+      }),
+    ])
+    semanticApiMocks.describeCube.mockResolvedValue({
+      data: {
+        name: 'fallback_cube',
+        title: '',
+        description: '无标题模型',
+        table: 'fallback_cube',
+        domain_ids: [],
+        domains: [],
+        domain_count: 0,
+        status: 'active',
+        dimensions: {},
+        measures: {},
+        segments: {},
+        joins: {},
+      },
+    })
+
+    renderPage()
+
+    await screen.findByTestId('cube-management-page')
+    await user.click(screen.getByRole('button', { name: 'fallback_cube' }))
+
+    expect(await screen.findByRole('heading', { name: 'fallback_cube' })).toBeInTheDocument()
   })
 })

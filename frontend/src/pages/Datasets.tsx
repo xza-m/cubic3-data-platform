@@ -96,10 +96,7 @@ export default function Datasets() {
         currentIds.includes(datasetId) ? currentIds : [...currentIds, datasetId],
       )
     },
-    onSuccess: () => {
-      toast({ title: '元数据同步已触发', description: '正在刷新数据集元数据...' })
-      queryClient.invalidateQueries({ queryKey: ['datasets'] })
-    },
+    onSuccess: () => { toast({ title: '元数据同步已触发', description: '正在刷新数据集元数据...' }); queryClient.invalidateQueries({ queryKey: ['datasets'] }) },
     onError: (error: unknown) => {
       const err = error as { response?: { data?: { message?: string } }; message?: string }
       toast({

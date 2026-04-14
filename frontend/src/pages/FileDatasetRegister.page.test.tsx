@@ -5,7 +5,11 @@ import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import FileDatasetRegister, {
+  formatFileSizeInMb,
+  getErrorMessage,
+  handleMissingFileMetadataSubmit,
   handleInvalidFileDatasetSubmit,
+  mapUploadedField,
   submitFileDatasetRegistration,
 } from './FileDatasetRegister'
 
@@ -312,6 +316,90 @@ describe('FileDatasetRegister page', () => {
     })
   })
 
+  it('缺少 fileMetadata 时会提示先上传文件', () => {
+    handleMissingFileMetadataSubmit({
+      toast: fileRegisterMocks.toast,
+    })
+
+    expect(fileRegisterMocks.toast).toHaveBeenCalledWith({
+      title: '请先上传 CSV / Excel 文件',
+      variant: 'warning',
+    })
+  })
+
+  it('文件上传辅助函数覆盖错误兜底、字段映射和体积格式化', () => {
+    expect(getErrorMessage({ response: { data: { message: '后端失败' } } }, 'fallback')).toBe('后端失败')
+    expect(getErrorMessage({ message: '网络失败' }, 'fallback')).toBe('网络失败')
+    expect(getErrorMessage({}, 'fallback')).toBe('fallback')
+
+    expect(mapUploadedField({
+      physical_name: '',
+      field_name: 'legacy_name',
+      data_type: 'string',
+      display_name: '',
+      comment: '旧字段',
+      business_type: 'dimension',
+      sensitivity_level: 'internal',
+      mask_rule: 'none',
+      confidence_score: 0.4,
+      matched_rules: ['legacy'],
+    } as never)).toEqual({
+      name: 'legacy_name',
+      type: 'string',
+      display_name: 'legacy_name',
+      comment: '旧字段',
+      business_type: 'dimension',
+      sensitivity_level: 'internal',
+      mask_rule: 'none',
+      confidence_score: 0.4,
+      matched_rules: ['legacy'],
+      auto_recognized: false,
+    })
+
+    expect(formatFileSizeInMb(undefined)).toBe('0.00 MB')
+    expect(formatFileSizeInMb(1024 * 1024 * 3.25)).toBe('3.25 MB')
+  })
+
+  it('上传成功但没有样本行时展示空预览提示', async () => {
+    const user = userEvent.setup()
+    fileRegisterMocks.uploadTabularFile.mockResolvedValueOnce({
+      file_id: 'f-empty',
+      file_name: 'empty.xlsx',
+      file_path: '/tmp/empty.xlsx',
+      file_size: 128,
+      row_count: 0,
+      uploaded_at: '2026-03-25T10:00:00Z',
+      columns: [{ name: 'student_name', type: 'string', sample_values: [] }],
+      fields: [
+        {
+          physical_name: 'student_name',
+          data_type: 'string',
+          business_type: 'dimension',
+          sensitivity_level: 'public',
+          display_name: '学生姓名',
+          comment: '空文件',
+        },
+      ],
+      preview_limit: 1,
+      sample_rows: [],
+      preview: [],
+    })
+
+    renderPage()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['student_name\n'], 'empty.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await user.upload(input, file)
+
+    await waitFor(() => {
+      expect(fileRegisterMocks.uploadTabularFile).toHaveBeenCalled()
+    })
+    expect(await screen.findByText('暂无样本数据')).toBeInTheDocument()
+    expect(screen.getByText('文件已上传，但当前没有可展示的样本行，请检查源文件内容。')).toBeInTheDocument()
+  })
+
   it('字段配置完成后返回字段步骤时优先使用已保存配置重新回填', async () => {
     const user = userEvent.setup()
 
@@ -564,6 +652,41 @@ describe('FileDatasetRegister page', () => {
       })
     })
     expect(fileRegisterMocks.toast).toHaveBeenCalledWith({ title: '文件数据集创建成功' })
+  })
+
+  it('未识别到字段时在字段步骤展示空配置提示', async () => {
+    const user = userEvent.setup()
+    fileRegisterMocks.uploadTabularFile.mockResolvedValueOnce({
+      file_id: 'f-no-fields',
+      file_name: 'no-fields.xlsx',
+      file_path: '/tmp/no-fields.xlsx',
+      file_size: 512,
+      row_count: 1,
+      uploaded_at: '2026-03-25T10:00:00Z',
+      columns: [{ name: 'student_name', type: 'string', sample_values: ['Alice'] }],
+      fields: [],
+      preview_limit: 1,
+      sample_rows: [{ student_name: 'Alice' }],
+      preview: [{ student_name: 'Alice' }],
+    })
+
+    renderPage()
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['student_name\nAlice'], 'no-fields.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await user.upload(input, file)
+
+    await waitFor(() => {
+      expect(fileRegisterMocks.uploadTabularFile).toHaveBeenCalled()
+    })
+
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+    await user.type(screen.getByRole('textbox', { name: '例如: 2025年销售明细' }), '空字段文件数据集')
+    await user.click(screen.getByRole('button', { name: '下一步' }))
+
+    expect(await screen.findByText('当前没有可配置字段，请重新上传文件或检查上传结果。')).toBeInTheDocument()
   })
 
   it('使用统一注册流程壳与预览面板承载上传流程', async () => {

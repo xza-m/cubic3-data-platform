@@ -29,7 +29,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import type { FieldConfigItem } from '@/types'
 
-const getErrorMessage = (error: unknown, fallback: string) => {
+export const getErrorMessage = (error: unknown, fallback: string) => {
   const err = error as { response?: { data?: { message?: string } }; message?: string }
   return err.response?.data?.message || err.message || fallback
 }
@@ -62,6 +62,35 @@ export function submitFileDatasetRegistration({
   }
 
   onValid()
+}
+
+export function handleMissingFileMetadataSubmit({
+  toast,
+}: {
+  toast: (payload: { title: string; variant: 'warning' }) => void
+}) {
+  toast({ title: '请先上传 CSV / Excel 文件', variant: 'warning' })
+}
+
+export function mapUploadedField(
+  field: NonNullable<FileUploadResponse['fields']>[number],
+) {
+  return {
+    name: field.physical_name || field.field_name || '',
+    type: field.data_type,
+    display_name: field.display_name || field.physical_name || field.field_name || '',
+    comment: field.comment,
+    business_type: field.business_type,
+    sensitivity_level: field.sensitivity_level,
+    mask_rule: field.mask_rule,
+    confidence_score: field.confidence_score,
+    matched_rules: field.matched_rules,
+    auto_recognized: field.confidence_score > 0.5,
+  }
+}
+
+export function formatFileSizeInMb(fileSize?: number) {
+  return `${((fileSize || 0) / 1024 / 1024).toFixed(2)} MB`
 }
 
 type FileFieldConfiguratorChange = {
@@ -191,11 +220,6 @@ export default function FileDatasetRegister() {
       toast,
       setCurrentStep,
       onValid: () => {
-        if (!fileMetadata) {
-          toast({ title: '请先上传 CSV / Excel 文件', variant: 'warning' })
-          return
-        }
-
         createMutation.mutate({
           dataset_type: 'file' as const,
           dataset_name: datasetName,
@@ -246,18 +270,7 @@ export default function FileDatasetRegister() {
       }))
     }
 
-    return fileMetadata.fields.map((field: NonNullable<FileUploadResponse['fields']>[number]) => ({
-      name: field.physical_name || field.field_name || '',
-      type: field.data_type,
-      display_name: field.display_name || field.physical_name || field.field_name || '',
-      comment: field.comment,
-      business_type: field.business_type,
-      sensitivity_level: field.sensitivity_level,
-      mask_rule: field.mask_rule,
-      confidence_score: field.confidence_score,
-      matched_rules: field.matched_rules,
-      auto_recognized: field.confidence_score > 0.5,
-    }))
+    return fileMetadata.fields.map(mapUploadedField)
   }, [fieldConfigs, fileMetadata])
 
   const handleFieldConfigChange = (configs: FileFieldConfiguratorChange[]) => {
@@ -613,7 +626,7 @@ export default function FileDatasetRegister() {
               <div className="flex justify-between text-sm leading-6">
                 <span className="text-slate-500">文件大小：</span>
                 <span className="font-medium text-slate-900">
-                  {((fileMetadata?.file_size || 0) / 1024 / 1024).toFixed(2)} MB
+                  {formatFileSizeInMb(fileMetadata?.file_size)}
                 </span>
               </div>
               <div className="flex justify-between text-sm leading-6">

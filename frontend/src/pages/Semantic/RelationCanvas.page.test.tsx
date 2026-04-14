@@ -30,6 +30,8 @@ const toastMocks = vi.hoisted(() => ({
 }))
 
 const navigateMock = vi.hoisted(() => vi.fn())
+const fitViewMock = vi.hoisted(() => vi.fn())
+const viewportReadyMock = vi.hoisted(() => ({ value: true }))
 
 const elkLayoutMock = vi.hoisted(() => vi.fn(async (graph: any) => ({
   children: graph.children?.map((child: { id: string }, index: number) => ({
@@ -160,36 +162,47 @@ vi.mock('@xyflow/react', async () => {
       nodes = [],
       edges = [],
       onNodeClick,
+      onInit,
       children,
     }: {
       nodes?: Array<any>
       edges?: Array<any>
       onNodeClick?: (event: any, node: any) => void
+      onInit?: (instance: any) => void
       children?: React.ReactNode
-    }) => (
-      <div data-testid="mock-reactflow">
-        <div>
-          {nodes.map((node) => (
-            <button
-              key={node.id}
-              type="button"
-              data-testid={`mock-node-${node.id}`}
-              onClick={() => onNodeClick?.({}, node)}
-            >
-              {node.id}
-            </button>
-          ))}
+    }) => {
+      ReactLib.useEffect(() => {
+        onInit?.({
+          viewportInitialized: viewportReadyMock.value,
+          fitView: fitViewMock,
+        })
+      }, [onInit])
+
+      return (
+        <div data-testid="mock-reactflow">
+          <div>
+            {nodes.map((node) => (
+              <button
+                key={node.id}
+                type="button"
+                data-testid={`mock-node-${node.id}`}
+                onClick={() => onNodeClick?.({}, node)}
+              >
+                {node.id}
+              </button>
+            ))}
+          </div>
+          <div>
+            {edges.map((edge) => (
+              <span key={edge.id} data-testid={`mock-edge-${edge.id}`}>
+                {edge.id}
+              </span>
+            ))}
+          </div>
+          {children}
         </div>
-        <div>
-          {edges.map((edge) => (
-            <span key={edge.id} data-testid={`mock-edge-${edge.id}`}>
-              {edge.id}
-            </span>
-          ))}
-        </div>
-        {children}
-      </div>
-    ),
+      )
+    },
     BackgroundVariant: { Dots: 'dots' },
     useNodesState: (initial: any[]) => ReactLib.useState(initial).concat([vi.fn()]),
     useEdgesState: (initial: any[]) => ReactLib.useState(initial).concat([vi.fn()]),
@@ -328,6 +341,8 @@ function buildDraft(overrides: Record<string, any> = {}) {
 describe('RelationCanvas page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    fitViewMock.mockReset()
+    viewportReadyMock.value = true
   })
 
   it('旧的新建路由会回流到工作台起始态', async () => {
@@ -466,6 +481,50 @@ describe('RelationCanvas page', () => {
       }))
     })
     expect(toastMocks.toast).toHaveBeenCalledWith({ title: 'Cube 创建成功' })
+  })
+
+  it('初始化画布时会在布局完成后触发 fitView', async () => {
+    semanticApiMocks.getGraph.mockResolvedValueOnce({ data: buildGraphData() })
+    datasourceMocks.getDataSources.mockResolvedValueOnce({
+      data: {
+        items: [{ id: 1, name: '学习数仓', source_type: 'maxcompute' }],
+      },
+    })
+
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    })
+
+    renderPage('/semantic/cubes/new')
+
+    await screen.findByTestId('mock-reactflow')
+    await waitFor(() => {
+      expect(fitViewMock).toHaveBeenCalledWith({
+        padding: 0.12,
+        duration: 0,
+        includeHiddenNodes: false,
+      })
+    })
+
+    rafSpy.mockRestore()
+  })
+
+  it('画布实例尚未完成初始化时不会触发 fitView', async () => {
+    viewportReadyMock.value = false
+    semanticApiMocks.getGraph.mockResolvedValueOnce({ data: buildGraphData() })
+    datasourceMocks.getDataSources.mockResolvedValueOnce({
+      data: {
+        items: [{ id: 1, name: '学习数仓', source_type: 'maxcompute' }],
+      },
+    })
+
+    renderPage('/semantic/cubes/new')
+
+    await screen.findByTestId('mock-reactflow')
+    await waitFor(() => {
+      expect(fitViewMock).not.toHaveBeenCalled()
+    })
   })
 
   it('创建 Draft Cube 失败时给出 destructive 提示', async () => {

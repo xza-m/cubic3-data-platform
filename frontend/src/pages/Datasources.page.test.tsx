@@ -4,7 +4,10 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import Datasources from './Datasources'
+import Datasources, {
+  DataSourceBrandIcon,
+  optimisticallyMarkCatalogSync,
+} from './Datasources'
 
 const dataSourceMocks = vi.hoisted(() => ({
   getDataSources: vi.fn(),
@@ -235,6 +238,36 @@ describe('Datasources page', () => {
               },
             },
           }),
+          makeDataSource({
+            id: 4,
+            name: 'Oracle 教务库',
+            source_type: 'oracle',
+            connection_status: 'connected',
+            extra_config: {
+              catalog_sync: {
+                status: 'custom_sync_state',
+                last_run_at: 'invalid-date',
+                last_error: null,
+                tracked_databases: ['edu_core'],
+                database_count: 1,
+              },
+            },
+          }),
+          makeDataSource({
+            id: 5,
+            name: 'ClickHouse 明细仓',
+            source_type: 'clickhouse',
+            connection_status: 'connected',
+            extra_config: {
+              catalog_sync: {
+                status: 'synced',
+                last_run_at: '2026-03-24T15:00:00Z',
+                last_error: null,
+                tracked_databases: ['detail_dw'],
+                database_count: 1,
+              },
+            },
+          }),
         ],
       },
     })
@@ -253,6 +286,11 @@ describe('Datasources page', () => {
     expect(screen.getByText('目录同步失败')).toBeInTheDocument()
     expect(screen.getByText('权限不足')).toBeInTheDocument()
     expect(screen.getByText('MaxCompute')).toBeInTheDocument()
+    expect(screen.getByText('Oracle 教务库')).toBeInTheDocument()
+    expect(screen.getByText('custom_sync_state')).toBeInTheDocument()
+    expect(screen.getByText('invalid-date')).toBeInTheDocument()
+    expect(screen.getByText('ClickHouse 明细仓')).toBeInTheDocument()
+    expect(screen.getByText('ClickHouse')).toBeInTheDocument()
 
     await user.type(screen.getByPlaceholderText('搜索数据源名称或类型...'), 'max')
     expect(screen.getByText('MaxCompute 行为仓')).toBeInTheDocument()
@@ -574,5 +612,96 @@ describe('Datasources page', () => {
     expect(screen.getByText('数据源列表加载失败')).toBeInTheDocument()
     expect(screen.queryByText('还没有数据源')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '创建第一个数据源' })).not.toBeInTheDocument()
+  })
+
+  it('未知类型数据源回退到默认图标，并在无描述时不渲染说明文本', async () => {
+    dataSourceMocks.getDataSources.mockResolvedValue({
+      data: {
+        items: [
+          makeDataSource({
+            id: 9,
+            name: 'Oracle 归档库',
+            source_type: 'oracle',
+            description: '',
+          }),
+        ],
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Oracle 归档库')).toBeInTheDocument()
+    const card = getDatasourceCard('Oracle 归档库')
+    expect(within(card).queryByText('主学习业务库')).not.toBeInTheDocument()
+    expect(card.querySelector('svg.lucide-database')).not.toBeNull()
+  })
+
+  it('目录同步在缓存缺失时跳过 optimistic update 并继续发起同步', async () => {
+    const user = userEvent.setup()
+    const originalSetQueryData = QueryClient.prototype.setQueryData
+    const setQueryDataSpy = vi
+      .spyOn(QueryClient.prototype, 'setQueryData')
+      .mockImplementation(function (...args: Parameters<QueryClient['setQueryData']>) {
+        const [queryKey, updater] = args
+        if (Array.isArray(queryKey) && queryKey[0] === 'datasources' && typeof updater === 'function') {
+          return (updater as (current: unknown) => unknown)(undefined)
+        }
+        return originalSetQueryData.apply(this, args)
+      })
+
+    dataSourceMocks.getDataSources.mockResolvedValue({
+      data: {
+        items: [makeDataSource()],
+      },
+    })
+    dataSourceMocks.syncDataSourceCatalog.mockResolvedValue({ job_id: 'job-cache-miss', status: 'queued' })
+
+    renderPage()
+
+    expect(await screen.findByText('教学 PostgreSQL')).toBeInTheDocument()
+    await user.click(screen.getByTitle('同步目录'))
+
+    expect(dataSourceMocks.syncDataSourceCatalog).toHaveBeenCalledWith(1)
+    expect(setQueryDataSpy).toHaveBeenCalled()
+    setQueryDataSpy.mockRestore()
+  })
+
+  it('ClickHouse 品牌图标和目录同步 helper 保持兼容', () => {
+    const { container } = render(<DataSourceBrandIcon sourceType="clickhouse" />)
+    expect(container.querySelector('rect[fill=\"#FF6A00\"]')).not.toBeNull()
+
+    expect(optimisticallyMarkCatalogSync(undefined, 1)).toBeUndefined()
+
+    const current = {
+      data: {
+        items: [
+          makeDataSource({
+            id: 1,
+            extra_config: {
+              catalog_sync: {
+                status: 'failed',
+                last_error: '权限不足',
+              },
+            },
+          }),
+        ],
+      },
+    }
+
+    expect(optimisticallyMarkCatalogSync(current, 1)).toMatchObject({
+      data: {
+        items: [
+          {
+            id: 1,
+            extra_config: {
+              catalog_sync: {
+                status: 'syncing',
+                last_error: null,
+              },
+            },
+          },
+        ],
+      },
+    })
   })
 })

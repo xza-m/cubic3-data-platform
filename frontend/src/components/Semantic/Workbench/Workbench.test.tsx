@@ -126,6 +126,24 @@ describe('WorkbenchResumePanel', () => {
     )
     expect(screen.getByText('没有任何数据')).toBeInTheDocument()
   })
+
+  it('未知状态时回退到未标记和 outline 徽标', () => {
+    render(
+      <WorkbenchResumePanel
+        title="标题"
+        description="说明"
+        cubes={[{ ...mockCube, name: 'unknown_cube', title: '未知状态 Cube', status: undefined }]}
+        emptyText="暂无"
+      />,
+      { wrapper },
+    )
+
+    expect(screen.getByText('未标记')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /未知状态 Cube/ })).toHaveAttribute(
+      'href',
+      '/semantic/workbench?cube=unknown_cube',
+    )
+  })
 })
 
 /* ------------------------------------------------------------------ */

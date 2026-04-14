@@ -3,6 +3,7 @@
 Mock 外部驱动，测试 PostgreSQL、MySQL、ClickHouse、MaxCompute 适配器
 """
 import builtins
+from datetime import date, datetime
 from types import SimpleNamespace
 import pytest
 from unittest.mock import MagicMock, patch
@@ -368,6 +369,39 @@ class TestPostgreSQLAdapter:
 
         adapter.connection.close.assert_called_once()
 
+    @patch('app.infrastructure.adapters.datasources.postgresql_adapter.psycopg2.connect')
+    def test_postgresql_error_and_default_schema_paths(self, mock_connect):
+        mock_connect.side_effect = Exception('boom')
+        adapter = PostgreSQLAdapter({'host': 'h', 'database': 'db'})
+
+        with pytest.raises(Exception, match='boom'):
+            adapter.list_databases()
+        with pytest.raises(Exception, match='boom'):
+            adapter.list_schemas('db')
+        with pytest.raises(Exception, match='boom'):
+            adapter.list_tables('db')
+        with pytest.raises(Exception, match='boom'):
+            adapter.get_table_schema('db', 'users')
+        with pytest.raises(Exception, match='boom'):
+            list(adapter.execute_query_stream('select 1'))
+
+    @patch('app.infrastructure.adapters.datasources.postgresql_adapter.psycopg2.connect')
+    def test_postgresql_get_table_schema_uses_public_default(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [('id', 'integer', 'NO', None, '主键')]
+        mock_cursor.fetchone.side_effect = [('用户表',), (12,)]
+        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        adapter = PostgreSQLAdapter({'host': 'h', 'database': 'db'})
+        schema = adapter.get_table_schema('db', 'users')
+
+        assert schema['table_name'] == 'public.users'
+        assert schema['row_count'] == 12
+
 
 # =============================================================================
 # MySQLAdapter
@@ -533,6 +567,20 @@ class TestMySQLAdapter:
         adapter._close_connection()
 
         adapter.connection.close.assert_called_once()
+
+    @patch('app.infrastructure.adapters.datasources.mysql_adapter.pymysql.connect')
+    def test_mysql_error_paths(self, mock_connect):
+        mock_connect.side_effect = Exception('boom')
+        adapter = MySQLAdapter({'host': 'h', 'database': 'db'})
+
+        with pytest.raises(Exception, match='boom'):
+            adapter.list_databases()
+        with pytest.raises(Exception, match='boom'):
+            adapter.list_tables('db')
+        with pytest.raises(Exception, match='boom'):
+            adapter.get_table_schema('db', 'users')
+        with pytest.raises(Exception, match='boom'):
+            list(adapter.execute_query_stream('select 1'))
 
 
 # =============================================================================
@@ -944,3 +992,85 @@ class TestMaxComputeAdapter:
         adapter._close_connection()
 
         assert adapter.odps is None
+
+    def test_get_odps_client_raises_install_hint_when_pyodps_missing(self):
+        adapter = MaxComputeAdapter({'access_id': 'id', 'access_key': 'key', 'endpoint': 'ep', 'project': 'proj'})
+        original_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == 'odps':
+                raise ImportError('missing')
+            return original_import(name, *args, **kwargs)
+
+        with patch('builtins.__import__', side_effect=fake_import):
+            with pytest.raises(ImportError, match='pyodps'):
+                adapter._get_odps_client()
+
+    def test_maxcompute_wraps_list_schema_preview_and_partition_errors(self):
+        adapter = MaxComputeAdapter({'access_id': 'id', 'access_key': 'key', 'endpoint': 'ep', 'project': 'proj'})
+        adapter._get_odps_client = MagicMock(side_effect=RuntimeError('boom'))
+
+        with pytest.raises(Exception, match='获取表列表失败: boom'):
+            adapter.list_tables('proj')
+        with pytest.raises(Exception, match='获取表Schema失败: boom'):
+            adapter.get_table_schema('proj', 'orders')
+        with pytest.raises(Exception, match='预览数据失败: boom'):
+            adapter.preview_table('orders')
+        with pytest.raises(Exception, match='获取分区列表失败: boom'):
+            adapter.get_partitions('orders')
+
+    def test_maxcompute_schema_preview_and_safe_value_cover_remaining_paths(self):
+        partition_col = MagicMock()
+        partition_col.name = 'ds'
+        partition_col.type = 'string'
+        partition_col.comment = '分区'
+        data_col = MagicMock()
+        data_col.name = 'id'
+        data_col.type = 'bigint'
+        data_col.comment = '主键'
+        duplicated_partition = MagicMock()
+        duplicated_partition.name = 'id'
+        duplicated_partition.type = 'string'
+        duplicated_partition.comment = '重复分区'
+        table_obj = MagicMock()
+        table_obj.schema.columns = [data_col, partition_col]
+        table_obj.schema.partitions = [duplicated_partition, partition_col]
+        table_obj.comment = '测试表'
+        table_obj.get_stats.return_value = MagicMock(record_num=3)
+        table_obj.size = 256
+        table_obj.partitions = [SimpleNamespace(name='ds=2026-04-14')]
+        table_obj.head.return_value = [
+            {'id': 1, 'ds': b'20260414'},
+            {'id': 2, 'ds': datetime(2026, 4, 14, 8, 0, 0)},
+        ]
+        mock_odps = MagicMock()
+        mock_odps.get_table.return_value = table_obj
+        adapter = MaxComputeAdapter({'access_id': 'id', 'access_key': 'key', 'endpoint': 'ep', 'project': 'proj'})
+        adapter._get_odps_client = MagicMock(return_value=mock_odps)
+
+        schema = adapter.get_table_schema('proj', 'orders')
+        preview = adapter.preview_table('orders')
+
+        assert schema['columns'][0]['is_partition'] is True
+        assert schema['columns'][1]['is_partition'] is True
+        assert schema['partitions'] == ['id', 'ds']
+        assert preview['rows'][0][1] == '20260414'
+        assert preview['rows'][1][1].startswith('2026-04-14T08:00:00')
+        assert adapter.get_partitions('orders') == ['ds=2026-04-14']
+        assert adapter._safe_value(date(2026, 4, 14)) == '2026-04-14'
+
+        class _Scalar:
+            def item(self):
+                return 7
+
+        class _Stringable:
+            def __str__(self):
+                return 'ok'
+
+        class _BrokenString:
+            def __str__(self):
+                raise RuntimeError('bad')
+
+        assert adapter._safe_value(_Scalar()) == 7
+        assert adapter._safe_value(_Stringable()) == 'ok'
+        assert adapter._safe_value(_BrokenString()) is None

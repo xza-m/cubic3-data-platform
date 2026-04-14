@@ -219,4 +219,56 @@ describe('Dashboard page', () => {
     await user.click(screen.getByRole('button', { name: /智能问数/ }))
     expect(navigateMock).toHaveBeenCalledWith('/data-chat')
   })
+
+  it('近期查询支持跨年日期格式和失败/运行中状态文案', async () => {
+    dashboardMocks.getDashboardOverview.mockResolvedValue({
+      stats: {
+        datasource_total: 1,
+        dataset_total: 1,
+        semantic_model_total: 1,
+        today_query_count: 0,
+        ai_chat_count: 0,
+      },
+      trends: {
+        datasource_month_delta: null,
+        dataset_week_delta: null,
+        query_count_week: null,
+      },
+      recent_queries: [
+        {
+          id: 1,
+          name: '跨年失败查询',
+          status: 'failed',
+          executed_at: '2024-01-02T08:00:00Z',
+          datasource_name: '历史 PostgreSQL',
+        },
+        {
+          id: 2,
+          name: '超时查询',
+          status: 'timeout',
+          executed_at: `${new Date().getFullYear()}-03-01T08:00:00Z`,
+          datasource_name: '教学 PostgreSQL',
+        },
+        {
+          id: 3,
+          name: '执行中查询',
+          status: 'running',
+          executed_at: `${new Date().getFullYear()}-03-02T08:00:00Z`,
+          datasource_name: '实时 ClickHouse',
+        },
+      ],
+      health: {
+        datasource_connectivity: null,
+        semantic_coverage: null,
+        query_success_rate: null,
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('2024年1月2日')).toBeInTheDocument()
+    expect(screen.getByText('3月1日')).toBeInTheDocument()
+    expect(screen.getAllByText('失败')).toHaveLength(2)
+    expect(screen.getByText('运行中')).toBeInTheDocument()
+  })
 })

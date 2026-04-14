@@ -214,6 +214,21 @@ def test_execute_query_handler_normalizes_rows_payload_from_warehouse_adapters(m
     assert saved_history.result_rows == 2
 
 
+def test_execute_query_handler_helper_paths_cover_row_normalization_edges():
+    handler = ExecuteQueryHandler(query_repository=MagicMock(), datasource_repository=MagicMock())
+
+    assert handler._rows_to_records(["id"], "not-a-list") == []
+    assert handler._rows_to_records(["id"], [{"id": 1}, "skip-me"]) == [{"id": 1}]
+    assert handler._rows_to_records(
+        [{"name": "subject_id"}, {"column_name": "subject_name"}, {}],
+        [[1, "语文"]],
+    ) == [{"subject_id": 1, "column_2": "语文", "column_3": None}]
+
+    assert handler._extract_column_name("order_id", 0) == "order_id"
+    assert handler._extract_column_name({"name": "amount"}, 1) == "amount"
+    assert handler._extract_column_name({"column_name": "ignored"}, 2) == "column_3"
+
+
 def test_execute_sql_preview_command_and_handler_cover_core_paths(monkeypatch):
     assert ExecuteSQLPreviewCommand(source_id=1, sql_query="SELECT 1", limit=-1).limit == 100
     assert ExecuteSQLPreviewCommand(source_id=1, sql_query="SELECT 1", limit=2000).limit == 1000

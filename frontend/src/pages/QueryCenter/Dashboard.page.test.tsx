@@ -192,6 +192,15 @@ function renderPage(initialEntry = '/queries') {
 describe('QueryCenter Dashboard page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    })
     dashboardMocks.getDataSources.mockResolvedValue({
       data: {
         items: [
@@ -273,6 +282,51 @@ describe('QueryCenter Dashboard page', () => {
     dashboardMocks.applyTemplate.mockResolvedValue({
       sql_query: 'SELECT * FROM orders LIMIT 100',
       template_name: '近 30 天订单营收',
+    })
+  })
+
+  it('紧凑视口和本地存储会影响初始布局并持久化编辑器高度', async () => {
+    const originalMatchMedia = window.matchMedia
+    const originalLocalStorage = window.localStorage
+    const addEventListener = vi.fn()
+    const removeEventListener = vi.fn()
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation(() => ({
+        matches: true,
+        addEventListener,
+        removeEventListener,
+      })),
+    })
+    const getItem = vi.fn(() => '120')
+    const setItem = vi.fn()
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem,
+        setItem,
+      },
+    })
+
+    const view = renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    expect(screen.getByRole('button', { name: '展开结构树' })).toBeInTheDocument()
+    expect(screen.getByTestId('query-editor-pane').style.height).toBe('78%')
+    expect(setItem).toHaveBeenCalledWith('query-center.editor-height-ratio', '78')
+
+    view.unmount()
+    expect(addEventListener).toHaveBeenCalledWith('change', expect.any(Function))
+    expect(removeEventListener).toHaveBeenCalledWith('change', expect.any(Function))
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: originalMatchMedia,
+    })
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: originalLocalStorage,
     })
   })
 
@@ -375,6 +429,132 @@ describe('QueryCenter Dashboard page', () => {
     expect(await screen.findByTestId('dashboard-query-result-table')).toHaveTextContent('rows:1; cols:1; headers:123 id')
   })
 
+  it('双击结构树节点时会按换行规则追加 SQL 片段', async () => {
+    const user = userEvent.setup()
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    const editor = screen.getByLabelText('sql-editor') as HTMLTextAreaElement
+    expect(editor.value).toContain('LIMIT 100')
+
+    await user.click(screen.getByTestId('schema-double-click'))
+    expect(editor.value).toContain('\npublic.customers')
+  })
+
+  it('支持折叠结构树，并在表预览失败时给出 destructive 提示', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.previewTableData.mockRejectedValueOnce(new Error('预览接口异常'))
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    await user.click(screen.getByRole('button', { name: '折叠结构树' }))
+    expect(screen.getByRole('button', { name: '展开结构树' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '展开结构树' }))
+    await user.click(screen.getByTestId('schema-preview'))
+    await waitFor(() => {
+      expect(dashboardMocks.toast).toHaveBeenCalledWith({
+        title: '表预览失败',
+        description: '预览接口异常',
+        variant: 'destructive',
+      })
+    })
+  })
+
+  it('运行与保存前会校验数据源、SQL 和查询名称', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.getDataSources.mockResolvedValueOnce({
+      data: { items: [] },
+    })
+
+    const firstRender = renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    await user.click(screen.getByRole('button', { name: '运行' }))
+    expect(dashboardMocks.toast).toHaveBeenCalledWith({ title: '请先选择数据源', variant: 'warning' })
+    await user.click(screen.getAllByRole('button', { name: '保存' })[0])
+    await user.click(screen.getAllByRole('button', { name: '保存' })[1])
+    expect(dashboardMocks.toast).toHaveBeenCalledWith({ title: '请先选择数据源', variant: 'warning' })
+
+    firstRender.unmount()
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    const editor = screen.getByLabelText('sql-editor')
+    await user.clear(editor)
+    await user.click(screen.getByRole('button', { name: '运行' }))
+    expect(dashboardMocks.toast).toHaveBeenCalledWith({ title: '请输入 SQL 查询', variant: 'warning' })
+
+    await user.click(screen.getAllByRole('button', { name: '保存' })[0])
+    await user.click(screen.getAllByRole('button', { name: '保存' })[1])
+    expect(dashboardMocks.toast).toHaveBeenCalledWith({ title: '请输入查询名称', variant: 'warning' })
+  })
+
+  it('SQL 美化失败和带参数模板会走警告/异常分支', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.formatSql.mockImplementationOnce(() => {
+      throw new Error('SQL 语法不完整')
+    })
+    dashboardMocks.getTemplates.mockResolvedValueOnce({
+      items: [
+        {
+          id: 88,
+          template_name: '按日期筛选订单',
+          template_description: '需要传入日期参数',
+          sql_template: 'SELECT * FROM orders WHERE dt = {{ ds }}',
+          parameters: [{ name: 'ds' }],
+          category: '经营分析',
+          tags: [],
+          use_count: 3,
+          created_at: '2026-03-28T06:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    })
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    await user.click(screen.getByRole('button', { name: 'SQL 美化' }))
+    expect(dashboardMocks.toast).toHaveBeenCalledWith({
+      title: 'SQL 美化失败',
+      description: 'SQL 语法不完整',
+      variant: 'destructive',
+    })
+
+    await user.click(screen.getByRole('button', { name: '展开模版库' }))
+    await user.click(await screen.findByRole('button', { name: /按日期筛选订单/ }))
+    expect(dashboardMocks.applyTemplate).not.toHaveBeenCalled()
+    expect(dashboardMocks.toast).toHaveBeenCalledWith({
+      title: '带参数模板请先进入模板管理页使用',
+      variant: 'warning',
+    })
+  })
+
+  it('模板加载失败时展示 destructive 提示', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.applyTemplate.mockRejectedValueOnce(new Error('模板服务暂不可用'))
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    await user.click(screen.getByRole('button', { name: '展开模版库' }))
+    await user.click(await screen.findByRole('button', { name: /近 30 天订单营收/ }))
+
+    await waitFor(() => {
+      expect(dashboardMocks.toast).toHaveBeenCalledWith({
+        title: '加载模板失败',
+        description: '模板服务暂不可用',
+        variant: 'destructive',
+      })
+    })
+  })
+
   it('支持保存查询', async () => {
     const user = userEvent.setup()
 
@@ -396,6 +576,7 @@ describe('QueryCenter Dashboard page', () => {
         source_id: 1,
       }))
     })
+    expect(dashboardMocks.toast).toHaveBeenCalledWith({ title: '查询已保存' })
     expect(dashboardMocks.updateQuery).not.toHaveBeenCalled()
   })
 
@@ -422,6 +603,7 @@ describe('QueryCenter Dashboard page', () => {
         source_id: 1,
       }))
     })
+    expect(dashboardMocks.toast).toHaveBeenCalledWith({ title: '查询已更新' })
   })
 
   it('兼容 templates 旧入口时展开模板侧栏并展示上下文提示', async () => {
@@ -449,6 +631,123 @@ describe('QueryCenter Dashboard page', () => {
 
     expect(await screen.findByTestId('query-center-legacy-context')).toHaveTextContent('兼容入口：可视化查询')
     expect(screen.getByText('可视化视图待接入')).toBeInTheDocument()
+  })
+
+  it('兼容 editor 旧入口时保持模板侧栏折叠，并回填已保存查询详情', async () => {
+    const user = userEvent.setup()
+
+    renderPage('/queries?legacy=editor&id=18')
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    expect(await screen.findByTestId('query-center-legacy-context')).toHaveTextContent('兼容入口：SQL 编辑器')
+    await waitFor(() => {
+      expect(screen.getByLabelText('选择数据源')).toHaveValue('1')
+    })
+    expect((screen.getByLabelText('sql-editor') as HTMLTextAreaElement).value).toBe('SELECT 1')
+    expect(screen.getByRole('button', { name: '展开模版库' })).toBeInTheDocument()
+
+    await user.click(screen.getAllByRole('button', { name: '保存' })[0])
+    expect(await screen.findByDisplayValue('教学查询')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('历史保存的查询')).toBeInTheDocument()
+  })
+
+  it('运行失败时展示 destructive 提示，并恢复运行按钮状态', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.executeQuery.mockRejectedValueOnce({
+      response: { data: { message: '执行网关超时' } },
+      message: '执行网关超时',
+    })
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    const runButton = screen.getByRole('button', { name: '运行' })
+    await user.click(runButton)
+
+    await waitFor(() => {
+      expect(dashboardMocks.toast).toHaveBeenCalledWith({
+        title: '查询失败',
+        description: '执行网关超时',
+        variant: 'destructive',
+      })
+    })
+    await waitFor(() => {
+      expect(runButton).not.toBeDisabled()
+    })
+  })
+
+  it('查询结果会根据样本值推断字符串列头，并为未知类型保留原始名称', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.executeQuery.mockResolvedValueOnce({
+      data: {
+        columns: [{ name: 'city' }, { name: 'misc' }],
+        rows: [['上海', null]],
+        row_count: 1,
+        execution_time_ms: 66,
+      },
+    })
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    await user.click(screen.getByRole('button', { name: '运行' }))
+
+    expect(await screen.findByTestId('dashboard-query-result-table')).toHaveTextContent('headers:ABC city|misc')
+  })
+
+  it('保存失败时展示 destructive 提示', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.createQuery.mockRejectedValueOnce({
+      response: { data: { message: '保存服务暂不可用' } },
+      message: '保存服务暂不可用',
+    })
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    await user.click(screen.getAllByRole('button', { name: '保存' })[0])
+    await user.type(screen.getByLabelText('查询名称'), '失败查询')
+    await user.click(screen.getAllByRole('button', { name: '保存' })[1])
+
+    await waitFor(() => {
+      expect(dashboardMocks.toast).toHaveBeenCalledWith({
+        title: '保存失败',
+        description: '保存服务暂不可用',
+        variant: 'destructive',
+      })
+    })
+  })
+
+  it('模板缺少分类与描述时隐藏分类徽标并回退说明文案', async () => {
+    const user = userEvent.setup()
+    dashboardMocks.getTemplates.mockResolvedValueOnce({
+      items: [
+        {
+          id: 77,
+          template_name: '未分类模板',
+          template_description: '',
+          sql_template: 'SELECT 1',
+          parameters: [],
+          category: '',
+          tags: [],
+          use_count: 0,
+          created_at: '2026-03-28T06:00:00Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    })
+
+    renderPage()
+
+    await screen.findByTestId('query-center-dashboard-layout')
+    await user.click(screen.getByRole('button', { name: '展开模版库' }))
+    const templateButton = await screen.findByRole('button', { name: /未分类模板/ })
+    expect(templateButton).toBeInTheDocument()
+    expect(screen.getByText('无描述')).toBeInTheDocument()
+    expect(screen.queryByText('经营分析')).not.toBeInTheDocument()
   })
 
   it('支持切换数据源并刷新数据库上下文', async () => {

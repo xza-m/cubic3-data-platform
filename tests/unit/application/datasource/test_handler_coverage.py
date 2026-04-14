@@ -423,6 +423,63 @@ def test_preview_table_data_handler_covers_not_found_success_schema_fallback_and
 
     adapter.close.assert_called_once()
 
+    repository.find_by_id.return_value = _make_datasource(source_type="maxcompute")
+    adapter = SimpleNamespace(
+        get_table_schema=lambda *_args, **_kwargs: {"columns": [{"name": "id", "comment": "主键"}]},
+        preview_table=lambda table, limit: {
+            "columns": [{"name": "id", "type": "bigint"}, "name"],
+            "rows": [{"id": 1, "name": "alice"}],
+        },
+        close=MagicMock(),
+    )
+    monkeypatch.setattr(
+        "app.application.datasource.handlers.preview_table_data_handler.AdapterFactory.create_adapter",
+        lambda *_args, **_kwargs: adapter,
+    )
+    result = handler.handle(PreviewTableDataQuery(datasource_id=1, database="dw", table="mc_orders", limit=2))
+    assert result["columns"][0]["comment"] == "主键"
+    assert result["columns"][1]["type"] == "unknown"
+    assert result["data"] == [{"id": 1, "name": "alice"}]
+    adapter.close.assert_called_once()
+
+    repository.find_by_id.return_value = _make_datasource(source_type="maxcompute")
+    adapter = SimpleNamespace(
+        get_table_schema=lambda *_args, **_kwargs: {"columns": []},
+        execute_query=MagicMock(return_value={"columns": ["id"], "rows": [{"id": 1}]}),
+        close=MagicMock(),
+    )
+    monkeypatch.setattr(
+        "app.application.datasource.handlers.preview_table_data_handler.AdapterFactory.create_adapter",
+        lambda *_args, **_kwargs: adapter,
+    )
+    handler.handle(PreviewTableDataQuery(datasource_id=1, database="dw", table="mc_orders", limit=2))
+    adapter.execute_query.assert_called_once_with("SELECT * FROM mc_orders LIMIT 2", limit=2)
+
+    repository.find_by_id.return_value = _make_datasource(source_type="mysql")
+    adapter = SimpleNamespace(
+        get_table_schema=lambda *_args, **_kwargs: {"columns": []},
+        execute_query=MagicMock(return_value={"columns": [], "data": []}),
+        close=MagicMock(),
+    )
+    monkeypatch.setattr(
+        "app.application.datasource.handlers.preview_table_data_handler.AdapterFactory.create_adapter",
+        lambda *_args, **_kwargs: adapter,
+    )
+    handler.handle(PreviewTableDataQuery(datasource_id=1, database="dw", table="ods.orders", limit=2))
+    adapter.execute_query.assert_called_once_with("SELECT * FROM `ods`.`orders` LIMIT 2", limit=2)
+
+    adapter = SimpleNamespace(
+        get_table_schema=lambda *_args, **_kwargs: {"columns": []},
+        execute_query=MagicMock(return_value={"columns": [], "data": []}),
+        close=MagicMock(),
+    )
+    monkeypatch.setattr(
+        "app.application.datasource.handlers.preview_table_data_handler.AdapterFactory.create_adapter",
+        lambda *_args, **_kwargs: adapter,
+    )
+    handler.handle(PreviewTableDataQuery(datasource_id=1, database="dw", table="orders", limit=2))
+    adapter.execute_query.assert_called_once_with("SELECT * FROM `orders` LIMIT 2", limit=2)
+
 
 def test_test_connection_handler_covers_not_found_success_failure_and_exception(monkeypatch):
     repository = MagicMock()

@@ -39,5 +39,9 @@ describe('datasetPresentation', () => {
       dataset_type: 'file',
       file_metadata: {},
     })).toBe('-')
+
+    expect(getDatasetSourceObjectLabel({
+      dataset_type: 'physical',
+    })).toBe('-')
   })
 })

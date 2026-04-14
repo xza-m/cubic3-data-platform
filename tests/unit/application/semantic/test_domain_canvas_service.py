@@ -245,3 +245,27 @@ def test_get_canvas_includes_governance_summary_and_related_domain_projections()
     assert users_node["related_domain_ids"] == ["academic"]
     assert orders_library["related_domain_names"] == ["学业域", "教学域"]
     assert orders_library["domain_count"] == 2
+
+
+def test_domain_canvas_projection_index_deduplicates_duplicate_cube_refs():
+    domain = type(
+        "_Domain",
+        (),
+        {
+            "id": "academic",
+            "code": "academic",
+            "name": "学业域",
+            "catalog_code": "learning",
+            "cubes": ["orders", "orders"],
+            "joins": [],
+        },
+    )()
+    service = DomainCanvasService(
+        domain_repo=_DomainRepo([domain]),
+        catalog_repo=_CatalogRepo([CatalogDefinition(code="learning", name="学习分析")]),
+        cube_repo=_CubeRepo([_cube("orders")]),
+    )
+
+    mapping = service._build_cube_domain_projection_index()
+    assert mapping["orders"]["related_domain_ids"] == ["academic"]
+    assert mapping["orders"]["domain_count"] == 1

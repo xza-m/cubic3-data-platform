@@ -203,6 +203,30 @@ describe('DataChat page', () => {
     expect(screen.queryByText('已为您生成可视化图表')).not.toBeInTheDocument()
   })
 
+  it('会话标题为空时回退显示对话编号', async () => {
+    dataChatMocks.listConversations.mockResolvedValueOnce({
+      data: {
+        items: [
+          {
+            id: 2,
+            title: '',
+            dataset_id: 9,
+            dataset_name: '课堂进度',
+            user_id: 'tester',
+            context: {},
+            created_at: '2026-03-24T09:00:00Z',
+            updated_at: '2026-03-24T10:00:00Z',
+            message_count: 0,
+          },
+        ],
+      },
+    })
+
+    renderPage()
+
+    expect(await screen.findByRole('button', { name: '对话 #2' })).toBeInTheDocument()
+  })
+
   it('在已有对话上下文后支持创建同数据集的新对话', async () => {
     const user = userEvent.setup()
 

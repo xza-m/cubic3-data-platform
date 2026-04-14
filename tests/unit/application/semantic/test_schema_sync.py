@@ -285,6 +285,22 @@ class TestSchemaSyncService:
         assert report.skipped_cubes == ["orders"]
         assert missing_report.skipped_cubes == ["missing_cube"]
 
+    def test_check_cube_skips_sql_backed_cube(self):
+        cube = CubeDefinition(
+            name="sql_orders",
+            title="SQL订单",
+            table="virtual_orders",
+            source_sql="select * from orders",
+            dimensions={"id": DimensionDef(title="ID", type="string", sql="{CUBE}.id", primary_key=True)},
+            measures={"cnt": MeasureDef(title="数量", type="count", sql="{CUBE}.id")},
+        )
+        svc = SchemaSyncService(MockCubeRepo([cube]), MockInspector({"virtual_orders": [{"name": "id", "type": "STRING"}]}))
+
+        report = svc.check_cube("sql_orders")
+
+        assert report.checked_cubes == 1
+        assert report.skipped_cubes == ["sql_orders"]
+
     def test_check_all_records_join_drifts_closes_managed_inspectors_and_syncs_registry(self):
         source_cube = CubeDefinition(
             name="orders",

@@ -306,6 +306,110 @@ describe('DevTools tabs', () => {
     expect(screen.queryByText('join_invalid / student_id')).not.toBeInTheDocument()
   })
 
+  it('SchemaSyncTab 支持 pending、失败提示与空筛选结果', async () => {
+    let resolveSecondRun: ((value: { data: Record<string, unknown> }) => void) | undefined
+    const firstReport = {
+      data: {
+        total_cubes: 3,
+        checked_cubes: 3,
+        skipped_cubes: [],
+        drift_count: 3,
+        checked_at: '2026-03-26 12:00:00',
+        drifts: [
+          {
+            cube: 'student_profile',
+            table: 'dw.student_profile',
+            kind: 'dimension_missing',
+            column: 'grade_name',
+            detail: '定义文件缺少 grade_name',
+            severity: 'error',
+            object_type: 'cube',
+            object_name: 'student_profile',
+          },
+          {
+            cube: 'student_relation',
+            table: 'dw.student_relation',
+            kind: 'join_target_missing',
+            column: 'school_id',
+            detail: 'join target 不存在',
+            severity: 'error',
+            object_type: 'cube',
+            object_name: 'student_relation',
+          },
+          {
+            cube: 'learning_snapshot',
+            table: '',
+            kind: 'index_outdated',
+            column: 'snapshot_date',
+            detail: '当前对象可保持现状',
+            severity: undefined,
+            object_type: 'cube',
+            object_name: 'learning_snapshot',
+          },
+        ],
+      },
+    }
+
+    devToolsTabMocks.runSchemaSync
+      .mockResolvedValueOnce(firstReport)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveSecondRun = resolve
+          }),
+      )
+      .mockRejectedValueOnce(new Error('network failed'))
+
+    renderWithProviders(<SchemaSyncTab />)
+
+    await userEvent.click(screen.getByRole('button', { name: '立即执行 Schema 漂移检测' }))
+
+    expect(await screen.findByText('回到定义文件补字段或修正类型')).toBeInTheDocument()
+    expect(screen.getByText('回到领域建模检查 Join 字段')).toBeInTheDocument()
+    expect(screen.getByText('无需处理')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '立即执行 Schema 漂移检测' }))
+    expect(screen.getAllByTestId('skeleton')).toHaveLength(4)
+
+    resolveSecondRun?.({
+      data: {
+        total_cubes: 1,
+        checked_cubes: 1,
+        skipped_cubes: [],
+        drift_count: 1,
+        checked_at: '2026-03-26 12:30:00',
+        drifts: [
+          {
+            cube: 'answer_records',
+            table: 'dw.answer_records',
+            kind: 'column_missing',
+            column: 'subject_name',
+            detail: '物理表缺少 subject_name',
+            severity: 'warn',
+            object_type: 'cube',
+            object_name: 'answer_records',
+          },
+        ],
+      },
+    })
+
+    expect(await screen.findByText('确认当前漂移是否需要同步更新')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /正常/ }))
+    expect(await screen.findByText('当前筛选条件下没有匹配的问题项。')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '立即执行 Schema 漂移检测' }))
+
+    await waitFor(() => {
+      expect(devToolsTabMocks.toast).toHaveBeenCalledWith({
+        title: 'Schema 检测失败',
+        description: 'network failed',
+        variant: 'destructive',
+      })
+    })
+  })
+
   it('YamlEditorTab 支持 recipe 元信息、脏状态、校验和保存', async () => {
     const onDirtyChange = vi.fn()
     devToolsTabMocks.apiGet.mockResolvedValue({
@@ -403,7 +507,7 @@ describe('DevTools tabs', () => {
 
     expect(await screen.findByLabelText('yaml-editor')).toHaveValue('name: orders_cube\nkind: cube\ntitle: 新标题\n')
     expect(screen.getByText('有未保存修改')).toBeInTheDocument()
-    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+    expect(onDirtyChange).toHaveBeenCalledWith(true)
   })
 
   it('YamlEditorTab 在未选择文件时展示空态', () => {

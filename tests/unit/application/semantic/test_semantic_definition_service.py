@@ -620,3 +620,60 @@ def test_default_enum_loader_uses_runtime_binding_summary_and_fetch():
     assert result["dimensions"]["status"]["enum"] == {"1": "完成"}
     assert result["source_binding_summary"]["display"] == "dws.orders"
     assert runtime.enum_calls == [("orders", "order_status")]
+
+
+def test_list_view_and_recipe_summaries_cover_summary_builders():
+    cube = _cube("orders")
+    view = ViewDefinition(
+        name="orders_view",
+        title="订单视图",
+        public=False,
+        cubes=[{"join_path": "orders.detail", "includes": ["id"]}],
+    )
+    registry = _RegistryRepo(
+        {
+            ("view", "orders_view"): _RegistryEntry(
+                {
+                    "publish_status": "published",
+                    "last_published_at": "2026-04-14T10:00:00",
+                }
+            )
+        }
+    )
+    recipes = [
+        RecipeDefinition(
+            name="orders_recipe",
+            title="订单示例",
+            tags=["core"],
+            examples=[{"question": "看订单", "dsl": {"measures": ["orders.total_count"]}}],
+        ),
+        type(
+            "_DraftRecipe",
+            (),
+            {
+                "name": "draft_recipe",
+                "title": "空示例",
+                "tags": [],
+                "examples": [],
+                "extract_cube_names": staticmethod(lambda: []),
+            },
+        )(),
+    ]
+    recipe_repo = _RecipeRepo(recipes)
+    recipe_repo.list_all = lambda: list(recipes)
+    service = SemanticDefinitionService(
+        cube_repo=_CubeRepo([cube]),
+        view_repo=_ViewRepo([view]),
+        recipe_repo=recipe_repo,
+        registry_repo=registry,
+    )
+
+    view_summaries = service.list_view_summaries(public_only=False)
+    recipe_summaries = service.list_recipe_summaries()
+
+    assert view_summaries[0]["cubes"] == ["orders"]
+    assert view_summaries[0]["status"] == "active"
+    assert view_summaries[0]["publish_summary"]["publish_status"] == "published"
+    assert recipe_summaries[0]["related_cubes"] == ["orders"]
+    assert recipe_summaries[0]["state_summary"]["status"] == "active"
+    assert recipe_summaries[1]["state_summary"]["status"] == "draft"

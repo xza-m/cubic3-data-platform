@@ -429,4 +429,50 @@ describe('Datasets page', () => {
       expect(virtualSyncButton).not.toBeDisabled()
     })
   })
+
+  it('列表分页支持上一页禁用态、跨页切换和失败兜底文案', async () => {
+    const user = userEvent.setup()
+
+    datasetMocks.getDatasets.mockImplementation(async ({ page = 1 }: { page?: number }) => {
+      const items = Array.from({ length: 11 }).map((_, index) => ({
+        id: index + 1,
+        dataset_code: `dataset_${index + 1}`,
+        dataset_name: `数据集 ${index + 1}`,
+        dataset_type: index === 10 ? 'physical' : 'virtual',
+        source_type: index === 10 ? 'postgresql' : 'maxcompute',
+        physical_table: index === 10 ? 'dwd_tail_dataset' : undefined,
+        owner: `owner-${index + 1}`,
+        sync_status: index === 10 ? 'failed' : 'synced',
+        sync_error: index === 10 ? '' : undefined,
+      }))
+      const pageSize = 10
+      const start = (page - 1) * pageSize
+      return {
+        data: {
+          items: items.slice(start, start + pageSize),
+          total: items.length,
+        },
+      }
+    })
+    datasetMocks.getDatasetStatistics.mockResolvedValue({
+      data: { total: 11, synced: 10, failed: 1, pending: 0 },
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('数据集 1')).toBeInTheDocument()
+    const prevButton = screen.getByRole('button', { name: '上一页' })
+    expect(prevButton).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: '下一页' }))
+    expect(await screen.findByText('数据集 11')).toBeInTheDocument()
+    expect(screen.getByText('同步失败，后端未返回具体原因')).toBeInTheDocument()
+
+    const tailRow = screen.getByText('数据集 11').parentElement?.parentElement
+    expect(tailRow).not.toBeNull()
+    expect(tailRow).not.toHaveClass('border-b')
+
+    await user.click(screen.getByRole('button', { name: '上一页' }))
+    expect(await screen.findByText('数据集 1')).toBeInTheDocument()
+  })
 })

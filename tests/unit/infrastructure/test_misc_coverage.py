@@ -7,7 +7,11 @@ from unittest.mock import MagicMock, patch
 from app.application.feishu.handlers.chat_handlers import ListChatsHandler, UpdateChatHandler, _chat_to_dict
 from app.infrastructure.queue import clear_queue, get_all_queues, get_queue, get_redis_connection
 import app.infrastructure.queue as queue_module
-from app.infrastructure.scheduler import init_jobs
+from app.infrastructure.scheduler import (
+    execute_platform_datasource_catalog_sync,
+    init_jobs,
+    register_platform_datasource_catalog_sync_job,
+)
 from app.interfaces.api.docs import _get_schemas, index, openapi_spec, redoc_ui, swagger_ui
 
 
@@ -62,6 +66,30 @@ class TestQueueHelpers:
 
 
 class TestScheduler:
+    def test_platform_catalog_sync_helpers_cover_enqueue_and_registration(self):
+        active_pg = MagicMock(id=1, is_active=True, source_type="postgresql")
+        active_mc = MagicMock(id=2, is_active=True, source_type="maxcompute")
+        inactive = MagicMock(id=3, is_active=False, source_type="postgresql")
+        unsupported = MagicMock(id=4, is_active=True, source_type="mysql")
+        fake_repo = MagicMock(find_all=MagicMock(return_value=[active_pg, active_mc, inactive, unsupported]))
+        fake_queue = MagicMock()
+        fake_container = MagicMock(
+            datasource_repository=MagicMock(return_value=fake_repo),
+            task_queue=MagicMock(return_value=fake_queue),
+        )
+        fake_scheduler = MagicMock()
+
+        with patch("app.di.container.get_container", return_value=fake_container):
+            execute_platform_datasource_catalog_sync()
+
+        assert fake_queue.enqueue.call_count == 2
+        assert fake_queue.enqueue.call_args_list[0].args[1] == 1
+        assert fake_queue.enqueue.call_args_list[1].args[1] == 2
+
+        with patch("app.infrastructure.scheduler.scheduler", fake_scheduler):
+            register_platform_datasource_catalog_sync_job()
+            fake_scheduler.add_job.assert_called_once()
+
     def test_init_jobs_success_and_failure_paths(self):
         fake_scheduler = MagicMock()
         fake_service = MagicMock()

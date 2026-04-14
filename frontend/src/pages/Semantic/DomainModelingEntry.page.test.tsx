@@ -242,4 +242,35 @@ describe('DomainModelingEntry page', () => {
     expect(await screen.findByText('当前没有可继续的草稿领域。')).toBeInTheDocument()
     expect(screen.getByText('当前没有近期已发布领域。')).toBeInTheDocument()
   })
+
+  it('草稿领域按最近更新时间倒序展示', async () => {
+    domainEntryMocks.listDomains.mockResolvedValueOnce({
+      data: {
+        domains: [
+          {
+            id: 'draft-old',
+            code: 'old_domain',
+            name: '旧草稿',
+            catalog_name: '默认目录',
+            status: 'draft',
+            state_summary: { updated_at: '2026-03-20T08:00:00Z' },
+          },
+          {
+            id: 'draft-new',
+            code: 'new_domain',
+            name: '最新草稿',
+            catalog_name: '默认目录',
+            status: 'draft',
+            state_summary: { updated_at: '2026-03-28T08:00:00Z' },
+          },
+        ],
+      },
+    })
+
+    renderPage()
+
+    const newer = await screen.findByText('最新草稿')
+    const older = screen.getByText('旧草稿')
+    expect(newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })

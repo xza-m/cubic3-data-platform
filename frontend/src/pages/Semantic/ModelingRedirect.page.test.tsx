@@ -44,6 +44,19 @@ describe('ModelingRedirect page', () => {
     vi.clearAllMocks()
   })
 
+  it('加载中时展示骨架屏', () => {
+    modelingRedirectMocks.useDomainModelingEntry.mockReturnValue({
+      draftDomains: [],
+      publishedDomains: [],
+      isLoading: true,
+    })
+
+    renderPage()
+
+    expect(screen.getAllByTestId('skeleton')).toHaveLength(2)
+    expect(screen.queryByTestId('domain-modeling-entry')).not.toBeInTheDocument()
+  })
+
   it('存在草稿或已发布领域时跳转到领域工作台', async () => {
     modelingRedirectMocks.useDomainModelingEntry.mockReturnValue({
       draftDomains: [{ id: 'draft-1', code: 'answer-analysis' }],

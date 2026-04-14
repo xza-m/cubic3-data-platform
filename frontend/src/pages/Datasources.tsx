@@ -74,7 +74,7 @@ interface DataSourceTypeOption {
   icon?: string
 }
 
-function DataSourceBrandIcon({ sourceType }: { sourceType: string }) {
+export function DataSourceBrandIcon({ sourceType }: { sourceType: string }) {
   const baseClass = 'flex h-12 w-12 items-center justify-center rounded-xl shadow-[inset_0_1px_0_#FFFFFF80]'
 
   if (sourceType === 'postgresql') {
@@ -124,6 +124,39 @@ function DataSourceBrandIcon({ sourceType }: { sourceType: string }) {
       <Database className="h-6 w-6" />
     </div>
   )
+}
+
+export function optimisticallyMarkCatalogSync<
+  T extends { data?: { items?: Array<{ id: number; extra_config?: Record<string, unknown> & { catalog_sync?: Record<string, unknown> } }> } }
+>(current: T | undefined, id: number): T | undefined {
+  if (!current?.data?.items) {
+    return current
+  }
+
+  return {
+    ...current,
+    data: {
+      ...current.data,
+      items: current.data.items.map((item) => {
+        if (item.id !== id) {
+          return item
+        }
+
+        const existingSync = item.extra_config?.catalog_sync || {}
+        return {
+          ...item,
+          extra_config: {
+            ...(item.extra_config || {}),
+            catalog_sync: {
+              ...existingSync,
+              status: 'syncing',
+              last_error: null,
+            },
+          },
+        }
+      }),
+    },
+  }
 }
 
 export default function Datasources() {
@@ -256,36 +289,7 @@ export default function Datasources() {
     onMutate: (id: number) => {
       setSyncingCatalogId(id)
       setPollingCatalogIds((current) => (current.includes(id) ? current : [...current, id]))
-      queryClient.setQueryData(['datasources'], (current: typeof listData) => {
-        if (!current?.data?.items) {
-          return current
-        }
-
-        return {
-          ...current,
-          data: {
-            ...current.data,
-            items: current.data.items.map((item) => {
-              if (item.id !== id) {
-                return item
-              }
-
-              const existingSync = item.extra_config?.catalog_sync || {}
-              return {
-                ...item,
-                extra_config: {
-                  ...(item.extra_config || {}),
-                  catalog_sync: {
-                    ...existingSync,
-                    status: 'syncing',
-                    last_error: null,
-                  },
-                },
-              }
-            }),
-          },
-        }
-      })
+      queryClient.setQueryData(['datasources'], (current: typeof listData) => optimisticallyMarkCatalogSync(current, id))
     },
     onSuccess: (_result, id) => {
       toast({

@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import React from 'react'
+import ELK from 'elkjs/lib/elk.bundled.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import DomainCanvas from './DomainCanvas'
 
@@ -280,6 +281,11 @@ describe('DomainCanvas page', () => {
     semanticApiMocks.listDomainCatalogs.mockReset()
     semanticApiMocks.listDomains.mockReset()
     semanticApiMocks.toast.mockReset()
+    window.matchMedia = vi.fn().mockImplementation(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
     semanticApiMocks.listDomainCatalogs.mockResolvedValue({
       data: {
         catalogs: [
@@ -788,5 +794,177 @@ describe('DomainCanvas page', () => {
       description: 'publish failed',
       variant: 'destructive',
     }))
+  })
+
+  it('紧凑视口下默认折叠双侧面板，并允许重新展开资源树', async () => {
+    window.matchMedia = vi.fn().mockImplementation(() => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    mockCanvasData({
+      nodes: [buildNode('answer_records', { title: '答题记录' })],
+      libraryCubes: [buildCube('answer_records', '答题记录', { in_domain: true })],
+    })
+
+    renderPage()
+
+    expect(await screen.findByLabelText('展开资源树')).toBeInTheDocument()
+    await userEvent.click(screen.getByLabelText('展开资源树'))
+    expect(await screen.findByLabelText('折叠资源树')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('搜索 Cube...')).toBeInTheDocument()
+  })
+
+  it('支持从右侧关系列表选择 Join，并展示当前选中 Cube 摘要', async () => {
+    const user = userEvent.setup()
+    mockCanvasData({
+      nodes: [
+        buildNode('answer_records', { title: '答题记录', dimensions: 5, measures: 2 }),
+        buildNode('user_profile', { title: '学生档案', type: 'dimension', measures: 0 }),
+      ],
+      edges: [buildEdge({ id: 'join-42', description: '学生维表关联' })],
+      libraryCubes: [
+        buildCube('answer_records', '答题记录', { in_domain: true }),
+        buildCube('user_profile', '学生档案', { in_domain: true }),
+      ],
+    })
+
+    renderCatalogPage()
+
+    await screen.findByTestId('mock-edge-join-42')
+    const joinCard = await screen.findByRole('button', { name: /答题记录 ↔ 学生档案/ })
+    await user.click(joinCard)
+    expect(screen.getByRole('button', { name: /答题记录 ↔ 学生档案/ })).toHaveClass('border-blue-300')
+
+    await user.click(screen.getByTestId('mock-node-answer_records'))
+    expect(await screen.findByText('5 维度 · 2 指标')).toBeInTheDocument()
+  })
+
+  it('领域目录模式支持在目录树与 Cube 库之间切换，并保留目录展开交互', async () => {
+    const user = userEvent.setup()
+    mockCanvasData({
+      nodes: [buildNode('answer_records', { title: '答题记录' })],
+      edges: [buildEdge()],
+      libraryCubes: [buildCube('user_profile', '学生档案')],
+    })
+
+    renderCatalogPage()
+
+    await screen.findByTestId('domain-canvas-page')
+    expect(screen.getByPlaceholderText('搜索目录、领域、Cube...')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Cube 库' }))
+    expect(screen.getByPlaceholderText('搜索 Cube...')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '领域目录' }))
+    const catalogToggle = screen.getByRole('button', { name: /默认目录/ })
+    await user.click(catalogToggle)
+    expect(await screen.findByRole('button', { name: /学习领域/ })).toBeInTheDocument()
+
+    await user.click(catalogToggle)
+    expect(screen.getByRole('button', { name: /默认目录/ })).toBeInTheDocument()
+  })
+
+  it('领域目录模式支持展开目录并查看当前领域的节点列表', async () => {
+    const user = userEvent.setup()
+    mockCanvasData({
+      nodes: [
+        buildNode('answer_records', { title: '答题记录' }),
+        buildNode('course_dim', { title: '课程维度', type: 'dimension', measures: 0 }),
+      ],
+      edges: [buildEdge()],
+      libraryCubes: [
+        buildCube('answer_records', '答题记录', { in_domain: true }),
+        buildCube('course_dim', '课程维度', { in_domain: true }),
+      ],
+    })
+
+    renderCatalogPage()
+
+    await screen.findByTestId('domain-canvas-page')
+    await user.click(screen.getByRole('button', { name: /默认目录/ }))
+    await user.click(screen.getByRole('button', { name: /学习领域/ }))
+
+    const treePanel = screen.getByTestId('domain-tree-panel')
+    expect(await within(treePanel).findByRole('button', { name: /答题记录/ })).toBeInTheDocument()
+    expect(within(treePanel).getByRole('button', { name: /课程维度/ })).toBeInTheDocument()
+  })
+
+  it('领域目录模式在搜索无结果时展示空态提示', async () => {
+    const user = userEvent.setup()
+    mockCanvasData({
+      nodes: [buildNode('answer_records', { title: '答题记录' })],
+      libraryCubes: [buildCube('answer_records', '答题记录', { in_domain: true })],
+    })
+
+    renderCatalogPage()
+
+    await screen.findByTestId('domain-canvas-page')
+    await user.type(screen.getByPlaceholderText('搜索目录、领域、Cube...'), '不存在的目录')
+
+    expect(await screen.findByText('没有匹配的目录或领域')).toBeInTheDocument()
+  })
+
+  it('领域目录模式下没有 Join 时展示关系空态', async () => {
+    mockCanvasData({
+      nodes: [buildNode('answer_records', { title: '答题记录' })],
+      libraryCubes: [buildCube('answer_records', '答题记录', { in_domain: true })],
+    })
+
+    renderCatalogPage()
+
+    expect(await screen.findByText('当前领域还没有可展示的 Cube 关系')).toBeInTheDocument()
+  })
+
+  it('布局引擎异常时回退到原始节点结构，并支持重新展开目录', async () => {
+    const user = userEvent.setup()
+    const layoutSpy = vi.spyOn(ELK.prototype, 'layout').mockRejectedValueOnce(new Error('layout failed'))
+    semanticApiMocks.listDomainCatalogs.mockResolvedValueOnce({
+      data: {
+        catalogs: [
+          {
+            code: 'default',
+            name: '默认目录',
+            domains: [
+              {
+                id: 'domain-learning',
+                code: 'learning',
+                name: '学习领域',
+                cube_count: 1,
+              },
+            ],
+          },
+          {
+            code: 'sales',
+            name: '销售目录',
+            domains: [
+              {
+                id: 'domain-sales',
+                code: 'sales',
+                name: '销售领域',
+                cube_count: 0,
+              },
+            ],
+          },
+        ],
+      },
+    })
+    mockCanvasData({
+      nodes: [buildNode('answer_records', { title: '答题记录' })],
+      edges: [buildEdge()],
+      libraryCubes: [buildCube('answer_records', '答题记录', { in_domain: true })],
+    })
+
+    renderCatalogPage()
+
+    expect(await screen.findByTestId('mock-node-answer_records')).toBeInTheDocument()
+    const catalogToggle = screen.getByRole('button', { name: /默认目录/ })
+    await user.click(catalogToggle)
+    await user.click(catalogToggle)
+    expect(await screen.findByRole('button', { name: /学习领域/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /销售目录/ }))
+    expect(await screen.findByRole('button', { name: /销售领域/ })).toBeInTheDocument()
+
+    layoutSpy.mockRestore()
   })
 })

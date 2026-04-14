@@ -153,6 +153,107 @@ class TestExecuteSQLQueryJob:
         assert 'query_id' in result
         assert 'DB connection failed' in result['error']
 
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.get_current_job')
+    def test_datasource_not_found_returns_failed_result(self, mock_get_job, mock_get_session):
+        mock_get_job.return_value = MagicMock(id='job-1')
+        mock_session = MagicMock()
+        mock_query = MagicMock(spec=SQLQuery)
+        mock_query.id = 1
+        mock_query.source_id = 10
+        mock_query.status = SQLQueryStatus.PENDING
+        mock_query.mark_as_failed = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.side_effect = [mock_query, None]
+        mock_get_session.return_value = mock_session
+
+        from app.infrastructure.tasks.jobs.sql_query_job import execute_sql_query_job
+
+        result = execute_sql_query_job(1)
+
+        assert result['status'] == 'failed'
+        assert 'DataSource 10 not found' in result['error']
+        mock_query.mark_as_failed.assert_called_once()
+
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.validate_sql_query')
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.get_current_job')
+    def test_invalid_sql_returns_failed_result(self, mock_get_job, mock_get_session, mock_validate):
+        mock_get_job.return_value = MagicMock(id='job-1')
+        mock_session = MagicMock()
+        mock_query = MagicMock(spec=SQLQuery)
+        mock_query.id = 1
+        mock_query.source_id = 10
+        mock_query.sql = 'DELETE FROM orders'
+        mock_query.limit_rows = 100
+        mock_query.status = SQLQueryStatus.PENDING
+        mock_query.start = MagicMock()
+        mock_query.mark_as_failed = MagicMock()
+
+        mock_datasource = MagicMock(spec=DataSource)
+        mock_session.query.return_value.filter_by.return_value.first.side_effect = [mock_query, mock_datasource]
+        mock_get_session.return_value = mock_session
+        mock_validate.return_value = (False, ['只允许 SELECT'])
+
+        from app.infrastructure.tasks.jobs.sql_query_job import execute_sql_query_job
+
+        result = execute_sql_query_job(1)
+
+        assert result['status'] == 'failed'
+        assert 'SQL 校验失败' in result['error']
+        mock_query.mark_as_failed.assert_called_once()
+
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.FieldIdentifier')
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.validate_sql_query')
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.AdapterFactory')
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.sql_query_job.get_current_job')
+    def test_success_converts_rows_and_string_columns(
+        self,
+        mock_get_job,
+        mock_get_session,
+        mock_adapter_factory,
+        mock_validate,
+        mock_field_identifier,
+    ):
+        mock_get_job.return_value = MagicMock(id='job-1')
+        mock_session = MagicMock()
+        mock_query = MagicMock(spec=SQLQuery)
+        mock_query.id = 1
+        mock_query.source_id = 10
+        mock_query.sql = 'SELECT 1'
+        mock_query.limit_rows = 100
+        mock_query.status = SQLQueryStatus.PENDING
+        mock_query.start = MagicMock()
+        mock_query.mark_as_completed = MagicMock()
+
+        mock_datasource = MagicMock(spec=DataSource)
+        mock_datasource.source_type = 'postgresql'
+        mock_datasource.connection_config = {}
+
+        mock_session.query.return_value.filter_by.return_value.first.side_effect = [mock_query, mock_datasource]
+        mock_get_session.return_value = mock_session
+        mock_validate.return_value = (True, [])
+
+        mock_adapter = MagicMock()
+        mock_adapter.execute_query.return_value = {
+            'columns': ['id', 'name'],
+            'rows': [[1, '订单']],
+        }
+        mock_adapter_factory.create_adapter.return_value = mock_adapter
+        mock_field_identifier.identify_fields_batch.return_value = [{'name': 'id'}, {'name': 'name'}]
+        mock_field_identifier.get_statistics.return_value = {'field_count': 2}
+
+        from app.infrastructure.tasks.jobs.sql_query_job import _convert_rows_to_data, execute_sql_query_job
+
+        assert _convert_rows_to_data([[1, '订单']], ['id', 'name']) == [{'id': 1, 'name': '订单'}]
+
+        result = execute_sql_query_job(1)
+
+        assert result['status'] == 'success'
+        saved_result = mock_query.mark_as_completed.call_args.args[0]
+        assert saved_result['columns'] == ['id', 'name']
+        assert saved_result['data'] == [{'id': 1, 'name': '订单'}]
+
 
 # =============================================================================
 # SQL Query Job - 辅助函数
@@ -552,3 +653,55 @@ class TestExecuteDatasourceCatalogSyncJob:
         cache_service.prune_datasource_caches.assert_called_once_with(7, ['ads', 'dw'])
         cache_service.get_cached_tables.assert_any_call(7, 'dw', force_refresh=True)
         cache_service.get_cached_tables.assert_any_call(7, 'ads', force_refresh=True)
+
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.get_current_job')
+    def test_sync_raises_when_datasource_not_found(self, mock_get_job, mock_get_session):
+        mock_get_job.return_value = MagicMock(id='job-100')
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.return_value = None
+        mock_get_session.return_value = mock_session
+
+        from app.infrastructure.tasks.jobs.datasource_catalog_sync_job import execute_datasource_catalog_sync_job
+
+        with pytest.raises(ValueError, match='DataSource 9 not found'):
+            execute_datasource_catalog_sync_job(9)
+
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.TableCacheService')
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.AdapterFactory')
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.get_db_session')
+    @patch('app.infrastructure.tasks.jobs.datasource_catalog_sync_job.get_current_job')
+    def test_sync_failure_marks_datasource_failed_and_reraises(
+        self,
+        mock_get_job,
+        mock_get_session,
+        mock_adapter_factory,
+        mock_table_cache_service,
+    ):
+        mock_get_job.return_value = MagicMock(id='job-101')
+
+        datasource = MagicMock(spec=DataSource)
+        datasource.id = 7
+        datasource.source_type = 'postgresql'
+        datasource.connection_config = {'host': 'localhost'}
+        datasource.mark_catalog_sync_syncing = MagicMock()
+        datasource.mark_catalog_sync_failed = MagicMock()
+
+        mock_session = MagicMock()
+        mock_session.query.return_value.filter_by.return_value.first.side_effect = [datasource, datasource]
+        mock_get_session.return_value = mock_session
+
+        mock_adapter = MagicMock()
+        mock_adapter.list_databases.side_effect = RuntimeError('boom')
+        mock_adapter_factory.create_adapter.return_value = mock_adapter
+        mock_table_cache_service.return_value = MagicMock()
+
+        from app.infrastructure.tasks.jobs.datasource_catalog_sync_job import execute_datasource_catalog_sync_job
+
+        with pytest.raises(RuntimeError, match='boom'):
+            execute_datasource_catalog_sync_job(7)
+
+        datasource.mark_catalog_sync_failed.assert_called_once_with('boom')
+        mock_session.rollback.assert_called_once()
+        assert mock_session.commit.call_count == 2
+        mock_session.close.assert_called_once()

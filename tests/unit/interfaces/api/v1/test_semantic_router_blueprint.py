@@ -29,3 +29,17 @@ def test_semantic_router_blueprint_covers_success_and_error_paths():
 
     service.plan.side_effect = ValueError("route failed")
     assert client.post("/api/v1/semantic-router/plan", json={"question": "ghost"}).status_code == 400
+
+
+def test_semantic_router_blueprint_covers_execute_preview_and_execute_paths():
+    service = MagicMock()
+    service.execute_plan_preview.return_value = {"compiled_targets": []}
+    service.execute_plan.return_value = {"execution_results": []}
+    client = _build_app(create_semantic_router_blueprint(service)).test_client()
+
+    assert client.post("/api/v1/semantic-router/execute-plan-preview", json={}).status_code == 400
+    assert client.post("/api/v1/semantic-router/execute-plan-preview", json={"question": "查看GMV趋势"}).status_code == 200
+    assert client.post("/api/v1/semantic-router/execute-plan", json={"question": "查看GMV趋势"}).status_code == 200
+
+    service.execute_plan.side_effect = RuntimeError("execute failed")
+    assert client.post("/api/v1/semantic-router/execute-plan", json={"question": "查看GMV趋势"}).status_code == 400

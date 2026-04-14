@@ -248,6 +248,10 @@ def test_delete_catalog_rejects_when_domains_exist():
         service.delete_catalog("learning")
 
 
+def test_find_duplicate_domain_cubes_skips_blank_entries():
+    assert DomainModelingService._find_duplicate_domain_cubes(["", "orders", "orders", "orders", "users"]) == ["orders"]
+
+
 def test_update_domain_rejects_unknown_catalog():
     service = DomainModelingService(
         domain_repo=_InMemoryDomainRepo(),

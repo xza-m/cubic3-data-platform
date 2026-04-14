@@ -24,6 +24,7 @@ def test_app_execution_repository_covers_crud_filters_and_stats():
     query = MagicMock()
     query.filter_by.return_value = query
     query.filter.return_value = query
+    query.join.return_value = query
     query.order_by.return_value = query
     query.offset.return_value = query
     query.limit.return_value = query
@@ -42,6 +43,7 @@ def test_app_execution_repository_covers_crud_filters_and_stats():
     assert repo.find_by_id(1) == "execution-1"
 
     items, total = repo.find_all(
+        app_code="report_push",
         instance_id=2,
         status="success",
         trigger_type="scheduled",

@@ -187,7 +187,7 @@ type SelectedEditorItem =
   | { kind: 'join'; id: string }
   | { kind: 'meta' }
 
-function parseWorkspaceTab(rawTab: string | null, status?: string): WorkspaceTab {
+export function parseWorkspaceTab(rawTab: string | null, status?: string): WorkspaceTab {
   const normalized = String(rawTab || '').toLowerCase()
   if (normalized === 'dsl' || normalized === 'preview' || normalized === 'sync' || normalized === 'compiler') return 'dsl'
   if (normalized === 'yaml' || normalized === 'editor') return 'yaml'
@@ -196,7 +196,7 @@ function parseWorkspaceTab(rawTab: string | null, status?: string): WorkspaceTab
   return String(status || '').toLowerCase() === 'active' ? 'dsl' : 'modeling'
 }
 
-function parsePhysicalTable(physicalTable?: string | null) {
+export function parsePhysicalTable(physicalTable?: string | null) {
   const value = String(physicalTable || '').trim()
   if (!value) return { database: '', schema: undefined as string | undefined, table: '' }
 
@@ -226,7 +226,7 @@ function parsePhysicalTable(physicalTable?: string | null) {
   }
 }
 
-function classifyFieldCategory(dataType?: string | null): SourceFieldOption['category'] {
+export function classifyFieldCategory(dataType?: string | null): SourceFieldOption['category'] {
   const normalized = String(dataType || '').toLowerCase()
   if (/int|bigint|smallint|tinyint|decimal|numeric|float|double|real|number/.test(normalized)) return 'numeric'
   if (/date|time|timestamp|datetime/.test(normalized)) return 'temporal'
@@ -235,7 +235,7 @@ function classifyFieldCategory(dataType?: string | null): SourceFieldOption['cat
   return 'other'
 }
 
-function inferDimensionType(dataType?: string | null): EditableDimension['type'] {
+export function inferDimensionType(dataType?: string | null): EditableDimension['type'] {
   const category = classifyFieldCategory(dataType)
   if (category === 'numeric') return 'number'
   if (category === 'temporal') return 'time'
@@ -243,29 +243,29 @@ function inferDimensionType(dataType?: string | null): EditableDimension['type']
   return 'string'
 }
 
-function inferMeasureAggregation(field?: SourceFieldOption | null): MeasureAggregation {
+export function inferMeasureAggregation(field?: SourceFieldOption | null): MeasureAggregation {
   if (!field) return 'sum'
   return field.category === 'numeric' ? 'sum' : 'count'
 }
 
-function toTitleCase(value: string) {
+export function toTitleCase(value: string) {
   return value
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (match) => match.toUpperCase())
 }
 
-function stringifyLabelList(values?: string[] | null) {
+export function stringifyLabelList(values?: string[] | null) {
   return Array.isArray(values) ? values.filter(Boolean).join(', ') : ''
 }
 
-function parseLabelList(raw: string) {
+export function parseLabelList(raw: string) {
   return raw
     .split(/[\n,，]+/)
     .map((item) => item.trim())
     .filter(Boolean)
 }
 
-function ensureUniqueKey(base: string, existing: string[]) {
+export function ensureUniqueKey(base: string, existing: string[]) {
   const normalized = base.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'untitled'
   if (!existing.includes(normalized)) return normalized
   let index = 1
@@ -275,14 +275,14 @@ function ensureUniqueKey(base: string, existing: string[]) {
   return `${normalized}_${index}`
 }
 
-function buildMeasureExpression(field: string, aggregation: MeasureAggregation) {
+export function buildMeasureExpression(field: string, aggregation: MeasureAggregation) {
   if (!field) return ''
   if (aggregation === 'count') return `COUNT(\`${field}\`)`
   if (aggregation === 'count_distinct') return `COUNT(DISTINCT \`${field}\`)`
   return `${aggregation.toUpperCase()}(\`${field}\`)`
 }
 
-function extractSourceField(expression?: string | null) {
+export function extractSourceField(expression?: string | null) {
   const normalized = String(expression || '')
   const cubeRef = normalized.match(/\{CUBE\}\.([A-Za-z0-9_]+)/)
   if (cubeRef?.[1]) return cubeRef[1]
@@ -293,7 +293,7 @@ function extractSourceField(expression?: string | null) {
   return ''
 }
 
-function normalizeMeasureSql(sql: string | undefined | null, aggregation: MeasureAggregation): string {
+export function normalizeMeasureSql(sql: string | undefined | null, aggregation: MeasureAggregation): string {
   if (!sql) return ''
   const field = extractSourceField(sql)
   if (!field) return sql
@@ -304,13 +304,13 @@ function normalizeMeasureSql(sql: string | undefined | null, aggregation: Measur
   return buildMeasureExpression(field, aggregation)
 }
 
-function normalizeDimensionSql(sql: string | undefined | null): string {
+export function normalizeDimensionSql(sql: string | undefined | null): string {
   if (!sql) return ''
   const field = extractSourceField(sql)
   return field ? `\`${field}\`` : sql
 }
 
-function parseFilterExpression(sql?: string | null) {
+export function parseFilterExpression(sql?: string | null) {
   const normalized = String(sql || '').trim()
   const matched = normalized.match(/^source\.([A-Za-z0-9_]+)\s*(=|!=|<>|>=|<=|>|<|like|in)\s*(.+)$/i)
   if (!matched) {
@@ -329,7 +329,7 @@ function parseFilterExpression(sql?: string | null) {
   }
 }
 
-function mapSourceFieldsFromPreview(preview: PreviewDatasetPayload): SourceFieldOption[] {
+export function mapSourceFieldsFromPreview(preview: PreviewDatasetPayload): SourceFieldOption[] {
   const fields = Array.isArray(preview?.fields) ? preview.fields : []
   const seen = new Set<string>()
   const result: SourceFieldOption[] = []
@@ -351,7 +351,7 @@ function mapSourceFieldsFromPreview(preview: PreviewDatasetPayload): SourceField
   return result
 }
 
-function mapSourceFieldsFromDataset(fields: DatasetField[]): SourceFieldOption[] {
+export function mapSourceFieldsFromDataset(fields: DatasetField[]): SourceFieldOption[] {
   return fields.map((field) => ({
     name: field.physical_name,
     label: field.display_name || field.physical_name,
@@ -364,7 +364,7 @@ function mapSourceFieldsFromDataset(fields: DatasetField[]): SourceFieldOption[]
   }))
 }
 
-function buildEditableState(detail: CubeDetail): WorkspaceDraftState {
+export function buildEditableState(detail: CubeDetail): WorkspaceDraftState {
   const dimensions = Object.entries(detail.dimensions || {}).map(([name, item]) => ({
     id: `dimension:${name}`,
     name,
@@ -437,11 +437,11 @@ function buildEditableState(detail: CubeDetail): WorkspaceDraftState {
   }
 }
 
-function serializeDraftState(state: WorkspaceDraftState) {
+export function serializeDraftState(state: WorkspaceDraftState) {
   return JSON.stringify(state)
 }
 
-function buildCubeUpdatePayload(state: WorkspaceDraftState, sourceId: number, sourceDatabase?: string | null, sourceSchema?: string | null, table?: string) {
+export function buildCubeUpdatePayload(state: WorkspaceDraftState, sourceId: number, sourceDatabase?: string | null, sourceSchema?: string | null, table?: string) {
   return {
     name: state.cubeName,
     title: state.title,
@@ -510,14 +510,14 @@ function buildCubeUpdatePayload(state: WorkspaceDraftState, sourceId: number, so
   }
 }
 
-function buildStateLabel(status?: string, cubeName?: string) {
+export function buildStateLabel(status?: string, cubeName?: string) {
   if (String(status || '').toLowerCase() === 'active') return '已发布' as const
   if (String(cubeName || '').includes('__revision_draft')) return '修订草稿' as const
   if (cubeName) return '草稿中' as const
   return '未开始' as const
 }
 
-function TagInput({
+export function TagInput({
   value,
   onChange,
   placeholder = '输入后按 Enter 添加',
@@ -582,7 +582,7 @@ function TagInput({
   )
 }
 
-function LandingCubeList({ cubes, selectedSource, onSelectCube }: {
+export function LandingCubeList({ cubes, selectedSource, onSelectCube }: {
   cubes: CubeSummary[]
   selectedSource: string
   onSelectCube: (name: string) => void
@@ -634,7 +634,7 @@ function LandingCubeList({ cubes, selectedSource, onSelectCube }: {
   )
 }
 
-function DevToolsSkeleton() {
+export function DevToolsSkeleton() {
   return (
     <div className="flex h-full flex-col text-[13px] text-[#2E2E2E]" data-testid="devtools-screen">
       <div className="flex flex-1 overflow-hidden bg-white">
@@ -646,7 +646,7 @@ function DevToolsSkeleton() {
   )
 }
 
-function ExpressionModeToggle({
+export function ExpressionModeToggle({
   mode,
   onChange,
 }: {
@@ -673,7 +673,7 @@ function ExpressionModeToggle({
   )
 }
 
-function renderExpressionModeLabel(mode: FilterMode | JoinMode) {
+export function renderExpressionModeLabel(mode: FilterMode | JoinMode) {
   if (mode === 'form') return '表单模式'
   if (mode === 'custom') return '自定义模式'
   return '关系画布'
@@ -964,9 +964,6 @@ export default function DevTools() {
         if (singleSelectedResource.datasetType === 'file') {
           throw new Error('当前暂不支持从 file 数据集生成 Cube，请改选物理表、physical Dataset 或 virtual Dataset。')
         }
-        if (!singleSelectedResource.datasetId) {
-          throw new Error('当前所选数据集缺少 dataset_id，无法生成 Cube')
-        }
         const draftPayload = await createCubeDraftFromSource(buildDatasetCubeDraftRequest(singleSelectedResource.datasetId))
         return (await createCube(draftPayload.data)).data
       }
@@ -1024,23 +1021,17 @@ export default function DevTools() {
     }, { replace: true })
   }, [currentCube, setSearchParams])
 
-  const handleModeChange = useCallback((mode: WorkspaceMode) => {
-    if (!currentCube && mode !== 'ui') return
+  const handleModeChange = useCallback((mode: 'ui' | 'yaml' | 'dsl') => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
-      if (!currentCube) {
-        next.delete('tab')
-        return next
-      }
+      if (!currentCube) return next
       next.set('cube', currentCube.name)
       if (mode === 'ui') {
         next.set('tab', 'modeling')
       } else if (mode === 'yaml') {
         next.set('tab', 'yaml')
-      } else if (mode === 'dsl') {
-        next.set('tab', 'dsl')
       } else {
-        next.set('tab', 'python')
+        next.set('tab', 'dsl')
       }
       return next
     }, { replace: true })
@@ -1153,11 +1144,9 @@ export default function DevTools() {
     setSelectedEditorItem({ kind: 'filter', id: nextItem.id })
   }, [draftState, sourceFields])
 
-  const addJoinDraft = useCallback((mode: JoinMode = 'form', targetTable?: string) => {
+  const addJoinDraft = useCallback((mode: JoinMode, targetTable: string) => {
     if (!draftState) return
-    const baseName = targetTable
-      ? `${draftState.cubeName || 'source'}_${targetTable.replace(/\W+/g, '_')}`
-      : 'join'
+    const baseName = `${draftState.cubeName || 'source'}_${targetTable.replace(/\W+/g, '_')}`
     const nextItem: EditableJoin = {
       id: `join:${Date.now()}`,
       name: ensureUniqueKey(baseName, draftState.joins.map((item) => item.name)),
@@ -1274,7 +1263,7 @@ export default function DevTools() {
       cubeDetail.source_schema,
       cubeDetail.table,
     )
-    await saveDraftMutation.mutateAsync(payload)
+    await saveDraftMutation.mutateAsync(payload).catch(() => undefined)
   }, [cubeDetail, currentCube, draftState, saveDraftMutation])
 
   const contextState: WorkbenchContextState = buildStateLabel(currentCube?.status, currentCube?.name)
@@ -1513,6 +1502,7 @@ export default function DevTools() {
                     { key: 'preview' as UiSection, label: 'Preview', ariaLabel: 'Preview' },
                     { key: 'measures' as UiSection, label: `Measures (${draftState.measures.length})`, ariaLabel: 'Measures' },
                     { key: 'dimensions' as UiSection, label: `Dimensions (${draftState.dimensions.length})`, ariaLabel: 'Dimensions' },
+                    { key: 'filters' as UiSection, label: `Filters (${draftState.filters.length})`, ariaLabel: 'Filters' },
                     { key: 'joins' as UiSection, label: `Joins (${draftState.joins.length})`, ariaLabel: 'Joins' },
                   ]).map((item) => {
                     const isActive = uiSection === item.key
@@ -1957,7 +1947,7 @@ export default function DevTools() {
                       readOnly={selectedMeasure.expressionMode === 'builder'}
                     />
 
-                    {selectedMeasure.expressionMode === 'builder' ? (
+                    {selectedMeasure.expressionMode === 'builder' && (
                       <div className="grid gap-2 grid-cols-2">
                         <div>
                           <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="measure-field">Field</label>
@@ -1998,7 +1988,7 @@ export default function DevTools() {
                           </Select>
                         </div>
                       </div>
-                    ) : null}
+                    )}
 
                     <div className="mt-1 border-t border-[#F0F0F0] pt-3 space-y-3">
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="measure-display-name">显示名称</label>
@@ -2307,7 +2297,7 @@ export default function DevTools() {
                   )}
                 </div>
               </div>
-            ) : selectedJoin ? (
+            ) : selectedJoin && (
               <div>
                 <div className="border-b border-[#E0E0E0] px-4 py-2">
                   <div className="flex items-center justify-between gap-2">
@@ -2453,59 +2443,7 @@ export default function DevTools() {
                   )}
                 </div>
               </div>
-            ) : draftState ? (
-              <div>
-                <div className="border-b border-[#E0E0E0] px-4 py-2">
-                  <div className="text-[11px] font-semibold text-[#6E6E6E]">模型上下文</div>
-                </div>
-                <div className="space-y-2 px-4 py-3">
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="model-title">模型标题</label>
-                    <Input id="model-title" className="h-8 text-xs" value={draftState.title} onChange={(event) => updateDraftState((current) => ({ ...current, title: event.target.value }))} />
-
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="model-domain">Domain</label>
-                    <Select
-                      value={draftState.domainId || ''}
-                      onValueChange={(val) => updateDraftState((current) => ({ ...current, domainId: val }))}
-                    >
-                      <SelectTrigger id="model-domain" className="h-8 w-full text-xs">
-                        <SelectValue placeholder="未归属领域" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {domains.map((domain) => (
-                          <SelectItem key={String(domain.id || domain.code)} value={String(domain.id || domain.code)}>
-                            {String(domain.name || domain.code)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="model-grain">grain</label>
-                    <Input id="model-grain" className="h-8 text-xs" value={draftState.grain} onChange={(event) => updateDraftState((current) => ({ ...current, grain: event.target.value }))} />
-
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#6E6E6E]" htmlFor="model-entity-key">entity_key</label>
-                    <Input id="model-entity-key" className="h-8 text-xs" value={draftState.entityKey} onChange={(event) => updateDraftState((current) => ({ ...current, entityKey: event.target.value }))} />
-
-                    <div className="divide-y divide-[#E0E0E0] rounded-md border border-[#E0E0E0] text-xs">
-                      {[
-                        ['状态', contextState],
-                        ['维度', String(draftState.dimensions.length)],
-                        ['指标', String(draftState.measures.length)],
-                        ['过滤器', String(draftState.filters.length)],
-                        ['Join', String(draftState.joins.length)],
-                        ['未保存变更', dirty ? '是' : '否'],
-                        ...(Array.isArray(cubeBacklinksQuery.data?.data?.linked_objects) && cubeBacklinksQuery.data?.data?.linked_objects.length
-                          ? [['来源业务对象', String(cubeBacklinksQuery.data.data.linked_objects.length)]]
-                          : []),
-                      ].map(([key, val]) => (
-                        <div key={key} className="flex items-center justify-between px-3 py-2">
-                          <span className="text-[#6E6E6E]">{key}</span>
-                          <span className="font-medium text-[#2E2E2E]">{val}</span>
-                        </div>
-                      ))}
-                    </div>
-                </div>
-              </div>
-            ) : null}
+            )}
           </div>
         </aside>
         )}

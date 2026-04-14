@@ -456,3 +456,225 @@ def test_router_plan_returns_stable_structure_for_frontend_consumption(tmp_path)
     assert plan["steps"][0]["step_key"] == "semantic_match"
     assert plan["steps"][0]["expected_output"] == "matched_entities"
     assert any(output["output_key"] == "analysis_result" for output in plan["expected_outputs"])
+
+
+def test_router_covers_empty_question_unmatched_and_missing_runtime_paths(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    _save_sample_cube(cube_repo)
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+
+    compiler = ExecutionCompilerPreviewService(
+        metric_repository=metric_repo,
+        cube_repository=cube_repo,
+    )
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+
+    try:
+        service.route(question="")
+        raise AssertionError("empty question should fail")
+    except ValueError as exc:
+        assert "问题不能为空" in str(exc)
+
+    unmatched = service.route(question="随便聊聊天气")
+    assert unmatched["route_type"] == "blocked"
+    assert unmatched["matched_entities"] == []
+
+    try:
+        service.execute_plan(question="查看GMV趋势")
+        raise AssertionError("missing runtime should fail")
+    except ValueError as exc:
+        assert "未配置语义执行运行时" in str(exc)
+
+
+def test_router_covers_glossary_resolution_projection_steps_and_internal_fallbacks(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    _save_sample_cube(cube_repo)
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+
+    object_repo.save(BusinessObject(name="order", title="订单"))
+    object_repo.save(BusinessObject(name="customer", title="客户"))
+    metric_repo.save(
+        BusinessMetric(
+            name="gmv",
+            title="GMV",
+            object_name="order",
+            semantic_formula="已支付订单金额之和",
+            measure_refs=["orders.gmv"],
+        )
+    )
+    relation_repo.save(
+        BusinessRelation(
+            name="order_customer",
+            title="订单归属客户",
+            source_object_name="order",
+            target_object_name="customer",
+            relation_type="belongs_to",
+        )
+    )
+    action_repo.save(
+        BusinessAction(
+            name="payment",
+            title="支付",
+            object_name="order",
+            event_cube_refs=["payment_events"],
+        )
+    )
+    glossary_repo.save(GlossaryEntry(term="对象术语", canonical_name="order", entry_type="object"))
+    glossary_repo.save(GlossaryEntry(term="指标术语", canonical_name="gmv", entry_type="metric"))
+    glossary_repo.save(GlossaryEntry(term="关系术语", canonical_name="order_customer", entry_type="relation"))
+    glossary_repo.save(GlossaryEntry(term="动作术语", canonical_name="payment", entry_type="action"))
+
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+    )
+
+    assert service._match_metric("查看指标术语趋势") == (metric_repo.get("gmv"), "glossary")
+    assert service._match_object("查看对象术语趋势") == (object_repo.get("order"), "glossary")
+    assert service._match_relation("分析关系术语") == (relation_repo.get("order_customer"), "glossary")
+    assert service._match_action("触发动作术语") == (action_repo.get("payment"), "glossary")
+    assert service._evaluate_policy(target_type="object", target_name="order", viewer_roles=[]) == {
+        "status": "allow",
+        "visibility": "public",
+        "matched_policy": None,
+        "required_roles": [],
+    }
+
+    relation_plan = service.plan(question="分析关系术语")
+    assert relation_plan["route"]["route_type"] == "cube"
+    assert any(step["step_type"] == "projection_preview" for step in relation_plan["steps"])
+
+    assert service._build_legacy_match_payload(
+        primary_entity={"entity_type": "unknown"},
+        matched_metric=None,
+        matched_relation=None,
+        matched_action=None,
+        matched_object=None,
+        metric_match_source=None,
+        relation_match_source=None,
+        action_match_source=None,
+        object_match_source=None,
+    ) == {}
+    assert service._build_execution_targets(
+        question="发送对象通知",
+        targets=["tool"],
+        matched_metric=None,
+        matched_action=None,
+        matched_object=object_repo.get("order"),
+    )[0]["tool_name"] == "search_knowledge"
+    assert service._build_execution_targets(
+        question="发送通知",
+        targets=["tool"],
+        matched_metric=None,
+        matched_action=None,
+        matched_object=None,
+    )[0]["tool_arguments"]["query"] == "发送通知"
+
+
+def test_router_covers_blocked_reason_paths_for_action_and_object(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    _save_sample_cube(cube_repo)
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+
+    object_repo.save(BusinessObject(name="order", title="订单"))
+    action_repo.save(
+        BusinessAction(
+            name="payment",
+            title="支付",
+            object_name="order",
+            event_cube_refs=["payment_events"],
+        )
+    )
+    glossary_repo.save(GlossaryEntry(term="对象术语", canonical_name="order", entry_type="object"))
+    glossary_repo.save(GlossaryEntry(term="动作术语", canonical_name="payment", entry_type="action"))
+    policy_repo.save(
+        PolicyMetadata(
+            name="order_private",
+            target_type="object",
+            target_name="order",
+            visibility="private",
+            allowed_roles=["admin"],
+        )
+    )
+    policy_repo.save(
+        PolicyMetadata(
+            name="payment_private",
+            target_type="action",
+            target_name="payment",
+            visibility="private",
+            allowed_roles=["admin"],
+        )
+    )
+
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+
+    blocked_action = service.route(question="触发动作术语")
+    assert blocked_action["route_type"] == "blocked"
+    assert "私有" in blocked_action["reason"]
+
+    blocked_object = service.route(question="查看对象术语趋势")
+    assert blocked_object["route_type"] == "blocked"
+    assert "私有" in blocked_object["reason"]

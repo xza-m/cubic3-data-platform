@@ -44,6 +44,9 @@ vi.mock('../../components/AppCenter/InstanceTable', () => ({
       <button type="button" onClick={() => onPageChange?.(2, 5)}>
         下一页
       </button>
+      <button type="button" onClick={() => onPageChange?.(3, 10)}>
+        切换每页条数
+      </button>
     </div>
   ),
 }))
@@ -83,18 +86,23 @@ vi.mock('@/components/business', () => ({
     title,
     ariaLabel,
     description,
+    onOpenChange,
     children,
   }: {
     open: boolean
     title?: string
     ariaLabel?: string
     description?: string
+    onOpenChange?: (open: boolean) => void
     children: ReactNode
   }) => (
     open ? createPortal(
       <div role="dialog" aria-label={ariaLabel || title || '应用详情'}>
         {title ? <h2>{title}</h2> : null}
         {description ? <p>{description}</p> : null}
+        <button type="button" onClick={() => onOpenChange?.(false)}>
+          关闭详情
+        </button>
         {children}
       </div>,
       document.body,
@@ -367,6 +375,87 @@ describe('AppMarket page', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: '数据助手' })).not.toBeInTheDocument()
     })
+  })
+
+  it('实例列表支持翻页，并在关闭配置弹窗时清空临时选择态', async () => {
+    const user = userEvent.setup()
+
+    renderPage()
+
+    const cardTitle = await screen.findByText('日报推送')
+    await user.click(cardTitle.closest('.group') as HTMLElement)
+    const detailDialog = await screen.findByRole('dialog', { name: '日报推送' })
+
+    await user.click(within(detailDialog).getByRole('button', { name: '下一页' }))
+    await waitFor(() => {
+      expect(appMarketMocks.getInstances).toHaveBeenLastCalledWith({
+        app_code: 'report_push',
+        page: 2,
+        page_size: 5,
+      })
+    })
+
+    await user.click(within(detailDialog).getByRole('button', { name: '切换每页条数' }))
+    await waitFor(() => {
+      expect(appMarketMocks.getInstances).toHaveBeenLastCalledWith({
+        app_code: 'report_push',
+        page: 1,
+        page_size: 5,
+      })
+    })
+
+    await user.click(within(detailDialog).getByRole('button', { name: '新建实例' }))
+    const configDialog = await screen.findByRole('dialog', { name: '实例配置弹窗' })
+    await user.click(within(configDialog).getByRole('button', { name: '关闭' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '实例配置弹窗' })).not.toBeInTheDocument()
+    })
+
+    const reopenedCardTitle = await screen.findByText('日报推送')
+    await user.click(reopenedCardTitle.closest('.group') as HTMLElement)
+    await waitFor(() => {
+      expect(appMarketMocks.getInstances).toHaveBeenLastCalledWith({
+        app_code: 'report_push',
+        page: 1,
+        page_size: 5,
+      })
+    })
+  })
+
+  it('关闭详情后会重置选中应用，残留提交会命中缺少应用保护分支', async () => {
+    const user = userEvent.setup()
+
+    renderPage()
+
+    const cardTitle = await screen.findByText('日报推送')
+    await user.click(cardTitle.closest('.group') as HTMLElement)
+    const detailDialog = await screen.findByRole('dialog', { name: '日报推送' })
+
+    await user.click(within(detailDialog).getByRole('button', { name: '新建实例' }))
+    const submitAfterClose = appMarketMocks.submitConfig
+    expect(typeof submitAfterClose).toBe('function')
+
+    const configDialog = await screen.findByRole('dialog', { name: '实例配置弹窗' })
+    await user.click(within(configDialog).getByRole('button', { name: '关闭' }))
+
+    const reopenedCardTitle = await screen.findByText('日报推送')
+    await user.click(reopenedCardTitle.closest('.group') as HTMLElement)
+    await user.click(screen.getByRole('button', { name: '关闭详情' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '日报推送' })).not.toBeInTheDocument()
+    })
+
+    await expect(
+      submitAfterClose?.({
+        app_code: 'report_push',
+        name: '残留实例',
+        description: '模拟丢失选中应用后的提交',
+        config: {},
+        schedule_type: 'manual',
+        enabled: true,
+      }),
+    ).rejects.toThrow('请先选择应用')
   })
 
   it('列表为空时展示空状态', async () => {
