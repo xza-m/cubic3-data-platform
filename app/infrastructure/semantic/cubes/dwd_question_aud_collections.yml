@@ -1,0 +1,132 @@
+name: dwd_question_aud_collections
+title: Dwd Question Aud Collections
+description: 基于 dwd_question_aud_collections 自动生成的 Cube 草稿
+table: dwd_question_aud_collections
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: draft
+grain: question_id
+entity_key: question_id
+partition:
+  field: ds
+  type: date
+  format: yyyyMMdd
+  max_range_days: 180
+default_filters: []
+dimensions:
+  analysis_raw:
+    title: Analysis Raw
+    type: string
+    sql: '{CUBE}.analysis_raw'
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  answer_raw:
+    title: Answer Raw
+    type: string
+    sql: '{CUBE}.answer_raw'
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  change_type:
+    title: A|U|D
+    type: string
+    sql: '{CUBE}.change_type'
+    description: A|U|D
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  content_raw:
+    title: Content Raw
+    type: string
+    sql: '{CUBE}.content_raw'
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  content_sig:
+    title: md5 of (content_raw,answer_raw,analysis_raw,subject_enum,phase)
+    type: string
+    sql: '{CUBE}.content_sig'
+    description: md5 of (content_raw,answer_raw,analysis_raw,subject_enum,phase)
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  ds:
+    title: Ds
+    type: time
+    sql: '{CUBE}.ds'
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  phase:
+    title: Phase
+    type: number
+    sql: '{CUBE}.phase'
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_id:
+    title: Question Id
+    type: string
+    sql: '{CUBE}.question_id'
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: true
+  subject_enum:
+    title: Subject Enum
+    type: number
+    sql: '{CUBE}.subject_enum'
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  updated_at:
+    title: Updated At
+    type: time
+    sql: '{CUBE}.updated_at'
+    source_data_type: date
+    synonyms: []
+    tags: []
+    primary_key: false
+measures:
+  sum_phase:
+    title: Phase 合计
+    type: sum
+    sql: '{CUBE}.phase'
+    description: 自动生成的 phase sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_subject_enum:
+    title: Subject Enum 合计
+    type: sum
+    sql: '{CUBE}.subject_enum'
+    description: 自动生成的 subject_enum sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  total_count:
+    title: 总数
+    type: count
+    sql: '{CUBE}.question_id'
+    description: 自动生成的记录总数指标
+    source_data_type: count
+    synonyms: []
+    tags: []
+    certified: true
+    non_additive: false
+segments: {}
+joins: {}

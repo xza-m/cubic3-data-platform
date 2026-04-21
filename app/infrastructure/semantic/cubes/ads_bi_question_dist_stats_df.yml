@@ -1,0 +1,311 @@
+name: ads_bi_question_dist_stats_df
+title: Ads Bi Question Dist Stats Df
+description: 题库分布情况应用表
+table: ads_bi_question_dist_stats_df
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: draft
+grain: subject_id
+entity_key: subject_id
+partition:
+  field: ds
+  type: date
+  format: yyyyMMdd
+  max_range_days: 90
+default_filters: []
+dimensions:
+  avg_child_question_cnt:
+    title: 每个母题的平均子题数
+    type: number
+    sql: '{CUBE}.avg_child_question_cnt'
+    description: 每个母题的平均子题数
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  dist_key:
+    title: 分区类型键
+    type: string
+    sql: '{CUBE}.dist_key'
+    description: 分区类型键
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  dist_type:
+    title: 分布类型(题型、难度、年份、省份、基础树)
+    type: string
+    sql: '{CUBE}.dist_type'
+    description: 分布类型(题型、难度、年份、省份、基础树)
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  dist_value:
+    title: 分布类型值
+    type: string
+    sql: '{CUBE}.dist_value'
+    description: 分布类型值
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  ds:
+    title: 数据日期
+    type: time
+    sql: '{CUBE}.ds'
+    description: 数据日期
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  parent_child_question_cnt:
+    title: 母子题数量
+    type: number
+    sql: '{CUBE}.parent_child_question_cnt'
+    description: 母子题数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  parent_child_question_cnt_wow:
+    title: 母子题题量周环比
+    type: number
+    sql: '{CUBE}.parent_child_question_cnt_wow'
+    description: 母子题题量周环比
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  parent_child_rate:
+    title: 母子题占比
+    type: number
+    sql: '{CUBE}.parent_child_rate'
+    description: 母子题占比
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  phase_id:
+    title: 学段ID
+    type: string
+    sql: '{CUBE}.phase_id'
+    description: 学段ID
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: true
+  phase_name:
+    title: 学段名称
+    type: string
+    sql: '{CUBE}.phase_name'
+    description: 学段名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  pre7d_parent_child_question_cnt:
+    title: 7天前母子题数量
+    type: number
+    sql: '{CUBE}.pre7d_parent_child_question_cnt'
+    description: 7天前母子题数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  pre7d_question_cnt:
+    title: 7天前总题量(当前有效记录数)
+    type: number
+    sql: '{CUBE}.pre7d_question_cnt'
+    description: 7天前总题量(当前有效记录数)
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  pre7d_single_question_cnt:
+    title: 7天前单题数量
+    type: number
+    sql: '{CUBE}.pre7d_single_question_cnt'
+    description: 7天前单题数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_cnt:
+    title: 总题量(当前有效记录数)
+    type: number
+    sql: '{CUBE}.question_cnt'
+    description: 总题量(当前有效记录数)
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_cnt_wow:
+    title: 总题量周环比
+    type: number
+    sql: '{CUBE}.question_cnt_wow'
+    description: 总题量周环比
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  single_question_cnt:
+    title: 单题数量
+    type: number
+    sql: '{CUBE}.single_question_cnt'
+    description: 单题数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  single_question_cnt_wow:
+    title: 单题量周环比
+    type: number
+    sql: '{CUBE}.single_question_cnt_wow'
+    description: 单题量周环比
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  subject_id:
+    title: 学科ID
+    type: string
+    sql: '{CUBE}.subject_id'
+    description: 学科ID
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: true
+  subject_name:
+    title: 学科名称
+    type: string
+    sql: '{CUBE}.subject_name'
+    description: 学科名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+measures:
+  sum_avg_child_question_cnt:
+    title: Avg Child Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.avg_child_question_cnt'
+    description: 自动生成的 avg_child_question_cnt 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_parent_child_question_cnt:
+    title: Parent Child Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.parent_child_question_cnt'
+    description: 自动生成的 parent_child_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_parent_child_question_cnt_wow:
+    title: Parent Child Question Cnt Wow 合计
+    type: sum
+    sql: '{CUBE}.parent_child_question_cnt_wow'
+    description: 自动生成的 parent_child_question_cnt_wow 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_parent_child_rate:
+    title: Parent Child Rate 合计
+    type: sum
+    sql: '{CUBE}.parent_child_rate'
+    description: 自动生成的 parent_child_rate 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_pre7d_parent_child_question_cnt:
+    title: Pre7D Parent Child Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.pre7d_parent_child_question_cnt'
+    description: 自动生成的 pre7d_parent_child_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_pre7d_question_cnt:
+    title: Pre7D Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.pre7d_question_cnt'
+    description: 自动生成的 pre7d_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_pre7d_single_question_cnt:
+    title: Pre7D Single Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.pre7d_single_question_cnt'
+    description: 自动生成的 pre7d_single_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_question_cnt:
+    title: Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.question_cnt'
+    description: 自动生成的 question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_question_cnt_wow:
+    title: Question Cnt Wow 合计
+    type: sum
+    sql: '{CUBE}.question_cnt_wow'
+    description: 自动生成的 question_cnt_wow 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_single_question_cnt:
+    title: Single Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.single_question_cnt'
+    description: 自动生成的 single_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_single_question_cnt_wow:
+    title: Single Question Cnt Wow 合计
+    type: sum
+    sql: '{CUBE}.single_question_cnt_wow'
+    description: 自动生成的 single_question_cnt_wow 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  total_count:
+    title: 总数
+    type: count
+    sql: '{CUBE}.subject_id'
+    description: 自动生成的记录总数指标
+    source_data_type: count
+    synonyms: []
+    tags: []
+    certified: true
+    non_additive: false
+segments: {}
+joins: {}

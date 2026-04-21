@@ -1,0 +1,298 @@
+name: dim_admin_class_df
+title: Dim Admin Class Df
+description: 班级基础信息纬度表
+table: dim_admin_class_df
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: draft
+grain: class_id
+entity_key: class_id
+partition:
+  field: ds
+  type: date
+  format: yyyyMMdd
+  max_range_days: 90
+default_filters: []
+dimensions:
+  class_grade:
+    title: 年级ID
+    type: number
+    sql: '{CUBE}.class_grade'
+    description: 年级ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_grade_name:
+    title: 年级名称
+    type: string
+    sql: '{CUBE}.class_grade_name'
+    description: 年级名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_id:
+    title: 班级ID（系统生成）
+    type: number
+    sql: '{CUBE}.class_id'
+    description: 班级ID（系统生成）
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  class_is_test:
+    title: 实际班/测试班
+    type: number
+    sql: '{CUBE}.class_is_test'
+    description: 实际班/测试班
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_name:
+    title: 班级名称
+    type: string
+    sql: '{CUBE}.class_name'
+    description: 班级名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_school_id:
+    title: 学校ID
+    type: number
+    sql: '{CUBE}.class_school_id'
+    description: 学校ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  class_school_year_end:
+    title: 学年结束时间
+    type: time
+    sql: '{CUBE}.class_school_year_end'
+    description: 学年结束时间
+    source_data_type: timestamp
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_school_year_id:
+    title: 学年ID
+    type: number
+    sql: '{CUBE}.class_school_year_id'
+    description: 学年ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  class_school_year_start:
+    title: 学年开始时间
+    type: time
+    sql: '{CUBE}.class_school_year_start'
+    description: 学年开始时间
+    source_data_type: timestamp
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_study_type:
+    title: 学习类型ID（平板班/传统班）
+    type: number
+    sql: '{CUBE}.class_study_type'
+    description: 学习类型ID（平板班/传统班）
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_study_type_name:
+    title: 学习类型名称（平板班/传统班）
+    type: string
+    sql: '{CUBE}.class_study_type_name'
+    description: 学习类型名称（平板班/传统班）
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_type:
+    title: 行政班/教学班ID（如：教班：P1）
+    type: number
+    sql: '{CUBE}.class_type'
+    description: 行政班/教学班ID（如：教班：P1）
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  class_type_name:
+    title: 行政班/教学班名称（如：教班：P1）
+    type: string
+    sql: '{CUBE}.class_type_name'
+    description: 行政班/教学班名称（如：教班：P1）
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  collaboration_status:
+    title: 合作状态
+    type: number
+    sql: '{CUBE}.collaboration_status'
+    description: 合作状态
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  create_time:
+    title: 创建时间，默认当前时间
+    type: time
+    sql: '{CUBE}.create_time'
+    description: 创建时间，默认当前时间
+    source_data_type: timestamp
+    synonyms: []
+    tags: []
+    primary_key: false
+  creater_id:
+    title: 创建者用户ID
+    type: number
+    sql: '{CUBE}.creater_id'
+    description: 创建者用户ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  ds:
+    title: 日期分区字段
+    type: time
+    sql: '{CUBE}.ds'
+    description: 日期分区字段
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  subject_type:
+    title: 文理班ID（如：不分文理、文科班、理科班）
+    type: number
+    sql: '{CUBE}.subject_type'
+    description: 文理班ID（如：不分文理、文科班、理科班）
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  subject_type_name:
+    title: 文理班名称（如：不分文理、文科班、理科班）
+    type: string
+    sql: '{CUBE}.subject_type_name'
+    description: 文理班名称（如：不分文理、文科班、理科班）
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  subject_usage_status:
+    title: 各学科使用状态（如：自由使用、要求使用、不使用）
+    type: number
+    sql: '{CUBE}.subject_usage_status'
+    description: 各学科使用状态（如：自由使用、要求使用、不使用）
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  update_time:
+    title: 更新时间，默认当前时间
+    type: time
+    sql: '{CUBE}.update_time'
+    description: 更新时间，默认当前时间
+    source_data_type: timestamp
+    synonyms: []
+    tags: []
+    primary_key: false
+  updater_id:
+    title: 更新者用户ID
+    type: number
+    sql: '{CUBE}.updater_id'
+    description: 更新者用户ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+measures:
+  sum_class_grade:
+    title: 年级ID
+    type: sum
+    sql: '{CUBE}.class_grade'
+    description: 自动生成的 class_grade sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_class_is_test:
+    title: 实际班/测试班
+    type: sum
+    sql: '{CUBE}.class_is_test'
+    description: 自动生成的 class_is_test sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_class_study_type:
+    title: 学习类型ID（平板班/传统班）
+    type: sum
+    sql: '{CUBE}.class_study_type'
+    description: 自动生成的 class_study_type sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_class_type:
+    title: 行政班/教学班ID（如：教班：P1）
+    type: sum
+    sql: '{CUBE}.class_type'
+    description: 自动生成的 class_type sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_collaboration_status:
+    title: 合作状态
+    type: sum
+    sql: '{CUBE}.collaboration_status'
+    description: 自动生成的 collaboration_status sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_subject_type:
+    title: 文理班ID（如：不分文理、文科班、理科班）
+    type: sum
+    sql: '{CUBE}.subject_type'
+    description: 自动生成的 subject_type sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_subject_usage_status:
+    title: 各学科使用状态（如：自由使用、要求使用、不使用）
+    type: sum
+    sql: '{CUBE}.subject_usage_status'
+    description: 自动生成的 subject_usage_status sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  total_count:
+    title: 总数
+    type: count
+    sql: '{CUBE}.class_id'
+    description: 自动生成的记录总数指标
+    source_data_type: count
+    synonyms: []
+    tags: []
+    certified: true
+    non_additive: false
+segments: {}
+joins: {}

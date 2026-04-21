@@ -1,0 +1,93 @@
+name: view_student_answer_analysis
+title: 学生答题分析视图
+description: '面向教研团队的答题分析视图，聚合答题记录、学生、学校信息。
+
+  提供按学科、年级、学校维度的答题正确率和耗时分析。
+
+  '
+table: view_student_answer_analysis
+source_id: 1
+source_database: df_cb_258187
+source_sql: "SELECT\n  answer_records.answer_date AS `answer_records__answer_date`,\n\
+  \  answer_records.subject_name AS `answer_records__subject_name`,\n  COUNT(answer_records.answer_record_id)\
+  \ AS `answer_records__total_count`,\n  SUM(CASE WHEN answer_records.answer_result\
+  \ = 1 THEN 1 ELSE 0 END) AS `answer_records__correct_count`,\n  ROUND(SUM(CASE WHEN\
+  \ answer_records.answer_result = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(answer_records.answer_record_id),\
+  \ 0), 2) AS `answer_records__accuracy`,\n  AVG(answer_records.answer_duration) AS\
+  \ `answer_records__avg_duration`\nFROM dwd_study_first_answer_records_snap_di answer_records\n\
+  WHERE answer_result IN (1, 2)\nGROUP BY `answer_records__answer_date`, `answer_records__subject_name`\n\
+  LIMIT 50000"
+source_dataset_id: 48
+source_dataset_type: virtual
+data_source: maxcompute
+status: draft
+default_filters: []
+dimensions:
+  answer_records__accuracy:
+    title: 来自 answer_records.accuracy
+    type: number
+    sql: '{CUBE}.answer_records__accuracy'
+    primary_key: false
+  answer_records__answer_date:
+    title: 来自 answer_records.answer_date
+    type: string
+    sql: '{CUBE}.answer_records__answer_date'
+    primary_key: false
+  answer_records__avg_duration:
+    title: 来自 answer_records.avg_duration
+    type: number
+    sql: '{CUBE}.answer_records__avg_duration'
+    primary_key: false
+  answer_records__correct_count:
+    title: 来自 answer_records.correct_count
+    type: number
+    sql: '{CUBE}.answer_records__correct_count'
+    primary_key: false
+  answer_records__subject_name:
+    title: 来自 answer_records.subject_name
+    type: string
+    sql: '{CUBE}.answer_records__subject_name'
+    primary_key: false
+  answer_records__total_count:
+    title: 来自 answer_records.total_count
+    type: number
+    sql: '{CUBE}.answer_records__total_count'
+    primary_key: false
+measures:
+  sum_answer_records__accuracy:
+    title: Answer Records Accuracy 合计
+    type: sum
+    sql: '{CUBE}.answer_records__accuracy'
+    description: 自动生成的 answer_records__accuracy 合计指标
+    certified: false
+    non_additive: false
+  sum_answer_records__avg_duration:
+    title: Answer Records Avg Duration 合计
+    type: sum
+    sql: '{CUBE}.answer_records__avg_duration'
+    description: 自动生成的 answer_records__avg_duration 合计指标
+    certified: false
+    non_additive: false
+  sum_answer_records__correct_count:
+    title: Answer Records Correct Count 合计
+    type: sum
+    sql: '{CUBE}.answer_records__correct_count'
+    description: 自动生成的 answer_records__correct_count 合计指标
+    certified: false
+    non_additive: false
+  sum_answer_records__total_count:
+    title: Answer Records Total Count 合计
+    type: sum
+    sql: '{CUBE}.answer_records__total_count'
+    description: 自动生成的 answer_records__total_count 合计指标
+    certified: false
+    non_additive: false
+  total_count:
+    title: 总数
+    type: count
+    sql: '{CUBE}.answer_records__accuracy'
+    description: 自动生成的记录总数指标
+    certified: true
+    non_additive: false
+segments: {}
+joins: {}

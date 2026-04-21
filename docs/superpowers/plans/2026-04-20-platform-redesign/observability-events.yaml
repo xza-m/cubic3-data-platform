@@ -1,0 +1,202 @@
+# docs/superpowers/plans/2026-04-20-platform-redesign/observability-events.yaml
+#
+# 前端可观测性事件清单（W5.E）。
+#
+# 该文件是 vendor-agnostic 的「平台契约」：
+#   - 平台 owner 拿到任何 sink（Sentry / Datadog / Grafana / 自建）后，
+#     把 `name` / `fields` 字段直接映射到对应仪表盘，不需要再回看代码。
+#   - 新增事件 / 错误 kind 时，必须先在此处登记，再去 events.ts 增加工厂。
+#   - 字段命名遵循 snake_case，与后端 wire 协议一致。
+#
+# Schema:
+#   events[]:
+#     - name: <domain>.<verb>           # 唯一事件名
+#       level: debug|info|warn|error    # 与 ObsLevel 对齐
+#       fields: { key: type, ... }      # 必填的业务字段
+#       description: 一句话业务含义
+#       call_site: 触发埋点的 hook / 文件
+#       dashboards: 推荐挂在哪些仪表盘上
+#
+#   error_kinds[]:
+#     - kind: <kind>                    # ObsErrorContext.kind
+#       source: 错误源头说明
+#       extra_fields: 该 kind 额外携带的 ctx 字段
+#       suggested_alerts: 推荐告警阈值
+
+version: 1
+owner: platform-fe
+last_reviewed: 2026-04-21
+
+events:
+  - name: auth.login_succeeded
+    level: info
+    fields:
+      username: string
+    description: 用户登录成功（access_token 写入 sessionStorage 之后）
+    call_site: src/v2/pages/Login.tsx → handleSubmit
+    dashboards: [auth_funnel, daily_active_users]
+
+  - name: datasource.tested
+    level: info
+    fields:
+      datasource_id: int
+      ok: bool
+      latency_ms: int
+    description: 用户在数据源详情页触发"测试连接"
+    call_site: src/v2/hooks/datasources.ts → useTestConnection
+    dashboards: [datasource_health, datasource_latency]
+
+  - name: dataset.registered
+    level: info
+    fields:
+      dataset_id: int
+    description: 数据集创建（从表 / 文件登记）成功
+    call_site: src/v2/hooks/datasets.ts → useCreateDataset
+    dashboards: [dataset_growth]
+
+  - name: semantic.cube_created
+    level: info
+    fields:
+      cube_name: string
+    description: 新 Cube 落库成功
+    call_site: src/v2/hooks/semantic.ts → useCreateCube
+    dashboards: [semantic_growth]
+
+  - name: semantic.diagnose_run
+    level: info
+    fields:
+      input_kind: enum[nl,sql,yaml]
+      ok: bool
+      duration_ms: int|null
+    description: DSL / SQL / NL 语义诊断执行完成
+    call_site: src/v2/hooks/diagnose.ts → useRunDiagnose
+    dashboards: [semantic_diagnose, dsl_quality]
+
+  - name: ontology.object_validated
+    level: info
+    fields:
+      entity_type: string
+      entity_name: string
+    description: 本体实体发布前的 impact / 一致性校验通过
+    call_site: src/v2/hooks/ontology.ts → usePublishEntity
+    dashboards: [ontology_publish_funnel]
+
+  - name: ontology.metric_dryrun
+    level: info
+    fields:
+      metric_name: string
+      ok: bool
+    description: 指标公式 dry-run（生成 SQL 预览 + 错误检查）
+    call_site: src/v2/hooks/semantic.ts → useDryRunMetric
+    dashboards: [metric_authoring_quality]
+
+  - name: query.executed
+    level: info
+    fields:
+      datasource_id: int|null
+      duration_ms: int|null
+    description: SQL 查询控制台执行成功
+    call_site: src/v2/hooks/queries.ts → useExecuteQuery
+    dashboards: [query_volume, query_latency]
+
+  - name: query.scheduled_triggered
+    level: info
+    fields:
+      scheduled_query_id: int
+    description: 调度查询被手动触发
+    call_site: src/v2/hooks/queries.ts → useTriggerScheduledQuery
+    dashboards: [scheduler_activity]
+
+  - name: channel.test_sent
+    level: info
+    fields:
+      channel_id: int
+      ok: bool
+    description: 通知渠道"测试发送"完成（成功 / 失败均上报）
+    call_site: src/v2/hooks/channels.ts → useTestChannel
+    dashboards: [channel_health]
+
+  - name: app.instance_started
+    level: info
+    fields:
+      instance_id: int
+    description: 应用实例被手动触发执行
+    call_site: src/v2/hooks/instances.ts → useExecuteInstance
+    dashboards: [apps_runtime]
+
+  - name: app.instance_stopped
+    level: info
+    fields:
+      instance_id: int
+    description: 应用实例被禁用 / 停止
+    call_site: src/v2/hooks/instances.ts → useDisableInstance
+    dashboards: [apps_runtime]
+
+  - name: settings.preferences_updated
+    level: info
+    fields:
+      changed_keys: list[string]
+    description: 用户偏好（主题 / 默认落地页等）写回成功
+    call_site: src/v2/hooks/userPreferences.ts → useUpdateMyPreferences
+    dashboards: [user_preferences_drift]
+
+  - name: nav.navigated
+    level: debug
+    fields:
+      from: string|null
+      to: string
+    description: 路由切换（pathname + search）；客户端 SPA 页面切换
+    call_site: src/v2/App.tsx → NavigationTracker effect
+    dashboards: [page_views, funnel_analysis]
+
+error_kinds:
+  - kind: api
+    source: src/v2/api/client.ts response interceptor
+    extra_fields:
+      url: string
+      method: string|null
+      status: int
+    suggested_alerts:
+      - "rate(error{kind=api,status>=500}) > 5/min for 10 min"
+      - "rate(error{kind=api,status==401}) > 1/sec for 1 min  # auth wave"
+
+  - kind: react
+    source: src/v2/components/ErrorBoundary.tsx componentDidCatch
+            (RouteErrorBoundary delegates via lib/telemetry.reportError)
+    extra_fields:
+      componentStack: string
+      route: string|null
+    suggested_alerts:
+      - "rate(error{kind=react}) > 0 for 5 min  # any react crash is a P2"
+
+  - kind: window
+    source: window 'error' listener installed by bootstrap.installObservability
+    extra_fields:
+      url: string|null   # filename
+    suggested_alerts:
+      - "rate(error{kind=window}) > 3/min for 5 min"
+
+  - kind: unhandled
+    source: window 'unhandledrejection' listener
+    extra_fields: {}
+    suggested_alerts:
+      - "rate(error{kind=unhandled}) > 3/min for 5 min"
+
+  - kind: manual
+    source: 业务模块直接调用 obs.error(err, { kind: 'manual', ... })
+    extra_fields: {}
+    suggested_alerts: []
+
+# ── 下游集成提示 ─────────────────────────────────────────────────────────────
+#
+# Sink 协议（HttpSink POST body）：
+#   { "type": "event"|"error", "payload": <ObsEvent|ObsError> }
+#
+# 字段保证：
+#   - ObsEvent.ts、ObsError.ts: epoch milliseconds
+#   - ObsEvent.fields: 仅包含 JSON 可序列化基本类型；不会出现 Function / undefined
+#   - ObsError.stack: 在浏览器允许时填充；隐私模式可能为空
+#
+# 不会发生的事：
+#   - sink 抛错不会冒泡到业务路径（observability/client.ts 强制吞掉）
+#   - sampleRate 影响 events，但永远不影响 errors
