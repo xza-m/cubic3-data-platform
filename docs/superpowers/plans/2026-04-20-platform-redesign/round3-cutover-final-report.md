@@ -87,12 +87,17 @@
 
 ## 4. 已知风险与缺口（待 Round 4+）
 
-### 4.1 P-test 缺口（来自 W5.G §5.1）
+### 4.1 P-test 缺口（来自 W5.G §5.1，W6 收口前已更新）
 
-  | ID | 描述 | 影响 | DEFER 决议 |
+  | ID | 描述 | 影响 | 状态 / DEFER 决议 |
   | --- | --- | --- | --- |
-  | R-001-P04 | 本体对象编辑 Tab 未实装；只能通过 ObjectCreate 路径修改 | 用户绕路可用 | W6+1 sprint：产品决策"做 / 砍" |
-  | R-001-P17 | 抽取 Run 重跑按钮 + 日志面板未实装 | OnCall 走 CLI 重跑 | W6+1 sprint：与 backend 一并决策 |
+  | R-001-P04 | 本体对象编辑 Tab 未实装；只能通过 ObjectCreate 路径修改 | 用户绕路可用 | DEFER · Round 4 sprint 1：产品决策"做 / 砍" |
+  | R-001-P17 | 抽取 Run 重跑按钮 + 日志面板未实装 | OnCall 走 CLI 重跑 | DEFER · Round 4 sprint 1：与 backend 一并决策 |
+  | R-001-P19 | 本体对象搜索 e2e 缺口 | — | ✅ 已 unfixme（W6 收口）：mock API + 列表渲染断言已通过；纳入 e2e-v2 happy 集 |
+
+  > Worktree `codex-ontology-workbench-object-aggregate` 已通过 git tag
+  > `archive/ontology-object-aggregate-2026-04-14` 冷藏；其 15 commits 与主分支
+  > frontend/src/v2 路径冲突，Round 4 决策时应优先评估在 v2 路径上重做 vs cherry-pick。
 
 ### 4.2 视觉精修（来自 W5.G §5.2）
 
