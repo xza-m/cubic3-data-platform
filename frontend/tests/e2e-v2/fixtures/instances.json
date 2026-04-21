@@ -1,0 +1,58 @@
+{
+  "list": {
+    "items": [
+      {
+        "id": 101,
+        "name": "教学助手 · 三年级",
+        "app_code": "teaching_assistant",
+        "owner": "李老师",
+        "enabled": true,
+        "schedule_type": "manual",
+        "last_execution_at": "2026-04-20T09:00:00+08:00",
+        "last_execution_status": "success",
+        "config": {},
+        "health": "healthy",
+        "created_at": "2026-04-01T08:00:00+08:00",
+        "updated_at": "2026-04-20T09:00:00+08:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "detail": {
+    "id": 101,
+    "name": "教学助手 · 三年级",
+    "app_code": "teaching_assistant",
+    "owner": "李老师",
+    "enabled": true,
+    "schedule_type": "manual",
+    "last_execution_at": "2026-04-20T09:00:00+08:00",
+    "last_execution_status": "success",
+    "config": {},
+    "health": "healthy",
+    "created_at": "2026-04-01T08:00:00+08:00",
+    "updated_at": "2026-04-20T09:00:00+08:00"
+  },
+  "executions": {
+    "items": [
+      {
+        "id": 9001,
+        "instance_id": 101,
+        "instance_name": "教学助手 · 三年级",
+        "app_code": "teaching_assistant",
+        "status": "success",
+        "trigger": "manual",
+        "trigger_display_name": "手动",
+        "started_at": "2026-04-20T09:00:00+08:00",
+        "finished_at": "2026-04-20T09:00:08+08:00",
+        "duration_ms": 8000
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 20,
+    "total_pages": 1
+  }
+}

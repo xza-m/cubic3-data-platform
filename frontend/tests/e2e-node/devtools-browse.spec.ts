@@ -11,7 +11,7 @@ test('在语义工作台中切换三栏建模分区与高级视图', async ({ pa
   await expect(page.getByText('语义工作台')).toBeVisible()
   await expect(page.getByTestId('semantic-resource-pane')).toBeVisible()
   await expect(page.getByTestId('semantic-main-pane')).toBeVisible()
-  await expect(page.getByTestId('semantic-inspector-pane')).toBeVisible()
+  await expect(page.getByTestId('semantic-inspector-pane')).toHaveCount(0)
 
   await ensureCubeAvailable(page)
   const firstViewButton = page.getByRole('button', { name: '查看详情' }).first()
@@ -19,18 +19,19 @@ test('在语义工作台中切换三栏建模分区与高级视图', async ({ pa
   await firstViewButton.click()
   await page.getByRole('link', { name: /工作台/ }).first().click()
 
-  await expect(page).toHaveURL(/\/semantic\/workbench\?cube=.*&tab=(preview|modeling)$/)
+  await expect(page).toHaveURL(/\/semantic\/workbench\?cube=.*&tab=(preview|modeling|dsl)$/)
   const currentCubeName = new URL(page.url()).searchParams.get('cube')
+  await gotoSemantic(page, `/semantic/workbench?cube=${currentCubeName}&tab=modeling`)
   await expect(page.getByTestId('semantic-workbench-title')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Measures' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Measures', exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Measures' }).click()
-  await expect(page.getByLabel('Measure name')).toBeVisible()
+  await page.getByRole('button', { name: 'Measures', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Measures', exact: true })).toHaveAttribute('aria-current', 'true')
 
-  await page.getByRole('button', { name: 'Dimensions' }).click()
-  await expect(page.getByLabel('Dimension name')).toBeVisible()
+  await page.getByRole('button', { name: 'Dimensions', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Dimensions', exact: true })).toHaveAttribute('aria-current', 'true')
 
-  await page.getByRole('button', { name: '代码' }).click()
+  await page.getByRole('button', { name: 'YAML' }).click()
   await expect(page.getByTestId('yaml-editor-tab')).toBeVisible()
 
   await gotoSemantic(page, `/semantic/workbench?cube=${currentCubeName}&tab=python`)

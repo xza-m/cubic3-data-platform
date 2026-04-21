@@ -1,0 +1,74 @@
+{
+  "list": {
+    "items": [
+      {
+        "id": 11,
+        "dataset_code": "ds_orders_001",
+        "dataset_name": "订单宽表",
+        "dataset_type": "table",
+        "physical_table": "public.orders",
+        "datasource_id": 1,
+        "datasource_name": "教学 PostgreSQL",
+        "row_count": 12000,
+        "column_count": 8,
+        "sync_status": "synced",
+        "last_synced_at": "2026-04-20T08:00:00+08:00",
+        "created_at": "2026-04-01T08:00:00+08:00",
+        "updated_at": "2026-04-20T08:00:00+08:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 100,
+    "total_pages": 1
+  },
+  "detail": {
+    "id": 11,
+    "dataset_code": "ds_orders_001",
+    "dataset_name": "订单宽表",
+    "dataset_type": "table",
+    "physical_table": "public.orders",
+    "datasource_id": 1,
+    "datasource_name": "教学 PostgreSQL",
+    "row_count": 12000,
+    "column_count": 8,
+    "sync_status": "synced",
+    "last_synced_at": "2026-04-20T08:00:00+08:00",
+    "created_at": "2026-04-01T08:00:00+08:00",
+    "updated_at": "2026-04-20T08:00:00+08:00",
+    "columns": [
+      {
+        "name": "order_id",
+        "type": "int",
+        "null_ratio": 0.0,
+        "distinct_ratio": 1.0,
+        "comment": "订单 ID"
+      },
+      {
+        "name": "amount",
+        "type": "decimal",
+        "null_ratio": 0.02,
+        "distinct_ratio": 0.85,
+        "comment": "金额"
+      }
+    ]
+  },
+  "profile": {
+    "columns": [
+      {
+        "name": "order_id",
+        "null_ratio": 0.0,
+        "distinct_ratio": 1.0,
+        "min": "1",
+        "max": "12000"
+      },
+      {
+        "name": "amount",
+        "null_ratio": 0.02,
+        "distinct_ratio": 0.85,
+        "min": "0.01",
+        "max": "9999.99"
+      }
+    ]
+  }
+}

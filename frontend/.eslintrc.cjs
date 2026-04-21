@@ -21,20 +21,34 @@ module.exports = {
   ],
   ignorePatterns: [
     'dist',
+    'dist-v2',
     'coverage',
     'node_modules',
     'playwright-report',
+    'playwright-report-v2',
     'tests/artifacts',
     'tests/e2e',
     'tests/e2e-node/**/*.png',
+    'src/legacy/**',
     'QueryBuilder.tsx',
   ],
   rules: {
     'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      {
+        args: 'after-used',
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
+        destructuredArrayIgnorePattern: '^_',
+        ignoreRestSiblings: true,
+      },
+    ],
   },
   overrides: [
     {
-      files: ['src/api/**/*.ts', 'src/types/**/*.ts'],
+      files: ['src/v2/api/**/*.ts', 'src/v2/types/**/*.ts'],
       rules: {
         '@typescript-eslint/no-explicit-any': 'off',
       },

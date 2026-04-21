@@ -1,0 +1,103 @@
+{
+  "channels": {
+    "items": [
+      {
+        "id": 301,
+        "name": "运维飞书机器人",
+        "type": "lark",
+        "enabled": true,
+        "config": { "webhook": "https://example.com/webhook" },
+        "created_at": "2026-04-01T08:00:00+08:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "channel_detail": {
+    "id": 301,
+    "name": "运维飞书机器人",
+    "type": "lark",
+    "enabled": true,
+    "config": { "webhook": "https://example.com/webhook" },
+    "created_at": "2026-04-01T08:00:00+08:00",
+    "updated_at": "2026-04-01T08:00:00+08:00"
+  },
+  "channel_test_ok": {
+    "ok": true,
+    "message": "测试发送成功",
+    "tested_at": "2026-04-21T10:00:00+08:00"
+  },
+  "subscriptions": {
+    "items": [
+      {
+        "id": 401,
+        "name": "每日抽取告警",
+        "enabled": true,
+        "channel_id": 301,
+        "channel_name": "运维飞书机器人",
+        "rule": { "metric": "extraction_failed" },
+        "created_at": "2026-04-01T08:00:00+08:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "subscription_detail": {
+    "id": 401,
+    "name": "每日抽取告警",
+    "enabled": true,
+    "channel_id": 301,
+    "channel_name": "运维飞书机器人",
+    "rule": { "metric": "extraction_failed" },
+    "created_at": "2026-04-01T08:00:00+08:00",
+    "updated_at": "2026-04-01T08:00:00+08:00"
+  },
+  "subscription_deliveries": {
+    "items": [
+      {
+        "id": 5001,
+        "subscription_id": 401,
+        "channel_id": 301,
+        "status": "success",
+        "delivered_at": "2026-04-21T02:01:00+08:00",
+        "payload_summary": "extraction_failed: 学习行为抽取"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "users": {
+    "items": [
+      {
+        "id": 1,
+        "username": "admin",
+        "display_name": "管理员",
+        "email": "admin@example.com",
+        "enabled": true,
+        "roles": ["admin"],
+        "created_at": "2026-04-01T08:00:00+08:00",
+        "updated_at": "2026-04-01T08:00:00+08:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "user_detail": {
+    "id": 1,
+    "username": "admin",
+    "display_name": "管理员",
+    "email": "admin@example.com",
+    "enabled": true,
+    "roles": ["admin"],
+    "created_at": "2026-04-01T08:00:00+08:00",
+    "updated_at": "2026-04-01T08:00:00+08:00"
+  }
+}

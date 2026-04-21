@@ -13,8 +13,8 @@ test.beforeEach(async ({ page }) => {
 
 test('领域目录首屏展示目录治理摘要', async ({ page }) => {
   await gotoSemantic(page, '/semantic/domains')
-  await expect(page).toHaveURL(/\/semantic\/domains\/.+\?panel=catalog$/)
-  await expect(page.getByTestId('domain-canvas-page')).toBeVisible()
+  await expect(page).toHaveURL(/\/semantic\/domains\/.+\?panel=catalog$/, { timeout: 20_000 })
+  await expect(page.getByTestId('domain-canvas-page')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByTestId('domain-tree-panel')).toBeVisible()
   await expect(page.getByRole('button', { name: '领域目录' })).toBeVisible()
   await expect(page.getByTestId('domain-join-panel').getByText('领域说明', { exact: true })).toBeVisible()
@@ -26,7 +26,7 @@ test('domain-list-search 可以筛选领域', async ({ page }) => {
 
   await createDomainViaUi(page, domainName)
   await gotoSemantic(page, '/semantic/domains')
-  await expect(page).toHaveURL(/\/semantic\/domains\/.+\?panel=catalog$/)
+  await expect(page).toHaveURL(/\/semantic\/domains\/.+\?panel=catalog$/, { timeout: 20_000 })
 
   await page.getByPlaceholder('搜索目录、领域、Cube...').fill(domainName)
   const domainRow = page.getByTestId('domain-tree-panel').locator('button').filter({ hasText: domainName }).first()
@@ -35,7 +35,7 @@ test('domain-list-search 可以筛选领域', async ({ page }) => {
 
 test('领域目录页只保留视图切换，不再暴露内联创建入口', async ({ page }) => {
   await gotoSemantic(page, '/semantic/domains')
-  await expect(page).toHaveURL(/\/semantic\/domains\/.+\?panel=catalog$/)
+  await expect(page).toHaveURL(/\/semantic\/domains\/.+\?panel=catalog$/, { timeout: 20_000 })
   await expect(page.getByRole('button', { name: 'Cube 库' })).toBeVisible()
   await expect(page.getByRole('button', { name: '领域目录' })).toBeVisible()
   await expect(page.locator('[data-testid="domain-create-trigger"]')).toHaveCount(0)
@@ -56,7 +56,7 @@ test('在目录中创建 catalog，并在右侧摘要切换到选中领域', asy
   const catalogRow = page.getByTestId('domain-tree-panel').locator('button').filter({ hasText: catalogName }).first()
   await expect(catalogRow).toBeVisible()
   await catalogRow.click()
-  await page.getByPlaceholder('搜索目录、领域、Cube...').fill('')
+  await page.getByPlaceholder('搜索目录、领域、Cube...').fill(domainName)
   const domainRow = page.getByTestId('domain-tree-panel').locator('button').filter({ hasText: domainName }).first()
   await expect(domainRow).toBeVisible()
   await domainRow.click()

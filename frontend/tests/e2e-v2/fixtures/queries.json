@@ -1,0 +1,51 @@
+{
+  "histories": {
+    "items": [
+      {
+        "id": 5001,
+        "sql_query": "SELECT count(*) FROM lessons",
+        "executed_by": "admin",
+        "source_id": 1,
+        "source_name": "教学 PostgreSQL",
+        "status": "success",
+        "row_count": 1,
+        "duration_ms": 120,
+        "executed_at": "2026-04-21T09:00:00+08:00"
+      },
+      {
+        "id": 5002,
+        "sql_query": "SELECT * FROM students LIMIT 10",
+        "executed_by": "admin",
+        "source_id": 1,
+        "source_name": "教学 PostgreSQL",
+        "status": "failed",
+        "row_count": 0,
+        "duration_ms": 30,
+        "executed_at": "2026-04-21T08:00:00+08:00"
+      }
+    ],
+    "total": 2,
+    "page": 1,
+    "page_size": 20,
+    "total_pages": 1
+  },
+  "histories_success_only": {
+    "items": [
+      {
+        "id": 5001,
+        "sql_query": "SELECT count(*) FROM lessons",
+        "executed_by": "admin",
+        "source_id": 1,
+        "source_name": "教学 PostgreSQL",
+        "status": "success",
+        "row_count": 1,
+        "duration_ms": 120,
+        "executed_at": "2026-04-21T09:00:00+08:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 20,
+    "total_pages": 1
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "objects": {
+    "items": [
+      {
+        "name": "student",
+        "title": "学生",
+        "description": "学生主体对象",
+        "domain": "教学",
+        "fields": [
+          { "name": "id", "type": "string", "title": "ID" },
+          { "name": "name", "type": "string", "title": "姓名" }
+        ],
+        "updated_at": "2026-04-15T08:00:00+08:00"
+      },
+      {
+        "name": "lesson",
+        "title": "课程",
+        "description": "课程对象",
+        "domain": "教学",
+        "fields": [
+          { "name": "id", "type": "string", "title": "ID" }
+        ],
+        "updated_at": "2026-04-15T08:00:00+08:00"
+      }
+    ],
+    "total": 2
+  },
+  "object_detail": {
+    "name": "student",
+    "title": "学生",
+    "description": "学生主体对象",
+    "domain": "教学",
+    "fields": [
+      { "name": "id", "type": "string", "title": "ID" },
+      { "name": "name", "type": "string", "title": "姓名" }
+    ],
+    "updated_at": "2026-04-15T08:00:00+08:00"
+  },
+  "metrics": {
+    "items": [
+      {
+        "name": "lesson_completion_rate",
+        "title": "课程完成率",
+        "formula": "completed / total",
+        "domain": "教学"
+      }
+    ],
+    "total": 1
+  },
+  "relations": {
+    "items": [
+      { "name": "student_lesson", "from_object": "student", "to_object": "lesson", "kind": "many_to_many" }
+    ],
+    "total": 1
+  },
+  "metric_dry_run": {
+    "ok": true,
+    "value": 0.82,
+    "rows": [{ "metric": 0.82 }],
+    "compiled_sql": "SELECT completed::float/total FROM lessons"
+  }
+}
