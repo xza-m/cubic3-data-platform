@@ -13,7 +13,21 @@ def _build_app(blueprint):
     app.config.update(TESTING=True)
     register_error_handlers(app)
     app.register_blueprint(blueprint)
-    return app
+    return _AppDefaultAdmin(app)
+
+
+class _AppDefaultAdmin:
+    """Flask app 包装器：``.test_client()`` 默认携带 admin Bearer Token。"""
+
+    def __init__(self, app):
+        self._app = app
+
+    def test_client(self):
+        from tests.conftest import install_default_admin_auth
+        return install_default_admin_auth(self._app.test_client())
+
+    def __getattr__(self, name):
+        return getattr(self._app, name)
 
 
 def test_semantic_router_blueprint_covers_success_and_error_paths():
