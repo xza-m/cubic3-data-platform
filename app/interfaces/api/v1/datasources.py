@@ -20,7 +20,7 @@ from app.application.datasource.schemas.datasource_schemas import (
     CreateDatasourceRequest,
     UpdateDatasourceRequest
 )
-from app.interfaces.api.middleware.auth import require_auth, optional_auth
+from app.interfaces.api.middleware.auth import require_auth
 from app.shared.response import success, created, bad_request
 from app.shared.utils.logger import get_logger
 from app.di.utils import get_app_container
@@ -65,7 +65,7 @@ def _get_datasource_or_raise(datasource_id: int):
 # ============================================================================
 
 @bp.route('', methods=['GET'])
-@optional_auth
+@require_auth
 def list_datasources():
     """
     获取数据源列表
@@ -118,7 +118,7 @@ def list_datasources():
 
 
 @bp.route('/<int:datasource_id>', methods=['GET'])
-@optional_auth
+@require_auth
 def get_datasource(datasource_id):
     """获取数据源详情"""
     # 1. 构建查询
@@ -254,24 +254,32 @@ def sync_datasource_catalog(datasource_id):
 
 
 @bp.route('/<int:datasource_id>/test', methods=['POST'])
-@optional_auth
+@require_auth
 def test_connection(datasource_id):
-    """测试数据源连接"""
+    """
+    测试数据源连接（B-back-4 增强）
+
+    成功返回:
+        { ok, latency_ms, tested_at, details: { server_version, tls } }
+
+    失败返回:
+        { ok, latency_ms, tested_at, error_code, error_message, hint }
+    """
     # 1. 构建查询
     query = TestConnectionQuery(datasource_id=datasource_id)
-    
+
     # 2. 获取处理器
     container = get_app_container()
     handler = container.test_connection_handler()
-    
-    # 3. 执行异步查询
+
+    # 3. 执行（handler 已封装计时与错误分类）
     result = handler.handle(query)
-    
+
     return success(data=result)
 
 
 @bp.route('/<int:datasource_id>/databases', methods=['GET'])
-@optional_auth
+@require_auth
 def get_databases(datasource_id):
     """获取数据源的数据库列表"""
     # 1. 构建查询
@@ -288,7 +296,7 @@ def get_databases(datasource_id):
 
 
 @bp.route('/<int:datasource_id>/tables', methods=['GET'])
-@optional_auth
+@require_auth
 def get_tables(datasource_id):
     """获取指定数据库的表列表"""
     # 1. 解析查询参数
@@ -316,7 +324,7 @@ def get_tables(datasource_id):
 
 
 @bp.route('/<int:datasource_id>/schemas', methods=['GET'])
-@optional_auth
+@require_auth
 def get_schemas(datasource_id):
     """获取指定数据库的Schema列表"""
     # 1. 解析参数
@@ -341,7 +349,7 @@ def get_schemas(datasource_id):
 
 
 @bp.route('/<int:datasource_id>/table-schema', methods=['GET'])
-@optional_auth
+@require_auth
 def get_table_schema(datasource_id):
     """获取表的Schema信息（字段列表、主键、分区键等）"""
     # 1. 解析参数
@@ -373,7 +381,7 @@ def get_table_schema(datasource_id):
 
 
 @bp.route('/statistics', methods=['GET'])
-@optional_auth
+@require_auth
 def get_statistics():
     """获取数据源统计信息"""
     # 1. 构建查询
@@ -418,8 +426,70 @@ def get_supported_types():
     return success(data=types_with_meta)
 
 
+# ============================================================================
+# B-back-5: 数据源 Schema 浏览接口
+# ============================================================================
+
+def _get_schema_service():
+    """懒加载 SchemaBrowserService（避免循环导入）。"""
+    container = get_app_container()
+    datasource_repo = container.datasource_repository()
+    from app.application.datasources.schema_browser_service import SchemaBrowserService
+    return SchemaBrowserService(datasource_repository=datasource_repo)
+
+
+@bp.route('/<int:datasource_id>/schema', methods=['GET'])
+@require_auth
+def get_datasource_schema(datasource_id):
+    """GET /api/v1/data-center/datasources/:id/schema — 列出所有数据库。
+
+    Query:
+        refresh=1   强制跳过缓存
+    """
+    refresh = request.args.get("refresh", "0") in ("1", "true")
+    try:
+        result = _get_schema_service().list_databases(datasource_id, refresh=refresh)
+    except Exception as exc:
+        return bad_request(str(exc))
+    return success(data=result)
+
+
+@bp.route('/<int:datasource_id>/schema/<database>', methods=['GET'])
+@require_auth
+def get_datasource_schema_tables(datasource_id, database):
+    """GET /api/v1/data-center/datasources/:id/schema/:database — 列出数据库所有表。
+
+    Query:
+        refresh=1   强制跳过缓存
+    """
+    refresh = request.args.get("refresh", "0") in ("1", "true")
+    try:
+        result = _get_schema_service().list_tables(datasource_id, database, refresh=refresh)
+    except Exception as exc:
+        return bad_request(str(exc))
+    return success(data=result)
+
+
+@bp.route('/<int:datasource_id>/schema/<database>/<table>', methods=['GET'])
+@require_auth
+def get_datasource_schema_table(datasource_id, database, table):
+    """GET /api/v1/data-center/datasources/:id/schema/:database/:table — 字段详情。
+
+    Query:
+        refresh=1   强制跳过缓存
+    """
+    refresh = request.args.get("refresh", "0") in ("1", "true")
+    try:
+        result = _get_schema_service().get_table_schema(
+            datasource_id, database, table, refresh=refresh
+        )
+    except Exception as exc:
+        return bad_request(str(exc))
+    return success(data=result)
+
+
 @bp.route('/<int:datasource_id>/tables/<path:table>/preview', methods=['GET'])
-@optional_auth
+@require_auth
 def preview_table_data(datasource_id, table):
     """预览表数据（获取前N条记录）"""
     # 1. 解析查询参数

@@ -2,6 +2,7 @@
 import os
 from datetime import datetime, timezone
 from flask import Blueprint, request
+from app.interfaces.api.middleware.auth import require_admin, require_auth
 from app.shared.response import success, error, not_found, created
 from app.shared.utils.logger import get_logger
 
@@ -48,6 +49,8 @@ def create_semantic_blueprint(
     domain_modeling_service=None,
     domain_canvas_service=None,
     query_adapter_getter=None,
+    view_materialize_service=None,
+    cube_listing_service=None,
 ):
     """Blueprint 工厂：依赖在初始化时注入，便于单元测试时传入 Mock。
 
@@ -166,11 +169,44 @@ def create_semantic_blueprint(
             "page_count": page_count,
         }
 
+    # ── B-back-3: lazy-init view_materialize_service ────────────────────────
+
+    _vmat_svc = view_materialize_service  # may be None; lazy init on first use
+
+    def _get_vmat_service():
+        nonlocal _vmat_svc
+        if _vmat_svc is None:
+            from app.application.semantic.view_materialize_service import ViewMaterializeService
+            from app.infrastructure.semantic.view_materialize_repo import ViewMaterializeRepository
+            _vmat_svc = ViewMaterializeService(
+                repo=ViewMaterializeRepository(),
+                semantic_service=semantic_service,
+            )
+        return _vmat_svc
+
+    # ── B-back-7: lazy-init cube_listing_service ─────────────────────────────
+
+    _cube_listing_svc = cube_listing_service  # may be None; lazy init on first use
+
+    def _get_cube_listing_service():
+        nonlocal _cube_listing_svc
+        if _cube_listing_svc is None:
+            from app.application.semantic.cube_listing_service import CubeListingService
+            _cube_listing_svc = CubeListingService(
+                semantic_service=semantic_service,
+                cube_repo=getattr(semantic_service, "_cube_repo", None),
+            )
+        return _cube_listing_svc
+
     # ── Cubes ──
 
     @bp.route('/cubes', methods=['GET'])
+    @require_auth
     def list_cubes():
-        cubes = semantic_service.list_cubes()
+        try:
+            cubes = _get_cube_listing_service().list_cubes_with_derivatives()
+        except Exception:
+            cubes = semantic_service.list_cubes()
         keyword = (request.args.get("q") or "").strip()
         filtered = [
             cube for cube in cubes
@@ -180,6 +216,7 @@ def create_semantic_blueprint(
         return success(data=_build_list_payload(filtered, "cubes"))
 
     @bp.route('/cubes/<cube_name>', methods=['GET'])
+    @require_auth
     def describe_cube(cube_name):
         result = semantic_service.describe_cube(cube_name)
         if "error" in result:
@@ -187,6 +224,7 @@ def create_semantic_blueprint(
         return success(data=result)
 
     @bp.route('/cubes/draft-from-source', methods=['POST'])
+    @require_admin
     def draft_cube_from_source():
         body = request.get_json(silent=True) or {}
         source_kind = body.get("source_kind")
@@ -209,6 +247,7 @@ def create_semantic_blueprint(
         return success(data=result)
 
     @bp.route('/cubes', methods=['POST'])
+    @require_admin
     def create_cube():
         body = request.get_json(silent=True) or {}
         try:
@@ -218,6 +257,7 @@ def create_semantic_blueprint(
         return created(data=cube.model_dump(mode="json"))
 
     @bp.route('/cubes/<cube_name>', methods=['PUT'])
+    @require_admin
     def update_cube(cube_name):
         body = request.get_json(silent=True) or {}
         try:
@@ -229,6 +269,7 @@ def create_semantic_blueprint(
         return success(data=cube.model_dump(mode="json"))
 
     @bp.route('/cubes/<cube_name>/activate', methods=['POST'])
+    @require_admin
     def activate_cube(cube_name):
         try:
             cube = modeling_service.activate_cube(cube_name)
@@ -239,6 +280,7 @@ def create_semantic_blueprint(
         return success(data=cube.model_dump(mode="json"))
 
     @bp.route('/cubes/<cube_name>/revisions', methods=['POST'])
+    @require_admin
     def create_cube_revision(cube_name):
         try:
             cube = modeling_service.create_revision_draft(cube_name)
@@ -249,6 +291,7 @@ def create_semantic_blueprint(
         return created(data=cube.model_dump(mode="json"))
 
     @bp.route('/cubes/<cube_name>/deprecate', methods=['POST'])
+    @require_admin
     def deprecate_cube(cube_name):
         try:
             cube = modeling_service.deprecate_cube(cube_name)
@@ -261,6 +304,7 @@ def create_semantic_blueprint(
     # ── Domains ──
 
     @bp.route('/domains', methods=['GET'])
+    @require_auth
     def list_domains():
         domains = domain_modeling_service.list_domains()
         keyword = (request.args.get("q") or "").strip()
@@ -279,11 +323,13 @@ def create_semantic_blueprint(
         return success(data=_build_list_payload(filtered, "domains"))
 
     @bp.route('/catalogs', methods=['GET'])
+    @require_auth
     def list_catalogs():
         catalogs = domain_modeling_service.list_catalogs()
         return success(data={"catalogs": catalogs, "total": len(catalogs)})
 
     @bp.route('/catalogs', methods=['POST'])
+    @require_admin
     def create_catalog():
         body = request.get_json(silent=True) or {}
         try:
@@ -293,6 +339,7 @@ def create_semantic_blueprint(
         return created(data=catalog.model_dump(mode="json"))
 
     @bp.route('/catalogs/<catalog_code>', methods=['PUT'])
+    @require_admin
     def update_catalog(catalog_code):
         body = request.get_json(silent=True) or {}
         try:
@@ -304,6 +351,7 @@ def create_semantic_blueprint(
         return success(data=catalog.model_dump(mode="json"))
 
     @bp.route('/catalogs/<catalog_code>', methods=['DELETE'])
+    @require_admin
     def delete_catalog(catalog_code):
         try:
             domain_modeling_service.delete_catalog(catalog_code)
@@ -314,6 +362,7 @@ def create_semantic_blueprint(
         return success(data={"code": catalog_code})
 
     @bp.route('/domains', methods=['POST'])
+    @require_admin
     def create_domain():
         body = request.get_json(silent=True) or {}
         try:
@@ -323,6 +372,7 @@ def create_semantic_blueprint(
         return created(data=domain_modeling_service.get_domain_detail(domain.id or domain.code))
 
     @bp.route('/domains/<domain_id>', methods=['GET'])
+    @require_auth
     def describe_domain(domain_id):
         try:
             domain = domain_modeling_service.get_domain_detail(domain_id)
@@ -331,6 +381,7 @@ def create_semantic_blueprint(
         return success(data=domain)
 
     @bp.route('/domains/<domain_id>', methods=['PUT'])
+    @require_admin
     def update_domain(domain_id):
         body = request.get_json(silent=True) or {}
         try:
@@ -340,6 +391,7 @@ def create_semantic_blueprint(
         return success(data=domain_modeling_service.get_domain_detail(domain.id or domain.code))
 
     @bp.route('/domains/<domain_id>/canvas', methods=['GET'])
+    @require_auth
     def get_domain_canvas(domain_id):
         try:
             result = domain_canvas_service.get_canvas(domain_id)
@@ -348,6 +400,7 @@ def create_semantic_blueprint(
         return success(data=result)
 
     @bp.route('/domains/<domain_id>/cubes', methods=['POST'])
+    @require_admin
     def add_cube_to_domain(domain_id):
         body = request.get_json(silent=True) or {}
         cube_name = body.get("cube_name")
@@ -360,6 +413,7 @@ def create_semantic_blueprint(
         return success(data=domain_modeling_service.get_domain_detail(domain.id or domain.code))
 
     @bp.route('/domains/<domain_id>/joins', methods=['POST'])
+    @require_admin
     def add_join_to_domain(domain_id):
         body = request.get_json(silent=True) or {}
         try:
@@ -369,6 +423,7 @@ def create_semantic_blueprint(
         return success(data=domain_modeling_service.get_domain_detail(domain.id or domain.code))
 
     @bp.route('/domains/<domain_id>/publish', methods=['POST'])
+    @require_admin
     def publish_domain(domain_id):
         body = request.get_json(silent=True) or {}
         try:
@@ -384,6 +439,7 @@ def create_semantic_blueprint(
     # ── Views ──
 
     @bp.route('/views', methods=['GET'])
+    @require_auth
     def list_views():
         include_private = request.args.get("include_private", "").lower() == "true"
         keyword = (request.args.get("q") or "").strip()
@@ -417,15 +473,55 @@ def create_semantic_blueprint(
         return success(data=_build_list_payload(filtered, "views"))
 
     @bp.route('/views/<view_name>', methods=['GET'])
+    @require_auth
     def describe_view(view_name):
         include_private = request.args.get("include_private", "").lower() == "true"
         result = semantic_service.describe_view(view_name, include_private=include_private)
         if "error" in result:
             return not_found(result["error"])
+        # B-back-3: 附加物化状态字段
+        view_id = result.get("id")
+        if view_id is not None:
+            try:
+                extra = _get_vmat_service().get_view_extra_fields(view_id)
+                result = {**result, **extra}
+            except Exception:
+                result.setdefault("materialized_at", None)
+                result.setdefault("materialize_status", "idle")
+        else:
+            result.setdefault("materialized_at", None)
+            result.setdefault("materialize_status", "idle")
+        return success(data=result)
+
+    # B-back-3: 异步触发物化
+    @bp.route('/views/<int:view_id>/materialize', methods=['POST'])
+    @require_admin
+    def trigger_view_materialize(view_id):
+        """POST /api/v1/semantic/views/:id/materialize — 异步触发，立即返回 run_id。"""
+        try:
+            result = _get_vmat_service().trigger(view_id)
+        except Exception as exc:
+            logger.error("trigger_materialize_failed", view_id=view_id, error=str(exc))
+            return error(f"触发物化失败: {exc}")
+        return created(data=result)
+
+    # B-back-3: 物化运行历史
+    @bp.route('/views/<int:view_id>/materialize/runs', methods=['GET'])
+    @require_auth
+    def list_view_materialize_runs(view_id):
+        """GET /api/v1/semantic/views/:id/materialize/runs?page=&page_size="""
+        page = _parse_positive_int_arg("page", default=1)
+        page_size = _parse_positive_int_arg("page_size", default=20, maximum=200)
+        try:
+            result = _get_vmat_service().get_runs(view_id, page=page, page_size=page_size)
+        except Exception as exc:
+            return error(f"查询物化历史失败: {exc}")
         return success(data=result)
 
     @bp.route('/views/<view_name>/materialize', methods=['POST'])
+    @require_admin
     def materialize_view(view_name):
+        """兼容旧路由：按名称触发 View 发布（非 ID 版本）。"""
         try:
             body = request.get_json(silent=True) or {}
             result = publish_service.publish_view(view_name, source_id=body.get("source_id"))
@@ -440,11 +536,13 @@ def create_semantic_blueprint(
         return success(data=result)
 
     @bp.route('/views/<view_name>/materialize-status', methods=['GET'])
+    @require_auth
     def materialize_status(view_name):
         """查询某个 View 的逻辑发布状态。"""
         return success(data=publish_service.get_publish_status(view_name))
 
     @bp.route('/views/materialize-status', methods=['GET'])
+    @require_auth
     def batch_materialize_status():
         """批量查询所有 View 的逻辑发布状态（前端列表页使用）。"""
         include_private = request.args.get("include_private", "").lower() == "true"
@@ -453,6 +551,7 @@ def create_semantic_blueprint(
     # ── Recipes ──
 
     @bp.route('/recipes', methods=['GET'])
+    @require_auth
     def list_recipes():
         list_recipe_summaries = getattr(semantic_service, "list_recipe_summaries", None)
         candidate = list_recipe_summaries() if callable(list_recipe_summaries) else None
@@ -475,6 +574,7 @@ def create_semantic_blueprint(
     # ── DSL 编译预览 ──
 
     @bp.route('/compile', methods=['POST'])
+    @require_auth
     def compile_dsl():
         body = request.get_json(silent=True)
         if not body or "dsl" not in body:
@@ -491,6 +591,7 @@ def create_semantic_blueprint(
             return error(f"编译失败: {str(e)}")
 
     @bp.route('/query', methods=['POST'])
+    @require_auth
     def query_dsl():
         body = request.get_json(silent=True)
         if not body or "dsl" not in body:
@@ -505,6 +606,7 @@ def create_semantic_blueprint(
     # ── 关系图 ──
 
     @bp.route('/graph', methods=['GET'])
+    @require_auth
     def get_graph():
         """返回关系图数据（nodes + edges），供 React Flow 渲染"""
         cube_summaries = {
@@ -548,6 +650,7 @@ def create_semantic_blueprint(
     # ── 文件管理 ──
 
     @bp.route('/files', methods=['GET'])
+    @require_auth
     def list_files():
         """列出所有 Cube/View YAML 文件"""
         base = _semantic_base()
@@ -564,6 +667,7 @@ def create_semantic_blueprint(
         return success(data=result)
 
     @bp.route('/files/<file_type>/<name>', methods=['GET'])
+    @require_auth
     def read_file(file_type, name):
         """读取 YAML 文件原始内容"""
         if file_type not in ('cubes', 'views', 'recipes', 'domains'):
@@ -583,6 +687,7 @@ def create_semantic_blueprint(
         return success(data={"name": name, "type": file_type, "content": content})
 
     @bp.route('/files/<file_type>/<name>', methods=['PUT'])
+    @require_admin
     def write_file(file_type, name):
         """更新 YAML 文件"""
         if file_type not in ('cubes', 'views', 'recipes', 'domains'):
@@ -612,6 +717,7 @@ def create_semantic_blueprint(
         return success(data={"message": f"已保存 {file_type}/{filename}"})
 
     @bp.route('/files/<file_type>/<name>/validate', methods=['POST'])
+    @require_auth
     def validate_file(file_type, name):
         """校验 YAML 内容合法性"""
         body = request.get_json(silent=True)
@@ -648,6 +754,7 @@ def create_semantic_blueprint(
     # ── Schema Sync ──
 
     @bp.route('/schema-sync', methods=['POST'])
+    @require_admin
     def schema_sync():
         """触发 Schema Drift 检测 + 可选飞书 webhook 通知
 
@@ -707,5 +814,81 @@ def create_semantic_blueprint(
             report_dict["notified"] = True
 
         return success(data=report_dict)
+
+    # ── B-back-9: Diagnose + DiagnoseRuns ────────────────────────────────────
+    # 导入实体确保 SQLAlchemy 元数据注册
+    from app.domain.semantic.diagnose_run import DiagnoseRun  # noqa
+
+    @bp.route('/diagnose', methods=['POST'])
+    @require_auth
+    def diagnose():
+        """
+        POST /api/v1/semantic/diagnose — 同步诊断并落库（B-back-9）
+
+        Body:
+            input_kind (str): nl | sql | yaml
+            input_text (str): 诊断内容
+        """
+        from flask import g
+        from app.application.semantic.diagnose_run_service import DiagnoseRunService
+
+        body = request.get_json(silent=True) or {}
+        input_kind = body.get('input_kind', 'sql')
+        input_text = body.get('input_text', '')
+
+        if not input_text:
+            return error('input_text 不能为空')
+
+        user_id = g.get('user_id', 0)
+        svc = DiagnoseRunService(semantic_service=semantic_service)
+        try:
+            result = svc.diagnose_and_record(
+                user_id=user_id,
+                input_kind=input_kind,
+                input_text=input_text,
+            )
+            return success(data=result)
+        except ValueError as exc:
+            return error(str(exc))
+        except Exception as exc:
+            logger.error(f"diagnose failed: {exc}", exc_info=True)
+            return error(f'诊断失败: {exc}', status=500)
+
+    @bp.route('/diagnose/runs', methods=['GET'])
+    @require_auth
+    def list_diagnose_runs():
+        """GET /api/v1/semantic/diagnose/runs — 分页列表（B-back-9）"""
+        from flask import g
+        from app.application.semantic.diagnose_run_service import DiagnoseRunService
+
+        user_id = g.get('user_id', None)
+        svc = DiagnoseRunService()
+        try:
+            result = svc.list(
+                user_id=user_id,
+                page=request.args.get('page', 1, type=int),
+                page_size=request.args.get('page_size', 20, type=int),
+            )
+            return success(data=result)
+        except Exception as exc:
+            logger.error(f"list_diagnose_runs failed: {exc}", exc_info=True)
+            return error(f'获取诊断历史失败: {exc}', status=500)
+
+    @bp.route('/diagnose/runs/<int:run_id>', methods=['GET'])
+    @require_auth
+    def get_diagnose_run(run_id):
+        """GET /api/v1/semantic/diagnose/runs/:id — 详情（B-back-9）"""
+        from app.application.semantic.diagnose_run_service import DiagnoseRunService
+        from app.shared.exceptions import EntityNotFoundError
+
+        svc = DiagnoseRunService()
+        try:
+            result = svc.get(run_id)
+            return success(data=result)
+        except EntityNotFoundError as exc:
+            return not_found(message=str(exc))
+        except Exception as exc:
+            logger.error(f"get_diagnose_run failed: {exc}", exc_info=True)
+            return error(f'获取诊断详情失败: {exc}', status=500)
 
     return bp

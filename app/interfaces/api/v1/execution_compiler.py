@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from flask import Blueprint, request
 
+from app.interfaces.api.middleware.auth import require_admin, require_auth
 from app.shared.response import error, success
 
 
@@ -10,6 +11,7 @@ def create_execution_compiler_blueprint(preview_service, runtime_service=None):
     bp = Blueprint("execution_compiler", __name__, url_prefix="/api/v1/execution-compiler")
 
     @bp.route("/compile-preview", methods=["POST"])
+    @require_auth
     def compile_preview():
         body = request.get_json(silent=True) or {}
         target_type = (body.get("target_type") or "sql").strip().lower()
@@ -28,6 +30,7 @@ def create_execution_compiler_blueprint(preview_service, runtime_service=None):
         return success(data=payload)
 
     @bp.route("/plan-preview", methods=["POST"])
+    @require_auth
     def plan_preview():
         body = request.get_json(silent=True) or {}
         target_type = (body.get("target_type") or "sql").strip().lower()
@@ -46,6 +49,7 @@ def create_execution_compiler_blueprint(preview_service, runtime_service=None):
         return success(data=payload)
 
     @bp.route("/execute", methods=["POST"])
+    @require_admin
     def execute():
         body = request.get_json(silent=True) or {}
         target_type = (body.get("target_type") or "sql").strip().lower()

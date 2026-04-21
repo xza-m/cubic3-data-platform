@@ -2,9 +2,10 @@
 认证中间件
 """
 from functools import wraps
+from typing import Iterable
 from flask import request, g, jsonify, current_app
 import jwt
-from app.shared.exceptions import AuthenticationError
+from app.shared.exceptions import AuthenticationError, AuthorizationError
 from app.shared.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -100,6 +101,62 @@ def optional_auth(func):
         return func(*args, **kwargs)
     
     return wrapper
+
+
+def require_roles(*allowed_roles: str):
+    """
+    基于角色的访问控制装饰器（RBAC）。
+
+    在 ``require_auth`` 的基础上叠加角色检查：
+
+    - 未携带 / 无效 Bearer Token  → 401 ``AuthenticationError``
+    - 已认证但角色不在 ``allowed_roles`` 中 → 403 ``AuthorizationError``
+    - 角色匹配 → 调用被装饰函数
+
+    Usage::
+
+        @bp.route('/cubes', methods=['POST'])
+        @require_roles('admin')
+        def create_cube():
+            ...
+
+    Args:
+        *allowed_roles: 允许访问的角色名集合，至少匹配其中一个即放行。
+                        若为空，则等价于 ``require_auth``（仅校验登录）。
+
+    Returns:
+        Flask 视图装饰器。
+    """
+    allowed = {r for r in allowed_roles if r}
+
+    def decorator(func):
+        @wraps(func)
+        @require_auth
+        def wrapper(*args, **kwargs):
+            if allowed:
+                user_roles = set(getattr(g, 'user_roles', []) or [])
+                if not (allowed & user_roles):
+                    raise AuthorizationError(
+                        message="Insufficient permissions",
+                        code="INSUFFICIENT_ROLE",
+                        details={
+                            'required_roles': sorted(allowed),
+                            'user_roles': sorted(user_roles),
+                        }
+                    )
+            return func(*args, **kwargs)
+        return wrapper
+
+    return decorator
+
+
+def require_admin(func):
+    """
+    便捷装饰器：等价于 ``@require_roles('admin')``。
+
+    用于所有写操作（POST/PUT/PATCH/DELETE）的管理员权限校验。
+    """
+    return require_roles('admin')(func)
 
 
 def generate_token(user_id: str, user_name: str, roles: list = None, expiry_hours: int = 24) -> str:

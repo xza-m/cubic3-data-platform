@@ -109,6 +109,7 @@ from app.application.semantic.semantic_service import SemanticLayerService
 from app.application.semantic.view_publish_service import ViewPublishService
 from app.application.ontology.definition_service import OntologyDefinitionService
 from app.application.ontology.policy_guard_service import PolicyGuardService
+from app.application.ontology.workbench_read_service import OntologyWorkbenchReadService
 from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
 from app.application.semantic_router.preview_service import SemanticRouterPreviewService
 from app.application.execution_compiler.preview_service import ExecutionCompilerPreviewService
@@ -168,6 +169,11 @@ from app.application.query.handlers.template_handlers import (
     DeleteTemplateHandler,
     UseTemplateHandler,
 )
+
+from app.application.users.user_service import UserService
+from app.application.users.role_service import RoleService
+from app.infrastructure.users.password import BcryptHasher
+from app.infrastructure.users.repositories import SqlRoleRepository, SqlUserRepository
 
 
 class Container(containers.DeclarativeContainer):
@@ -544,6 +550,14 @@ class Container(containers.DeclarativeContainer):
         mapper_preview_service=semantic_mapper_preview_service,
         compiler_preview_service=execution_compiler_preview_service,
         policy_guard_service=ontology_policy_guard_service,
+    )
+
+    ontology_workbench_read_service = providers.Singleton(
+        OntologyWorkbenchReadService,
+        ontology_service=ontology_definition_service,
+        mapper_service=semantic_mapper_preview_service,
+        history_repository=ontology_history_repository,
+        audit_repository=ontology_audit_trace_repository,
     )
 
     tool_registry = providers.Singleton(
@@ -988,6 +1002,34 @@ class Container(containers.DeclarativeContainer):
     delivery_service = providers.Factory(
         DeliveryService,
         subscription_service=subscription_service
+    )
+
+    # ========================================================================
+    # 应用层 - 用户/角色（W4.D-2）
+    # ========================================================================
+
+    user_repository = providers.Factory(
+        SqlUserRepository,
+        session=db_session,
+    )
+
+    role_repository = providers.Factory(
+        SqlRoleRepository,
+        session=db_session,
+    )
+
+    password_hasher = providers.Singleton(BcryptHasher)
+
+    user_service = providers.Factory(
+        UserService,
+        user_repo=user_repository,
+        role_repo=role_repository,
+        password_hasher=password_hasher,
+    )
+
+    role_service = providers.Factory(
+        RoleService,
+        role_repo=role_repository,
     )
 
 

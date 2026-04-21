@@ -1,9 +1,11 @@
 """
 应用实例管理 API
 """
-from flask import Blueprint, request, g
+from flask import Blueprint, current_app, request, g
 
+from app.application.app_instances.health_service import enrich_instance_with_health
 from app.di.container import get_container
+from app.extensions import db
 from app.interfaces.api.middleware.auth import require_auth
 from app.shared.response import success, created, not_found, server_error
 from app.shared.utils.logger import get_logger
@@ -20,10 +22,28 @@ def _get_execution_service():
     return get_container().execution_service()
 
 
+def _health_thresholds() -> tuple[int, int]:
+    """从 Flask 配置读取 health 阈值（秒）。"""
+    degraded = current_app.config.get('HEALTH_DEGRADED_SECONDS', 60)
+    unhealthy = current_app.config.get('HEALTH_UNHEALTHY_SECONDS', 180)
+    return int(degraded), int(unhealthy)
+
+
+def _enrich_health(instance_dict: dict) -> dict:
+    """为单个实例字典注入 health / last_heartbeat_at。"""
+    degraded_s, unhealthy_s = _health_thresholds()
+    return enrich_instance_with_health(
+        instance_dict,
+        session=db.session,
+        degraded_seconds=degraded_s,
+        unhealthy_seconds=unhealthy_s,
+    )
+
+
 @bp.route('', methods=['GET'])
 @require_auth
 def list_instances():
-    """查询应用实例列表"""
+    """查询应用实例列表（新增 health / last_heartbeat_at 字段）"""
     app_code = request.args.get('app_code')
     owner = request.args.get('owner')
     enabled = request.args.get('enabled')
@@ -41,6 +61,16 @@ def list_instances():
         page=page,
         page_size=page_size
     )
+
+    # B-back-2: 注入 health 字段
+    items = result.get('items', []) if isinstance(result, dict) else result
+    if isinstance(items, list):
+        items = [_enrich_health(item) if isinstance(item, dict) else item for item in items]
+        if isinstance(result, dict):
+            result = {**result, 'items': items}
+        else:
+            result = items
+
     return success(data=result)
 
 
@@ -68,12 +98,16 @@ def create_instance():
 @bp.route('/<int:instance_id>', methods=['GET'])
 @require_auth
 def get_instance(instance_id: int):
-    """获取实例详情"""
+    """获取实例详情（新增 health / last_heartbeat_at 字段）"""
     service = _get_instance_service()
     instance = service.get_instance(instance_id, include_stats=True)
 
     if not instance:
         return not_found(message='实例不存在')
+
+    # B-back-2: 注入 health 字段
+    if isinstance(instance, dict):
+        instance = _enrich_health(instance)
 
     return success(data=instance)
 

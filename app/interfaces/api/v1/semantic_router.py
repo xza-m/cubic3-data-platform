@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from flask import Blueprint, request
 
+from app.interfaces.api.middleware.auth import require_admin, require_auth
 from app.shared.response import error, success
 
 
@@ -10,6 +11,7 @@ def create_semantic_router_blueprint(router_service):
     bp = Blueprint("semantic_router", __name__, url_prefix="/api/v1/semantic-router")
 
     @bp.route("/route", methods=["POST"])
+    @require_auth
     def route():
         body = request.get_json(silent=True) or {}
         question = (body.get("question") or "").strip()
@@ -22,6 +24,7 @@ def create_semantic_router_blueprint(router_service):
         return success(data=payload)
 
     @bp.route("/plan", methods=["POST"])
+    @require_auth
     def plan():
         body = request.get_json(silent=True) or {}
         question = (body.get("question") or "").strip()
@@ -34,6 +37,7 @@ def create_semantic_router_blueprint(router_service):
         return success(data=payload)
 
     @bp.route("/execute-plan-preview", methods=["POST"])
+    @require_auth
     def execute_plan_preview():
         body = request.get_json(silent=True) or {}
         question = (body.get("question") or "").strip()
@@ -46,6 +50,7 @@ def create_semantic_router_blueprint(router_service):
         return success(data=payload)
 
     @bp.route("/execute-plan", methods=["POST"])
+    @require_admin
     def execute_plan():
         body = request.get_json(silent=True) or {}
         question = (body.get("question") or "").strip()

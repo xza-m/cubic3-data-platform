@@ -15,7 +15,7 @@ from app.application.extraction.schemas.task_schemas import (
     CreateTaskRequest,
     ExecuteTaskRequest,
 )
-from app.interfaces.api.middleware.auth import require_auth, optional_auth
+from app.interfaces.api.middleware.auth import require_auth
 from app.shared.response import success, created, not_found, bad_request
 from app.shared.utils.logger import get_logger
 from app.shared.utils.security import generate_trace_id
@@ -263,7 +263,7 @@ def execute_task(task_id: int):
 
 
 @bp.route('/tasks', methods=['GET'])
-@optional_auth
+@require_auth
 def list_tasks():
     """
     获取任务列表（读操作优化）
@@ -311,7 +311,7 @@ def list_tasks():
 
 
 @bp.route('/runs', methods=['GET'])
-@optional_auth
+@require_auth
 def list_runs():
     """
     获取执行记录列表

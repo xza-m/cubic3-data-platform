@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from flask import Blueprint, request
 
+from app.interfaces.api.middleware.auth import require_admin, require_auth
 from app.shared.response import created, error, not_found, success
 
 
-def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repository=None):
+def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repository=None, workbench_read_service=None, object_search_service=None):
     bp = Blueprint("ontology", __name__, url_prefix="/api/v1/ontology")
 
     def _entity_is_active(entity_type: str, entity_name: str) -> bool:
@@ -220,11 +221,90 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
             }
         raise ValueError(f"不支持的影响分析资产类型: {entity_type}")
 
+    # B-back-6: lazy-init ObjectSearchService
+    _obj_search_svc = object_search_service
+
+    def _get_obj_search_svc():
+        nonlocal _obj_search_svc
+        if _obj_search_svc is None:
+            from app.application.ontology.object_search_service import ObjectSearchService
+            _obj_search_svc = ObjectSearchService(ontology_service=ontology_service)
+        return _obj_search_svc
+
     @bp.route("/objects", methods=["GET"])
+    @require_auth
     def list_objects():
+        """GET /api/v1/ontology/objects
+
+        B-back-6 扩展参数：
+          q     — 模糊搜索关键词（ILIKE 风格，大小写不敏感）
+          field — 搜索字段，可多值（name/description/metric_name/title/aliases），默认 name
+        """
+        q = (request.args.get("q") or "").strip()
+        # 支持多值：?field=name&field=description
+        fields = request.args.getlist("field") or ["name"]
+
+        if q or fields != ["name"]:
+            # 有搜索意图时走搜索路径
+            from flask import g
+            user_key = getattr(g, "user_id", None) or request.remote_addr or "anonymous"
+            try:
+                page = int(request.args.get("page") or 1)
+                page_size = int(request.args.get("page_size") or 20)
+                result = _get_obj_search_svc().search(
+                    q=q,
+                    fields=fields,
+                    user_key=str(user_key),
+                    page=page,
+                    page_size=page_size,
+                )
+            except PermissionError as exc:
+                return error(str(exc), status=429)
+            except ValueError as exc:
+                return error(str(exc), status=400)
+            except Exception as exc:
+                return error(f"搜索业务对象失败: {exc}")
+            return success(data=result)
+
         return success(data=ontology_service.list_objects())
 
+    @bp.route("/workbench/objects", methods=["GET"])
+    @require_auth
+    def list_workbench_objects():
+        if workbench_read_service is None:
+            return error("当前未启用 OWV2 工作台读模型")
+        try:
+            payload = workbench_read_service.list_objects()
+        except Exception as exc:
+            return error(f"查询 OWV2 对象列表失败: {exc}")
+        return success(data=payload)
+
+    @bp.route("/workbench/objects/<name>/overview", methods=["GET"])
+    @require_auth
+    def get_workbench_object_overview(name: str):
+        if workbench_read_service is None:
+            return error("当前未启用 OWV2 工作台读模型")
+        try:
+            payload = workbench_read_service.get_object_overview(name)
+        except Exception as exc:
+            return error(f"查询 OWV2 对象详情失败: {exc}")
+        if payload is None:
+            return not_found("未找到业务对象")
+        return success(data=payload)
+
+    @bp.route("/workbench/governance", methods=["GET"])
+    @require_auth
+    def get_workbench_governance():
+        if workbench_read_service is None:
+            return error("当前未启用 OWV2 工作台读模型")
+        try:
+            payload = workbench_read_service.get_governance_summary()
+        except Exception as exc:
+            return error(f"查询 OWV2 规则与治理摘要失败: {exc}")
+        return success(data=payload)
+
     @bp.route("/objects/<name>", methods=["GET"])
+    @require_auth
     def get_object(name: str):
         entity = ontology_service.get_object(name)
         if entity is None:
@@ -232,6 +312,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=entity)
 
     @bp.route("/objects", methods=["POST"])
+    @require_admin
     def create_object():
         try:
             entity = ontology_service.save_object(request.get_json(silent=True) or {})
@@ -240,10 +321,12 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return created(data=entity)
 
     @bp.route("/properties", methods=["GET"])
+    @require_auth
     def list_properties():
         return success(data=ontology_service.list_properties())
 
     @bp.route("/properties/<name>", methods=["GET"])
+    @require_auth
     def get_property(name: str):
         entity = ontology_service.get_property(name)
         if entity is None:
@@ -251,6 +334,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=entity)
 
     @bp.route("/properties", methods=["POST"])
+    @require_admin
     def create_property():
         try:
             entity = ontology_service.save_property(request.get_json(silent=True) or {})
@@ -259,10 +343,12 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return created(data=entity)
 
     @bp.route("/metrics", methods=["GET"])
+    @require_auth
     def list_metrics():
         return success(data=ontology_service.list_metrics())
 
     @bp.route("/metrics/<name>", methods=["GET"])
+    @require_auth
     def get_metric(name: str):
         entity = ontology_service.get_metric(name)
         if entity is None:
@@ -270,6 +356,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=entity)
 
     @bp.route("/metrics/<name>/links", methods=["GET"])
+    @require_auth
     def get_metric_links(name: str):
         if mapper_service is None:
             return error("当前未启用业务指标追踪能力")
@@ -280,6 +367,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=payload)
 
     @bp.route("/metrics", methods=["POST"])
+    @require_admin
     def create_metric():
         try:
             entity = ontology_service.save_metric(request.get_json(silent=True) or {})
@@ -288,10 +376,12 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return created(data=entity)
 
     @bp.route("/glossary", methods=["GET"])
+    @require_auth
     def list_glossary():
         return success(data=ontology_service.list_glossary())
 
     @bp.route("/glossary/<canonical_name>", methods=["GET"])
+    @require_auth
     def get_glossary(canonical_name: str):
         entity = ontology_service.get_glossary(canonical_name)
         if entity is None:
@@ -299,6 +389,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=entity)
 
     @bp.route("/glossary", methods=["POST"])
+    @require_admin
     def create_glossary():
         try:
             entity = ontology_service.save_glossary(request.get_json(silent=True) or {})
@@ -307,10 +398,12 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return created(data=entity)
 
     @bp.route("/relations", methods=["GET"])
+    @require_auth
     def list_relations():
         return success(data=ontology_service.list_relations())
 
     @bp.route("/relations/<name>", methods=["GET"])
+    @require_auth
     def get_relation(name: str):
         entity = ontology_service.get_relation(name)
         if entity is None:
@@ -318,6 +411,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=entity)
 
     @bp.route("/relations", methods=["POST"])
+    @require_admin
     def create_relation():
         try:
             entity = ontology_service.save_relation(request.get_json(silent=True) or {})
@@ -326,10 +420,12 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return created(data=entity)
 
     @bp.route("/actions", methods=["GET"])
+    @require_auth
     def list_actions():
         return success(data=ontology_service.list_actions())
 
     @bp.route("/actions/<name>", methods=["GET"])
+    @require_auth
     def get_action(name: str):
         entity = ontology_service.get_action(name)
         if entity is None:
@@ -337,6 +433,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=entity)
 
     @bp.route("/actions", methods=["POST"])
+    @require_admin
     def create_action():
         try:
             entity = ontology_service.save_action(request.get_json(silent=True) or {})
@@ -345,10 +442,12 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return created(data=entity)
 
     @bp.route("/policies", methods=["GET"])
+    @require_auth
     def list_policies():
         return success(data=ontology_service.list_policies())
 
     @bp.route("/policies/<name>", methods=["GET"])
+    @require_auth
     def get_policy(name: str):
         entity = ontology_service.get_policy(name)
         if entity is None:
@@ -356,6 +455,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=entity)
 
     @bp.route("/policies/<name>/impact", methods=["GET"])
+    @require_auth
     def get_policy_impact(name: str):
         entity = ontology_service.get_policy(name)
         if entity is None:
@@ -369,6 +469,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=payload)
 
     @bp.route("/policies/<name>/audit", methods=["GET"])
+    @require_auth
     def get_policy_audit(name: str):
         entity = ontology_service.get_policy(name)
         if entity is None:
@@ -398,6 +499,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         )
 
     @bp.route("/policies", methods=["POST"])
+    @require_admin
     def create_policy():
         try:
             entity = ontology_service.save_policy(request.get_json(silent=True) or {})
@@ -406,6 +508,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return created(data=entity)
 
     @bp.route("/templates/<template_name>", methods=["GET"])
+    @require_auth
     def get_template(template_name: str):
         try:
             payload = ontology_service.get_template(template_name)
@@ -414,6 +517,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=payload)
 
     @bp.route("/templates/<template_name>/apply", methods=["POST"])
+    @require_admin
     def apply_template(template_name: str):
         try:
             payload = ontology_service.apply_template(template_name)
@@ -422,6 +526,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=payload)
 
     @bp.route("/<entity_type>/<entity_name>/publish", methods=["POST"])
+    @require_admin
     def publish_entity(entity_type: str, entity_name: str):
         try:
             entity = _resolve_entity(entity_type, entity_name)
@@ -437,6 +542,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data={"entity": published, "validation": validation})
 
     @bp.route("/<entity_type>/<entity_name>/impact", methods=["GET"])
+    @require_auth
     def get_entity_impact(entity_type: str, entity_name: str):
         try:
             entity = _resolve_entity(entity_type, entity_name)
@@ -451,6 +557,7 @@ def create_ontology_blueprint(ontology_service, mapper_service=None, audit_repos
         return success(data=payload)
 
     @bp.route("/<entity_type>/<entity_name>/history", methods=["GET"])
+    @require_auth
     def get_entity_history(entity_type: str, entity_name: str):
         try:
             entity = _resolve_entity(entity_type, entity_name)
