@@ -194,7 +194,9 @@ app/infrastructure/semantic/domains/domain_[0-9]*.yml
 app/infrastructure/semantic/cubes/pw_*.yml
 app/infrastructure/semantic/cubes/qa_domain_unique_*.yml
 app/infrastructure/semantic/cubes/mc_*___*.yml
+app/infrastructure/semantic/cubes/mc___*.yml
 app/infrastructure/semantic/cubes/pg_*___*.yml
+app/infrastructure/semantic/cubes/pg___*.yml
 app/infrastructure/semantic/cubes/order_[0-9]*.yml
 app/infrastructure/semantic/cubes/pg_order_[0-9]*.yml
 app/infrastructure/semantic/cubes/*__revision_draft.yml
