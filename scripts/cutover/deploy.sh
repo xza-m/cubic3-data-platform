@@ -2,17 +2,25 @@
 # scripts/cutover/deploy.sh
 #
 # Round 3 · W6.A · Day 0 切换部署脚本。
+# Round 4 · Sprint 0 · T-002：增加 alembic 自动 upgrade；T-003：rebuild 阶段增加 backend 健康度 gate。
 #
 # 用法：
-#   ./scripts/cutover/deploy.sh           # 真切（生产）
-#   ./scripts/cutover/deploy.sh --dry-run # 干跑（跳过 git tag + nginx 重启）
+#   ./scripts/cutover/deploy.sh                  # 真切（生产）
+#   ./scripts/cutover/deploy.sh --dry-run        # 干跑（跳过 git tag + migrate + nginx 重启）
+#   ./scripts/cutover/deploy.sh --skip-migrate   # 跳过 alembic upgrade（DBA 手动处理时用）
+#
+# 环境变量（可选）：
+#   BACKEND_CONTAINER   docker-compose.yml 中 backend service 名，默认 backend
+#   COMPOSE_FILE        compose 文件路径，默认 docker-compose.yml
+#                       （若仍在使用旧 docker-compose.full.yml，显式设置 COMPOSE_FILE）
 #
 # 行为对齐 docs/superpowers/plans/2026-04-20-platform-redesign/
 # 04-cutover-and-migration.md §3 切换日 Runbook：
 #   T-15  pre-flight gate（make verify-cutover · v2-only · 见 Round 3 W6）
 #   T-10  打 cutover-<date> 标签（rollback 锚点）
+#   T- 5  alembic head 探测 + flask db upgrade head（Round 4 T-002 新增；可 --skip-migrate）
 #   T  0  vite 构建 v2 产物（无 VITE_AUTH_BYPASS）
-#   T+ 1  调用 ./scripts/rebuild-frontend.sh 切 nginx volume
+#   T+ 1  调用 ./scripts/rebuild-frontend.sh 切 nginx volume（含 backend 健康度 gate）
 #   T+ 5  smoke check：/api/v1/health + /dashboard
 #
 # Exit codes：
@@ -21,6 +29,7 @@
 #   2 = build 失败
 #   3 = nginx swap 失败（rebuild-frontend.sh）
 #   4 = post-deploy smoke 失败
+#   5 = db migrate 失败（Round 4 T-002 新增）
 #
 # 日志：./logs/cutover-<timestamp>.log
 
@@ -31,11 +40,13 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 DRY_RUN=0
+SKIP_MIGRATE=0
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
+    --skip-migrate) SKIP_MIGRATE=1 ;;
     -h|--help)
-      sed -n '2,18p' "$0"
+      sed -n '2,24p' "$0"
       exit 0
       ;;
     *)
@@ -44,6 +55,9 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-backend}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 
 TS="$(date +%Y%m%d-%H%M%S)"
 DATE_TAG="$(date +%Y%m%d)"
@@ -98,6 +112,29 @@ else
       || fail 1 "git tag 失败"
     log "  ✓ 已打标签 ${TAG_NAME}（HEAD=$(git rev-parse --short HEAD)）"
   fi
+fi
+
+# ── 阶段 2.5：alembic upgrade（T-5） ─────────────────────────────────────────
+# Round 4 · Sprint 0 · T-002：在 swap 前自动拉齐 DB schema，避免"前端切到新版后 500/502"
+# 的生产事故。要求：backend 容器已在线（backend 由独立 CD 路径先部署）。
+phase pre "DB migrate：flask db upgrade head（backend 容器 ${BACKEND_CONTAINER}）"
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  log "  [dry-run] 跳过 db migrate"
+elif [[ "$SKIP_MIGRATE" -eq 1 ]]; then
+  log "  [skip] 跳过 db migrate（--skip-migrate）；DBA 需手动保证 alembic head 一致"
+else
+  if ! docker compose -f "$COMPOSE_FILE" ps --services 2>/dev/null | grep -qx "$BACKEND_CONTAINER"; then
+    fail 5 "compose 文件 ${COMPOSE_FILE} 中未找到 service=${BACKEND_CONTAINER}（可通过 BACKEND_CONTAINER 环境变量覆盖）"
+  fi
+  log "  → 探测当前 alembic 版本"
+  if ! docker compose -f "$COMPOSE_FILE" exec -T "$BACKEND_CONTAINER" flask db current >>"$LOG_FILE" 2>&1; then
+    fail 5 "flask db current 失败：backend 容器未就绪或 flask CLI 不可用。建议：docker compose -f ${COMPOSE_FILE} ps ${BACKEND_CONTAINER}"
+  fi
+  log "  → 执行 flask db upgrade head"
+  if ! docker compose -f "$COMPOSE_FILE" exec -T "$BACKEND_CONTAINER" flask db upgrade head >>"$LOG_FILE" 2>&1; then
+    fail 5 "flask db upgrade head 失败；回滚建议：flask db downgrade <prev_rev> · 详见 $LOG_FILE"
+  fi
+  log "  ✓ alembic 已升级至 head"
 fi
 
 # ── 阶段 3：构建 v2 产物（T 0） ─────────────────────────────────────────────
