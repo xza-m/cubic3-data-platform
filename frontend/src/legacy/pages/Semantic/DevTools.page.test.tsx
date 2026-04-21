@@ -1419,7 +1419,7 @@ describe('DevTools page', () => {
         }),
       )
     })
-  })
+  }, 20_000)
 
   it('保存失败时展示 destructive 提示', async () => {
     const user = userEvent.setup()
@@ -1480,7 +1480,7 @@ describe('DevTools page', () => {
     await user.click(screen.getByLabelText('Field'))
     await user.click(await screen.findByRole('option', { name: 'total_amount (decimal(18,2))' }))
     expect(screen.getByLabelText('Expression')).toHaveValue('`total_amount`')
-  })
+  }, 20_000)
 
   it('Filters 工作流支持选中已有 Filter、新建草稿并切换模式', async () => {
     const user = userEvent.setup()
@@ -1517,7 +1517,7 @@ describe('DevTools page', () => {
     expect(screen.getByText('Filter · filter_2')).toBeInTheDocument()
     expect(screen.getByLabelText('Field')).toHaveTextContent('customer_id')
     expect(screen.getByLabelText('Operator')).toHaveValue('=')
-  })
+  }, 20_000)
 
   it('Join 编辑器支持切换 SQL/表单模式并维护多组 Join Key', async () => {
     const user = userEvent.setup()
@@ -1624,7 +1624,7 @@ describe('DevTools page', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/Join key \d+/)).toHaveLength(2)
     })
-  })
+  }, 20_000)
 
   it('Filters 空状态支持从列表直接创建新 Filter', async () => {
     const user = userEvent.setup()

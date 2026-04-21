@@ -383,10 +383,88 @@ export interface OntologyTemplateApplyResponse {
   }
 }
 
+export interface OntologyWorkbenchObjectSummaryDto extends BusinessObject {
+  stats: {
+    property_count: number
+    metric_count: number
+    relation_count: number
+    action_count: number
+    rule_count: number
+  }
+  risk_summary: {
+    stale_count: number
+    consistency_count: number
+  }
+  last_activity: OntologyHistoryEvent | null
+}
+
+export interface OntologyWorkbenchObjectListResponse {
+  items: OntologyWorkbenchObjectSummaryDto[]
+  total: number
+}
+
+export interface OntologyWorkbenchObjectOverviewResponse {
+  object: BusinessObject
+  stats: {
+    property_count: number
+    metric_count: number
+    relation_count: number
+    action_count: number
+    rule_count: number
+  }
+  capabilities: {
+    properties: BusinessProperty[]
+    actions: BusinessAction[]
+  }
+  associations: {
+    metrics: BusinessMetric[]
+    relations: BusinessRelation[]
+    rules: PolicyMetadata[]
+  }
+  governance: {
+    stale_items: Array<Record<string, unknown>>
+    consistency_items: Array<Record<string, unknown>>
+    audit_total: number
+    recent_audits: GovernanceAuditTrace[]
+  }
+  lifecycle: {
+    history_items: OntologyHistoryEvent[]
+    history_total: number
+    last_activity: OntologyHistoryEvent | null
+  }
+}
+
+export interface OntologyWorkbenchGovernanceItemDto extends PolicyMetadata {
+  issue_count: number
+  issues: string[]
+  projection_status: string
+  audit_total: number
+  last_audit: GovernanceAuditTrace | null
+}
+
+export interface OntologyWorkbenchGovernanceSummaryResponse {
+  summary: {
+    policy_total: number
+    stale_count: number
+    consistency_count: number
+    audit_total: number
+  }
+  items: OntologyWorkbenchGovernanceItemDto[]
+  stale_items: Array<Record<string, unknown>>
+  consistency_items: Array<Record<string, unknown>>
+  recent_audits: GovernanceAuditTrace[]
+}
+
 export const listBusinessObjects = () => apiClient.get<OntologyListResponse<BusinessObject>>('/ontology/objects')
 export const getBusinessObject = (name: string) => apiClient.get<BusinessObject>(`/ontology/objects/${name}`)
 export const saveBusinessObject = (payload: Partial<BusinessObject>) =>
   apiClient.post<BusinessObject>('/ontology/objects', payload)
+export const getOntologyWorkbenchObjects = () =>
+  apiClient.get<OntologyWorkbenchObjectListResponse>('/ontology/workbench/objects')
+export const getOntologyWorkbenchObjectOverview = (name: string) =>
+  apiClient.get<OntologyWorkbenchObjectOverviewResponse>(`/ontology/workbench/objects/${name}/overview`)
+export const getOntologyWorkbenchGovernance = () =>
+  apiClient.get<OntologyWorkbenchGovernanceSummaryResponse>('/ontology/workbench/governance')
 
 export const listBusinessProperties = () =>
   apiClient.get<OntologyListResponse<BusinessProperty>>('/ontology/properties')

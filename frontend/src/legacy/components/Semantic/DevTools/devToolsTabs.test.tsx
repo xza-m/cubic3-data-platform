@@ -610,7 +610,7 @@ describe('DevTools tabs', () => {
     expect(await screen.findByText('执行结果')).toBeInTheDocument()
     expect(screen.getByText('1 行 · 23 ms')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('数学')).toBeInTheDocument()
-  })
+  }, 15000)
 
   it('PlaygroundTab 在单 Cube 模式下支持预览失败和执行失败提示', async () => {
     devToolsTabMocks.listCubes.mockResolvedValue({

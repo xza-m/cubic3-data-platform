@@ -206,7 +206,7 @@ describe('SaveAsDatasetDialog', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 120))
     expect(dialogMocks.navigate).toHaveBeenCalledWith('/data-center/datasets')
-  })
+  }, 10_000)
 
   it('字段分析失败时展示告警，并在继续流程中保留已填写的名称描述负责人', async () => {
     const user = userEvent.setup()

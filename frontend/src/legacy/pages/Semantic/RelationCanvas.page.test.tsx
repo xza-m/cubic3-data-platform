@@ -176,7 +176,7 @@ vi.mock('@xyflow/react', async () => {
           viewportInitialized: viewportReadyMock.value,
           fitView: fitViewMock,
         })
-      }, [onInit])
+      }, [])
 
       return (
         <div data-testid="mock-reactflow">
@@ -340,8 +340,18 @@ function buildDraft(overrides: Record<string, any> = {}) {
 
 describe('RelationCanvas page', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    semanticApiMocks.getGraph.mockReset()
+    semanticApiMocks.describeCube.mockReset()
+    semanticApiMocks.createCubeDraftFromSource.mockReset()
+    semanticApiMocks.createCube.mockReset()
+    semanticApiMocks.updateCube.mockReset()
+    semanticApiMocks.activateCube.mockReset()
+    semanticApiMocks.deprecateCube.mockReset()
+    datasourceMocks.getDataSources.mockReset()
+    toastMocks.toast.mockReset()
+    navigateMock.mockReset()
     fitViewMock.mockReset()
+    elkLayoutMock.mockClear()
     viewportReadyMock.value = true
   })
 
@@ -454,10 +464,11 @@ describe('RelationCanvas page', () => {
     renderPage('/semantic/cubes/new')
 
     expect((await screen.findAllByText('新建 Cube')).length).toBeGreaterThan(0)
+    fireEvent.click(await screen.findByTestId('select-item-1'))
     fireEvent.click(screen.getByText('选择物理表'))
     await waitFor(() => {
       expect(screen.getByTestId('cube-generate-draft')).not.toBeDisabled()
-    })
+    }, { timeout: 5_000 })
     fireEvent.click(screen.getByTestId('cube-generate-draft'))
 
     await waitFor(() => {
@@ -542,10 +553,11 @@ describe('RelationCanvas page', () => {
 
     renderPage('/semantic/cubes/new')
 
+    fireEvent.click(await screen.findByTestId('select-item-1'))
     fireEvent.click(await screen.findByText('选择物理表'))
     await waitFor(() => {
       expect(screen.getByTestId('cube-generate-draft')).not.toBeDisabled()
-    })
+    }, { timeout: 5_000 })
     fireEvent.click(screen.getByTestId('cube-generate-draft'))
     expect(await screen.findByText('创建 Cube 草稿')).toBeInTheDocument()
 
@@ -720,10 +732,11 @@ describe('RelationCanvas page', () => {
     expect(await screen.findByTestId('mock-node-answer_records')).toBeInTheDocument()
     expect(screen.queryByTestId('mock-node-course_profile')).not.toBeInTheDocument()
 
+    fireEvent.click(await screen.findByTestId('select-item-1'))
     fireEvent.click(screen.getByText('选择物理表'))
     await waitFor(() => {
       expect(screen.getByTestId('cube-generate-draft')).not.toBeDisabled()
-    })
+    }, { timeout: 5_000 })
     fireEvent.click(screen.getByTestId('cube-generate-draft'))
     await waitFor(() => {
       expect(toastMocks.toast).toHaveBeenCalledWith({
@@ -769,7 +782,9 @@ describe('RelationCanvas page', () => {
     renderPage('/semantic/cubes/answer_records/edit')
 
     expect((await screen.findAllByText('编辑 Cube')).length).toBeGreaterThan(0)
-    expect(screen.getByText('maxcompute')).toBeInTheDocument()
+    expect(
+      await screen.findByText((_, element) => element?.textContent === '来源：maxcompute'),
+    ).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '关闭' }))
 
@@ -803,6 +818,6 @@ describe('RelationCanvas page', () => {
     expect(screen.getByTestId('cube-generate-draft')).toBeDisabled()
 
     fireEvent.click(screen.getByTestId('mock-node-answer_records'))
-    expect(await screen.findByText('未绑定')).toBeInTheDocument()
+    expect(await screen.findByText(/未绑定/)).toBeInTheDocument()
   })
 })

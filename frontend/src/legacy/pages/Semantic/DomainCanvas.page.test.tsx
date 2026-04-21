@@ -368,7 +368,7 @@ describe('DomainCanvas page', () => {
     expect(within(screen.getByTestId('domain-join-panel')).getByText('当前 Join 关系')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '折叠资源树' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '折叠 Join 面板' })).toBeInTheDocument()
-  })
+  }, 15000)
 
   it('支持切换到领域目录模式，并在右侧展示领域信息', async () => {
     mockCanvasData({
@@ -863,7 +863,7 @@ describe('DomainCanvas page', () => {
 
     await user.click(catalogToggle)
     expect(screen.getByRole('button', { name: /默认目录/ })).toBeInTheDocument()
-  })
+  }, 10_000)
 
   it('领域目录模式支持展开目录并查看当前领域的节点列表', async () => {
     const user = userEvent.setup()

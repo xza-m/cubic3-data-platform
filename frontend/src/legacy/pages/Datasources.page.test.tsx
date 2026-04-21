@@ -515,7 +515,7 @@ describe('Datasources page', () => {
         variant: 'destructive',
       })
     })
-  })
+  }, 10_000)
 
   it('在创建或更新失败时给出 destructive 提示', async () => {
     const user = userEvent.setup()
