@@ -1,0 +1,430 @@
+// frontend/src/v2/pages/apps/Marketplace.tsx
+//
+// 应用市场列表页（L0）。
+// 接口：GET /api/v1/apps
+// P20: 新增 category/status facet + search + 卡片菜单（启用/停用/详情）
+// drop-frontend 列表（see plan §3.4）:
+//   - App.rating       — 无展示
+//   - App.installs     — 无展示
+//   - App.capabilities — 无展示（不渲染标签区）
+//   - "安装/卸载"按钮  → 改为"创建实例"跳转
+
+import { useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Grid, List, MoreHorizontal, RefreshCcw } from 'lucide-react'
+import { t } from '@v2/i18n'
+import { useApps, useAppCategories, useEnableApp, useDisableApp } from '@v2/hooks/apps'
+import { useToast } from '@v2/components/ui'
+import { AppCard, AppRow } from './_shared/app-card'
+import type { App } from '@v2/api/apps'
+
+type ViewMode = 'grid' | 'list'
+type StatusFilter = 'all' | 'enabled' | 'disabled'
+
+const ALL_CATEGORY = t('marketplace.all', '全部')
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: 'all',      label: '全部状态' },
+  { value: 'enabled',  label: '已启用' },
+  { value: 'disabled', label: '已禁用' },
+]
+
+export default function Marketplace() {
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [keyword, setKeyword] = useState('')
+  const [category, setCategory] = useState(ALL_CATEGORY)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [view, setView] = useState<ViewMode>('grid')
+
+  const { data: apps = [], isLoading, isError, refetch, isFetching } = useApps({
+    include_stats: true,
+  })
+  const { data: serverCategories = [] } = useAppCategories()
+  const enableMutation = useEnableApp()
+  const disableMutation = useDisableApp()
+
+  const categories = useMemo(
+    () => [ALL_CATEGORY, ...serverCategories],
+    [serverCategories],
+  )
+
+  const filtered = useMemo(() => {
+    return apps.filter((a) => {
+      if (category !== ALL_CATEGORY && a.category !== category) return false
+      if (statusFilter === 'enabled' && !a.enabled) return false
+      if (statusFilter === 'disabled' && a.enabled) return false
+      const q = keyword.trim().toLowerCase()
+      if (
+        q &&
+        !a.name.toLowerCase().includes(q) &&
+        !(a.description ?? '').toLowerCase().includes(q)
+      )
+        return false
+      return true
+    })
+  }, [apps, category, statusFilter, keyword])
+
+  const handleToggle = async (app: App) => {
+    try {
+      if (app.enabled) {
+        await disableMutation.mutateAsync(app.code)
+        toast.show({ tone: 'warning', title: '已停用', description: app.name })
+      } else {
+        await enableMutation.mutateAsync(app.code)
+        toast.show({ tone: 'success', title: '已启用', description: app.name })
+      }
+    } catch {
+      toast.show({ tone: 'danger', title: '操作失败', description: app.name })
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden p-4">
+      <div
+        className="flex flex-1 flex-col overflow-hidden rounded-md border"
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between border-b px-4 py-3"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <div>
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+              {t('marketplace.title', '应用市场')}
+            </span>
+            <span className="ml-2 text-xs" style={{ color: 'var(--text-3)' }}>
+              {t('marketplace.subtitle', '语义化分析与运营应用')}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              className="rounded border px-2 py-1 text-xs outline-none focus:ring-1"
+              style={{
+                background: 'var(--bg-surface-2)',
+                borderColor: 'var(--border)',
+                color: 'var(--text-1)',
+                width: 200,
+              }}
+              placeholder={t('marketplace.search_placeholder', '搜索应用名 / 描述…')}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            {/* View toggle */}
+            <div
+              className="flex items-center gap-0.5 rounded border p-0.5"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+            >
+              {(
+                [
+                  { key: 'grid' as ViewMode, Icon: Grid, label: t('view.grid', '卡片') },
+                  { key: 'list' as ViewMode, Icon: List, label: t('view.list', '列表') },
+                ] as const
+              ).map(({ key, Icon, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  title={label}
+                  className="btn btn-sm"
+                  style={{
+                    background: view === key ? 'var(--accent)' : 'transparent',
+                    color: view === key ? 'var(--on-accent)' : 'var(--text-2)',
+                  }}
+                  onClick={() => setView(key)}
+                >
+                  <Icon size={12} />
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={() => refetch()}
+              title={t('action.refresh', '刷新')}
+            >
+              <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+
+        {/* Facet rail: category + status */}
+        <div
+          className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+        >
+          {/* Category facet */}
+          <div className="flex flex-wrap items-center gap-1">
+            {categories.map((c) => {
+              const active = category === c
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  className="btn btn-sm"
+                  style={{
+                    background: active ? 'var(--accent)' : 'transparent',
+                    color: active ? 'var(--on-accent)' : 'var(--text-2)',
+                  }}
+                  onClick={() => setCategory(c)}
+                >
+                  {c}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Divider */}
+          <div className="h-4 w-px" style={{ background: 'var(--border)' }} />
+
+          {/* Status facet */}
+          <div className="flex items-center gap-1">
+            {STATUS_OPTIONS.map((opt) => {
+              const active = statusFilter === opt.value
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className="btn btn-sm"
+                  style={{
+                    background: active ? 'var(--accent-soft)' : 'transparent',
+                    color: active ? 'var(--accent)' : 'var(--text-2)',
+                    border: active ? '1px solid var(--accent)' : '1px solid transparent',
+                  }}
+                  onClick={() => setStatusFilter(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+
+          <span className="ml-auto text-xs" style={{ color: 'var(--text-3)' }}>
+            {filtered.length} / {apps.length}
+          </span>
+        </div>
+
+        {/* Content */}
+        <div
+          className={
+            view === 'grid'
+              ? 'grid flex-1 gap-3 overflow-auto p-3 md:grid-cols-2 xl:grid-cols-3'
+              : 'flex flex-1 flex-col gap-2 overflow-auto p-3'
+          }
+        >
+          {isLoading && (
+            <div
+              className="col-span-full flex items-center justify-center py-10 text-xs"
+              style={{ color: 'var(--text-3)' }}
+            >
+              {t('state.loading', '加载中…')}
+            </div>
+          )}
+
+          {isError && !isLoading && (
+            <div className="col-span-full flex flex-col items-center gap-3 py-10">
+              <p className="text-xs" style={{ color: 'var(--danger)' }}>
+                {t('state.load_error', '加载失败，请重试')}
+              </p>
+              <button type="button" className="btn btn-sm" onClick={() => refetch()}>
+                {t('action.retry', '重试')}
+              </button>
+            </div>
+          )}
+
+          {!isLoading && !isError && filtered.length === 0 && (
+            <div
+              className="col-span-full flex items-center justify-center py-10 text-xs"
+              style={{ color: 'var(--text-3)' }}
+            >
+              {t('state.empty', '未匹配到应用')}
+            </div>
+          )}
+
+          {!isLoading &&
+            !isError &&
+            filtered.map((app) =>
+              view === 'grid' ? (
+                <AppCardWithMenu
+                  key={app.code}
+                  app={app}
+                  onOpen={() => navigate(`/apps/${app.code}`)}
+                  onCreateInstance={() =>
+                    navigate('/apps/instances/new', {
+                      state: { app_code: app.code },
+                    })
+                  }
+                  onToggle={() => void handleToggle(app)}
+                  isToggling={
+                    (app.enabled ? disableMutation.isPending : enableMutation.isPending)
+                  }
+                />
+              ) : (
+                <AppRowWithMenu
+                  key={app.code}
+                  app={app}
+                  onOpen={() => navigate(`/apps/${app.code}`)}
+                  onToggle={() => void handleToggle(app)}
+                  isToggling={
+                    (app.enabled ? disableMutation.isPending : enableMutation.isPending)
+                  }
+                />
+              ),
+            )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── 带菜单的卡片组件（P20）───────────────────────────────────────────────────
+
+function AppCardWithMenu({
+  app,
+  onOpen,
+  onCreateInstance,
+  onToggle,
+  isToggling,
+}: {
+  app: App
+  onOpen: () => void
+  onCreateInstance: () => void
+  onToggle: () => void
+  isToggling: boolean
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  return (
+    <div className="relative">
+      <AppCard app={app} onOpen={onOpen} onCreateInstance={onCreateInstance} />
+      {/* 右上角菜单按钮 */}
+      <div className="absolute right-2 top-2">
+        <button
+          type="button"
+          aria-label="更多操作"
+          onClick={(e) => {
+            e.stopPropagation()
+            setMenuOpen((v) => !v)
+          }}
+          className="flex size-6 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:opacity-100"
+          style={{ background: 'var(--bg-surface-2)' }}
+        >
+          <MoreHorizontal size={12} style={{ color: 'var(--text-2)' }} />
+        </button>
+
+        {menuOpen && (
+          <div
+            ref={menuRef}
+            className="absolute right-0 top-7 z-20 min-w-[120px] rounded-md border py-1 shadow-md"
+            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpen()
+                setMenuOpen(false)
+              }}
+              className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
+              style={{ color: 'var(--text-1)' }}
+            >
+              查看详情
+            </button>
+            <button
+              type="button"
+              disabled={isToggling}
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggle()
+                setMenuOpen(false)
+              }}
+              className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)] disabled:opacity-50"
+              style={{ color: app.enabled ? 'var(--danger)' : 'var(--success)' }}
+            >
+              {app.enabled ? '停用应用' : '启用应用'}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onCreateInstance()
+                setMenuOpen(false)
+              }}
+              className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
+              style={{ color: 'var(--text-2)' }}
+            >
+              创建实例
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AppRowWithMenu({
+  app,
+  onOpen,
+  onToggle,
+  isToggling,
+}: {
+  app: App
+  onOpen: () => void
+  onToggle: () => void
+  isToggling: boolean
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  return (
+    <div className="group relative">
+      <AppRow app={app} onOpen={onOpen} />
+      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+        <button
+          type="button"
+          aria-label="更多操作"
+          onClick={(e) => {
+            e.stopPropagation()
+            setMenuOpen((v) => !v)
+          }}
+          className="flex size-6 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100"
+          style={{ background: 'var(--bg-surface-2)' }}
+        >
+          <MoreHorizontal size={12} style={{ color: 'var(--text-2)' }} />
+        </button>
+
+        {menuOpen && (
+          <div
+            className="absolute right-0 top-7 z-20 min-w-[120px] rounded-md border py-1 shadow-md"
+            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpen()
+                setMenuOpen(false)
+              }}
+              className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
+              style={{ color: 'var(--text-1)' }}
+            >
+              查看详情
+            </button>
+            <button
+              type="button"
+              disabled={isToggling}
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggle()
+                setMenuOpen(false)
+              }}
+              className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)] disabled:opacity-50"
+              style={{ color: app.enabled ? 'var(--danger)' : 'var(--success)' }}
+            >
+              {app.enabled ? '停用应用' : '启用应用'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

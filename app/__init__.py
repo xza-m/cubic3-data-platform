@@ -24,6 +24,11 @@ from .interfaces.api.v1.feishu import bp as feishu_v1_bp
 from .interfaces.api.v1.dashboard import create_dashboard_blueprint
 # 注意: superset_v1_bp 已废弃，改用「应用中心 + 配置中心」
 
+# 用户偏好 API v1（B-back-1）
+from .interfaces.api.v1.user_preferences import bp as user_preferences_v1_bp
+from .interfaces.api.v1.users import bp as users_v1_bp
+from .interfaces.api.v1.roles import bp as roles_v1_bp, permissions_bp as permissions_v1_bp
+
 # 应用中心 API v1
 from .interfaces.api.v1.apps import bp as apps_v1_bp
 from .interfaces.api.v1.app_instances import bp as app_instances_v1_bp
@@ -41,6 +46,7 @@ from .interfaces.api.v1.semantic_mapper import create_semantic_mapper_blueprint
 from .interfaces.api.v1.semantic_router import create_semantic_router_blueprint
 from .interfaces.api.v1.execution_compiler import create_execution_compiler_blueprint
 from .interfaces.api.v1.governance import create_governance_blueprint
+from .interfaces.api.v1.scheduled_queries import bp as scheduled_queries_v1_bp
 
 from .infrastructure.scheduler import init_jobs
 
@@ -97,6 +103,11 @@ def create_app(role: str = "web") -> Flask:
     from .domain.entities.app_execution import AppExecution  # noqa
     from .domain.entities.config.channel import Channel  # noqa
     from .domain.entities.config.subscription import Subscription  # noqa
+    from .domain.queries.scheduled_query import ScheduledQuery  # noqa
+    from .domain.queries.scheduled_query_run import ScheduledQueryRun  # noqa
+    from .domain.semantic.diagnose_run import DiagnoseRun  # noqa
+    from .domain.entities.user_preferences import UserPreferences  # noqa  B-back-1
+    from .infrastructure.users.models import UserORM, RoleORM, UserRoleORM, UserPasswordORM  # noqa  W4.D-2
 
     # 注册执行器（worker 执行任务时需要）
     from .executors import register_all_executors
@@ -125,6 +136,10 @@ def create_app(role: str = "web") -> Flask:
         app.register_blueprint(sql_lab_v1_bp)
         app.register_blueprint(queries_v1_bp)
         app.register_blueprint(feishu_v1_bp)
+        app.register_blueprint(user_preferences_v1_bp)
+        app.register_blueprint(users_v1_bp)
+        app.register_blueprint(roles_v1_bp)
+        app.register_blueprint(permissions_v1_bp)
         app.register_blueprint(apps_v1_bp)
         app.register_blueprint(app_instances_v1_bp)
         app.register_blueprint(app_executions_v1_bp)
@@ -147,6 +162,7 @@ def create_app(role: str = "web") -> Flask:
             container.ontology_definition_service(),
             container.semantic_mapper_preview_service(),
             container.ontology_audit_trace_repository(),
+            container.ontology_workbench_read_service(),
         ))
         app.register_blueprint(create_semantic_mapper_blueprint(
             container.semantic_mapper_preview_service(),
@@ -161,6 +177,7 @@ def create_app(role: str = "web") -> Flask:
         app.register_blueprint(create_governance_blueprint(
             container.ontology_audit_trace_repository(),
         ))
+        app.register_blueprint(scheduled_queries_v1_bp)
 
         # 全局错误处理器
         from app.interfaces.api.middleware.error_handler import register_error_handlers
@@ -208,6 +225,11 @@ def create_app(role: str = "web") -> Flask:
 
             init_jobs()
             logging.getLogger(__name__).info("Scheduler initialized with app-center schedules")
+            try:
+                from app.infrastructure.queries.scheduled_query_runner import reload_all_scheduled_queries
+                reload_all_scheduled_queries()
+            except Exception as _e:
+                logging.getLogger(__name__).warning("Failed to reload scheduled query jobs: %s", _e)
 
         # 事件处理器（worker 执行任务时也可能触发事件）
         try:

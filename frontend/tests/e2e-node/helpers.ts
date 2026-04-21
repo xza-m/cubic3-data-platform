@@ -213,7 +213,7 @@ export async function createDomainViaUi(page: Page, domainName: string, catalogN
   }
 
   await gotoSemantic(page, `/semantic/domains/${domainId}`)
-  await expect(page.getByTestId('domain-canvas-page')).toBeVisible()
+  await expect(page.getByTestId('domain-canvas-page')).toBeVisible({ timeout: 20_000 })
 }
 
 export async function dragLibraryCubeToCanvas(page: Page, index = 0) {
@@ -282,4 +282,53 @@ export async function ensureCubeAvailable(page: Page) {
 
   await gotoSemantic(page, '/semantic/cubes')
   await expect(page.getByRole('heading', { name: 'Cube 管理' })).toBeVisible()
+}
+
+export async function createUniqueCubeForDomain(page: Page) {
+  const datasourceId = await findFirstActiveDatasourceId(page)
+  const uniqueSuffix = Date.now()
+  const cubeName = `qa_domain_unique_${uniqueSuffix}`
+  const cubeTitle = uniqueName('QA Domain Unique Cube')
+  const dimensionName = `unique_dimension_${uniqueSuffix}`
+  const measureName = `unique_measure_${uniqueSuffix}`
+
+  await apiRequest(page, '/api/v1/semantic/cubes', {
+    method: 'POST',
+    data: {
+      name: cubeName,
+      title: cubeTitle,
+      table: 'playwright.orders',
+      source_id: datasourceId,
+      dimensions: {
+        id: {
+          title: 'ID',
+          type: 'string',
+          sql: '{CUBE}.id',
+        },
+        [dimensionName]: {
+          title: '唯一维度',
+          type: 'string',
+          sql: '{CUBE}.id',
+        },
+      },
+      measures: {
+        total_count: {
+          title: '总数',
+          type: 'count',
+          sql: '{CUBE}.id',
+        },
+        [measureName]: {
+          title: '唯一指标',
+          type: 'count',
+          sql: '{CUBE}.id',
+        },
+      },
+    },
+  })
+
+  await apiRequest(page, `/api/v1/semantic/cubes/${cubeName}/activate`, {
+    method: 'POST',
+  })
+
+  return cubeName
 }

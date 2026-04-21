@@ -1,0 +1,43 @@
+{
+  "_comment": "lighthouserc.json — W5.D 性能基线（2026-04-21）",
+  "_doc": "see docs/superpowers/plans/2026-04-20-platform-redesign/round3-w5-perf-baseline-record.md",
+  "ci": {
+    "collect": {
+      "startServerCommand": "npx vite preview --config v2.vite.config.ts --port 4173 --strictPort",
+      "startServerReadyPattern": "Local:.*4173",
+      "url": [
+        "http://localhost:4173/",
+        "http://localhost:4173/data-center/datasources",
+        "http://localhost:4173/semantic/cubes",
+        "http://localhost:4173/semantic/ontology/objects",
+        "http://localhost:4173/settings"
+      ],
+      "numberOfRuns": 1,
+      "settings": {
+        "preset": "desktop",
+        "skipAudits": ["uses-http2", "redirects-http", "is-on-https"],
+        "chromeFlags": "--no-sandbox --headless=new --disable-gpu --hide-scrollbars"
+      }
+    },
+    "assert": {
+      "preset": "lighthouse:no-pwa",
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.8 }],
+        "categories:accessibility": ["error", { "minScore": 0.9 }],
+        "categories:best-practices": ["warn", { "minScore": 0.85 }],
+        "categories:seo": ["warn", { "minScore": 0.8 }],
+        "color-contrast": "off",
+        "uses-rel-preconnect": "off",
+        "uses-text-compression": "off",
+        "errors-in-console": "off",
+        "csp-xss": "off",
+        "preload-fonts": "off",
+        "unused-javascript": ["warn", { "maxLength": 1, "strategy": "pessimistic" }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "./.lighthouseci"
+    }
+  }
+}

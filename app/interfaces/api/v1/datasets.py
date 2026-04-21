@@ -17,7 +17,7 @@ from app.application.dataset.schemas.dataset_schemas import (
     UpdateDatasetRequest,
     PreviewDatasetRequest
 )
-from app.interfaces.api.middleware.auth import require_auth, optional_auth
+from app.interfaces.api.middleware.auth import require_auth
 from app.shared.response import success, created, bad_request
 from app.shared.utils.logger import get_logger
 
@@ -37,7 +37,7 @@ def create_datasets_blueprint(container):
     # ============================================================================
 
     @bp.route('', methods=['GET'])
-    @optional_auth
+    @require_auth
     def list_datasets():
         """
         获取数据集列表
@@ -76,7 +76,7 @@ def create_datasets_blueprint(container):
         })
 
     @bp.route('/<int:dataset_id>', methods=['GET'])
-    @optional_auth
+    @require_auth
     def get_dataset(dataset_id):
         """获取数据集详情"""
         include_fields = request.args.get('include_fields', 'false').lower() == 'true'
@@ -179,7 +179,7 @@ def create_datasets_blueprint(container):
         return success(data=result, message='元数据同步已触发')
 
     @bp.route('/preview', methods=['POST'])
-    @optional_auth
+    @require_auth
     def preview_dataset():
         """预览数据集（获取表Schema并自动识别字段）"""
         try:
@@ -200,7 +200,7 @@ def create_datasets_blueprint(container):
         return success(data=result)
 
     @bp.route('/statistics', methods=['GET'])
-    @optional_auth
+    @require_auth
     def get_statistics():
         """获取数据集统计信息"""
         query = GetStatisticsQuery()

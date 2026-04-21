@@ -1,0 +1,65 @@
+{
+  "tasks": {
+    "items": [
+      {
+        "id": 201,
+        "name": "学习行为抽取",
+        "schedule_cron": "0 2 * * *",
+        "enabled": true,
+        "datasource_id": 1,
+        "last_run_at": "2026-04-20T02:00:00+08:00",
+        "last_run_status": "success",
+        "created_at": "2026-04-01T08:00:00+08:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "task_detail": {
+    "id": 201,
+    "name": "学习行为抽取",
+    "schedule_cron": "0 2 * * *",
+    "schedule_type": "cron",
+    "enabled": true,
+    "datasource_id": 1,
+    "datasource_name": "教学 PostgreSQL",
+    "config": {},
+    "last_run_at": "2026-04-20T02:00:00+08:00",
+    "last_run_status": "success",
+    "created_at": "2026-04-01T08:00:00+08:00",
+    "updated_at": "2026-04-20T02:00:00+08:00"
+  },
+  "runs": {
+    "items": [
+      {
+        "id": 9001,
+        "task_id": 201,
+        "task_name": "学习行为抽取",
+        "status": "failed",
+        "started_at": "2026-04-21T02:00:00+08:00",
+        "finished_at": "2026-04-21T02:00:30+08:00",
+        "duration_ms": 30000
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 50,
+    "total_pages": 1
+  },
+  "run_detail": {
+    "id": 9001,
+    "task_id": 201,
+    "task_name": "学习行为抽取",
+    "status": "failed",
+    "started_at": "2026-04-21T02:00:00+08:00",
+    "finished_at": "2026-04-21T02:00:30+08:00",
+    "duration_ms": 30000,
+    "error_message": "connection refused",
+    "logs": [
+      { "ts": "2026-04-21T02:00:00+08:00", "level": "INFO", "message": "starting extraction" },
+      { "ts": "2026-04-21T02:00:30+08:00", "level": "ERROR", "message": "connection refused" }
+    ]
+  }
+}

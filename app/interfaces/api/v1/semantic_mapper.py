@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from flask import Blueprint, request
 
+from app.interfaces.api.middleware.auth import require_auth
 from app.shared.response import error, success
 
 
@@ -10,6 +11,7 @@ def create_semantic_mapper_blueprint(mapper_service):
     bp = Blueprint("semantic_mapper", __name__, url_prefix="/api/v1/semantic-mapper")
 
     @bp.route("/preview", methods=["POST"])
+    @require_auth
     def preview():
         body = request.get_json(silent=True) or {}
         entity_type = body.get("entity_type")
@@ -23,18 +25,22 @@ def create_semantic_mapper_blueprint(mapper_service):
         return success(data=payload)
 
     @bp.route("/stale-check", methods=["GET"])
+    @require_auth
     def stale_check():
         return success(data=mapper_service.stale_check())
 
     @bp.route("/consistency-report", methods=["GET"])
+    @require_auth
     def consistency_report():
         return success(data=mapper_service.consistency_report())
 
     @bp.route("/diff", methods=["GET"])
+    @require_auth
     def diff():
         return success(data=mapper_service.diff())
 
     @bp.route("/measure-backlinks", methods=["GET"])
+    @require_auth
     def measure_backlinks():
         measure_ref = request.args.get("measure_ref", "").strip()
         if not measure_ref:
@@ -46,6 +52,7 @@ def create_semantic_mapper_blueprint(mapper_service):
         return success(data=payload)
 
     @bp.route("/cube-backlinks", methods=["GET"])
+    @require_auth
     def cube_backlinks():
         cube_name = request.args.get("cube_name", "").strip()
         if not cube_name:

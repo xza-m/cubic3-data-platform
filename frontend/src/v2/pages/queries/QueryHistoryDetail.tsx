@@ -1,0 +1,243 @@
+// frontend/src/v2/pages/queries/QueryHistoryDetail.tsx
+//
+// 查询历史 L3 详情页。
+// 接 GET /api/v1/queries/histories （通过 list + filter 方式，待 histories/:id 接口上线）
+// TODO(B-back-8): histories/:id 上线后改为 useQueryHistoryDetail(id)
+
+import { useMemo } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Play } from 'lucide-react'
+import { useQueryHistories } from '@v2/hooks/queries'
+import { fmtNum, fmtRelative } from '@v2/lib/format'
+import type { QueryHistoryItem } from '@v2/api/queries'
+import {
+  QueryHistoryDetailContent,
+  statusChip,
+} from './_shared/query-history-content'
+
+export default function QueryHistoryDetail() {
+  const { id } = useParams<{ id: string }>()
+  const numericId = Number(id)
+  const navigate = useNavigate()
+
+  // load list and extract single item
+  const { data, isLoading, isError } = useQueryHistories({ page: 1, page_size: 200 })
+
+  const row: QueryHistoryItem | null = useMemo(
+    () => data?.items.find((r) => r.id === numericId) ?? null,
+    [data?.items, numericId],
+  )
+
+  const neighbors = useMemo(() => {
+    const items = data?.items ?? []
+    const idx = items.findIndex((r) => r.id === numericId)
+    return {
+      prev: idx > 0 ? items[idx - 1] : null,
+      next: idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null,
+    }
+  }, [data?.items, numericId])
+
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
+        非法的运行 ID
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
+        加载中…
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-xs text-red-500">
+        加载失败
+      </div>
+    )
+  }
+
+  if (!row) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-xs text-red-500 dark:text-red-400">
+        未找到运行记录 #{numericId}
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-1 overflow-hidden">
+      {/* Main content */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Topbar actions */}
+        <div
+          className="flex items-center gap-2 border-b px-4 py-2"
+          style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+        >
+          <button
+            type="button"
+            onClick={() => navigate('/queries/history')}
+            className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+          >
+            <ArrowLeft size={12} /> 返回列表
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/queries/console')}
+            className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+          >
+            <Play size={12} /> 在工作台重跑
+          </button>
+        </div>
+
+        {/* Detail header */}
+        <header
+          className="border-b px-4 py-3"
+          style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md text-xs font-bold text-white"
+              style={{ background: 'var(--accent)' }}
+            >
+              QH
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                <span>运行 #{row.id}</span>
+                {statusChip(row.status)}
+              </div>
+              <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
+                {row.source_name ? <code>{row.source_name}</code> : '—'} · {row.executed_by} ·{' '}
+                {fmtRelative(row.executed_at)}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto">
+          <QueryHistoryDetailContent
+            row={row}
+            actions={{
+              onReplay: () => navigate('/queries/console'),
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Context panel */}
+      <aside
+        className="w-60 flex-shrink-0 border-l"
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+      >
+        <div
+          className="border-b px-4 py-3 text-xs font-medium"
+          style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+        >
+          运行 #{row.id}
+          <div className="mt-0.5 text-xs font-normal" style={{ color: 'var(--text-3)' }}>
+            {row.source_name ?? '—'}
+          </div>
+        </div>
+        <div className="space-y-4 px-4 py-4">
+          <section>
+            <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
+              状态
+            </div>
+            <div className="mt-2 flex items-center gap-1.5">{statusChip(row.status)}</div>
+          </section>
+          <section>
+            <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
+              执行
+            </div>
+            <dl className="mt-2 space-y-1 text-xs">
+              <CtxPair
+                label="耗时"
+                value={
+                  row.execution_time_ms != null
+                    ? `${(row.execution_time_ms / 1000).toFixed(2)}s`
+                    : '—'
+                }
+              />
+              <CtxPair
+                label="行数"
+                value={row.row_count != null ? fmtNum(row.row_count) : '—'}
+              />
+              <CtxPair label="执行人" value={row.executed_by} />
+              <CtxPair label="时间" value={fmtRelative(row.executed_at)} />
+            </dl>
+          </section>
+          <section>
+            <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
+              邻接导航
+            </div>
+            <div className="mt-2 space-y-1.5 text-xs">
+              <NavButton
+                label={neighbors.prev ? `← #${neighbors.prev.id}` : '没有上一项'}
+                disabled={!neighbors.prev}
+                onClick={
+                  neighbors.prev
+                    ? () => navigate(`/queries/history/${neighbors.prev!.id}`)
+                    : undefined
+                }
+              />
+              <NavButton
+                label={neighbors.next ? `#${neighbors.next.id} →` : '没有下一项'}
+                disabled={!neighbors.next}
+                onClick={
+                  neighbors.next
+                    ? () => navigate(`/queries/history/${neighbors.next!.id}`)
+                    : undefined
+                }
+              />
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Internal primitives
+// ──────────────────────────────────────────────────────────────────────────
+
+function CtxPair({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
+      <dd className="truncate" style={{ color: 'var(--text-1)' }}>
+        {value}
+      </dd>
+    </div>
+  )
+}
+
+function NavButton({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center justify-between rounded-md border px-2 py-1 text-left text-xs transition-colors hover:bg-[color:var(--bg-hover)] hover:text-[color:var(--text-1)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+      style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+    >
+      <span className="truncate">{label}</span>
+    </button>
+  )
+}

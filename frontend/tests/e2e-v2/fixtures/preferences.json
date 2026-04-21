@@ -1,0 +1,20 @@
+{
+  "default": {
+    "user_id": 1,
+    "theme": "light",
+    "default_landing": "/dashboard",
+    "list_page_size": 50,
+    "table_density": "comfortable",
+    "extra": {},
+    "updated_at": "2026-04-15T08:00:00+08:00"
+  },
+  "dark": {
+    "user_id": 1,
+    "theme": "dark",
+    "default_landing": "/dashboard",
+    "list_page_size": 50,
+    "table_density": "comfortable",
+    "extra": {},
+    "updated_at": "2026-04-21T10:00:00+08:00"
+  }
+}

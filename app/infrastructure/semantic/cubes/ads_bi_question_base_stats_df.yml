@@ -1,0 +1,644 @@
+name: ads_bi_question_base_stats_df
+title: Ads Bi Question Base Stats Df
+description: 题库每日统计汇总表
+table: ads_bi_question_base_stats_df
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: draft
+grain: subject_id
+entity_key: subject_id
+partition:
+  field: ds
+  type: date
+  format: yyyyMMdd
+  max_range_days: 90
+default_filters: []
+dimensions:
+  answer_mode_cnt:
+    title: 作答方式种类数
+    type: number
+    sql: '{CUBE}.answer_mode_cnt'
+    description: 作答方式种类数
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  area_cnt:
+    title: 涉及区县数量
+    type: number
+    sql: '{CUBE}.area_cnt'
+    description: 涉及区县数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  avg_child_question_cnt:
+    title: 每个母题的平均子题数
+    type: number
+    sql: '{CUBE}.avg_child_question_cnt'
+    description: 每个母题的平均子题数
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  avg_difficulty:
+    title: 平均难度
+    type: number
+    sql: '{CUBE}.avg_difficulty'
+    description: 平均难度
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  base_tree_cnt:
+    title: 涉及基础树数量
+    type: number
+    sql: '{CUBE}.base_tree_cnt'
+    description: 涉及基础树数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  base_tree_node_cnt:
+    title: 涉及知识点数量
+    type: number
+    sql: '{CUBE}.base_tree_node_cnt'
+    description: 涉及知识点数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  city_cnt:
+    title: 涉及市级数量
+    type: number
+    sql: '{CUBE}.city_cnt'
+    description: 涉及市级数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  completion_rate:
+    title: 完整度(3项字段齐全题量/总题量)
+    type: number
+    sql: '{CUBE}.completion_rate'
+    description: 完整度(3项字段齐全题量/总题量)
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  ds:
+    title: 数据日期
+    type: time
+    sql: '{CUBE}.ds'
+    description: 数据日期
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  increment_parent_child_question_cnt:
+    title: 净新增母子题量
+    type: number
+    sql: '{CUBE}.increment_parent_child_question_cnt'
+    description: 净新增母子题量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  increment_question_cnt:
+    title: 净新增题量
+    type: number
+    sql: '{CUBE}.increment_question_cnt'
+    description: 净新增题量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  increment_single_question_cnt:
+    title: 净新增单题量
+    type: number
+    sql: '{CUBE}.increment_single_question_cnt'
+    description: 净新增单题量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  max_child_question_cnt:
+    title: 最大子题数量
+    type: number
+    sql: '{CUBE}.max_child_question_cnt'
+    description: 最大子题数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  missing_analysis_cnt:
+    title: 缺失解析数量
+    type: number
+    sql: '{CUBE}.missing_analysis_cnt'
+    description: 缺失解析数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  missing_answer_cnt:
+    title: 缺失答案数量
+    type: number
+    sql: '{CUBE}.missing_answer_cnt'
+    description: 缺失答案数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  missing_content_cnt:
+    title: 缺失题干数量
+    type: number
+    sql: '{CUBE}.missing_content_cnt'
+    description: 缺失题干数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  p75_difficulty:
+    title: p75难度
+    type: number
+    sql: '{CUBE}.p75_difficulty'
+    description: p75难度
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  parent_child_question_cnt:
+    title: 母子题数量
+    type: number
+    sql: '{CUBE}.parent_child_question_cnt'
+    description: 母子题数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  parent_child_question_cnt_wow:
+    title: 母子题量周环比
+    type: number
+    sql: '{CUBE}.parent_child_question_cnt_wow'
+    description: 母子题量周环比
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  parent_child_rate:
+    title: 母子题占比
+    type: number
+    sql: '{CUBE}.parent_child_rate'
+    description: 母子题占比
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  phase_cnt:
+    title: 涉及学段数量
+    type: number
+    sql: '{CUBE}.phase_cnt'
+    description: 涉及学段数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  phase_id:
+    title: 学段ID
+    type: string
+    sql: '{CUBE}.phase_id'
+    description: 学段ID
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: true
+  phase_name:
+    title: 学段名称
+    type: string
+    sql: '{CUBE}.phase_name'
+    description: 学段名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  province_cnt:
+    title: 涉及省份数量
+    type: number
+    sql: '{CUBE}.province_cnt'
+    description: 涉及省份数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_cnt:
+    title: 总题量(当前有效记录数)
+    type: number
+    sql: '{CUBE}.question_cnt'
+    description: 总题量(当前有效记录数)
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_cnt_wow:
+    title: 总题量周环比
+    type: number
+    sql: '{CUBE}.question_cnt_wow'
+    description: 总题量周环比
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_type:
+    title: 题型ID
+    type: string
+    sql: '{CUBE}.question_type'
+    description: 题型ID
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_type_cnt:
+    title: 题型种类数
+    type: number
+    sql: '{CUBE}.question_type_cnt'
+    description: 题型种类数
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_type_name:
+    title: 题型名称
+    type: string
+    sql: '{CUBE}.question_type_name'
+    description: 题型名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  question_year_cnt:
+    title: 涉及年份数量
+    type: number
+    sql: '{CUBE}.question_year_cnt'
+    description: 涉及年份数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  single_question_cnt:
+    title: 单题数量
+    type: number
+    sql: '{CUBE}.single_question_cnt'
+    description: 单题数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  single_question_cnt_wow:
+    title: 单题量周环比
+    type: number
+    sql: '{CUBE}.single_question_cnt_wow'
+    description: 单题量周环比
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  stddev_difficulty:
+    title: 难度方差
+    type: number
+    sql: '{CUBE}.stddev_difficulty'
+    description: 难度方差
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    primary_key: false
+  subject_cnt:
+    title: 涉及学科数量
+    type: number
+    sql: '{CUBE}.subject_cnt'
+    description: 涉及学科数量
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  subject_id:
+    title: 学科ID
+    type: string
+    sql: '{CUBE}.subject_id'
+    description: 学科ID
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: true
+  subject_name:
+    title: 学科名称
+    type: string
+    sql: '{CUBE}.subject_name'
+    description: 学科名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+measures:
+  sum_answer_mode_cnt:
+    title: Answer Mode Cnt 合计
+    type: sum
+    sql: '{CUBE}.answer_mode_cnt'
+    description: 自动生成的 answer_mode_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_area_cnt:
+    title: Area Cnt 合计
+    type: sum
+    sql: '{CUBE}.area_cnt'
+    description: 自动生成的 area_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_avg_child_question_cnt:
+    title: Avg Child Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.avg_child_question_cnt'
+    description: 自动生成的 avg_child_question_cnt 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_avg_difficulty:
+    title: Avg Difficulty 合计
+    type: sum
+    sql: '{CUBE}.avg_difficulty'
+    description: 自动生成的 avg_difficulty 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_base_tree_cnt:
+    title: Base Tree Cnt 合计
+    type: sum
+    sql: '{CUBE}.base_tree_cnt'
+    description: 自动生成的 base_tree_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_base_tree_node_cnt:
+    title: Base Tree Node Cnt 合计
+    type: sum
+    sql: '{CUBE}.base_tree_node_cnt'
+    description: 自动生成的 base_tree_node_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_city_cnt:
+    title: City Cnt 合计
+    type: sum
+    sql: '{CUBE}.city_cnt'
+    description: 自动生成的 city_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_completion_rate:
+    title: Completion Rate 合计
+    type: sum
+    sql: '{CUBE}.completion_rate'
+    description: 自动生成的 completion_rate 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_increment_parent_child_question_cnt:
+    title: Increment Parent Child Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.increment_parent_child_question_cnt'
+    description: 自动生成的 increment_parent_child_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_increment_question_cnt:
+    title: Increment Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.increment_question_cnt'
+    description: 自动生成的 increment_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_increment_single_question_cnt:
+    title: Increment Single Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.increment_single_question_cnt'
+    description: 自动生成的 increment_single_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_max_child_question_cnt:
+    title: Max Child Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.max_child_question_cnt'
+    description: 自动生成的 max_child_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_missing_analysis_cnt:
+    title: Missing Analysis Cnt 合计
+    type: sum
+    sql: '{CUBE}.missing_analysis_cnt'
+    description: 自动生成的 missing_analysis_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_missing_answer_cnt:
+    title: Missing Answer Cnt 合计
+    type: sum
+    sql: '{CUBE}.missing_answer_cnt'
+    description: 自动生成的 missing_answer_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_missing_content_cnt:
+    title: Missing Content Cnt 合计
+    type: sum
+    sql: '{CUBE}.missing_content_cnt'
+    description: 自动生成的 missing_content_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_p75_difficulty:
+    title: P75 Difficulty 合计
+    type: sum
+    sql: '{CUBE}.p75_difficulty'
+    description: 自动生成的 p75_difficulty 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_parent_child_question_cnt:
+    title: Parent Child Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.parent_child_question_cnt'
+    description: 自动生成的 parent_child_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_parent_child_question_cnt_wow:
+    title: Parent Child Question Cnt Wow 合计
+    type: sum
+    sql: '{CUBE}.parent_child_question_cnt_wow'
+    description: 自动生成的 parent_child_question_cnt_wow 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_parent_child_rate:
+    title: Parent Child Rate 合计
+    type: sum
+    sql: '{CUBE}.parent_child_rate'
+    description: 自动生成的 parent_child_rate 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_phase_cnt:
+    title: Phase Cnt 合计
+    type: sum
+    sql: '{CUBE}.phase_cnt'
+    description: 自动生成的 phase_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_province_cnt:
+    title: Province Cnt 合计
+    type: sum
+    sql: '{CUBE}.province_cnt'
+    description: 自动生成的 province_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_question_cnt:
+    title: Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.question_cnt'
+    description: 自动生成的 question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_question_cnt_wow:
+    title: Question Cnt Wow 合计
+    type: sum
+    sql: '{CUBE}.question_cnt_wow'
+    description: 自动生成的 question_cnt_wow 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_question_type_cnt:
+    title: Question Type Cnt 合计
+    type: sum
+    sql: '{CUBE}.question_type_cnt'
+    description: 自动生成的 question_type_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_question_year_cnt:
+    title: Question Year Cnt 合计
+    type: sum
+    sql: '{CUBE}.question_year_cnt'
+    description: 自动生成的 question_year_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_single_question_cnt:
+    title: Single Question Cnt 合计
+    type: sum
+    sql: '{CUBE}.single_question_cnt'
+    description: 自动生成的 single_question_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_single_question_cnt_wow:
+    title: Single Question Cnt Wow 合计
+    type: sum
+    sql: '{CUBE}.single_question_cnt_wow'
+    description: 自动生成的 single_question_cnt_wow 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_stddev_difficulty:
+    title: Stddev Difficulty 合计
+    type: sum
+    sql: '{CUBE}.stddev_difficulty'
+    description: 自动生成的 stddev_difficulty 合计指标
+    source_data_type: decimal(10,4)
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_subject_cnt:
+    title: Subject Cnt 合计
+    type: sum
+    sql: '{CUBE}.subject_cnt'
+    description: 自动生成的 subject_cnt 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  total_count:
+    title: 总数
+    type: count
+    sql: '{CUBE}.subject_id'
+    description: 自动生成的记录总数指标
+    source_data_type: count
+    synonyms: []
+    tags: []
+    certified: true
+    non_additive: false
+segments: {}
+joins: {}

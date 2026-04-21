@@ -17,12 +17,31 @@ def _build_app(*blueprints):
     register_error_handlers(app)
     for blueprint in blueprints:
         app.register_blueprint(blueprint)
-    return app
+    return _AppWithAuthClient(app)
+
+
+class _AppWithAuthClient:
+    """Flask app 包装器：``.test_client()`` 默认携带 admin Bearer Token。
+
+    这些 unit 测试直接构造 blueprint 并调用 ``test_client()``，
+    在路由开启 ``@require_auth`` / ``@require_admin`` 之后，需要默认带 token。
+    """
+
+    def __init__(self, app):
+        self._app = app
+
+    def test_client(self):
+        from tests.conftest import install_default_admin_auth
+        return install_default_admin_auth(self._app.test_client())
+
+    def __getattr__(self, name):
+        return getattr(self._app, name)
 
 
 def test_ontology_blueprint_covers_success_paths():
     service = MagicMock()
     mapper = MagicMock()
+    workbench = MagicMock()
     service.list_objects.return_value = {"items": [], "total": 0}
     service.get_object.return_value = {"name": "order"}
     service.save_object.return_value = {"name": "order"}
@@ -82,8 +101,27 @@ def test_ontology_blueprint_covers_success_paths():
         "governance_hooks": [{"hook": "semantic-router", "status": "active", "effect": "route-block"}],
         "issues": [],
     }
+    workbench.list_objects.return_value = {
+        "items": [{"name": "order", "title": "订单", "stats": {"metric_count": 1}}],
+        "total": 1,
+    }
+    workbench.get_object_overview.return_value = {
+        "object": {"name": "order", "title": "订单"},
+        "stats": {"metric_count": 1},
+        "capabilities": {"properties": [], "actions": []},
+        "associations": {"metrics": [], "relations": [], "rules": []},
+        "governance": {"stale_items": [], "consistency_items": [], "audit_total": 0, "recent_audits": []},
+        "lifecycle": {"history_items": [], "history_total": 0, "last_activity": None},
+    }
+    workbench.get_governance_summary.return_value = {
+        "summary": {"policy_total": 1, "stale_count": 0, "consistency_count": 0, "audit_total": 0},
+        "items": [],
+        "stale_items": [],
+        "consistency_items": [],
+        "recent_audits": [],
+    }
 
-    client = _build_app(create_ontology_blueprint(service, mapper)).test_client()
+    client = _build_app(create_ontology_blueprint(service, mapper, None, workbench)).test_client()
 
     assert client.get("/api/v1/ontology/objects").status_code == 200
     assert client.get("/api/v1/ontology/objects/order").status_code == 200
@@ -113,6 +151,9 @@ def test_ontology_blueprint_covers_success_paths():
     assert client.get("/api/v1/ontology/policies").status_code == 200
     assert client.get("/api/v1/ontology/policies/gmv_policy").status_code == 200
     assert client.get("/api/v1/ontology/policies/gmv_policy/impact").status_code == 200
+    assert client.get("/api/v1/ontology/workbench/objects").status_code == 200
+    assert client.get("/api/v1/ontology/workbench/objects/order/overview").status_code == 200
+    assert client.get("/api/v1/ontology/workbench/governance").status_code == 200
     assert client.get("/api/v1/ontology/templates/order-domain").status_code == 200
     assert client.post("/api/v1/ontology/templates/order-domain/apply").status_code == 200
     assert client.post(
@@ -194,6 +235,7 @@ def test_ontology_blueprint_publish_impact_and_history_cover_extended_semantic_p
     service = MagicMock()
     mapper = MagicMock()
     audit_repository = MagicMock()
+    workbench = MagicMock()
 
     active_entities = {
         ("objects", "order"),
@@ -283,7 +325,7 @@ def test_ontology_blueprint_publish_impact_and_history_cover_extended_semantic_p
         MagicMock(model_dump=MagicMock(return_value={"id": "audit-1", "decision": "allow", "target_name": "gmv"}))
     ]
 
-    client = _build_app(create_ontology_blueprint(service, mapper, audit_repository)).test_client()
+    client = _build_app(create_ontology_blueprint(service, mapper, audit_repository, workbench)).test_client()
 
     metric_publish = client.post("/api/v1/ontology/metrics/gmv/publish")
     assert metric_publish.status_code == 200
@@ -330,7 +372,7 @@ def test_ontology_blueprint_reports_missing_services_and_invalid_entities():
     service.get_policy.return_value = {"name": "gmv_policy"}
     service.get_property.return_value = {"name": "pay_time"}
 
-    client = _build_app(create_ontology_blueprint(service, None, None)).test_client()
+    client = _build_app(create_ontology_blueprint(service, None, None, None)).test_client()
 
     assert client.get("/api/v1/ontology/metrics/gmv/links").status_code == 400
     assert client.get("/api/v1/ontology/policies/gmv_policy/impact").status_code == 400
@@ -362,7 +404,7 @@ def test_ontology_blueprint_covers_not_found_and_create_template_error_paths():
     service.get_template.side_effect = ValueError("missing template")
     service.apply_template.side_effect = ValueError("apply failed")
 
-    client = _build_app(create_ontology_blueprint(service, MagicMock(), None)).test_client()
+    client = _build_app(create_ontology_blueprint(service, MagicMock(), None, None)).test_client()
 
     assert client.get("/api/v1/ontology/objects/order").status_code == 404
     assert client.get("/api/v1/ontology/properties/pay_time").status_code == 404
@@ -378,6 +420,35 @@ def test_ontology_blueprint_covers_not_found_and_create_template_error_paths():
     assert client.post("/api/v1/ontology/relations", json={"name": "rel"}).status_code == 400
     assert client.post("/api/v1/ontology/actions", json={"name": "pay"}).status_code == 400
     assert client.post("/api/v1/ontology/policies", json={"name": "gmv_policy"}).status_code == 400
+
+
+def test_ontology_blueprint_workbench_routes_cover_not_found_and_error_paths():
+    service = MagicMock()
+    mapper = MagicMock()
+    workbench = MagicMock()
+    service.get_template.side_effect = ValueError("missing template")
+    service.apply_template.side_effect = ValueError("apply failed")
+    workbench.list_objects.return_value = {"items": [], "total": 0}
+    workbench.get_object_overview.return_value = None
+    workbench.get_governance_summary.side_effect = ValueError("governance summary failed")
+
+    client = _build_app(create_ontology_blueprint(service, mapper, None, workbench)).test_client()
+
+    list_resp = client.get("/api/v1/ontology/workbench/objects")
+    assert list_resp.status_code == 200
+    assert list_resp.get_json()["data"]["total"] == 0
+
+    overview_resp = client.get("/api/v1/ontology/workbench/objects/missing/overview")
+    assert overview_resp.status_code == 404
+
+    governance_resp = client.get("/api/v1/ontology/workbench/governance")
+    assert governance_resp.status_code == 400
+
+    template_resp = client.get("/api/v1/ontology/templates/ghost")
+    assert template_resp.status_code == 400
+
+    apply_resp = client.post("/api/v1/ontology/templates/ghost/apply")
+    assert apply_resp.status_code == 400
 
     assert client.get("/api/v1/ontology/templates/ghost").status_code == 400
     assert client.post("/api/v1/ontology/templates/ghost/apply").status_code == 400

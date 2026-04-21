@@ -46,12 +46,37 @@ def build_app(*blueprints) -> Flask:
     return app
 
 
-def auth_headers(user_id: str = 'tester') -> dict[str, str]:
+def _install_admin_auth(client):
+    """在 test client 上安装默认 admin Bearer Header（按 app 的实际 JWT_SECRET 签名）。
+
+    用于"自建 Flask app 调用受保护路由但又不显式传 headers"的旧测试。
+    """
+    secret = client.application.config.get('JWT_SECRET', 'your-secret-key')
+    token = jwt.encode(
+        {
+            'user_id': 'admin',
+            'user_name': 'Test Admin',
+            'roles': ['admin', 'tester'],
+            'exp': datetime.now(timezone.utc) + timedelta(hours=1),
+        },
+        secret,
+        algorithm='HS256',
+    )
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    return client
+
+
+def auth_headers(user_id: str = 'tester', roles: list[str] | None = None) -> dict[str, str]:
+    """生成测试用 Bearer Header。
+
+    默认角色 ``['admin', 'tester']`` —— 保证可同时通过 ``@require_auth`` 与
+    ``@require_admin``。需要测试无 admin 权限场景时显式传入 ``roles=['tester']``。
+    """
     token = jwt.encode(
         {
             'user_id': user_id,
             'user_name': 'Test User',
-            'roles': ['tester'],
+            'roles': roles if roles is not None else ['admin', 'tester'],
             'exp': datetime.now(timezone.utc) + timedelta(hours=1),
         },
         'test-secret',
@@ -1437,7 +1462,7 @@ def test_semantic_routes_cover_file_management_schema_sync_and_error_paths(tmp_p
         )
     )
     register_error_handlers(app)
-    client = app.test_client()
+    client = _install_admin_auth(app.test_client())
 
     assert client.put('/api/v1/semantic/cubes/orders', json={'title': '订单'}).status_code == 404
     assert client.post('/api/v1/semantic/cubes/orders/deprecate').status_code == 400
@@ -1629,7 +1654,7 @@ def test_semantic_helpers_and_default_wiring_cover_pagination_views_graph_and_qu
     assert str(captured['domain_repo_path']).endswith('/domains')
     assert str(captured['catalog_repo_path']).endswith('/catalogs')
 
-    client = build_app(bp).test_client()
+    client = _install_admin_auth(build_app(bp).test_client())
 
     cubes_resp = client.get('/api/v1/semantic/cubes?page=abc&page_size=0&q=订单')
     assert cubes_resp.status_code == 200
@@ -1667,9 +1692,17 @@ def test_semantic_helpers_and_default_wiring_cover_pagination_views_graph_and_qu
     assert graph_payload['nodes'][0]['source_database'] == 'dwh'
     assert graph_payload['edges'][0]['source'] == 'orders'
 
+    view = client.application.view_functions['semantic.list_cubes']
+    inner = next(
+        (
+            cell.cell_contents for cell in (view.__closure__ or ())
+            if callable(cell.cell_contents) and getattr(cell.cell_contents, '__name__', '') == 'list_cubes'
+        ),
+        view,
+    )
     contains_keyword = next(
         cell.cell_contents
-        for cell in client.application.view_functions['semantic.list_cubes'].__closure__
+        for cell in inner.__closure__
         if callable(cell.cell_contents) and getattr(cell.cell_contents, '__name__', '') == '_contains_keyword'
     )
     assert contains_keyword({'name': 'orders'}, '   ', ['name']) is True
@@ -1745,7 +1778,7 @@ def test_semantic_routes_cover_error_and_validation_variants(monkeypatch, tmp_pa
         )
     )
     register_error_handlers(app)
-    client = app.test_client()
+    client = _install_admin_auth(app.test_client())
 
     assert client.post('/api/v1/semantic/cubes/draft-from-source', json={}).status_code == 400
     assert client.post(
@@ -1842,7 +1875,7 @@ def test_semantic_schema_sync_without_adapter_uses_null_inspector(monkeypatch):
         )
     )
     register_error_handlers(app)
-    client = app.test_client()
+    client = _install_admin_auth(app.test_client())
 
     resp = client.post('/api/v1/semantic/schema-sync', json={})
     assert resp.status_code == 200
@@ -1892,7 +1925,7 @@ def test_semantic_routes_cover_remaining_success_and_not_found_branches():
         )
     )
     register_error_handlers(app)
-    client = app.test_client()
+    client = _install_admin_auth(app.test_client())
 
     assert client.put('/api/v1/semantic/cubes/orders', json={'title': '订单'}).status_code == 400
     update_success_resp = client.put('/api/v1/semantic/cubes/orders', json={'title': '订单 v2'})

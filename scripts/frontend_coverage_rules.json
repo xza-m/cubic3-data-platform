@@ -17,6 +17,7 @@
     "src/pages/Semantic/CubeStudio.tsx": 100.0,
     "src/pages/Semantic/DomainCanvas.tsx": 100.0,
     "src/pages/Semantic/DomainModelingEntry.tsx": 100.0,
+    "src/pages/Semantic/OntologyWorkbenchV2.tsx": 85.0,
     "src/pages/Semantic/RelationCanvas.tsx": 100.0,
     "src/pages/Semantic/Playground.tsx": 100.0,
     "src/pages/Semantic/ViewDetail.tsx": 100.0,

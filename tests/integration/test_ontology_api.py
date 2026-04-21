@@ -7,6 +7,7 @@ from app.application.execution_compiler.runtime_service import ExecutionCompiler
 from app.application.agent.services.knowledge_service import KnowledgeService
 from app.application.ontology.definition_service import OntologyDefinitionService
 from app.application.ontology.policy_guard_service import PolicyGuardService
+from app.application.ontology.workbench_read_service import OntologyWorkbenchReadService
 from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
 from app.application.semantic_router.preview_service import SemanticRouterPreviewService
 from app.application.query.commands.execute_query import ExecuteQueryCommand
@@ -114,6 +115,12 @@ def _make_client(tmp_path):
         action_repository=action_repo,
         cube_repository=cube_repo,
     )
+    workbench_service = OntologyWorkbenchReadService(
+        ontology_service=ontology_service,
+        mapper_service=mapper_service,
+        history_repository=history_repo,
+        audit_repository=audit_repo,
+    )
     compiler_service = ExecutionCompilerPreviewService(
         metric_repository=metric_repo,
         cube_repository=cube_repo,
@@ -159,13 +166,14 @@ def _make_client(tmp_path):
 
     app = Flask(__name__)
     app.config["TESTING"] = True
-    app.register_blueprint(create_ontology_blueprint(ontology_service, mapper_service, audit_repo))
+    app.register_blueprint(create_ontology_blueprint(ontology_service, mapper_service, audit_repo, workbench_service))
     app.register_blueprint(create_semantic_mapper_blueprint(mapper_service))
     app.register_blueprint(create_execution_compiler_blueprint(compiler_service, runtime_service))
     app.register_blueprint(create_semantic_router_blueprint(router_service))
     app.register_blueprint(create_governance_blueprint(audit_repo))
     register_error_handlers(app)
-    return app.test_client()
+    from tests.conftest import install_default_admin_auth
+    return install_default_admin_auth(app.test_client())
 
 
 def test_ontology_foundation_and_preview_flow(tmp_path):
@@ -508,6 +516,25 @@ def test_order_domain_template_preview_and_apply_flow(tmp_path):
     metric_links_resp = client.get("/api/v1/ontology/metrics/gmv/links")
     assert metric_links_resp.status_code == 200
     assert metric_links_resp.get_json()["data"]["linked_measures"][0]["measure_ref"] == "orders.gmv"
+
+    workbench_objects_resp = client.get("/api/v1/ontology/workbench/objects")
+    assert workbench_objects_resp.status_code == 200
+    workbench_objects = workbench_objects_resp.get_json()["data"]["items"]
+    order_summary = next(item for item in workbench_objects if item["name"] == "order")
+    assert order_summary["stats"]["metric_count"] == 1
+
+    workbench_overview_resp = client.get("/api/v1/ontology/workbench/objects/order/overview")
+    assert workbench_overview_resp.status_code == 200
+    overview_payload = workbench_overview_resp.get_json()["data"]
+    assert overview_payload["object"]["name"] == "order"
+    assert overview_payload["capabilities"]["properties"][0]["name"] == "order_amount"
+    assert overview_payload["associations"]["metrics"][0]["name"] == "gmv"
+
+    workbench_governance_resp = client.get("/api/v1/ontology/workbench/governance")
+    assert workbench_governance_resp.status_code == 200
+    governance_payload = workbench_governance_resp.get_json()["data"]
+    assert governance_payload["summary"]["policy_total"] == 1
+    assert governance_payload["items"][0]["name"] == "gmv_policy"
 
     reapply_resp = client.post("/api/v1/ontology/templates/order-domain/apply")
     assert reapply_resp.status_code == 200

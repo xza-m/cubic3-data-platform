@@ -1,0 +1,295 @@
+// frontend/src/v2/layout/AppShell.tsx
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react'
+import { useMyPreferences } from '@v2/hooks/userPreferences'
+import type { TableDensity } from '@v2/api/userPreferences'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { LeftRail } from './LeftRail'
+import { SecondarySidebar } from './SecondarySidebar'
+import { TopBar } from './TopBar'
+import { TabStrip, type TabItem } from './TabStrip'
+import { Inspector } from './Inspector'
+import { StatusBar } from './StatusBar'
+import { CommandPalette } from '@v2/components/CommandPalette'
+import { findModule, NAV_MODULES } from './navigation'
+
+interface ContextPanelPayload {
+  title?: ReactNode
+  subtitle?: ReactNode
+  body?: ReactNode
+}
+
+export interface LegacyInspectorPayload {
+  open: boolean
+  title?: ReactNode
+  subtitle?: ReactNode
+  body?: ReactNode
+}
+
+export interface ManagedTab extends TabItem {
+  to?: string
+  onClose?: () => boolean | void
+}
+
+interface AppShellContextValue {
+  setBreadcrumbs: (segments: string[]) => void
+  setTopBarActions: (actions: ReactNode) => void
+  setSidebarSections: (
+    sections:
+      | Array<{
+          title: ReactNode
+          items: Array<{
+            label: ReactNode
+            to?: string
+            meta?: ReactNode
+            active?: boolean
+            onClick?: () => void
+          }>
+        }>
+      | null,
+  ) => void
+  setContextPanel: (payload: ContextPanelPayload | null) => void
+  setInspector: (payload: LegacyInspectorPayload) => void
+  setInspectorEmptyState: (node: ReactNode | null) => void
+  openTab: (tab: ManagedTab) => void
+  closeTab: (id: string) => void
+  setTabs: (tabs: ManagedTab[]) => void
+  setActiveTab: (id: string | null) => void
+  openCommandPalette: () => void
+  setPeekActive: (active: boolean) => void
+}
+
+const INSPECTOR_COLLAPSED_KEY = 'cubic3.inspector.collapsed'
+
+// ── UiPreference Context ───────────────────────────────────────────────────────
+// 提供从服务端偏好读取的 UI 配置（表格密度等），供子组件消费。
+// TODO: tables should consume tableDensity from this context in a future PR.
+
+export interface UiPreference {
+  tableDensity: TableDensity
+}
+
+export const UiPreferenceContext = createContext<UiPreference>({ tableDensity: 'comfortable' })
+
+export function useUiPreference(): UiPreference {
+  return useContext(UiPreferenceContext)
+}
+
+// ── AppShell Context ───────────────────────────────────────────────────────────
+
+const AppShellContext = createContext<AppShellContextValue | null>(null)
+
+export function useAppShell(): AppShellContextValue {
+  const ctx = useContext(AppShellContext)
+  if (!ctx) throw new Error('useAppShell must be used within AppShell')
+  return ctx
+}
+
+export function AppShell() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const module = findModule(location.pathname) ?? NAV_MODULES[0]
+
+  // ── 用户偏好：表格密度（主题已收敛到 ThemeProvider，避免重复写 dark 类）──
+  const { data: userPrefs } = useMyPreferences()
+
+  const [breadcrumbs, setBreadcrumbs] = useState<string[]>([module.label])
+  const [topBarActions, setTopBarActions] = useState<ReactNode>(null)
+  const [tabs, setTabs] = useState<ManagedTab[]>([])
+  const [activeTab, setActiveTab] = useState<string | null>(null)
+  const [contextPanel, setContextPanel] = useState<ContextPanelPayload | null>(null)
+  const [legacyEmptyState, setLegacyEmptyState] = useState<ReactNode | null>(null)
+  const [peekActive, setPeekActive] = useState(false)
+  const [inspectorCollapsed, setInspectorCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(INSPECTOR_COLLAPSED_KEY) === '1'
+  })
+  const toggleInspectorCollapsed = useCallback(() => {
+    setInspectorCollapsed((cur) => {
+      const next = !cur
+      try {
+        window.localStorage.setItem(INSPECTOR_COLLAPSED_KEY, next ? '1' : '0')
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }, [])
+  const [sidebarSections, setSidebarSections] = useState<
+    Array<{
+      title: ReactNode
+      items: Array<{
+        label: ReactNode
+        to?: string
+        meta?: ReactNode
+        active?: boolean
+        onClick?: () => void
+      }>
+    }> | null
+  >(null)
+
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const openPalette = useCallback(() => setPaletteOpen(true), [])
+  const closePalette = useCallback(() => setPaletteOpen(false), [])
+
+  useEffect(() => {
+    setBreadcrumbs([module.label])
+    setTopBarActions(null)
+    setContextPanel(null)
+    setLegacyEmptyState(null)
+    setSidebarSections(null)
+    setPeekActive(false)
+  }, [module.id, module.label])
+
+  useEffect(() => {
+    setTabs([])
+    setActiveTab(null)
+  }, [module.id])
+
+  useEffect(() => {
+    const handle = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toLowerCase().includes('mac')
+      const meta = isMac ? e.metaKey : e.ctrlKey
+      if (meta && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((current) => !current)
+      }
+    }
+    window.addEventListener('keydown', handle)
+    return () => window.removeEventListener('keydown', handle)
+  }, [])
+
+  const openTab = useCallback((tab: ManagedTab) => {
+    setTabs((current) => {
+      const exists = current.find((t) => t.id === tab.id)
+      if (exists) {
+        return current.map((t) => (t.id === tab.id ? { ...t, ...tab } : t))
+      }
+      return [...current, tab]
+    })
+    setActiveTab(tab.id)
+  }, [])
+
+  const closeTab = useCallback(
+    (id: string) => {
+      setTabs((current) => {
+        const target = current.find((t) => t.id === id)
+        if (!target) return current
+        if (target.onClose) {
+          const ret = target.onClose()
+          if (ret === false) return current
+        }
+        const idx = current.findIndex((t) => t.id === id)
+        const next = current.filter((t) => t.id !== id)
+        if (activeTab === id) {
+          const sibling = next[Math.max(0, idx - 1)]
+          if (sibling?.to) navigate(sibling.to)
+          setActiveTab(sibling?.id ?? null)
+        }
+        return next
+      })
+    },
+    [activeTab, navigate],
+  )
+
+  const setInspectorLegacy = useCallback((payload: LegacyInspectorPayload) => {
+    if (!payload.open) {
+      setContextPanel(null)
+      return
+    }
+    setContextPanel({ title: payload.title, subtitle: payload.subtitle, body: payload.body })
+  }, [])
+
+  const setInspectorEmptyStateLegacy = useCallback((node: ReactNode | null) => {
+    setLegacyEmptyState(node)
+  }, [])
+
+  const ctxValue = useMemo<AppShellContextValue>(
+    () => ({
+      setBreadcrumbs,
+      setTopBarActions,
+      setSidebarSections,
+      setContextPanel,
+      setInspector: setInspectorLegacy,
+      setInspectorEmptyState: setInspectorEmptyStateLegacy,
+      openTab,
+      closeTab,
+      setTabs,
+      setActiveTab,
+      openCommandPalette: openPalette,
+      setPeekActive,
+    }),
+    [openPalette, openTab, closeTab, setInspectorLegacy, setInspectorEmptyStateLegacy],
+  )
+
+  const effectiveContextPanel: ContextPanelPayload | null =
+    contextPanel ?? (legacyEmptyState ? { body: legacyEmptyState } : null)
+
+  const tabsWithActive = useMemo(
+    () => tabs.map((t) => ({ ...t, active: activeTab ? t.id === activeTab : t.active })),
+    [tabs, activeTab],
+  )
+
+  const onSelectTab = useCallback(
+    (id: string) => {
+      const tab = tabs.find((t) => t.id === id)
+      setActiveTab(id)
+      if (tab?.to) navigate(tab.to)
+    },
+    [tabs, navigate],
+  )
+
+  const uiPref = useMemo<UiPreference>(
+    () => ({ tableDensity: userPrefs?.table_density ?? 'comfortable' }),
+    [userPrefs?.table_density],
+  )
+
+  return (
+    <UiPreferenceContext.Provider value={uiPref}>
+    <AppShellContext.Provider value={ctxValue}>
+      <div className="app-bg flex h-screen w-screen overflow-hidden">
+        <LeftRail pathname={location.pathname} onOpenCommandPalette={openPalette} />
+        <SecondarySidebar module={module} extraSections={sidebarSections ?? undefined} />
+        <main className="flex min-w-0 flex-1 flex-col">
+          <TopBar
+            breadcrumbs={breadcrumbs}
+            actions={topBarActions}
+            onOpenCommandPalette={openPalette}
+          />
+          {tabsWithActive.length > 0 ? (
+            <TabStrip
+              tabs={tabsWithActive}
+              onSelect={onSelectTab}
+              onClose={(id) => closeTab(id)}
+            />
+          ) : null}
+          <div className="flex min-h-0 flex-1">
+            <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              <Outlet />
+            </section>
+            {peekActive ? null : (
+              <Inspector
+                title={effectiveContextPanel?.title}
+                subtitle={effectiveContextPanel?.subtitle}
+                collapsed={inspectorCollapsed}
+                onToggleCollapse={toggleInspectorCollapsed}
+              >
+                {effectiveContextPanel?.body}
+              </Inspector>
+            )}
+          </div>
+          <StatusBar />
+        </main>
+      </div>
+      <CommandPalette open={paletteOpen} onClose={closePalette} />
+    </AppShellContext.Provider>
+    </UiPreferenceContext.Provider>
+  )
+}

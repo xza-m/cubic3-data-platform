@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from flask import Blueprint, request
 
+from app.interfaces.api.middleware.auth import require_auth
 from app.shared.response import not_found, success
 
 
@@ -10,6 +11,7 @@ def create_governance_blueprint(audit_repository):
     bp = Blueprint("governance", __name__, url_prefix="/api/v1/governance")
 
     @bp.route("/audit-traces", methods=["GET"])
+    @require_auth
     def list_audit_traces():
         policy_name = (request.args.get("policy") or "").strip()
         target_type = (request.args.get("target_type") or "").strip() or None
@@ -34,6 +36,7 @@ def create_governance_blueprint(audit_repository):
         )
 
     @bp.route("/audit-traces/<trace_id>", methods=["GET"])
+    @require_auth
     def get_audit_trace(trace_id: str):
         trace = audit_repository.get(trace_id)
         if trace is None:

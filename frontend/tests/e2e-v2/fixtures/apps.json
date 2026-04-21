@@ -1,0 +1,57 @@
+{
+  "list": [
+    {
+      "id": 1,
+      "code": "teaching_assistant",
+      "name": "教学助手",
+      "category": "教学",
+      "description": "面向教师的语义化分析应用",
+      "config_schema": null,
+      "icon": null,
+      "author": "Platform",
+      "version": "1.0.0",
+      "enabled": true,
+      "created_at": "2026-04-01T08:00:00+08:00",
+      "updated_at": "2026-04-01T08:00:00+08:00",
+      "instance_count": 3,
+      "active_instance_count": 2,
+      "total_execution_count": 18
+    },
+    {
+      "id": 2,
+      "code": "ops_cockpit",
+      "name": "运营驾驶舱",
+      "category": "运营",
+      "description": "运营 KPI 监控",
+      "config_schema": null,
+      "icon": null,
+      "author": "Platform",
+      "version": "1.0.0",
+      "enabled": false,
+      "created_at": "2026-04-01T08:00:00+08:00",
+      "updated_at": "2026-04-01T08:00:00+08:00",
+      "instance_count": 1,
+      "active_instance_count": 0,
+      "total_execution_count": 4
+    }
+  ],
+  "categories": ["教学", "运营"],
+  "detail": {
+    "id": 1,
+    "code": "teaching_assistant",
+    "name": "教学助手",
+    "category": "教学",
+    "description": "面向教师的语义化分析应用",
+    "config_schema": { "type": "object", "properties": {} },
+    "icon": null,
+    "author": "Platform",
+    "version": "1.0.0",
+    "enabled": true,
+    "created_at": "2026-04-01T08:00:00+08:00",
+    "updated_at": "2026-04-01T08:00:00+08:00",
+    "instance_count": 3,
+    "active_instance_count": 2,
+    "total_execution_count": 18,
+    "health": "healthy"
+  }
+}

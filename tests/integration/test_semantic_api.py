@@ -357,7 +357,8 @@ def semantic_client(mock_semantic_service, mock_dataset_repo, mock_dataset_handl
     app.register_blueprint(bp)
     register_error_handlers(app)
 
-    return app.test_client()
+    from tests.conftest import install_default_admin_auth
+    return install_default_admin_auth(app.test_client())
 
 
 # ============================================================================

@@ -1,0 +1,320 @@
+// frontend/src/v2/routes.tsx
+// 完整路由表。静态路由写在动态路由之前（plan §00 §5 要求）。
+//
+// 未实现的页面使用 <Placeholder> 占位；域 agent 后续将 lazy import 注释替换为真实实现。
+// 注释格式：// const Xxx = lazy(() => import('@v2/pages/<domain>/Xxx'))
+//
+// 路由路径对齐 demo（tmp/platform-redesign/src/routes.tsx）路径约定。
+import { lazy, Suspense, type ReactNode } from 'react'
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
+import { useMyPreferences } from '@v2/hooks/userPreferences'
+import { AppShell } from '@v2/layout/AppShell'
+import ProtectedRoute from '@v2/pages/ProtectedRoute'
+import { RouteErrorBoundary } from '@v2/components/RouteErrorBoundary'
+import Placeholder from '@v2/pages/_Placeholder'
+
+// ── Legacy URL redirects（Round 3 cutover · 2026-04-20） ───────────────────────
+// Legacy 路径 → v2 等价路径。`:param` 占位符自动从 useParams 取值并替换。
+// 6 个月后清理零命中条目。详见 docs/.../04-cutover-and-migration.md §4.1。
+const LEGACY_REDIRECTS: Record<string, string> = {
+  '/queries/editor': '/queries',
+  '/queries/templates': '/queries',
+  '/semantic/overview': '/semantic/workbench',
+  '/semantic/tools': '/semantic/workbench',
+  '/semantic/ide': '/semantic/workbench',
+  '/semantic/devtools': '/semantic/workbench',
+  '/semantic/playground': '/semantic/cubes',
+  '/semantic/canvas': '/semantic/domains',
+  '/semantic/modeling': '/semantic/domains',
+  '/semantic/visual-model': '/semantic/domains',
+  '/semantic/visual-model/:id': '/semantic/domains/:id',
+  '/semantic/domains/:id/canvas': '/semantic/domains/:id',
+}
+
+function LegacyRedirect({ to }: { to: string }) {
+  const params = useParams()
+  const { search, hash } = useLocation()
+  let resolved = to
+  for (const [key, value] of Object.entries(params)) {
+    if (value) resolved = resolved.replace(`:${key}`, value)
+  }
+  return <Navigate to={`${resolved}${search}${hash}`} replace />
+}
+
+// ── 已实现的页面 ──────────────────────────────────────────────────────────────
+const Login = lazy(() => import('@v2/pages/Login'))
+const Dashboard = lazy(() => import('@v2/pages/Dashboard'))
+const NotFound = lazy(() => import('@v2/pages/NotFound'))
+const Forbidden = lazy(() => import('@v2/pages/Forbidden'))
+const SettingsPage = lazy(() => import('@v2/pages/settings/Settings'))
+
+// ── Data 域（data-center / extraction） ────────────────────────────────────────
+const Datasources = lazy(() => import('@v2/pages/data/Datasources'))
+const DatasourceDetail = lazy(() => import('@v2/pages/data/DatasourceDetail'))
+const Datasets = lazy(() => import('@v2/pages/data/Datasets'))
+const DatasetDetail = lazy(() => import('@v2/pages/data/DatasetDetail'))
+const DatasetCreate = lazy(() => import('@v2/pages/data/DatasetCreate'))
+const ExtractionTasks = lazy(() => import('@v2/pages/data/ExtractionTasks'))
+const ExtractionTaskDetail = lazy(() => import('@v2/pages/data/ExtractionTaskDetail'))
+const ExtractionRuns = lazy(() => import('@v2/pages/data/ExtractionRuns'))
+const ExtractionRunDetail = lazy(() => import('@v2/pages/data/ExtractionRunDetail'))
+// TODO[R2-W2]: no ExtractionConfig page on disk — /extraction/config remains Placeholder
+// TODO[R2-W2]: no DataChat page on disk — /data-chat remains Placeholder
+
+// ── Queries 域 ────────────────────────────────────────────────────────────────
+const QueryConsole = lazy(() => import('@v2/pages/queries/QueryConsole'))
+const QueriesSaved = lazy(() => import('@v2/pages/queries/QueriesSaved'))
+const QueriesSavedDetail = lazy(() => import('@v2/pages/queries/QueriesSavedDetail'))
+const QueryHistory = lazy(() => import('@v2/pages/queries/QueryHistory'))
+const QueryHistoryDetail = lazy(() => import('@v2/pages/queries/QueryHistoryDetail'))
+const QueriesScheduled = lazy(() => import('@v2/pages/queries/QueriesScheduled'))
+const QueriesScheduledDetail = lazy(() => import('@v2/pages/queries/QueriesScheduledDetail'))
+const QueriesScheduledCreate = lazy(() => import('@v2/pages/queries/QueriesScheduledCreate'))
+// TODO[R2-W3]: no QueriesVisual page on disk — /queries/visual remains Placeholder
+
+// ── Apps 域 ───────────────────────────────────────────────────────────────────
+const Marketplace = lazy(() => import('@v2/pages/apps/Marketplace'))
+const AppDetail = lazy(() => import('@v2/pages/apps/AppDetail'))
+const Instances = lazy(() => import('@v2/pages/apps/instances/Instances'))
+const InstanceCreate = lazy(() => import('@v2/pages/apps/instances/InstanceCreate'))
+const InstanceDetail = lazy(() => import('@v2/pages/apps/instances/InstanceDetail'))
+const Executions = lazy(() => import('@v2/pages/apps/executions/Executions'))
+const ExecutionDetail = lazy(() => import('@v2/pages/apps/executions/ExecutionDetail'))
+
+// ── Config 域 ─────────────────────────────────────────────────────────────────
+const Channels = lazy(() => import('@v2/pages/config/channels/Channels'))
+const ChannelDetail = lazy(() => import('@v2/pages/config/channels/ChannelDetail'))
+const Subscriptions = lazy(() => import('@v2/pages/config/subscriptions/Subscriptions'))
+const SubscriptionDetail = lazy(() => import('@v2/pages/config/subscriptions/SubscriptionDetail'))
+// P14: Users + Roles
+const Users = lazy(() => import('@v2/pages/config/users/Users'))
+const UserDetail = lazy(() => import('@v2/pages/config/users/UserDetail'))
+const Roles = lazy(() => import('@v2/pages/config/roles/Roles'))
+const RoleDetail = lazy(() => import('@v2/pages/config/roles/RoleDetail'))
+
+// ── Semantic 域 ───────────────────────────────────────────────────────────────
+const OntologyLayout = lazy(() => import('@v2/pages/semantic/ontology/_layout'))
+const OntologyWorkbench = lazy(() => import('@v2/pages/semantic/ontology/Workbench'))
+const OntologyObjects = lazy(() => import('@v2/pages/semantic/ontology/Objects'))
+const ObjectCreate = lazy(() => import('@v2/pages/semantic/ontology/ObjectCreate'))
+const ObjectDetail = lazy(() => import('@v2/pages/semantic/ontology/ObjectDetail'))
+const OntologyMetrics = lazy(() => import('@v2/pages/semantic/ontology/Metrics'))
+const OntologyRelations = lazy(() => import('@v2/pages/semantic/ontology/Relations'))
+const OntologyGovernance = lazy(() => import('@v2/pages/semantic/ontology/Governance'))
+const DevTools = lazy(() => import('@v2/pages/semantic/devtools/DevTools'))
+const Cubes = lazy(() => import('@v2/pages/semantic/cubes/Cubes'))
+const CubeCreate = lazy(() => import('@v2/pages/semantic/cubes/CubeCreate'))
+const CubeDetail = lazy(() => import('@v2/pages/semantic/cubes/CubeDetail'))
+const CubeEdit = lazy(() => import('@v2/pages/semantic/cubes/CubeEdit'))
+const ViewDetail = lazy(() => import('@v2/pages/semantic/views/ViewDetail'))
+const Domains = lazy(() => import('@v2/pages/semantic/domains/Domains'))
+const DomainCanvas = lazy(() => import('@v2/pages/semantic/domains/DomainCanvas'))
+const RelationCanvas = lazy(() => import('@v2/pages/semantic/relations/RelationCanvas'))
+
+const PageLoader = () => (
+  <div className="flex flex-1 items-center justify-center text-[12px] text-3">加载中…</div>
+)
+
+const wrap = (node: ReactNode) => <Suspense fallback={<PageLoader />}>{node}</Suspense>
+
+// 根路由重定向：读取用户偏好 default_landing，加载中显示 PageLoader
+function DefaultLandingRedirect() {
+  const { data: prefs, isLoading } = useMyPreferences()
+  if (isLoading) return <PageLoader />
+  return <Navigate to={prefs?.default_landing ?? '/dashboard'} replace />
+}
+
+export default function AppRoutes() {
+  return (
+    <Routes>
+      {/* 公开页面 */}
+      <Route path="/login" element={wrap(<Login />)} />
+
+      {/* 认证保护的页面 */}
+      <Route path="/" element={<ProtectedRoute />}>
+        <Route element={<AppShell />} errorElement={<RouteErrorBoundary />}>
+          <Route index element={<DefaultLandingRedirect />} />
+
+          {/* 总览 */}
+          <Route path="dashboard" element={wrap(<Dashboard />)} />
+
+          {/* ── 数据中心（数据源 + 数据集） ── */}
+          <Route path="data-center">
+            <Route index element={<Navigate to="/data-center/datasources" replace />} />
+
+            {/* 数据源 */}
+            <Route path="datasources">
+              <Route index element={wrap(<Datasources />)} />
+              <Route path=":id" element={wrap(<DatasourceDetail />)} />
+            </Route>
+
+            {/* 数据集；静态 register 必须在动态 :id 之前 */}
+            <Route path="datasets">
+              <Route index element={wrap(<Datasets />)} />
+              <Route path="register">
+                <Route index element={wrap(<DatasetCreate />)} />
+                <Route path="table" element={wrap(<DatasetCreate />)} />
+                <Route path="file" element={wrap(<DatasetCreate />)} />
+              </Route>
+              <Route path=":id" element={wrap(<DatasetDetail />)} />
+            </Route>
+          </Route>
+
+          {/* ── 提取任务 ── */}
+          <Route path="extraction-tasks">
+            <Route index element={wrap(<ExtractionTasks />)} />
+            <Route path=":id" element={wrap(<ExtractionTaskDetail />)} />
+          </Route>
+
+          {/* 提取配置 & 执行记录（路径前缀 extraction/，与提取任务列表路径区分） */}
+          <Route path="extraction">
+            <Route
+              path="config" // TODO[R2-W2]: no ExtractionConfig page on disk yet
+              element={wrap(
+                <Placeholder title="提取配置" description="待提取配置页面实现" />,
+              )}
+            />
+            <Route path="runs">
+              <Route index element={wrap(<ExtractionRuns />)} />
+              <Route path=":id" element={wrap(<ExtractionRunDetail />)} />
+            </Route>
+          </Route>
+
+          {/* ── 数据对话 ── TODO[R2-W2]: no DataChat page on disk yet ── */}
+          <Route
+            path="data-chat"
+            element={wrap(
+              <Placeholder title="数据对话" description="待数据对话页面实现" />,
+            )}
+          />
+
+          {/* ── 查询中心 ── */}
+          <Route path="queries">
+            <Route index element={wrap(<QueryConsole />)} />
+            <Route
+              path="visual" // TODO[R2-W3]: no QueriesVisual page on disk yet
+              element={wrap(
+                <Placeholder title="可视化构建" description="待可视化查询构建器实现" />,
+              )}
+            />
+            <Route path="my">
+              <Route index element={wrap(<QueriesSaved />)} />
+              <Route path=":id" element={wrap(<QueriesSavedDetail />)} />
+            </Route>
+            <Route path="history">
+              <Route index element={wrap(<QueryHistory />)} />
+              <Route path=":id" element={wrap(<QueryHistoryDetail />)} />
+            </Route>
+            <Route path="scheduled">
+              <Route index element={wrap(<QueriesScheduled />)} />
+              <Route path="new" element={wrap(<QueriesScheduledCreate />)} />
+              <Route path=":id" element={wrap(<QueriesScheduledDetail />)} />
+            </Route>
+          </Route>
+
+          {/* ── 应用市场 ── 静态 instances 段必须在动态 :code 之前 */}
+          <Route path="apps">
+            <Route index element={wrap(<Marketplace />)} />
+            <Route path="instances">
+              <Route index element={wrap(<Instances />)} />
+              <Route path="new" element={wrap(<InstanceCreate />)} />
+              <Route path=":id" element={wrap(<InstanceDetail />)} />
+            </Route>
+            <Route path=":code" element={wrap(<AppDetail />)} />
+          </Route>
+
+          {/* ── 执行监控 ── */}
+          <Route path="executions">
+            <Route index element={wrap(<Executions />)} />
+            <Route path=":id" element={wrap(<ExecutionDetail />)} />
+          </Route>
+
+          {/* ── 配置中心 ── */}
+          <Route path="config">
+            <Route index element={<Navigate to="/config/channels" replace />} />
+
+            <Route path="channels">
+              <Route index element={wrap(<Channels />)} />
+              <Route path=":id" element={wrap(<ChannelDetail />)} />
+            </Route>
+
+            <Route path="subscriptions">
+              <Route index element={wrap(<Subscriptions />)} />
+              <Route path=":id" element={wrap(<SubscriptionDetail />)} />
+            </Route>
+
+            {/* P14: 用户与角色管理 */}
+            <Route path="users">
+              <Route index element={wrap(<Users />)} />
+              <Route path=":id" element={wrap(<UserDetail />)} />
+            </Route>
+            <Route path="roles">
+              <Route index element={wrap(<Roles />)} />
+              <Route path=":id" element={wrap(<RoleDetail />)} />
+            </Route>
+          </Route>
+
+          {/* ── 语义中心 ── */}
+          <Route path="semantic">
+            <Route index element={<Navigate to="/semantic/ontology" replace />} />
+
+            {/* 本体工作台（OntologyLayout 提供二级导航 + Outlet） */}
+            <Route path="ontology" element={wrap(<OntologyLayout />)}>
+              <Route index element={wrap(<OntologyWorkbench />)} />
+              {/* 对象：静态 new 必须在动态 :name 之前 */}
+              <Route path="objects">
+                <Route index element={wrap(<OntologyObjects />)} />
+                <Route path="new" element={wrap(<ObjectCreate />)} />
+                <Route path=":name" element={wrap(<ObjectDetail />)} />
+              </Route>
+              <Route path="metrics" element={wrap(<OntologyMetrics />)} />
+              <Route path="relations" element={wrap(<OntologyRelations />)} />
+              <Route path="governance" element={wrap(<OntologyGovernance />)} />
+            </Route>
+
+            {/* 语义诊断工作台 */}
+            <Route path="workbench" element={wrap(<DevTools />)} />
+
+            {/* Cube：静态 new 在动态 :name 前；edit 作为 :name 的子路由 */}
+            <Route path="cubes">
+              <Route index element={wrap(<Cubes />)} />
+              <Route path="new" element={wrap(<CubeCreate />)} />
+              <Route path=":name">
+                <Route index element={wrap(<CubeDetail />)} />
+                <Route path="edit" element={wrap(<CubeEdit />)} />
+              </Route>
+            </Route>
+
+            {/* 视图详情 */}
+            <Route path="views/:name" element={wrap(<ViewDetail />)} />
+
+            {/* 业务域 */}
+            <Route path="domains">
+              <Route index element={wrap(<Domains />)} />
+              <Route path=":id" element={wrap(<DomainCanvas />)} />
+            </Route>
+
+            {/* P6: 语义关系画布（Cube Join 图） */}
+            <Route path="relations" element={wrap(<RelationCanvas />)} />
+          </Route>
+
+          {/* ── 设置 ── */}
+          <Route path="settings" element={wrap(<SettingsPage />)} />
+
+          {/* ── Legacy redirect 表（cutover 兼容） ── */}
+          {Object.entries(LEGACY_REDIRECTS).map(([from, to]) => (
+            <Route key={from} path={from.slice(1)} element={<LegacyRedirect to={to} />} />
+          ))}
+
+          {/* 特殊页面 */}
+          <Route path="forbidden" element={wrap(<Forbidden />)} />
+          <Route path="not-found" element={wrap(<NotFound />)} />
+          <Route path="*" element={wrap(<NotFound />)} />
+        </Route>
+      </Route>
+
+      {/* 兜底 */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  )
+}

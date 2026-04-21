@@ -154,7 +154,8 @@ def _build_client(tmp_path):
     app.config["TESTING"] = True
     app.register_blueprint(create_semantic_router_blueprint(router))
     register_error_handlers(app)
-    return app.test_client()
+    from tests.conftest import install_default_admin_auth
+    return install_default_admin_auth(app.test_client())
 
 
 def test_semantic_router_api_returns_route_and_plan(tmp_path):

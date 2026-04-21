@@ -1,0 +1,265 @@
+name: dwd_study_lesson_progress_snap
+title: Dwd Study Lesson Progress Snap
+description: 学习进度快照事务表
+table: dwd_study_lesson_progress_snap
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: draft
+grain: study_progress_id
+entity_key: study_progress_id
+partition:
+  field: create_date
+  type: string
+  format: yyyy-MM-dd
+  max_range_days: 90
+default_filters: []
+dimensions:
+  completed_widget_count:
+    title: 已完成组件数
+    type: number
+    sql: '{CUBE}.completed_widget_count'
+    description: 已完成组件数
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  create_date:
+    title: 分区日期
+    type: string
+    sql: '{CUBE}.create_date'
+    description: 分区日期
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  create_time:
+    title: 创建时间
+    type: time
+    sql: '{CUBE}.create_time'
+    description: 创建时间
+    source_data_type: timestamp
+    synonyms: []
+    tags: []
+    primary_key: false
+  current_widget_index:
+    title: 当前组件序号
+    type: number
+    sql: '{CUBE}.current_widget_index'
+    description: 当前组件序号
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  exercise_session_id:
+    title: 课中练习会话id
+    type: number
+    sql: '{CUBE}.exercise_session_id'
+    description: 课中练习会话id
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  knowledge_id:
+    title: 知识点ID
+    type: number
+    sql: '{CUBE}.knowledge_id'
+    description: 知识点ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  lesson_duration:
+    title: 课程学习时长（毫秒）
+    type: number
+    sql: '{CUBE}.lesson_duration'
+    description: 课程学习时长（毫秒）
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  lesson_id:
+    title: AI课程ID
+    type: number
+    sql: '{CUBE}.lesson_id'
+    description: AI课程ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  lesson_version:
+    title: AI课程版本
+    type: string
+    sql: '{CUBE}.lesson_version'
+    description: AI课程版本
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  student_id:
+    title: 学生id
+    type: number
+    sql: '{CUBE}.student_id'
+    description: 学生id
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  study_progress_id:
+    title: 学习进度ID
+    type: number
+    sql: '{CUBE}.study_progress_id'
+    description: 学习进度ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  study_session_id:
+    title: 关联的学习会话ID
+    type: number
+    sql: '{CUBE}.study_session_id'
+    description: 关联的学习会话ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  total_widget_count:
+    title: 总组件数
+    type: number
+    sql: '{CUBE}.total_widget_count'
+    description: 总组件数
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  update_time:
+    title: 更新时间
+    type: time
+    sql: '{CUBE}.update_time'
+    description: 更新时间
+    source_data_type: timestamp
+    synonyms: []
+    tags: []
+    primary_key: false
+  widget_progress:
+    title: 各组件详细进度
+    type: string
+    sql: '{CUBE}.widget_progress'
+    description: 各组件详细进度
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+measures:
+  sum_completed_widget_count:
+    title: Completed Widget Count 合计
+    type: sum
+    sql: '{CUBE}.completed_widget_count'
+    description: 自动生成的 completed_widget_count 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_current_widget_index:
+    title: Current Widget Index 合计
+    type: sum
+    sql: '{CUBE}.current_widget_index'
+    description: 自动生成的 current_widget_index 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_exercise_session_id:
+    title: Exercise Session Id 合计
+    type: sum
+    sql: '{CUBE}.exercise_session_id'
+    description: 自动生成的 exercise_session_id 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_knowledge_id:
+    title: Knowledge Id 合计
+    type: sum
+    sql: '{CUBE}.knowledge_id'
+    description: 自动生成的 knowledge_id 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_lesson_duration:
+    title: Lesson Duration 合计
+    type: sum
+    sql: '{CUBE}.lesson_duration'
+    description: 自动生成的 lesson_duration 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_lesson_id:
+    title: Lesson Id 合计
+    type: sum
+    sql: '{CUBE}.lesson_id'
+    description: 自动生成的 lesson_id 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_student_id:
+    title: Student Id 合计
+    type: sum
+    sql: '{CUBE}.student_id'
+    description: 自动生成的 student_id 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_study_progress_id:
+    title: Study Progress Id 合计
+    type: sum
+    sql: '{CUBE}.study_progress_id'
+    description: 自动生成的 study_progress_id 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_study_session_id:
+    title: Study Session Id 合计
+    type: sum
+    sql: '{CUBE}.study_session_id'
+    description: 自动生成的 study_session_id 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_total_widget_count:
+    title: Total Widget Count 合计
+    type: sum
+    sql: '{CUBE}.total_widget_count'
+    description: 自动生成的 total_widget_count 合计指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  total_count:
+    title: 总数
+    type: count
+    sql: '{CUBE}.study_progress_id'
+    description: 自动生成的记录总数指标
+    source_data_type: count
+    synonyms: []
+    tags: []
+    certified: true
+    non_additive: false
+segments: {}
+joins: {}

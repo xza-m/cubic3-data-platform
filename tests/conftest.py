@@ -44,6 +44,17 @@ def _register_all_models():
     from app.domain.entities.app_execution import AppExecution               # noqa
     from app.domain.entities.config.channel import Channel                   # noqa
     from app.domain.entities.config.subscription import Subscription         # noqa
+    from app.domain.entities.user_preferences import UserPreferences         # noqa  B-back-1
+    from app.infrastructure.users.models import (                                # noqa  W4.D-2
+        UserORM,
+        RoleORM,
+        UserRoleORM,
+        UserPasswordORM,
+    )
+    from app.domain.queries.scheduled_query import ScheduledQuery            # noqa  B-back-8
+    from app.domain.queries.scheduled_query_run import ScheduledQueryRun    # noqa  B-back-8
+    from app.domain.semantic.diagnose_run import DiagnoseRun                 # noqa  B-back-9
+    from app.domain.semantic.views_materialize import SemanticViewMaterializeRun  # noqa  B-back-3
 
 
 # ============================================================================
@@ -144,7 +155,18 @@ def app():
 
 @pytest.fixture
 def client(app):
-    """测试客户端"""
+    """测试客户端
+
+    默认带有 admin 角色的合法 JWT，匹配 RBAC 强化后的 ``@require_auth`` /
+    ``@require_admin`` 路由。需要断言 401/403 时使用 ``client_no_auth``，
+    或在用例内 ``client.environ_base.pop("HTTP_AUTHORIZATION", None)`` 临时清除。
+    """
+    return install_default_admin_auth(app.test_client())
+
+
+@pytest.fixture
+def client_no_auth(app):
+    """不带任何认证 Header 的测试客户端，用于 401/未认证场景断言。"""
     return app.test_client()
 
 
@@ -165,3 +187,83 @@ def db_session(app):
     from app.extensions import db
     yield db.session
     db.session.remove()
+
+
+# ============================================================================
+# JWT 测试 Token 工具
+# ============================================================================
+#
+# 这些 fixture 不依赖 ``app`` fixture，便于在自建 Flask app 的集成测试中复用。
+# JWT 默认签名密钥与 ``AppConfig.jwt_secret`` 保持一致 (``your-secret-key``)，
+# 因此对走 ``create_app()`` 的测试也同样有效（前提是测试未覆写 ``JWT_SECRET``）。
+
+_TEST_JWT_SECRET = "your-secret-key"
+
+
+def _make_jwt(*, user_id: str, user_name: str, roles: list[str]) -> str:
+    import jwt
+    from datetime import datetime, timedelta
+
+    payload = {
+        "user_id": user_id,
+        "user_name": user_name,
+        "roles": roles,
+        "iat": datetime.utcnow(),
+        "exp": datetime.utcnow() + timedelta(hours=24),
+    }
+    return jwt.encode(payload, _TEST_JWT_SECRET, algorithm="HS256")
+
+
+@pytest.fixture
+def auth_headers():
+    """合法 JWT Bearer Header（admin 角色），用于需要 @require_auth 或 @require_admin 的集成测试。"""
+    token = _make_jwt(user_id="test_user_admin", user_name="Test Admin", roles=["admin"])
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def admin_headers(auth_headers):
+    """``auth_headers`` 的别名（明确表达管理员角色）。"""
+    return auth_headers
+
+
+@pytest.fixture
+def viewer_headers():
+    """合法 JWT Bearer Header（仅 ``user`` 角色，无 admin 权限）。
+
+    用于验证 ``@require_admin`` 路由对普通用户返回 403。
+    """
+    token = _make_jwt(user_id="test_user_viewer", user_name="Test Viewer", roles=["user"])
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def no_auth_headers():
+    """空 Header，用于断言 401 行为。"""
+    return {}
+
+
+def install_default_admin_auth(test_client, *, roles=("admin",)) -> "test_client":
+    """在 Flask test client 上安装默认的 Bearer Token（admin 角色）。
+
+    适用于"测试自建 Flask app + 已开启 require_auth"的集成测试夹具：
+    无需在每条 ``client.get/post/...`` 调用上重复传 ``headers=auth_headers``。
+
+    单条用例若需断言 401/403，可临时清除：
+        client.environ_base.pop("HTTP_AUTHORIZATION", None)
+    或显式传入 ``headers={"Authorization": ""}``。
+
+    Args:
+        test_client: Flask test client 实例（``app.test_client()`` 返回值）
+        roles: 写入 token 的角色列表，默认 ``("admin",)``
+
+    Returns:
+        同一个 test_client 实例（便于链式赋值）
+    """
+    token = _make_jwt(
+        user_id="test_admin",
+        user_name="Test Admin",
+        roles=list(roles),
+    )
+    test_client.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {token}"
+    return test_client

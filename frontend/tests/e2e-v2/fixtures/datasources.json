@@ -1,0 +1,61 @@
+{
+  "list": {
+    "items": [
+      {
+        "id": 1,
+        "name": "教学 PostgreSQL",
+        "source_type": "postgresql",
+        "description": "E2E v2 fixture",
+        "connection_config": { "host": "localhost", "port": "5432", "database": "teaching" },
+        "extra_config": {},
+        "is_active": true,
+        "connection_status": "connected",
+        "created_at": "2026-04-01T08:00:00+08:00",
+        "updated_at": "2026-04-01T08:00:00+08:00"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 100,
+    "total_pages": 1
+  },
+  "detail": {
+    "id": 1,
+    "name": "教学 PostgreSQL",
+    "source_type": "postgresql",
+    "description": "E2E v2 fixture",
+    "connection_config": { "host": "localhost", "port": "5432", "database": "teaching" },
+    "extra_config": {},
+    "is_active": true,
+    "connection_status": "connected",
+    "created_at": "2026-04-01T08:00:00+08:00",
+    "updated_at": "2026-04-01T08:00:00+08:00"
+  },
+  "test_connection_ok": {
+    "ok": true,
+    "message": "连接成功",
+    "latency_ms": 42,
+    "tested_at": "2026-04-21T10:00:00+08:00",
+    "server_version": "PostgreSQL 15.4",
+    "error_message": null
+  },
+  "schema": {
+    "databases": [
+      {
+        "name": "teaching",
+        "schemas": [
+          {
+            "name": "public",
+            "tables": [
+              { "name": "lesson_progress", "columns": [{ "name": "id", "type": "int" }] },
+              { "name": "students", "columns": [{ "name": "id", "type": "int" }] }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "types": [
+    { "type": "postgresql", "display_name": "PostgreSQL", "description": "PostgreSQL 数据源" }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "domains": {
+    "items": [
+      {
+        "id": "domain_teaching",
+        "code": "teaching",
+        "name": "教学域",
+        "catalog_code": "default",
+        "version": "v3",
+        "status": "draft",
+        "updated_at": "2026-04-15T08:00:00+08:00"
+      }
+    ],
+    "total": 1
+  },
+  "domain_detail": {
+    "id": "domain_teaching",
+    "code": "teaching",
+    "name": "教学域",
+    "catalog_code": "default",
+    "version": "v3",
+    "status": "draft",
+    "cubes": [],
+    "joins": [],
+    "updated_at": "2026-04-15T08:00:00+08:00"
+  },
+  "publish_history": {
+    "items": [
+      { "version": "v3", "published_at": "2026-04-21T10:00:00+08:00", "published_by": "admin", "note": "E2E publish" },
+      { "version": "v2", "published_at": "2026-04-10T10:00:00+08:00", "published_by": "admin", "note": "" }
+    ],
+    "total": 2
+  },
+  "view_detail": {
+    "name": "v_lesson_overview",
+    "title": "课程总览视图",
+    "sql": "SELECT * FROM lessons",
+    "materialized_at": "2026-04-20T10:00:00+08:00",
+    "materialize_status": "synced"
+  },
+  "view_materializations": {
+    "items": [
+      {
+        "id": 1,
+        "view_name": "v_lesson_overview",
+        "status": "success",
+        "started_at": "2026-04-20T10:00:00+08:00",
+        "finished_at": "2026-04-20T10:00:42+08:00",
+        "rows": 12000
+      }
+    ],
+    "total": 1
+  },
+  "cubes": {
+    "items": [
+      { "name": "fct_lesson", "title": "课程事实", "datasource_name": "教学 PostgreSQL", "status": "active" }
+    ],
+    "total": 1
+  }
+}

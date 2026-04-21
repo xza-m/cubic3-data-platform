@@ -150,6 +150,14 @@ class AppConfig(BaseModel):
     log_level: str = Field(default="INFO", description="日志级别")
     scheduler_api_enabled: bool = Field(default=True, description="是否启用调度器 API")
     enable_scheduler_jobs: bool = Field(default=True, description="是否启用定时任务注册")
+
+    # B-back-2: App 实例 health 阈值（秒）
+    health_degraded_seconds: int = Field(
+        default=60, ge=1, description="超过此秒数未收到心跳则标记为 degraded"
+    )
+    health_unhealthy_seconds: int = Field(
+        default=180, ge=1, description="超过此秒数未收到心跳则标记为 unhealthy"
+    )
     
     @field_validator('log_level')
     @classmethod
@@ -223,6 +231,8 @@ class AppConfig(BaseModel):
             log_level=os.getenv('LOG_LEVEL', 'INFO'),
             scheduler_api_enabled=os.getenv('SCHEDULER_API_ENABLED', 'true').lower() == 'true',
             enable_scheduler_jobs=os.getenv('ENABLE_SCHEDULER_JOBS', 'true').lower() == 'true',
+            health_degraded_seconds=int(os.getenv('HEALTH_DEGRADED_SECONDS', '60')),
+            health_unhealthy_seconds=int(os.getenv('HEALTH_UNHEALTHY_SECONDS', '180')),
         )
     
     def to_flask_config(self) -> dict:
@@ -289,4 +299,7 @@ class AppConfig(BaseModel):
             'LOG_LEVEL': self.log_level,
             'SCHEDULER_API_ENABLED': self.scheduler_api_enabled,
             'ENABLE_SCHEDULER_JOBS': self.enable_scheduler_jobs,
+            # B-back-2
+            'HEALTH_DEGRADED_SECONDS': self.health_degraded_seconds,
+            'HEALTH_UNHEALTHY_SECONDS': self.health_unhealthy_seconds,
         }
