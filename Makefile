@@ -22,6 +22,7 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	verify \
 	verify-backend \
 	verify-frontend \
+	verify-cutover \
 	verify-docs \
 	verify-detect \
 	verify-changed \
@@ -70,6 +71,7 @@ help:
 	@printf '  %-26s %s\n' 'make verify' '顺序执行 lint -> typecheck -> test -> smoke'
 	@printf '  %-26s %s\n' 'make verify-backend' '后端交付入口（backend lint/typecheck/test/smoke）'
 	@printf '  %-26s %s\n' 'make verify-frontend' '前端交付入口（frontend lint/typecheck/test/smoke）'
+	@printf '  %-26s %s\n' 'make verify-cutover' 'Round 3 Day 0 cutover 专用闸门（v2-only · scripts/cutover/deploy.sh 调用）'
 	@printf '  %-26s %s\n' 'make verify-docs' '文档交付入口（docs-health）'
 	@printf '  %-26s %s\n' 'make verify-detect' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 检测命中的验证规则'
 	@printf '  %-26s %s\n' 'make verify-changed' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 执行最低必跑 verify-* 目标'
@@ -171,24 +173,16 @@ test-regression: \
 	test-regression-platform-query
 
 test-regression-platform-layout:
-	@printf '%s\n' '[layer3][regression][platform-layout] 运行平台壳层定向回归'
-	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/components/Layout/AppLayout.test.tsx src/pages/Login.page.test.tsx src/pages/Dashboard.page.test.tsx
-	cd $(FRONTEND_DIR) && $(NPM) exec -- playwright test tests/e2e-node/platform.visual.spec.ts tests/e2e-node/platform-shell.spec.ts
+	@printf '%s\n' '[layer3][regression][platform-layout] DEPRECATED · v2 cutover 已完成（W4），legacy src/pages 不复存在；请改用 make verify-cutover'
 
 test-regression-platform-data:
-	@printf '%s\n' '[layer3][regression][platform-data] 运行数据中心定向回归'
-	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/pages/Datasources.page.test.tsx src/pages/Datasets.page.test.tsx
-	cd $(FRONTEND_DIR) && $(NPM) exec -- playwright test tests/e2e-node/platform-data-inventory.spec.ts
+	@printf '%s\n' '[layer3][regression][platform-data] DEPRECATED · 同上 · 请改用 make verify-cutover'
 
 test-regression-platform-query:
-	@printf '%s\n' '[layer3][regression][platform-query] 运行查询与问数定向回归'
-	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/pages/QueryCenter/Dashboard.page.test.tsx src/pages/DataChat.page.test.tsx
-	cd $(FRONTEND_DIR) && $(NPM) exec -- playwright test tests/e2e-node/platform-query-analysis.spec.ts
+	@printf '%s\n' '[layer3][regression][platform-query] DEPRECATED · 同上 · 请改用 make verify-cutover'
 
 test-regression-semantic:
-	@printf '%s\n' '[layer3][regression][semantic] 运行语义中心定向回归'
-	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/pages/Semantic/CubeList.page.test.tsx src/pages/Semantic/DomainList.page.test.tsx src/pages/Semantic/RelationCanvas.page.test.tsx src/pages/Semantic/DomainCanvas.page.test.tsx src/pages/Semantic/DevTools.page.test.tsx src/pages/Semantic/domainCanvasState.test.ts src/components/Semantic/workbench.test.tsx
-	cd $(FRONTEND_DIR) && $(NPM) exec -- playwright test tests/e2e-node/semantic.visual.spec.ts tests/e2e-node/cube-browse.spec.ts tests/e2e-node/domain-creation.spec.ts tests/e2e-node/domain-catalog.spec.ts tests/e2e-node/domain-publish.spec.ts tests/e2e-node/devtools-browse.spec.ts
+	@printf '%s\n' '[layer3][regression][semantic] DEPRECATED · v2 cutover 已完成（W4），legacy src/pages/Semantic 与 semantic.visual.spec.ts 不复存在；请改用 make verify-cutover'
 
 smoke: smoke-backend smoke-frontend smoke-observability
 
@@ -197,8 +191,8 @@ smoke-backend:
 	PYTHONPATH=. $(PYTHON) -m pytest --no-cov tests/integration/test_api_routes_smoke.py
 
 smoke-frontend:
-	@printf '%s\n' '[layer4][frontend] 运行前端平台壳层 smoke'
-	cd $(FRONTEND_DIR) && $(NPM) exec -- playwright test tests/e2e-node/platform-shell.spec.ts
+	@printf '%s\n' '[layer4][frontend] 运行前端 v2 cutover smoke (Round 3 W6.A · scripts/cutover/deploy.sh 走该 6/6 用例)'
+	cd $(FRONTEND_DIR) && $(NPM) run e2e:smoke
 
 smoke-observability:
 	@printf '%s\n' '[layer4][observability] skip: 当前仓库未配置统一可观测阈值校验'
@@ -217,6 +211,22 @@ verify: lint typecheck test smoke
 verify-backend: lint-backend typecheck-backend test-backend smoke-backend
 
 verify-frontend: lint-frontend typecheck-frontend test-frontend smoke-frontend
+
+# Round 3 W6 · cutover Day 0 专用闸门：只跑 v2 相关检查，不依赖 legacy regression。
+# 与 verify-frontend 的差异：
+#   - 不跑 test-regression-platform-* / test-regression-semantic（legacy spec 已 DEPRECATED）
+#   - 跑 v2 范围 vitest（components / hooks / lib / pages / api / observability）
+#   - 跑 v2 cutover smoke (e2e:smoke 6/6)
+# 任一项失败即 fail-fast。scripts/cutover/deploy.sh 调用此目标。
+verify-cutover:
+	@printf '%s\n' '[cutover][gate] Round 3 Day 0 专用前端闸门启动'
+	cd $(FRONTEND_DIR) && $(NPM) run lint
+	cd $(FRONTEND_DIR) && $(NPM) exec -- tsc --noEmit --pretty false
+	cd $(FRONTEND_DIR) && $(NPM) run lint:css
+	cd $(FRONTEND_DIR) && $(NPM) run check:v2-tokens
+	cd $(FRONTEND_DIR) && $(NPM) exec -- vitest run src/v2 --reporter=basic
+	cd $(FRONTEND_DIR) && $(NPM) run e2e:smoke
+	@printf '%s\n' '[cutover][gate] verify-cutover 通过'
 
 verify-docs: docs-health
 
