@@ -31,19 +31,33 @@ export default function Users() {
 
   const handleCreate = async (payload: CreateUserPayload) => {
     await createMutation.mutateAsync(payload)
-    toast.show({ tone: 'success', title: '已创建用户', description: payload.username })
+    toast.show({
+      tone: 'success',
+      title: t('users.toast.created', '已创建用户'),
+      description: payload.username,
+    })
     setCreating(false)
   }
 
   const handleToggleActive = async (user: User) => {
     await updateMutation.mutateAsync({ id: user.id, payload: { is_active: !user.is_active } })
-    toast.show({ tone: user.is_active ? 'warning' : 'success', title: user.is_active ? '已停用' : '已启用', description: user.username })
+    toast.show({
+      tone: user.is_active ? 'warning' : 'success',
+      title: user.is_active
+        ? t('users.toast.deactivated', '已停用')
+        : t('users.toast.activated', '已启用'),
+      description: user.username,
+    })
   }
 
   const handleDelete = async (user: User) => {
-    if (!window.confirm(`删除用户「${user.username}」？此操作不可恢复。`)) return
+    if (!window.confirm(t('users.confirm.delete', '删除用户「{name}」？此操作不可恢复。', { name: user.username }))) return
     await deleteMutation.mutateAsync(user.id)
-    toast.show({ tone: 'warning', title: '已删除', description: user.username })
+    toast.show({
+      tone: 'warning',
+      title: t('users.toast.deleted', '已删除'),
+      description: user.username,
+    })
   }
 
   return (
@@ -58,9 +72,11 @@ export default function Users() {
           style={{ borderColor: 'var(--border)' }}
         >
           <div>
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>用户管理</span>
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+              {t('users.page.title', '用户管理')}
+            </span>
             <span className="ml-2 text-xs" style={{ color: 'var(--text-3)' }}>
-              共 {data?.total ?? 0} 名用户
+              {t('users.page.count', '共 {n} 名用户', { n: data?.total ?? 0 })}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -105,14 +121,20 @@ export default function Users() {
 
           {isError && !isLoading && (
             <div className="flex flex-col items-center gap-3 p-8">
-              <p className="text-xs" style={{ color: 'var(--danger)' }}>加载失败</p>
-              <button type="button" className="btn btn-sm" onClick={() => refetch()}>重试</button>
+              <p className="text-xs" style={{ color: 'var(--danger)' }}>
+                {t('users.state.loadFailed', '加载失败')}
+              </p>
+              <button type="button" className="btn btn-sm" onClick={() => refetch()}>
+                {t('users.action.retry', '重试')}
+              </button>
             </div>
           )}
 
           {!isLoading && !isError && users.length === 0 && (
             <div className="flex items-center justify-center p-8 text-xs" style={{ color: 'var(--text-3)' }}>
-              {search ? `未找到匹配「${search}」的用户` : '暂无用户'}
+              {search
+                ? t('users.state.noMatch', '未找到匹配「{q}」的用户', { q: search })
+                : t('users.state.empty', '暂无用户')}
             </div>
           )}
 
@@ -120,7 +142,15 @@ export default function Users() {
             <table className="w-full border-collapse text-xs">
               <thead>
                 <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-                  {['用户名', '显示名', '邮箱', '角色', '最近登录', '状态', '操作'].map((h) => (
+                  {[
+                    t('users.col.username', '用户名'),
+                    t('users.col.displayName', '显示名'),
+                    t('users.col.email', '邮箱'),
+                    t('users.col.roles', '角色'),
+                    t('users.col.lastLogin', '最近登录'),
+                    t('users.col.status', '状态'),
+                    t('users.col.actions', '操作'),
+                  ].map((h) => (
                     <th key={h} className="px-4 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>
                       {h}
                     </th>
@@ -167,11 +197,11 @@ export default function Users() {
                       <td className="px-4 py-2.5">
                         {user.is_active ? (
                           <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>
-                            <UserCheck size={10} /> 启用
+                            <UserCheck size={10} /> {t('users.status.active', '启用')}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}>
-                            <UserX size={10} /> 停用
+                            <UserX size={10} /> {t('users.status.inactive', '停用')}
                           </span>
                         )}
                       </td>
@@ -183,7 +213,9 @@ export default function Users() {
                             className="text-xs hover:underline"
                             style={{ color: 'var(--text-2)' }}
                           >
-                            {user.is_active ? '停用' : '启用'}
+                            {user.is_active
+                              ? t('users.action.deactivate', '停用')
+                              : t('users.action.activate', '启用')}
                           </button>
                           <button
                             type="button"
@@ -191,7 +223,7 @@ export default function Users() {
                             className="text-xs hover:underline"
                             style={{ color: 'var(--danger)' }}
                           >
-                            删除
+                            {t('users.action.delete', '删除')}
                           </button>
                         </div>
                       </td>
@@ -247,31 +279,51 @@ function CreateUserDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="新建用户">
+    <Dialog open={open} onClose={onClose} title={t('users.dialog.create.title', '新建用户')}>
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 p-4">
         <div>
           <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-            用户名 *
+            {t('users.dialog.field.username', '用户名 *')}
           </label>
-          <Input value={username} onChange={(e) => setUsername(e.target.value)} required placeholder="用户名" />
+          <Input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            placeholder={t('users.dialog.placeholder.username', '用户名')}
+          />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-            密码 *
+            {t('users.dialog.field.password', '密码 *')}
           </label>
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="初始密码" />
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            placeholder={t('users.dialog.placeholder.password', '初始密码')}
+          />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-            显示名
+            {t('users.dialog.field.displayName', '显示名')}
           </label>
-          <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="可选" />
+          <Input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder={t('users.dialog.placeholder.optional', '可选')}
+          />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-            邮箱
+            {t('users.dialog.field.email', '邮箱')}
           </label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="可选" />
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={t('users.dialog.placeholder.optional', '可选')}
+          />
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button
@@ -280,7 +332,7 @@ function CreateUserDialog({
             className="rounded-md border px-4 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)' }}
           >
-            取消
+            {t('users.dialog.cancel', '取消')}
           </button>
           <button
             type="submit"
@@ -288,7 +340,9 @@ function CreateUserDialog({
             className="rounded-md px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50"
             style={{ background: 'var(--accent)' }}
           >
-            {isPending ? '创建中…' : '创建'}
+            {isPending
+              ? t('users.dialog.creating', '创建中…')
+              : t('users.dialog.submit', '创建')}
           </button>
         </div>
       </form>

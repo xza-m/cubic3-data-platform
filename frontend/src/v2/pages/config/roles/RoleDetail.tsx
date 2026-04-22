@@ -17,34 +17,43 @@ import {
   type PermissionResource,
   type PermissionAction,
 } from '@v2/api/roles'
+import { t } from '@v2/i18n'
 
-const RESOURCE_LABEL: Record<PermissionResource, string> = {
-  datasource:   '数据源',
-  dataset:      '数据集',
-  extraction:   '提取任务',
-  query:        '查询',
-  semantic:     '语义层',
-  ontology:     '本体',
-  app:          '应用',
-  app_instance: '应用实例',
-  channel:      '通知渠道',
-  subscription: '订阅',
-  user:         '用户',
-  role:         '角色',
+function resourceLabel(r: PermissionResource): string {
+  switch (r) {
+    case 'datasource':   return t('roleDetail.resource.datasource', '数据源')
+    case 'dataset':      return t('roleDetail.resource.dataset', '数据集')
+    case 'extraction':   return t('roleDetail.resource.extraction', '提取任务')
+    case 'query':        return t('roleDetail.resource.query', '查询')
+    case 'semantic':     return t('roleDetail.resource.semantic', '语义层')
+    case 'ontology':     return t('roleDetail.resource.ontology', '本体')
+    case 'app':          return t('roleDetail.resource.app', '应用')
+    case 'app_instance': return t('roleDetail.resource.appInstance', '应用实例')
+    case 'channel':      return t('roleDetail.resource.channel', '通知渠道')
+    case 'subscription': return t('roleDetail.resource.subscription', '订阅')
+    case 'user':         return t('roleDetail.resource.user', '用户')
+    case 'role':         return t('roleDetail.resource.role', '角色')
+    default:             return r
+  }
 }
 
-const ACTION_LABEL: Record<PermissionAction, string> = {
-  read:   '查看',
-  write:  '编辑',
-  delete: '删除',
-  admin:  '管理',
+function actionLabel(a: PermissionAction): string {
+  switch (a) {
+    case 'read':   return t('roleDetail.action.read', '查看')
+    case 'write':  return t('roleDetail.action.write', '编辑')
+    case 'delete': return t('roleDetail.action.delete', '删除')
+    case 'admin':  return t('roleDetail.action.admin', '管理')
+    default:       return a
+  }
 }
 
-const TABS = [
-  { id: 'permissions', label: '权限矩阵' },
-  { id: 'info',        label: '基本信息' },
-] as const
-type TabId = (typeof TABS)[number]['id']
+function buildTabs() {
+  return [
+    { id: 'permissions', label: t('roleDetail.tab.permissions', '权限矩阵') },
+    { id: 'info',        label: t('roleDetail.tab.info', '基本信息') },
+  ] as const
+}
+type TabId = 'permissions' | 'info'
 
 export default function RoleDetail() {
   const { id } = useParams<{ id: string }>()
@@ -65,7 +74,7 @@ export default function RoleDetail() {
     if (role) {
       setLocalPerms(new Set(role.permissions))
       setDirty(false)
-      document.title = `${role.name} · 角色`
+      document.title = t('roleDetail.documentTitle', '{name} · 角色', { name: role.name })
     }
   }, [role])
 
@@ -104,22 +113,26 @@ export default function RoleDetail() {
       id: role.id,
       payload: { permissions: Array.from(localPerms) },
     })
-    toast.show({ tone: 'success', title: '权限已保存' })
+    toast.show({ tone: 'success', title: t('roleDetail.toast.saved', '权限已保存') })
     setDirty(false)
   }
 
   const handleDelete = async () => {
     if (!role) return
-    if (!window.confirm(`删除角色「${role.name}」？`)) return
+    if (!window.confirm(t('roleDetail.confirm.delete', '删除角色「{name}」？', { name: role.name }))) return
     await deleteMutation.mutateAsync(role.id)
-    toast.show({ tone: 'warning', title: '已删除角色', description: role.name })
+    toast.show({
+      tone: 'warning',
+      title: t('roleDetail.toast.deleted', '已删除角色'),
+      description: role.name,
+    })
     navigate('/config/roles')
   }
 
   if (!Number.isFinite(numericId) || numericId <= 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        非法的角色 ID
+        {t('roleDetail.state.invalidId', '非法的角色 ID')}
       </div>
     )
   }
@@ -136,11 +149,16 @@ export default function RoleDetail() {
   if (isError || !role) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2">
-        <p className="text-xs" style={{ color: 'var(--danger)' }}>未找到角色 #{numericId}</p>
-        <button type="button" onClick={() => refetch()} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)' }}>重试</button>
+        <p className="text-xs" style={{ color: 'var(--danger)' }}>
+          {t('roleDetail.state.notFound', '未找到角色 #{id}', { id: numericId })}
+        </p>
+        <button type="button" onClick={() => refetch()} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)' }}>
+          {t('roleDetail.action.retry', '重试')}
+        </button>
       </div>
     )
   }
+  const tabs = buildTabs()
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -153,7 +171,7 @@ export default function RoleDetail() {
             className="inline-flex items-center gap-1 text-xs hover:underline"
             style={{ color: 'var(--text-3)' }}
           >
-            <ArrowLeft size={11} /> 返回角色列表
+            <ArrowLeft size={11} /> {t('roleDetail.action.back', '返回角色列表')}
           </button>
           <button
             type="button"
@@ -187,7 +205,9 @@ export default function RoleDetail() {
                 style={{ background: 'var(--accent)' }}
               >
                 <Save size={12} />
-                {updateMutation.isPending ? '保存中…' : '保存权限'}
+                {updateMutation.isPending
+                  ? t('roleDetail.action.saving', '保存中…')
+                  : t('roleDetail.action.savePerms', '保存权限')}
               </button>
             )}
             <button
@@ -196,25 +216,25 @@ export default function RoleDetail() {
               className="rounded-md border px-3 py-1.5 text-xs transition-colors"
               style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}
             >
-              删除
+              {t('roleDetail.action.delete', '删除')}
             </button>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="mt-3 flex items-center gap-1">
-          {TABS.map((t) => (
+          {tabs.map((item) => (
             <button
-              key={t.id}
+              key={item.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => setTab(item.id)}
               className="rounded px-2.5 py-1 text-xs"
               style={{
-                background: tab === t.id ? 'var(--accent-soft)' : 'transparent',
-                color: tab === t.id ? 'var(--accent)' : 'var(--text-2)',
+                background: tab === item.id ? 'var(--accent-soft)' : 'transparent',
+                color: tab === item.id ? 'var(--accent)' : 'var(--text-2)',
               }}
             >
-              {t.label}
+              {item.label}
             </button>
           ))}
         </div>
@@ -249,18 +269,21 @@ function PermissionMatrix({
   return (
     <div className="p-4">
       <p className="mb-3 text-xs" style={{ color: 'var(--text-3)' }}>
-        勾选权限后点击右上角「保存权限」生效。点击资源名可整行勾选/取消。
+        {t(
+          'roleDetail.perms.hint',
+          '勾选权限后点击右上角「保存权限」生效。点击资源名可整行勾选/取消。',
+        )}
       </p>
       <div className="overflow-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
               <th className="px-4 py-2 text-left font-medium" style={{ color: 'var(--text-3)', minWidth: 120 }}>
-                资源
+                {t('roleDetail.perms.colResource', '资源')}
               </th>
               {PERMISSION_ACTIONS.map((action) => (
                 <th key={action} className="px-4 py-2 text-center font-medium" style={{ color: 'var(--text-3)' }}>
-                  {ACTION_LABEL[action]}
+                  {actionLabel(action)}
                 </th>
               ))}
             </tr>
@@ -279,7 +302,7 @@ function PermissionMatrix({
                       className="text-left text-xs font-medium transition-colors hover:underline"
                       style={{ color: (allChecked || someChecked) ? 'var(--accent)' : 'var(--text-2)' }}
                     >
-                      {RESOURCE_LABEL[resource]}
+                      {resourceLabel(resource)}
                     </button>
                   </td>
                   {PERMISSION_ACTIONS.map((action) => {
@@ -320,12 +343,12 @@ function RoleInfoTab({ role }: { role: import('@v2/api/roles').Role }) {
     <div className="p-4">
       <dl className="mx-auto max-w-lg divide-y rounded-lg border text-xs" style={{ borderColor: 'var(--border)' }}>
         {[
-          { label: '角色名',   value: role.name },
-          { label: '描述',     value: role.description ?? '—' },
-          { label: 'ID',       value: `#${role.id}` },
-          { label: '权限数',   value: `${role.permissions.length} 项` },
-          { label: '创建时间', value: fmtDateTime(role.created_at) },
-          { label: '更新时间', value: fmtDateTime(role.updated_at) },
+          { label: t('roleDetail.info.name', '角色名'),       value: role.name },
+          { label: t('roleDetail.info.description', '描述'),  value: role.description ?? '—' },
+          { label: 'ID',                                       value: `#${role.id}` },
+          { label: t('roleDetail.info.permCount', '权限数'),  value: t('roleDetail.info.permCountValue', '{n} 项', { n: role.permissions.length }) },
+          { label: t('roleDetail.info.createdAt', '创建时间'), value: fmtDateTime(role.created_at) },
+          { label: t('roleDetail.info.updatedAt', '更新时间'), value: fmtDateTime(role.updated_at) },
         ].map(({ label, value }) => (
           <div key={label} className="flex items-center justify-between px-3 py-2">
             <dt style={{ color: 'var(--text-3)' }}>{label}</dt>

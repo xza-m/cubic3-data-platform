@@ -17,26 +17,30 @@ import {
   taskTypeChip,
 } from './_shared/extraction-task-detail-content'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { PeekPanel } from '@v2/components/PeekPanel'
 import { useAppShell } from '@v2/layout/AppShell'
 
-const STATUS_OPTIONS = [
-  { value: '', label: '全部状态' },
-  { value: 'success', label: '成功' },
-  { value: 'failed',  label: '失败' },
-  { value: 'running', label: '运行中' },
-  { value: 'pending', label: '排队' },
-]
+function statusOptions() {
+  return [
+    { value: '', label: t('extractionTasks.status.all', '全部状态') },
+    { value: 'success', label: t('extractionTasks.status.success', '成功') },
+    { value: 'failed',  label: t('extractionTasks.status.failed', '失败') },
+    { value: 'running', label: t('extractionTasks.status.running', '运行中') },
+    { value: 'pending', label: t('extractionTasks.status.pending', '排队') },
+  ]
+}
 
-const TYPE_OPTIONS = [
-  { value: '',          label: '全部类型' },
-  { value: 'manual',    label: '手动' },
-  { value: 'scheduled', label: '调度' },
-  { value: 'api',       label: 'API' },
-]
+function typeOptions() {
+  return [
+    { value: '',          label: t('extractionTasks.type.all', '全部类型') },
+    { value: 'manual',    label: t('extractionTasks.type.manual', '手动') },
+    { value: 'scheduled', label: t('extractionTasks.type.scheduled', '调度') },
+    { value: 'api',       label: 'API' },
+  ]
+}
 
 export default function ExtractionTasks() {
   const navigate = useNavigate()
@@ -78,7 +82,10 @@ export default function ExtractionTasks() {
   }, [allRows])
 
   useEffect(() => {
-    setBreadcrumbs(['数据', '提取任务'])
+    setBreadcrumbs([
+      t('extractionTasks.breadcrumb.data', '数据'),
+      t('extractionTasks.breadcrumb.tasks', '提取任务'),
+    ])
   }, [setBreadcrumbs])
 
   useEffect(() => {
@@ -87,7 +94,7 @@ export default function ExtractionTasks() {
         <input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="搜索任务名…"
+          placeholder={t('extractionTasks.search.placeholder', '搜索任务名…')}
           className="rounded-md border px-3 py-1.5 text-xs"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)', width: 160 }}
         />
@@ -97,7 +104,7 @@ export default function ExtractionTasks() {
           className="rounded-md border px-2 py-1.5 text-xs"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
         >
-          {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {statusOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select
           value={typeFilter}
@@ -105,7 +112,7 @@ export default function ExtractionTasks() {
           className="rounded-md border px-2 py-1.5 text-xs"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
         >
-          {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {typeOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <button
           type="button"
@@ -113,7 +120,8 @@ export default function ExtractionTasks() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} /> 刷新
+          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
+          {t('extractionTasks.action.refresh', '刷新')}
         </button>
         <button
           type="button"
@@ -121,7 +129,7 @@ export default function ExtractionTasks() {
           className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
           style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
         >
-          <Plus size={12} /> 新建任务
+          <Plus size={12} /> {t('extractionTasks.action.create', '新建任务')}
         </button>
       </div>,
     )
@@ -133,29 +141,29 @@ export default function ExtractionTasks() {
       title: (
         <div className="flex items-center gap-1.5">
           <Workflow size={12} style={{ color: 'var(--text-3)' }} />
-          提取任务
+          {t('extractionTasks.context.title', '提取任务')}
         </div>
       ),
       subtitle: 'GET /api/v1/extraction/tasks',
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
-            <CtxLabel>规模</CtxLabel>
+            <CtxLabel>{t('extractionTasks.context.scale', '规模')}</CtxLabel>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <StatCard label="总计" value={stats.total} />
-              <StatCard label="启用" value={stats.active} tone="success" />
-              <StatCard label="运行中" value={stats.running} tone={stats.running ? 'accent' : 'neutral'} />
-              <StatCard label="失败" value={stats.failed} tone={stats.failed ? 'danger' : 'neutral'} />
+              <StatCard label={t('extractionTasks.stats.total', '总计')} value={stats.total} />
+              <StatCard label={t('extractionTasks.stats.active', '启用')} value={stats.active} tone="success" />
+              <StatCard label={t('extractionTasks.stats.running', '运行中')} value={stats.running} tone={stats.running ? 'accent' : 'neutral'} />
+              <StatCard label={t('extractionTasks.stats.failed', '失败')} value={stats.failed} tone={stats.failed ? 'danger' : 'neutral'} />
             </div>
           </section>
           <section>
-            <CtxLabel>快捷操作</CtxLabel>
+            <CtxLabel>{t('extractionTasks.context.shortcuts', '快捷操作')}</CtxLabel>
             <div className="mt-2 space-y-1.5 text-xs">
               <button type="button" onClick={() => navigate('/extraction/tasks/new')} className="flex w-full rounded-md px-2 py-1 text-left" style={{ color: 'var(--text-2)' }}>
-                + 新建任务
+                + {t('extractionTasks.action.create', '新建任务')}
               </button>
               <button type="button" onClick={() => navigate('/extraction/runs')} className="flex w-full rounded-md px-2 py-1 text-left" style={{ color: 'var(--text-2)' }}>
-                查看执行记录
+                {t('extractionTasks.action.viewRuns', '查看执行记录')}
               </button>
             </div>
           </section>
@@ -193,7 +201,10 @@ export default function ExtractionTasks() {
 
       <div className="relative flex-1 overflow-hidden">
         {isLoading ? <SkeletonRows /> : isError ? (
-          <ErrorState message={error instanceof Error ? error.message : '加载失败'} onRetry={() => refetch()} />
+          <ErrorState
+            message={error instanceof Error ? error.message : t('extractionTasks.state.loadFailed', '加载失败')}
+            onRetry={() => refetch()}
+          />
         ) : rows.length === 0 ? (
           <EmptyState />
         ) : (
@@ -250,8 +261,15 @@ function TaskTable({
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border)' }}>
-            {['任务', '类型', '状态', '启用', '最近运行', '创建时间'].map((h) => (
-              <th key={h} className="px-4 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>{h}</th>
+            {[
+              t('extractionTasks.col.task', '任务'),
+              t('extractionTasks.col.type', '类型'),
+              t('extractionTasks.col.status', '状态'),
+              t('extractionTasks.col.active', '启用'),
+              t('extractionTasks.col.lastRun', '最近运行'),
+              t('extractionTasks.col.createdAt', '创建时间'),
+            ].map((h, i) => (
+              <th key={i} className="px-4 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -273,7 +291,9 @@ function TaskTable({
               <td className="px-4 py-2.5">{taskStatusChip(row.last_run_status)}</td>
               <td className="px-4 py-2.5">
                 <span style={{ color: row.is_active ? 'var(--success)' : 'var(--text-3)' }}>
-                  {row.is_active ? '启用' : '停用'}
+                  {row.is_active
+                    ? t('extractionTasks.active.on', '启用')
+                    : t('extractionTasks.active.off', '停用')}
                 </span>
               </td>
               <td className="px-4 py-2.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
@@ -294,7 +314,7 @@ function CtxLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>{children}</div>
 }
 
-function StatCard({ label, value, tone = 'neutral' }: { label: string; value: number; tone?: string }) {
+function StatCard({ label, value, tone = 'neutral' }: { label: React.ReactNode; value: number; tone?: string }) {
   const color = tone === 'success' ? 'var(--success)' : tone === 'danger' ? 'var(--danger)' : tone === 'accent' ? 'var(--accent)' : 'var(--text-1)'
   return (
     <div className="rounded-md border px-2 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
@@ -322,7 +342,9 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <p className="text-xs" style={{ color: 'var(--danger)' }}>{message}</p>
-      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>重试</button>
+      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
+        {t('extractionTasks.action.retry', '重试')}
+      </button>
     </div>
   )
 }
@@ -331,7 +353,9 @@ function EmptyState() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <Workflow size={20} style={{ color: 'var(--text-3)' }} />
-      <p className="text-xs" style={{ color: 'var(--text-3)' }}>暂无提取任务</p>
+      <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+        {t('extractionTasks.state.empty', '暂无提取任务')}
+      </p>
     </div>
   )
 }
