@@ -211,6 +211,8 @@ app/infrastructure/ontology/metrics/pw_*.yml
 frontend/scripts/sidebar-hover-debug.mjs
 # Round 4 · T-001a: i18n 抽取产物（json 易大且 churn 高，只提交 summary.md）
 frontend/scripts/i18n-keys.json
+# Round 4 · T-001d: i18n populate 报告（zh/en.json 会进版本库，report 是 rerun 产物）
+frontend/scripts/i18n-populate.report.md
 /image.png
 /image-1.png
 /image-2.png
