@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Button, Dialog, Input, Select, Switch, Textarea } from '@v2/components/ui'
+import { t } from '@v2/i18n'
 
 export type FieldType =
   | 'text'
@@ -118,7 +119,7 @@ export function EntityFormDialog<T extends Record<string, unknown>>({
   open,
   onClose,
   title,
-  submitLabel = '保存',
+  submitLabel,
   schema,
   fields,
   initialValues,
@@ -164,7 +165,7 @@ export function EntityFormDialog<T extends Record<string, unknown>>({
           v === '' ||
           (Array.isArray(v) && v.length === 0)
         if (empty) {
-          errs[f.name] = '必填'
+          errs[f.name] = t('entityForm.required', '必填')
           continue
         }
       }
@@ -215,10 +216,10 @@ export function EntityFormDialog<T extends Record<string, unknown>>({
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            取消
+            {t('common.cancel', '取消')}
           </Button>
           <Button onClick={() => void handleSubmit()} disabled={submitting}>
-            {submitting ? '保存中…' : submitLabel}
+            {submitting ? t('common.saving', '保存中…') : submitLabel ?? t('common.save', '保存')}
           </Button>
         </>
       }
@@ -236,7 +237,7 @@ export function EntityFormDialog<T extends Record<string, unknown>>({
           </div>
         ))}
       </div>
-      <div className="mt-3 text-right text-[11px] text-3">⌘↵ 提交 · Esc 取消</div>
+      <div className="mt-3 text-right text-[11px] text-3">{t('entityForm.kbdHint', '⌘↵ 提交 · Esc 取消')}</div>
     </Dialog>
   )
 }
@@ -301,7 +302,7 @@ function FieldControl({
     case 'select':
       return (
         <Select value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value)}>
-          <option value="">请选择…</option>
+          <option value="">{t('entityForm.selectPlaceholder', '请选择…')}</option>
           {(field.options ?? []).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -327,7 +328,7 @@ function FieldControl({
               .filter(Boolean)
             onChange(next)
           }}
-          placeholder={field.placeholder ?? '英文逗号分隔'}
+          placeholder={field.placeholder ?? t('entityForm.tags.placeholder', '英文逗号分隔')}
         />
       )
     }

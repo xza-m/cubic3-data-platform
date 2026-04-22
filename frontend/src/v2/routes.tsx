@@ -12,6 +12,7 @@ import { AppShell } from '@v2/layout/AppShell'
 import ProtectedRoute from '@v2/pages/ProtectedRoute'
 import { RouteErrorBoundary } from '@v2/components/RouteErrorBoundary'
 import Placeholder from '@v2/pages/_Placeholder'
+import { t } from '@v2/i18n'
 
 // ── Legacy URL redirects（Round 3 cutover · 2026-04-20） ───────────────────────
 // Legacy 路径 → v2 等价路径。`:param` 占位符自动从 useParams 取值并替换。
@@ -113,7 +114,7 @@ const DomainCanvas = lazy(() => import('@v2/pages/semantic/domains/DomainCanvas'
 const RelationCanvas = lazy(() => import('@v2/pages/semantic/relations/RelationCanvas'))
 
 const PageLoader = () => (
-  <div className="flex flex-1 items-center justify-center text-[12px] text-3">加载中…</div>
+  <div className="flex flex-1 items-center justify-center text-[12px] text-3">{t('common.loading', '加载中…')}</div>
 )
 
 const wrap = (node: ReactNode) => <Suspense fallback={<PageLoader />}>{node}</Suspense>
@@ -172,7 +173,10 @@ export default function AppRoutes() {
             <Route
               path="config" // TODO[R2-W2]: no ExtractionConfig page on disk yet
               element={wrap(
-                <Placeholder title="提取配置" description="待提取配置页面实现" />,
+                <Placeholder
+                  title={t('routes.placeholder.extractionConfig.title', '提取配置')}
+                  description={t('routes.placeholder.extractionConfig.desc', '待提取配置页面实现')}
+                />,
               )}
             />
             <Route path="runs">
@@ -185,7 +189,10 @@ export default function AppRoutes() {
           <Route
             path="data-chat"
             element={wrap(
-              <Placeholder title="数据对话" description="待数据对话页面实现" />,
+              <Placeholder
+                title={t('routes.placeholder.dataChat.title', '数据对话')}
+                description={t('routes.placeholder.dataChat.desc', '待数据对话页面实现')}
+              />,
             )}
           />
 
@@ -195,7 +202,10 @@ export default function AppRoutes() {
             <Route
               path="visual" // TODO[R2-W3]: no QueriesVisual page on disk yet
               element={wrap(
-                <Placeholder title="可视化构建" description="待可视化查询构建器实现" />,
+                <Placeholder
+                  title={t('routes.placeholder.visualBuilder.title', '可视化构建')}
+                  description={t('routes.placeholder.visualBuilder.desc', '待可视化查询构建器实现')}
+                />,
               )}
             />
             <Route path="my">

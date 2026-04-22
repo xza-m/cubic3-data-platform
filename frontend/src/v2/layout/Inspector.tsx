@@ -7,6 +7,7 @@
 // - 折叠：用户偏好持久化于 localStorage
 import { type ReactNode } from 'react'
 import { PanelRightClose, PanelRightOpen, Compass } from 'lucide-react'
+import { t } from '@v2/i18n'
 
 interface InspectorProps {
   title?: ReactNode
@@ -35,8 +36,8 @@ export function Inspector({
           type="button"
           className="rail-btn"
           onClick={onToggleCollapse}
-          aria-label="展开上下文面板"
-          title="展开上下文面板"
+          aria-label={t('inspector.expand', '展开上下文面板')}
+          title={t('inspector.expand', '展开上下文面板')}
         >
           <PanelRightOpen size={14} />
         </button>
@@ -55,8 +56,8 @@ export function Inspector({
         style={{ borderColor: 'var(--border)' }}
       >
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] uppercase tracking-wide text-3">上下文面板</div>
-          <div className="truncate text-[13px] font-medium text-1">{title ?? '上下文'}</div>
+          <div className="text-[10px] uppercase tracking-wide text-3">{t('inspector.title', '上下文面板')}</div>
+          <div className="truncate text-[13px] font-medium text-1">{title ?? t('inspector.titleShort', '上下文')}</div>
           {subtitle ? (
             <div className="mt-0.5 truncate text-[11px] text-3">{subtitle}</div>
           ) : null}
@@ -65,8 +66,8 @@ export function Inspector({
           type="button"
           className="rail-btn"
           onClick={onToggleCollapse}
-          aria-label="折叠上下文面板"
-          title="折叠上下文面板"
+          aria-label={t('inspector.collapse', '折叠上下文面板')}
+          title={t('inspector.collapse', '折叠上下文面板')}
         >
           <PanelRightClose size={12} />
         </button>
@@ -87,8 +88,8 @@ function DefaultEmptyState() {
       >
         <Compass size={16} />
       </div>
-      <div className="mt-3 text-[12px] text-2">当前模块未提供上下文</div>
-      <div className="mt-1 text-[11px] text-3 leading-4">导航到具体页面查看 KPI、摘要或操作</div>
+      <div className="mt-3 text-[12px] text-2">{t('inspector.empty.title', '当前模块未提供上下文')}</div>
+      <div className="mt-1 text-[11px] text-3 leading-4">{t('inspector.empty.hint', '导航到具体页面查看 KPI、摘要或操作')}</div>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { Command, Moon, Settings, Sun } from 'lucide-react'
 import { useTheme } from '@v2/components/ThemeProvider'
 import { Tooltip } from '@v2/components/ui'
 import { NAV_MODULES, findModule, moduleHomePath } from './navigation'
+import { t } from '@v2/i18n'
 
 interface LeftRailProps {
   pathname: string
@@ -25,7 +26,7 @@ export function LeftRail({ pathname, onOpenCommandPalette }: LeftRailProps) {
         <div
           className="mb-2 flex h-7 w-7 items-center justify-center rounded-md text-[11px] font-semibold text-white"
           style={{ background: 'var(--accent)' }}
-          title="Cubic³ 数据平台"
+          title={t('platform.name', 'Cubic³ 数据平台')}
         >
           C³
         </div>
@@ -38,7 +39,7 @@ export function LeftRail({ pathname, onOpenCommandPalette }: LeftRailProps) {
               label={
                 <span>
                   {m.label}
-                  {!m.implemented ? <span className="ml-1 text-3">（即将上线）</span> : null}
+                  {!m.implemented ? <span className="ml-1 text-3">{t('leftRail.comingSoon', '（即将上线）')}</span> : null}
                 </span>
               }
               side="right"
@@ -57,23 +58,23 @@ export function LeftRail({ pathname, onOpenCommandPalette }: LeftRailProps) {
         })}
       </div>
       <div className="flex flex-col items-center gap-1.5">
-        <Tooltip label="命令面板  ⌘K" side="right">
+        <Tooltip label={t('leftRail.palette.label', '命令面板  ⌘K')} side="right">
           <button
             type="button"
             className="rail-btn"
             onClick={onOpenCommandPalette}
-            aria-label="打开命令面板"
+            aria-label={t('topBar.openPalette', '打开命令面板')}
           >
             <Command size={16} />
           </button>
         </Tooltip>
-        <Tooltip label={isDark ? '切换浅色主题' : '切换暗色主题'} side="right">
-          <button type="button" className="rail-btn" onClick={toggle} aria-label="切换主题">
+        <Tooltip label={isDark ? t('leftRail.theme.light', '切换浅色主题') : t('leftRail.theme.dark', '切换暗色主题')} side="right">
+          <button type="button" className="rail-btn" onClick={toggle} aria-label={t('theme.toggle', '切换主题')}>
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </Tooltip>
-        <Tooltip label="设置" side="right">
-          <button type="button" className="rail-btn" aria-label="设置">
+        <Tooltip label={t('leftRail.settings', '设置')} side="right">
+          <button type="button" className="rail-btn" aria-label={t('leftRail.settings', '设置')}>
             <Settings size={16} />
           </button>
         </Tooltip>

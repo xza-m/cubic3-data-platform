@@ -6,6 +6,7 @@
 
 import { apiClient } from './client'
 import type { PaginatedResponse } from './types'
+import { t } from '@v2/i18n'
 
 // ── 类型 ──────────────────────────────────────────────────────────────────────
 
@@ -74,24 +75,24 @@ export function permKey(resource: PermissionResource, action: PermissionAction):
 const MOCK_ROLES: Role[] = [
   {
     id: 1,
-    name: '超级管理员',
-    description: '拥有所有权限',
+    name: t('roles.mock.superAdmin.name', '超级管理员'),
+    description: t('roles.mock.superAdmin.desc', '拥有所有权限'),
     permissions: PERMISSION_RESOURCES.flatMap((r) => PERMISSION_ACTIONS.map((a) => `${r}:${a}`)),
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
   {
     id: 2,
-    name: '数据分析师',
-    description: '可读取数据、执行查询',
+    name: t('roles.mock.analyst.name', '数据分析师'),
+    description: t('roles.mock.analyst.desc', '可读取数据、执行查询'),
     permissions: ['datasource:read', 'dataset:read', 'query:read', 'query:write', 'semantic:read'],
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
   },
   {
     id: 3,
-    name: '只读访客',
-    description: '只能查看基础数据',
+    name: t('roles.mock.viewer.name', '只读访客'),
+    description: t('roles.mock.viewer.desc', '只能查看基础数据'),
     permissions: ['datasource:read', 'dataset:read'],
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
@@ -126,7 +127,7 @@ export async function getRole(id: number): Promise<Role> {
   } catch {
     // TODO: mock
     const r = MOCK_ROLES.find((r) => r.id === id)
-    if (!r) throw new Error(`角色 #${id} 不存在`)
+    if (!r) throw new Error(t('roles.error.notFound', '角色 #{id} 不存在', { id }))
     return r
   }
 }
@@ -157,7 +158,7 @@ export async function updateRole(id: number, payload: UpdateRolePayload): Promis
   } catch {
     // TODO: mock
     const idx = MOCK_ROLES.findIndex((r) => r.id === id)
-    if (idx < 0) throw new Error(`角色 #${id} 不存在`)
+    if (idx < 0) throw new Error(t('roles.error.notFound', '角色 #{id} 不存在', { id }))
     MOCK_ROLES[idx] = { ...MOCK_ROLES[idx], ...payload, updated_at: new Date().toISOString() }
     return MOCK_ROLES[idx]
   }

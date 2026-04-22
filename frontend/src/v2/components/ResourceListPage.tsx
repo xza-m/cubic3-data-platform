@@ -16,6 +16,7 @@ import {
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
+import { t } from '@v2/i18n'
 import {
   Card,
   CardBody,
@@ -133,11 +134,11 @@ export function ResourceListPage<T>(props: ResourceListPageProps<T>) {
               <SkeletonRows rows={6} />
             ) : error ? (
               <div className="px-4 py-6 text-xs" style={{ color: 'var(--danger)' }}>
-                加载失败
+                {t('common.loadError', '加载失败')}
               </div>
             ) : (rows && rows.length === 0) ? (
               <div className="px-4 py-6 text-xs" style={{ color: 'var(--text-3)' }}>
-                {empty ?? emptyText ?? '暂无数据'}
+                {empty ?? emptyText ?? t('common.empty', '暂无数据')}
               </div>
             ) : (
               children
@@ -352,18 +353,18 @@ function FullResourceListPage<T>({
                     <>
                       <Kbd>↑</Kbd>
                       <Kbd>↓</Kbd>
-                      <span>切换</span>
+                      <span>{t('resourceList.switch', '切换')}</span>
                       {detailPath ? (
                         <>
                           <Kbd>⌘↵</Kbd>
-                          <span>升级</span>
+                          <span>{t('resourceList.upgrade', '升级')}</span>
                         </>
                       ) : null}
                       <Kbd>Esc</Kbd>
-                      <span>关闭</span>
+                      <span>{t('resourceList.close', '关闭')}</span>
                     </>
                   ) : (
-                    <span>单击行预览</span>
+                    <span>{t('resourceList.clickToPreview', '单击行预览')}</span>
                   )}
                 </span>
               ) : null}
@@ -376,7 +377,7 @@ function FullResourceListPage<T>({
                   <Input
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
-                    placeholder={search.placeholder ?? '搜索…'}
+                    placeholder={search.placeholder ?? t('common.search', '搜索…')}
                     className="!w-[220px] !pl-7"
                   />
                 </div>
@@ -397,7 +398,7 @@ function FullResourceListPage<T>({
                 const k = rowKey(r)
                 setPeekKey(k === peekKey ? null : k)
               }}
-              empty={empty ?? <span>暂无数据</span>}
+              empty={empty ?? <span>{t('common.empty', '暂无数据')}</span>}
             />
           )}
           {hasPeekProvider ? (
@@ -412,11 +413,11 @@ function FullResourceListPage<T>({
                 peekContent?.footer ?? (
                   <div className="flex items-center justify-between text-[11px] text-3">
                     <span>
-                      <Kbd>↑</Kbd>/<Kbd>↓</Kbd> 切换 · <Kbd>Esc</Kbd> 关闭
+                      <Kbd>↑</Kbd>/<Kbd>↓</Kbd> {t('resourceList.switch', '切换')} · <Kbd>Esc</Kbd> {t('resourceList.close', '关闭')}
                     </span>
                     {detailPath ? (
                       <span>
-                        <Kbd>⌘↵</Kbd> 升级 Tab
+                        <Kbd>⌘↵</Kbd> {t('resourceList.upgradeTab', '升级 Tab')}
                       </span>
                     ) : null}
                   </div>

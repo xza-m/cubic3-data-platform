@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Bell, Command, History, LogOut, Rocket, Settings, User } from 'lucide-react'
 import { Button, Kbd } from '@v2/components/ui'
 import { setAccessToken } from '@v2/api/client'
+import { t } from '@v2/i18n'
 
 interface TopBarProps {
   breadcrumbs: string[]
@@ -35,11 +36,11 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette }: TopBarPro
           onClick={onOpenCommandPalette}
           className="fake-input !w-[260px] flex items-center justify-between text-3"
           style={{ background: 'var(--bg-surface-2)' }}
-          aria-label="打开命令面板"
+          aria-label={t('topBar.openPalette', '打开命令面板')}
         >
           <span className="flex items-center gap-2">
             <Command size={12} />
-            <span>跳转、搜索、调用功能…</span>
+            <span>{t('topBar.paletteHint', '跳转、搜索、调用功能…')}</span>
           </span>
           <span className="flex items-center gap-1">
             <Kbd>⌘</Kbd>
@@ -48,13 +49,13 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette }: TopBarPro
         </button>
         {actions}
         <span className="divider-v mx-1" />
-        <Button variant="ghost" size="sm" aria-label="历史">
-          <History size={12} /> 历史
+        <Button variant="ghost" size="sm" aria-label={t('topBar.history', '历史')}>
+          <History size={12} /> {t('topBar.history', '历史')}
         </Button>
-        <Button variant="ghost" size="sm" aria-label="变更">
-          <Rocket size={12} /> 变更
+        <Button variant="ghost" size="sm" aria-label={t('topBar.changes', '变更')}>
+          <Rocket size={12} /> {t('topBar.changes', '变更')}
         </Button>
-        <Button variant="ghost" size="sm" aria-label="通知">
+        <Button variant="ghost" size="sm" aria-label={t('topBar.notifications', '通知')}>
           <Bell size={12} />
         </Button>
         <span className="divider-v mx-1" />
@@ -69,8 +70,8 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette }: TopBarPro
           <button
             type="button"
             className="rail-btn"
-            aria-label="我的偏好"
-            title="我的偏好"
+            aria-label={t('topBar.preferences', '我的偏好')}
+            title={t('topBar.preferences', '我的偏好')}
             onClick={() => navigate('/settings')}
           >
             <Settings size={14} />
@@ -78,8 +79,8 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette }: TopBarPro
           <button
             type="button"
             className="rail-btn"
-            aria-label="退出登录"
-            title="退出登录"
+            aria-label={t('topBar.logout', '退出登录')}
+            title={t('topBar.logout', '退出登录')}
             onClick={() => {
               setAccessToken(null)
               navigate('/login', { replace: true })

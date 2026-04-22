@@ -44,7 +44,7 @@ function _useClientSearch(query: string, navigate: ReturnType<typeof useNavigate
           label: c.title || c.name,
           hint: `Cube · ${c.name}`,
           icon: Database,
-          group: 'Cube',
+          group: t('palette.group.cube', 'Cube'),
           run: () => { navigate(`/semantic/cubes/${c.name}`); onClose() },
         })
       }
@@ -56,9 +56,9 @@ function _useClientSearch(query: string, navigate: ReturnType<typeof useNavigate
         results.push({
           id: `domain:${d.name}`,
           label: d.title || d.name,
-          hint: `业务域 · ${d.name}`,
+          hint: t('palette.domainHint', '业务域 · {name}', { name: d.name }),
           icon: Globe,
-          group: '业务域',
+          group: t('palette.group.domain', '业务域'),
           run: () => { navigate(`/semantic/domains/${d.id ?? d.name}`); onClose() },
         })
       }
@@ -70,9 +70,9 @@ function _useClientSearch(query: string, navigate: ReturnType<typeof useNavigate
         results.push({
           id: `metric:${m.name}`,
           label: m.title || m.name,
-          hint: `指标 · ${m.object_name}`,
+          hint: t('palette.metricHint', '指标 · {obj}', { obj: m.object_name }),
           icon: TrendingUp,
-          group: '指标',
+          group: t('palette.group.metric', '指标'),
           run: () => { navigate(`/semantic/ontology/objects/${m.object_name}`); onClose() },
         })
       }
@@ -223,7 +223,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       onClick={stableOnClose}
       role="dialog"
       aria-modal
-      aria-label="命令面板"
+      aria-label={t('palette.ariaLabel', '命令面板')}
     >
       <div className="cmdk" onClick={(e) => e.stopPropagation()}>
         {/* 搜索框 */}
@@ -236,9 +236,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="跳转、搜索 Cube / 域 / 指标…"
+            placeholder={t('palette.placeholder', '跳转、搜索 Cube / 域 / 指标…')}
             className="flex-1 bg-transparent text-[13px] text-1 placeholder:text-3 outline-none"
-            aria-label="搜索"
+            aria-label={t('palette.searchLabel', '搜索')}
             role="combobox"
             aria-expanded={allItems.length > 0}
             aria-autocomplete="list"
@@ -246,9 +246,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
           />
           <span className="flex items-center gap-1 text-3">
             <Kbd>↑↓</Kbd>
-            <span className="text-[11px]">导航</span>
+            <span className="text-[11px]">{t('palette.kbd.nav', '导航')}</span>
             <Kbd>↵</Kbd>
-            <span className="text-[11px]">执行</span>
+            <span className="text-[11px]">{t('palette.kbd.exec', '执行')}</span>
             <Kbd>esc</Kbd>
           </span>
         </div>
@@ -256,7 +256,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         {/* 结果列表 */}
         <div ref={listRef} className="max-h-[60vh] overflow-y-auto scroll-thin py-1" role="listbox">
           {allItems.length === 0 ? (
-            <div className="px-3 py-6 text-center text-[12px] text-3">未匹配到任何结果</div>
+            <div className="px-3 py-6 text-center text-[12px] text-3">{t('palette.empty', '未匹配到任何结果')}</div>
           ) : (
             Object.entries(grouped).map(([group, list]) => (
               <div key={group} className="px-1.5 pb-1">
