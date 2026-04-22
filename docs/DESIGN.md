@@ -351,8 +351,8 @@ last_reviewed: 2026-04-13
 
 - [frontend/COMPONENT_STYLE_GUIDE.md](../frontend/COMPONENT_STYLE_GUIDE.md)
   负责组件样式统一与前端实现层控制策略
-- `uiv2.pen`
-  负责具体界面设计稿
+- `docs/archive/uiv2.pen`
+  负责具体界面设计稿。Round 4 · D+28 已归档，新迭代请直接以 `frontend/src/v2/` 为准
 - 页面级 PRD / 专题设计说明
   负责具体业务流程与交互细节
 

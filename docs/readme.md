@@ -113,7 +113,7 @@ last_reviewed: 2026-03-24
 - [reference-design/README.md](reference-design/README.md)：设计参考目录说明
 - [reference-design/SEMANTIC_WORKBENCH_NOTES.md](reference-design/SEMANTIC_WORKBENCH_NOTES.md)：语义工作台、 Pencil 画布与 IA 工作草案
 - 仓库根目录 `test_pencil.pen`：Pencil 画布源文件，只能通过 Pencil MCP 维护
-- 仓库根目录 `uiv2.pen`：前端平台与工作台改版的 Pencil 设计源文件，作为界面设计参考输入
+- `docs/archive/uiv2.pen`：前端平台与工作台改版的 Penpot 设计源文件。Round 4 · D+28（2026-04-22）已归档，当前设计参考请直接看 `frontend/src/v2/` 实现
 
 说明：
 

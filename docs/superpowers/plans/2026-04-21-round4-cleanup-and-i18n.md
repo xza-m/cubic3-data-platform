@@ -62,18 +62,18 @@
 | D+21 | 清理 | 删除 `frontend/src/legacy/` + Makefile/CLAUDE/AGENTS/ESLint 双轨 | P2 | 1d | TL | 0 引用扫描 | **DONE** 2026-04-22 | `git rm -rq frontend/src/legacy`（297 文件 / 3.1MB 全删）；清理 `vite.config.ts` / `v2.vite.config.ts` / `tsconfig.json` / `vitest.config.ts` 的 `@` legacy 别名与 paths；`.eslintrc.cjs` / `stylelint.config.js` 去 `src/legacy/**` 排除；`package.json` 去 `dev:legacy` / `build:legacy` / `lint:legacy` + 冗余 `test:visual*` / `verify:platform-*` / `verify:semantic-layout` / `verify:ui` 脚本；`Makefile` 去 `test-regression*` 与 `semantic-layout` 目标；`frontend-ci.yml` 去 "Vite build · legacy" 步骤 + job 名更新；`src/main.tsx` 拆掉启动期 legacy storage 迁移（cutover 已 21d+），`main.test.tsx` 同步为 D+21 版本；`tsc` / `lint` / `lint:css` / `check:v2-tokens` / `vitest run`（489/489）全绿 |
 | T-001a | i18n | `i18n-extract.mjs` | L1 | 1d | FE-C | — | **DONE** 2026-04-22 | `frontend/scripts/i18n-extract.mjs` + `npm run i18n:extract`；产出 `i18n-keys.summary.md` |
 | T-001b | i18n | key 命名规范 spec | L1 | 1d | FE-C+TL | T-001a | **DONE** 2026-04-22 | `frontend/src/v2/i18n/NAMING.md`（宽松版正则 + 段数 2–4 + 历史 camelCase 兼容） |
-| T-001c | i18n | 5 大模块先 `t()` 替换 | L1 | 4d | FE-C | T-001b | **IN_PROGRESS** | 首批：`layout/navigation.ts` + `SecondarySidebar` + `CommandPalette`；其余模块继续滚动 |
+| T-001c | i18n | 5 大模块先 `t()` 替换 | L1 | 4d | FE-C | T-001b | **DONE** 2026-04-22 | 首批：`layout/navigation.ts` + `SecondarySidebar` + `CommandPalette`；第二批滚动九批覆盖 Settings / Queries / Extraction / Datasets / Datasource / Roles / Users / Login / Marketplace / SubscriptionDetail / QueryHistory / ResourceListPage / TopBar / LeftRail / Inspector / routes / EntityFormDialog / Can / Sheet / Table / Toast / TabStrip / StatusBar / Dashboard / ViewDetail / DevTools / Metrics，以及 API 层的 mock/错误文案；`bare 1145 → 31`（剩余为 `navigation.ts` 内部常量 + 5 条 template literal 套 `t()` 的提取误报），`coverage 48% → 98.66%`；`tsc` / `vitest` 489/489 全绿 |
 | T-001d | i18n | `zh.json` ≥90%；`en.json` 占位 | L2 | 1d | FE-C | T-001c | **DONE** 2026-04-22 | `i18n-populate.mjs` 一次入 629 key；`en.json` 同 key 占位；T-001e gate 校验 zh/en 键集一致 |
 | T-001e | i18n | `i18n-coverage.py` + CI gate | L1 | 1d | infra | T-001c | **DONE** 2026-04-22 | `frontend/scripts/i18n-coverage.mjs` + `npm run i18n:coverage`；frontend-ci.yml v2-build job 接入；基线 `bare=1145 / coverage≥48%`，字典 key 合法性 + zh/en 对齐三重校验 |
 | A-1 | 体验 | `prefers-reduced-motion` | L2 | 2d | FE-A | — | **DONE** 2026-04-22 | `tokens.css` 媒体查询 + `data-reduced-motion`；`A11yPreferencesProvider` + Settings 三态控件；单测覆盖 OS/显式两路 |
 | A-2 | 体验 | `prefers-contrast: more` 主题 | L2 | 2d | DS | R-002a | **DONE** 2026-04-22 | `tokens.css` 高对比叠加（明/暗均覆盖）+ `data-contrast`；与 A-1 共用 provider |
-| D+28 | 清理 | tmp demo 清 / `uiv2.pen` 归档 / platform-redesign ARCHIVED | P2 | 1d | TL | — | **OPEN** | 封盘 §7.3 |
+| D+28 | 清理 | tmp demo 清 / `uiv2.pen` 归档 / platform-redesign ARCHIVED | P2 | 1d | TL | — | **DONE** 2026-04-22 | `tmp/platform-redesign/` + `tmp/ontology-workbench-redesign/` 本地 demo 目录删除；`uiv2.pen` → `docs/archive/uiv2.pen`；`docs/superpowers/plans/2026-04-20-platform-redesign/README.md` 标记 ARCHIVED；`docs/readme.md`、`docs/DESIGN.md` 指向更新 |
 | PM-C | 候选 | 用户偏好扩展（暗黑/紧凑/默认页等） | — | TBD | PM | 产品数据 | **冻结** | 有数据再开 |
 | PM-D | 候选 | 后端 B-back 大项（PRD 驱动） | — | TBD | PM | PRD | **冻结** | 同上 |
 | PM-P | 候选 | 三 placeholder 实装 | — | TBD | PM | PRD | **冻结** | 同原则 §1.3 |
 | PM-OA | 候选 | R-001-OA 实装 | — | TBD | PM | R-001-OA 报 GO | **冻结** | 见研究报告 |
 
-**进度速览（任务数，含选做/冻结行）：** 已关闭 13 行（+D+21 于 2026-04-22 合入） + 其余 **OPEN** 约 16 行（T-001c 第二批 / D+28 为主） + 冻结 4 行（不占用容量）。
+**进度速览（任务数，含选做/冻结行）：** 已关闭 **全部** 执行行（Round 4 最后两项 T-001c 第二批与 D+28 于 2026-04-22 合入） + 冻结 4 行（不占用容量，等 PM 触发）。
 
 ### 2.1 Round 4 收口径检查清单（与任务独立，可并行勾选）
 

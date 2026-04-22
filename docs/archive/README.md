@@ -17,6 +17,10 @@ last_reviewed: 2026-03-24
 - [2026-04 归档索引](2026-04/README.md)
 - [历史专题目录](legacy/README.md)
 
+## 单件归档资产
+
+- `uiv2.pen` — Round 2~3 v2 前端改版的 Penpot 设计源文件。**归档于 2026-04-22（Round 4 · D+28）**，当前设计参考以 `frontend/src/v2/` 实现为准。历史背景见 [`../superpowers/plans/2026-04-20-platform-redesign/`](../superpowers/plans/2026-04-20-platform-redesign/README.md)。
+
 ## 适用范围
 
 适合以下场景：
