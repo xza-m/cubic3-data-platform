@@ -16,17 +16,20 @@ import {
 } from './_shared/datasource-detail-content'
 import { DatasourceSchemaBrowser } from './_shared/datasource-schema-browser'
 import { fmtDateTime } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { useAppShell } from '@v2/layout/AppShell'
 
-const TABS = [
-  { id: 'overview', label: '概览' },
-  { id: 'structure', label: '结构' },   // B-back-5 占位
-] as const
+const TAB_IDS = ['overview', 'structure'] as const
+type TabId = (typeof TAB_IDS)[number]
 
-type TabId = (typeof TABS)[number]['id']
+function buildTabs(): { id: TabId; label: string }[] {
+  return [
+    { id: 'overview',  label: t('datasourceDetail.tab.overview', '概览') },
+    { id: 'structure', label: t('datasourceDetail.tab.structure', '结构') },
+  ]
+}
 
 export default function DatasourceDetail() {
   const { id } = useParams<{ id: string }>()
@@ -47,7 +50,11 @@ export default function DatasourceDetail() {
   // 面包屑
   useEffect(() => {
     if (!data) return
-    setBreadcrumbs(['数据', '数据源', data.name])
+    setBreadcrumbs([
+      t('datasourceDetail.breadcrumb.data', '数据'),
+      t('datasourceDetail.breadcrumb.datasources', '数据源'),
+      data.name,
+    ])
   }, [data, setBreadcrumbs])
 
   // 注册 Tab
@@ -75,7 +82,7 @@ export default function DatasourceDetail() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <ArrowLeft size={12} /> 返回列表
+          <ArrowLeft size={12} /> {t('datasourceDetail.action.back', '返回列表')}
         </button>
         <button
           type="button"
@@ -84,7 +91,7 @@ export default function DatasourceDetail() {
           style={{ color: 'var(--text-2)' }}
         >
           <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-          重新加载
+          {t('datasourceDetail.action.reload', '重新加载')}
         </button>
         {data ? (
           <button
@@ -99,7 +106,7 @@ export default function DatasourceDetail() {
                   setTestError(result.error_message || result.message)
                 }
               } catch (e) {
-                setTestError(e instanceof Error ? e.message : '测试失败')
+                setTestError(e instanceof Error ? e.message : t('datasourceDetail.test.failed', '测试失败'))
               }
             }}
             disabled={testConn.isPending}
@@ -107,7 +114,9 @@ export default function DatasourceDetail() {
             style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
           >
             <Play size={12} />
-            {testConn.isPending ? '测试中…' : '测试连接'}
+            {testConn.isPending
+              ? t('datasourceDetail.test.running', '测试中…')
+              : t('datasourceDetail.test.run', '测试连接')}
           </button>
         ) : null}
         <button
@@ -116,7 +125,7 @@ export default function DatasourceDetail() {
           className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
           style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
         >
-          <Pencil size={12} /> 编辑
+          <Pencil size={12} /> {t('datasourceDetail.action.edit', '编辑')}
         </button>
       </div>,
     )
@@ -149,7 +158,7 @@ export default function DatasourceDetail() {
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
-            <CtxLabel>状态</CtxLabel>
+            <CtxLabel>{t('datasourceDetail.ctx.status', '状态')}</CtxLabel>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {connectionStatusChip(data.connection_status)}
               <span
@@ -159,15 +168,17 @@ export default function DatasourceDetail() {
                   color: data.is_active ? 'var(--success)' : 'var(--text-3)',
                 }}
               >
-                {data.is_active ? '启用' : '停用'}
+                {data.is_active
+                  ? t('datasourceDetail.active.on', '启用')
+                  : t('datasourceDetail.active.off', '停用')}
               </span>
             </div>
           </section>
           <section>
-            <CtxLabel>邻接导航</CtxLabel>
+            <CtxLabel>{t('datasourceDetail.ctx.neighbors', '邻接导航')}</CtxLabel>
             <div className="mt-2 space-y-1.5 text-xs">
               <NeighborBtn
-                label={neighbors.prev ? `← ${neighbors.prev.name}` : '没有上一项'}
+                label={neighbors.prev ? `← ${neighbors.prev.name}` : t('datasourceDetail.neighbor.noPrev', '没有上一项')}
                 disabled={!neighbors.prev}
                 onClick={
                   neighbors.prev
@@ -176,7 +187,7 @@ export default function DatasourceDetail() {
                 }
               />
               <NeighborBtn
-                label={neighbors.next ? `${neighbors.next.name} →` : '没有下一项'}
+                label={neighbors.next ? `${neighbors.next.name} →` : t('datasourceDetail.neighbor.noNext', '没有下一项')}
                 disabled={!neighbors.next}
                 onClick={
                   neighbors.next
@@ -187,11 +198,11 @@ export default function DatasourceDetail() {
             </div>
           </section>
           <section>
-            <CtxLabel>下游引用</CtxLabel>
+            <CtxLabel>{t('datasourceDetail.ctx.downstream', '下游引用')}</CtxLabel>
             <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-3)' }}>
-              通过{' '}
-              <code className="text-[10px]">/api/v1/data-center/datasets?source_id={data.id}</code>{' '}
-              查询关联数据集。
+              {t('datasourceDetail.downstream.hint', '通过下列接口查询关联数据集：')}
+              <br />
+              <code className="text-[10px]">/api/v1/data-center/datasets?source_id={data.id}</code>
             </p>
             <button
               type="button"
@@ -199,7 +210,7 @@ export default function DatasourceDetail() {
               className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
               style={{ color: 'var(--text-2)' }}
             >
-              <ExternalLink size={11} /> 查看关联数据集
+              <ExternalLink size={11} /> {t('datasourceDetail.downstream.view', '查看关联数据集')}
             </button>
           </section>
         </div>
@@ -213,7 +224,7 @@ export default function DatasourceDetail() {
   if (!Number.isFinite(numericId)) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        非法的数据源 ID
+        {t('datasourceDetail.state.invalidId', '非法的数据源 ID')}
       </div>
     )
   }
@@ -221,7 +232,7 @@ export default function DatasourceDetail() {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        加载中…
+        {t('datasourceDetail.state.loading', '加载中…')}
       </div>
     )
   }
@@ -230,7 +241,7 @@ export default function DatasourceDetail() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2">
         <p className="text-xs" style={{ color: 'var(--danger)' }}>
-          {error instanceof Error ? error.message : '加载失败'}
+          {error instanceof Error ? error.message : t('datasourceDetail.state.loadFailed', '加载失败')}
         </p>
         <button
           type="button"
@@ -238,7 +249,7 @@ export default function DatasourceDetail() {
           className="rounded-md border px-3 py-1.5 text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          重试
+          {t('datasourceDetail.action.retry', '重试')}
         </button>
       </div>
     )
@@ -269,7 +280,9 @@ export default function DatasourceDetail() {
                   color: data.is_active ? 'var(--success)' : 'var(--text-3)',
                 }}
               >
-                {data.is_active ? '启用' : '停用'}
+                {data.is_active
+                  ? t('datasourceDetail.active.on', '启用')
+                  : t('datasourceDetail.active.off', '停用')}
               </span>
             </div>
             <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
@@ -281,18 +294,18 @@ export default function DatasourceDetail() {
 
         {/* Tab 栏 */}
         <div className="mt-3 flex items-center gap-1">
-          {TABS.map((t) => (
+          {buildTabs().map((tb) => (
             <button
-              key={t.id}
+              key={tb.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => setTab(tb.id)}
               className="rounded px-2.5 py-1 text-xs"
               style={{
-                background: tab === t.id ? 'var(--accent-soft)' : 'transparent',
-                color: tab === t.id ? 'var(--accent)' : 'var(--text-2)',
+                background: tab === tb.id ? 'var(--accent-soft)' : 'transparent',
+                color: tab === tb.id ? 'var(--accent)' : 'var(--text-2)',
               }}
             >
-              {t.label}
+              {tb.label}
             </button>
           ))}
         </div>
@@ -365,28 +378,34 @@ function TestResultBanner({
       <div className="flex-1 space-y-0.5">
         {ok ? (
           <>
-            <div className="font-medium">连接成功 · {latency} ms</div>
+            <div className="font-medium">
+              {t('datasourceDetail.test.ok', '连接成功')} · {latency} ms
+            </div>
             <div className="text-[11px] opacity-80">
-              {tested ? `测试时间 ${tested}` : null}
+              {tested ? t('datasourceDetail.test.testedAt', '测试时间 {time}', { time: tested }) : null}
               {result?.details?.server_version ? (
-                <> · 服务端版本 <code>{result.details.server_version}</code></>
+                <> · {t('datasourceDetail.test.serverVersion', '服务端版本')} <code>{result.details.server_version}</code></>
               ) : null}
               {' · TLS '}
-              {result?.details?.tls ? '启用' : '未启用'}
+              {result?.details?.tls
+                ? t('datasourceDetail.test.tlsOn', '启用')
+                : t('datasourceDetail.test.tlsOff', '未启用')}
             </div>
           </>
         ) : (
           <>
             <div className="font-medium">
-              连接失败
+              {t('datasourceDetail.test.failedHeader', '连接失败')}
               {result?.error_code ? <> · <code>{result.error_code}</code></> : null}
               {latency != null ? <> · {latency} ms</> : null}
             </div>
             <div className="text-[11px] opacity-80">
-              {result?.error_message || fallbackError || '未知错误'}
+              {result?.error_message || fallbackError || t('datasourceDetail.test.unknownError', '未知错误')}
             </div>
             {result?.hint ? (
-              <div className="text-[11px] opacity-80">提示：{result.hint}</div>
+              <div className="text-[11px] opacity-80">
+                {t('datasourceDetail.test.hint', '提示：{hint}', { hint: result.hint })}
+              </div>
             ) : null}
           </>
         )}
@@ -396,7 +415,7 @@ function TestResultBanner({
         onClick={onDismiss}
         className="rounded px-1.5 text-[10px]"
         style={{ color: tone.fg }}
-        title="关闭"
+        title={t('datasourceDetail.test.close', '关闭')}
       >
         ×
       </button>
@@ -409,7 +428,7 @@ function NeighborBtn({
   onClick,
   disabled,
 }: {
-  label: string
+  label: React.ReactNode
   onClick?: () => void
   disabled?: boolean
 }) {

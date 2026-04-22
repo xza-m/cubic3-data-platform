@@ -9,6 +9,7 @@ import { Loader2, Play, Save, Search } from 'lucide-react'
 import { useDatasourcesForConsole, useExecuteQuery, useCreateSavedQuery } from '@v2/hooks/queries'
 import { fmtNum } from '@v2/lib/format'
 import type { QueryRunResult } from '@v2/api/queries'
+import { t } from '@v2/i18n'
 
 // Monaco editor lazy import — 不进入 main chunk
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
@@ -63,11 +64,11 @@ export default function QueryConsole() {
 
   const handleRun = useCallback(async () => {
     if (sourceId == null) {
-      alert('请先选择数据源')
+      alert(t('queryConsole.alert.pickSource', '请先选择数据源'))
       return
     }
     if (!sql.trim()) {
-      alert('请输入 SQL')
+      alert(t('queryConsole.alert.enterSql', '请输入 SQL'))
       return
     }
     setErrorMsg(null)
@@ -76,7 +77,7 @@ export default function QueryConsole() {
       setResult(res)
     } catch (err) {
       setResult(null)
-      setErrorMsg(err instanceof Error ? err.message : '执行失败')
+      setErrorMsg(err instanceof Error ? err.message : t('queryConsole.state.execFailed', '执行失败'))
     }
   }, [sourceId, sql, executeMut])
 
@@ -106,7 +107,7 @@ export default function QueryConsole() {
           className="border-b px-3 py-2 text-xs font-medium uppercase tracking-wide"
           style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
         >
-          数据源
+          {t('queryConsole.sidebar.datasources', '数据源')}
         </div>
         <div className="flex-1 overflow-auto">
           {sources.isLoading ? (
@@ -146,7 +147,7 @@ export default function QueryConsole() {
           <select
             value={sourceId ?? ''}
             onChange={(e) => setSourceId(Number(e.target.value))}
-            aria-label="选择数据源"
+            aria-label={t('queryConsole.toolbar.sourceAria', '选择数据源')}
             className="w-56 rounded border bg-transparent px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
           >
@@ -154,19 +155,19 @@ export default function QueryConsole() {
               <option key={s.id} value={s.id}>
                 {s.name} · {s.source_type}
               </option>
-            )) ?? <option value="">加载中…</option>}
+            )) ?? <option value="">{t('queryConsole.toolbar.loading', '加载中…')}</option>}
           </select>
 
           <span className="ml-auto flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
             POST <code>/api/v1/queries/execute</code>
             {result && (
               <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                {fmtNum(result.row_count)} 行
+                {t('queryConsole.toolbar.rows', '{n} 行', { n: fmtNum(result.row_count) })}
               </span>
             )}
             {errorMsg && (
               <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900/40 dark:text-red-300">
-                错误
+                {t('queryConsole.toolbar.error', '错误')}
               </span>
             )}
           </span>
@@ -182,7 +183,7 @@ export default function QueryConsole() {
             ) : (
               <Play size={12} />
             )}
-            执行
+            {t('queryConsole.action.run', '执行')}
           </button>
           <button
             type="button"
@@ -192,7 +193,7 @@ export default function QueryConsole() {
             style={{ borderColor: 'var(--border)' }}
           >
             <Save size={12} />
-            保存
+            {t('queryConsole.action.save', '保存')}
           </button>
         </div>
 
@@ -206,7 +207,7 @@ export default function QueryConsole() {
             <Suspense
               fallback={
                 <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-                  加载编辑器中…
+                  {t('queryConsole.editor.loading', '加载编辑器中…')}
                 </div>
               }
             >
@@ -240,7 +241,7 @@ export default function QueryConsole() {
               <div className="flex h-full flex-col items-center justify-center gap-2">
                 <Loader2 size={20} className="animate-spin" style={{ color: 'var(--text-3)' }} />
                 <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                  执行中…
+                  {t('queryConsole.state.executing', '执行中…')}
                 </span>
               </div>
             ) : errorMsg ? (
@@ -254,7 +255,7 @@ export default function QueryConsole() {
                 className="flex h-full items-center justify-center text-xs"
                 style={{ color: 'var(--text-3)' }}
               >
-                点击右上角「执行」运行查询（⌘↵）
+                {t('queryConsole.state.hint', '点击右上角「执行」运行查询（⌘↵）')}
               </div>
             )}
           </div>
@@ -274,7 +275,7 @@ export default function QueryConsole() {
               className="border-b px-4 py-3 text-xs font-medium"
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
             >
-              执行上下文
+              {t('queryConsole.ctx.title', '执行上下文')}
             </div>
             <div className="space-y-4 px-4 py-4 text-xs">
               <section>
@@ -282,13 +283,16 @@ export default function QueryConsole() {
                   className="text-xs uppercase tracking-wide"
                   style={{ color: 'var(--text-3)' }}
                 >
-                  数据源
+                  {t('queryConsole.ctx.source', '数据源')}
                 </div>
                 <dl className="mt-2 space-y-1.5">
-                  <Pair label="名称" value={activeSource.name} />
-                  <Pair label="类型" value={activeSource.source_type} />
-                  <Pair label="连通" value={activeSource.connection_status} />
-                  <Pair label="启用" value={activeSource.is_active ? '是' : '否'} />
+                  <Pair label={t('queryConsole.ctx.sourceName', '名称')} value={activeSource.name} />
+                  <Pair label={t('queryConsole.ctx.sourceType', '类型')} value={activeSource.source_type} />
+                  <Pair label={t('queryConsole.ctx.sourceStatus', '连通')} value={activeSource.connection_status} />
+                  <Pair
+                    label={t('queryConsole.ctx.sourceActive', '启用')}
+                    value={activeSource.is_active ? t('common.yes', '是') : t('common.no', '否')}
+                  />
                 </dl>
               </section>
               {result && (
@@ -297,12 +301,12 @@ export default function QueryConsole() {
                     className="text-xs uppercase tracking-wide"
                     style={{ color: 'var(--text-3)' }}
                   >
-                    最近一次执行
+                    {t('queryConsole.ctx.lastExec', '最近一次执行')}
                   </div>
                   <dl className="mt-2 space-y-1.5">
-                    <Pair label="行数" value={fmtNum(result.row_count)} />
-                    <Pair label="列数" value={fmtNum(result.columns.length)} />
-                    <Pair label="耗时" value={`${result.execution_time_ms} ms`} />
+                    <Pair label={t('queryConsole.ctx.rows', '行数')} value={fmtNum(result.row_count)} />
+                    <Pair label={t('queryConsole.ctx.cols', '列数')} value={fmtNum(result.columns.length)} />
+                    <Pair label={t('queryConsole.ctx.duration', '耗时')} value={`${result.execution_time_ms} ms`} />
                   </dl>
                 </section>
               )}
@@ -312,7 +316,7 @@ export default function QueryConsole() {
                     className="text-xs uppercase tracking-wide"
                     style={{ color: 'var(--text-3)' }}
                   >
-                    错误
+                    {t('queryConsole.ctx.error', '错误')}
                   </div>
                   <div className="mt-2 text-xs text-red-500 dark:text-red-400">{errorMsg}</div>
                 </section>
@@ -330,16 +334,16 @@ export default function QueryConsole() {
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
           >
             <h3 className="mb-4 text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              保存查询
+              {t('queryConsole.save.title', '保存查询')}
             </h3>
             <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-              查询名称
+              {t('queryConsole.save.nameLabel', '查询名称')}
             </label>
             <input
               autoFocus
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
-              placeholder="如：GMV_周报"
+              placeholder={t('queryConsole.save.namePlaceholder', '如：GMV_周报')}
               className="mb-4 w-full rounded border bg-transparent px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
               style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
               onKeyDown={(e) => {
@@ -354,7 +358,7 @@ export default function QueryConsole() {
                 className="rounded-md border px-3 py-1.5 text-xs font-medium"
                 style={{ borderColor: 'var(--border)' }}
               >
-                取消
+                {t('queryConsole.save.cancel', '取消')}
               </button>
               <button
                 type="button"
@@ -362,7 +366,9 @@ export default function QueryConsole() {
                 disabled={!saveName.trim() || sourceId == null || createMut.isPending}
                 className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
               >
-                {createMut.isPending ? '保存中…' : '保存'}
+                {createMut.isPending
+                  ? t('queryConsole.save.saving', '保存中…')
+                  : t('queryConsole.save.submit', '保存')}
               </button>
             </div>
           </div>
@@ -410,7 +416,7 @@ function ResultTable({
                 className="px-3 py-6 text-center"
                 style={{ color: 'var(--text-3)' }}
               >
-                无返回行
+                {t('queryConsole.result.empty', '无返回行')}
               </td>
             </tr>
           ) : (
@@ -447,7 +453,7 @@ function ResultTable({
 // Internal primitive
 // ──────────────────────────────────────────────────────────────────────────
 
-function Pair({ label, value }: { label: string; value: React.ReactNode }) {
+function Pair({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
