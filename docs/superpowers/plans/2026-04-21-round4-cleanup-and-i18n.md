@@ -138,6 +138,9 @@
 - [adr/001-scheduled-query-runner.md](../../adr/001-scheduled-query-runner.md) · [adr/002-frontend-error-reporting.md](../../adr/002-frontend-error-reporting.md) · [adr/003-i18n-tooling.md](../../adr/003-i18n-tooling.md)
 - OnCall 手册：[`round4-oncall-handbook.md`](../ops/round4-oncall-handbook.md)
 - 冷藏 tag：`archive/ontology-object-aggregate-2026-04-14`（R-001-OA 研究对象）
+- **剩余工作排期（2026-04-22 刷新）**：[`2026-04-22-round4-remaining-schedule.md`](2026-04-22-round4-remaining-schedule.md)
+- D+21 预扫报告：[`2026-04-22-d21-legacy-references-prescan.md`](2026-04-22-d21-legacy-references-prescan.md)
+- R-001-OA 决策：[`2026-04-22-r001-oa-decision.md`](2026-04-22-r001-oa-decision.md)
 
 ---
 
