@@ -39,6 +39,12 @@ jobs:
           npm run lint:css
           npm run check:v2-tokens
 
+      # Round 4 · T-001e — i18n CI gate.
+      # 只在 v2-build 跑一次，避免 3 个 job 重复扫 157 个文件。
+      # 失败语义：bare > baseline 或 coverage < min 或 zh/en 字典漂移。
+      - name: i18n coverage gate
+        run: npm run i18n:coverage
+
       - name: TypeScript type check (tsc --noEmit)
         run: npx tsc --noEmit --pretty false
 

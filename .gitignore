@@ -213,6 +213,8 @@ frontend/scripts/sidebar-hover-debug.mjs
 frontend/scripts/i18n-keys.json
 # Round 4 · T-001d: i18n populate 报告（zh/en.json 会进版本库，report 是 rerun 产物）
 frontend/scripts/i18n-populate.report.md
+# Round 4 · T-001e: i18n coverage 报告（CI 产物，不入版本库）
+frontend/scripts/i18n-coverage.report.md
 /image.png
 /image-1.png
 /image-2.png
