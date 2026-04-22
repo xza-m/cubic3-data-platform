@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # scripts/cutover/rollback.sh
 #
+# === DEPRECATED（D+14 · Round 4 · 2026-04-22）===
+# 日切封窗后的「整包回滚」路径已不被推荐。生产优先：热修、forward fix、受控 DB migration。
+# 本脚本仅保留作灾备/演练；执行前须 TL/值班负责人批准。见：
+#   docs/superpowers/ops/round4-d14-closure-2026-04-22.md
+# OnCall 主路径：round4-oncall-handbook.md
+# ===
+#
 # Round 3 · W6.A · Day 0 紧急回滚脚本。
 #
 # 用法：

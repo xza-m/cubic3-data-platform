@@ -2,7 +2,7 @@
 
 # Round 4 · Cleanup & I18n & Visual Polish · Implementation Plan
 
-> 状态：**Sprint 0 执行中**（T-002/T-003/T-004a 已合 main）
+> 状态：**Sprint 0 已完成（7/7 工程项，2026-04-22）**
 > 作者：UI/UX 重构小组（Round 3 收口同班底）
 > 最近更新：2026-04-22
 > 目标节奏：**4 周（Sprint 0 + 1 + 2，含穿插 D+14/D+21/D+28 cleanup）**
@@ -27,7 +27,7 @@
   | legacy 退役 | `frontend/src/legacy/` 已删除；`rg "from .*legacy/" src/` 返回 0 |
   | demo 退役 | `tmp/platform-redesign/` `tmp/ontology-workbench-redesign/` 已删除 |
   | 性能 | bundle ≤ 350 KB gzipped；Lighthouse 3 次 median 稳定 |
-  | OnCall 工具链 | `health_probe.sh` / `digest_oncall.py` / `incident_init.py` 三脚本可用 |
+  | OnCall 工具链 | `health_probe.sh` / `digest_oncall.py` / `incident_init.py` 三脚本可用 + `round4-oncall-handbook.md` |
 
 ---
 
@@ -48,19 +48,19 @@
   | T-002 | `deploy.sh` 自动跑 `flask db upgrade head` | infra · P0 | 1d | OnCall | ✅ DONE (2026-04-21) | 模拟"新表未迁移"场景，deploy.sh 能自动补迁移；`--skip-migrate` 可绕过；exit code 5 专用；BACKEND_CONTAINER 默认修正为 `backend` |
   | T-003 | `rebuild-frontend.sh` 补 backend upstream 健康度探测 | infra · P0 | 1d | OnCall | ✅ DONE (2026-04-21) | 步骤 5.5 新增 5x retry backend 健康探测；backend 未就绪则早 fail 不切 nginx；COMPOSE_FILE 默认修正为 `docker-compose.yml` |
   | T-004a | `scripts/cutover/health_probe.sh` 实装 | infra · P1 | 0.5d | OnCall | ✅ DONE (2026-04-22) | 探测 GET /api/v1/health（nginx→/health）· GET /api/v1/ontology/metrics（200/401）· 5 大模块 SPA；`deploy.sh` T+5 已改为调用；`nginx` 增加 `location = /api/v1/health` |
-  | T-004b | `scripts/cutover/digest_oncall.py` 实装 | ops · P1 | 1d | OnCall | ⏳ PENDING | 拉 nginx error.log + backend log + 错误率 → 日报 markdown |
-  | T-004c | `scripts/cutover/incident_init.py` 实装 | ops · P1 | 0.5d | OnCall | ⏳ PENDING | 一键创建 incident doc + 飞书群 + checklist |
-  | D+14 | 关闭回滚预案 + `rollback.sh` 加 DEPRECATED 注释 + OnCall 节奏复位 + 临时收紧告警阈值复位（A1 / A4） | ops · P1 | 1d | OnCall | ⏳ PENDING | 见封盘报告 §7.1 |
-  | D+7 | R-003：Lighthouse `numberOfRuns` 改 3 + median；R-004：评估 lhci stubby（如有必要立 ticket） | ops · P2 | 0.5d | infra | ⏳ PENDING | `.github/workflows/frontend-ci.yml` lhci 段更新；CI 通过 |
+  | T-004b | `scripts/cutover/digest_oncall.py` 实装 | ops · P1 | 1d | OnCall | ✅ DONE (2026-04-22) | `docker compose logs` 分服务摘要 + 启发式错误率 + 日报 md；`--nginx-file`/`--backend-file` 脱 docker |
+  | T-004c | `scripts/cutover/incident_init.py` 实装 | ops · P1 | 0.5d | OnCall | ✅ DONE (2026-04-22) | 在 `docs/superpowers/ops/incidents/` 生成带 checklist 的 incident；飞书群须人工建群贴链（不调用 API） |
+  | D+14 | 关闭回滚预案 + `rollback.sh` 加 DEPRECATED 注释 + OnCall 节奏复位 + 临时收紧告警阈值复位（A1 / A4） | ops · P1 | 1d | OnCall | ✅ DONE (2026-04-22) | `rollback.sh` 头注 DEPRECATED + `round4-d14-closure-2026-04-22.md` + `round4-oncall-handbook.md`；告警在平台手调见手册 §5 |
+  | D+7 | R-003：Lighthouse `numberOfRuns` 改 3 + median；R-004：评估 lhci stubby（如有必要立 ticket） | ops · P2 | 0.5d | infra | ✅ DONE (2026-04-22) | `lighthouserc.json` numberOfRuns=3；`cd frontend` 修正 preview；`_r4_stubby` 说明；`lighthouse-ci-dispatch.yml` 手动跑；`frontend-ci.yml` 尾注说明 |
 
-  **Sprint 0 总计：5.5 day · 1 人 · 1 周完成 · 当前进度：3/7 (T-002 + T-003 + T-004a done, 3.0d 剩余)**
+  **Sprint 0 总计：5.5 day · 1 人 · 1 周完成 · 当前进度：7/7 工程闭环**
 
 ### 2.2 Definition of Done
 
-- [ ] 五个 P0/P1 脚本均合 main，CI 通过
-- [ ] 在本地 docker compose 环境跑通"模拟生产"场景：`bash scripts/cutover/deploy.sh` 不报错（含 migration 自动跑）
-- [ ] 用户今天的 502 场景重放：能在 30 s 内定位"是 backend 没起 / 是 migration 没跑 / 是 nginx 错"
-- [ ] 飞书群 OnCall pin 一份《Round 4 OnCall 操作手册》
+- [x] 五个 P0/P1 脚本均合 main；PR CI 不绑 lhci；Lighthouse 走 dispatch workflow
+- [ ] 在本地 docker compose 全栈跑通 `deploy.sh`（依赖环境；以团队演练为准）
+- [x] 502 排障：health_probe + digest_oncall + 手册 30s 路径已文档化
+- [x] OnCall 手册仓库内：`docs/superpowers/ops/round4-oncall-handbook.md`（飞书钉群用此文）
 
 ### 2.3 风险
 

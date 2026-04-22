@@ -1,9 +1,10 @@
 {
-  "_comment": "lighthouserc.json — W5.D 性能基线（2026-04-21）",
+  "_comment": "lighthouserc.json — W5.D 性能基线；Round 4 D+7: numberOfRuns=3 取中位数，降低单次噪声",
   "_doc": "see docs/superpowers/plans/2026-04-20-platform-redesign/round3-w5-perf-baseline-record.md",
+  "_r4_stubby": "LHCI 用 vite preview，无真实后端/DB — 仅作前端回归与趋势；全栈 perf 需独立 ticket（R-004）",
   "ci": {
     "collect": {
-      "startServerCommand": "npx vite preview --config v2.vite.config.ts --port 4173 --strictPort",
+      "startServerCommand": "cd frontend && npx vite preview --config v2.vite.config.ts --port 4173 --strictPort",
       "startServerReadyPattern": "Local:.*4173",
       "url": [
         "http://localhost:4173/",
@@ -12,7 +13,7 @@
         "http://localhost:4173/semantic/ontology/objects",
         "http://localhost:4173/settings"
       ],
-      "numberOfRuns": 1,
+      "numberOfRuns": 3,
       "settings": {
         "preset": "desktop",
         "skipAudits": ["uses-http2", "redirects-http", "is-on-https"],

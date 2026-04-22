@@ -186,3 +186,6 @@ jobs:
 
       - name: Run route parity guard
         run: python scripts/checks/route_parity.py --fail-on-mismatch
+
+# Round 4 · D+7: Lighthouse 使用仓库根 lighthouserc.json（numberOfRuns=3）。
+# 未在此 PR 工作流中运行（耗时）。手动执行: .github/workflows/lighthouse-ci-dispatch.yml
