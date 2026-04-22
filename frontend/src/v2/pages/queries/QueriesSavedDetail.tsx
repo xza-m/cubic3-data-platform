@@ -19,6 +19,7 @@ import {
   SavedQueryDetailContent,
   SavedQueryInlineForm,
 } from './_shared/saved-query-content'
+import { t } from '@v2/i18n'
 
 export default function QueriesSavedDetail() {
   const { id } = useParams<{ id: string }>()
@@ -45,7 +46,14 @@ export default function QueriesSavedDetail() {
 
   async function handleDelete() {
     if (!row) return
-    if (!window.confirm(`删除查询「${row.query_name}」？此操作不可撤销。`)) return
+    if (
+      !window.confirm(
+        t('queriesSavedDetail.confirm.delete', '删除查询「{name}」？此操作不可撤销。', {
+          name: row.query_name,
+        }),
+      )
+    )
+      return
     await deleteMut.mutateAsync(row.id)
     navigate('/queries/saved')
   }
@@ -53,7 +61,7 @@ export default function QueriesSavedDetail() {
   if (!Number.isFinite(numericId) || numericId <= 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        非法的查询 ID
+        {t('queriesSavedDetail.error.invalidId', '非法的查询 ID')}
       </div>
     )
   }
@@ -61,7 +69,7 @@ export default function QueriesSavedDetail() {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        加载中…
+        {t('queriesSavedDetail.loading', '加载中…')}
       </div>
     )
   }
@@ -69,7 +77,7 @@ export default function QueriesSavedDetail() {
   if (isError || !row) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-red-500 dark:text-red-400">
-        未找到查询 #{numericId}
+        {t('queriesSavedDetail.error.notFound', '未找到查询 #{id}', { id: numericId })}
       </div>
     )
   }
@@ -89,7 +97,7 @@ export default function QueriesSavedDetail() {
             className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
           >
-            <ArrowLeft size={12} /> 返回列表
+            <ArrowLeft size={12} /> {t('queriesSavedDetail.action.back', '返回列表')}
           </button>
           <button
             type="button"
@@ -97,7 +105,10 @@ export default function QueriesSavedDetail() {
             className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
           >
-            <Edit2 size={12} /> {editing ? '取消编辑' : '编辑'}
+            <Edit2 size={12} />{' '}
+            {editing
+              ? t('queriesSavedDetail.action.cancelEdit', '取消编辑')
+              : t('queriesSavedDetail.action.edit', '编辑')}
           </button>
           <button
             type="button"
@@ -113,14 +124,16 @@ export default function QueriesSavedDetail() {
               size={12}
               fill={row.is_favorite ? 'currentColor' : 'none'}
             />
-            {row.is_favorite ? '取消收藏' : '收藏'}
+            {row.is_favorite
+              ? t('queriesSavedDetail.action.unfavorite', '取消收藏')
+              : t('queriesSavedDetail.action.favorite', '收藏')}
           </button>
           <button
             type="button"
             onClick={() => navigate('/queries/console')}
             className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
           >
-            在工作台打开
+            {t('queriesSavedDetail.action.openInConsole', '在工作台打开')}
           </button>
           <button
             type="button"
@@ -128,7 +141,7 @@ export default function QueriesSavedDetail() {
             disabled={deleteMut.isPending}
             className="ml-auto flex items-center gap-1.5 rounded border border-red-300 px-3 py-1.5 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
           >
-            <Trash2 size={12} /> 删除
+            <Trash2 size={12} /> {t('queriesSavedDetail.action.delete', '删除')}
           </button>
         </div>
 
@@ -158,7 +171,7 @@ export default function QueriesSavedDetail() {
                 </span>
               </div>
               <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-                {row.created_by} · 更新于 {fmtRelative(row.updated_at)}
+                {row.created_by} · {t('queriesSavedDetail.meta.updatedAt', '更新于 {time}', { time: fmtRelative(row.updated_at) })}
               </div>
             </div>
           </div>
@@ -217,26 +230,26 @@ export default function QueriesSavedDetail() {
         <div className="space-y-4 px-4 py-4">
           <section>
             <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-              信息
+              {t('queriesSavedDetail.ctx.info', '信息')}
             </div>
             <dl className="mt-2 space-y-1 text-xs">
-              <CtxPair label="负责人" value={row.created_by} />
-              <CtxPair label="创建" value={fmtDateTime(row.created_at)} />
-              <CtxPair label="更新" value={fmtRelative(row.updated_at)} />
+              <CtxPair label={t('queriesSavedDetail.info.owner', '负责人')} value={row.created_by} />
+              <CtxPair label={t('queriesSavedDetail.info.createdAt', '创建')} value={fmtDateTime(row.created_at)} />
+              <CtxPair label={t('queriesSavedDetail.info.updatedAt', '更新')} value={fmtRelative(row.updated_at)} />
             </dl>
           </section>
           {row.tags?.length ? (
             <section>
               <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-                标签
+                {t('queriesSavedDetail.ctx.tags', '标签')}
               </div>
               <div className="mt-2 flex flex-wrap gap-1">
-                {row.tags.map((t) => (
+                {row.tags.map((tag) => (
                   <span
-                    key={t}
+                    key={tag}
                     className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
                   >
-                    {t}
+                    {tag}
                   </span>
                 ))}
               </div>
@@ -244,11 +257,11 @@ export default function QueriesSavedDetail() {
           ) : null}
           <section>
             <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-              邻接导航
+              {t('queriesSavedDetail.ctx.neighbors', '邻接导航')}
             </div>
             <div className="mt-2 space-y-1.5 text-xs">
               <NavButton
-                label={neighbors.prev ? `← ${neighbors.prev.query_name}` : '没有上一项'}
+                label={neighbors.prev ? `← ${neighbors.prev.query_name}` : t('queriesSavedDetail.neighbor.noPrev', '没有上一项')}
                 disabled={!neighbors.prev}
                 onClick={
                   neighbors.prev
@@ -257,7 +270,7 @@ export default function QueriesSavedDetail() {
                 }
               />
               <NavButton
-                label={neighbors.next ? `${neighbors.next.query_name} →` : '没有下一项'}
+                label={neighbors.next ? `${neighbors.next.query_name} →` : t('queriesSavedDetail.neighbor.noNext', '没有下一项')}
                 disabled={!neighbors.next}
                 onClick={
                   neighbors.next
@@ -277,7 +290,7 @@ export default function QueriesSavedDetail() {
 // Internal primitives
 // ──────────────────────────────────────────────────────────────────────────
 
-function CtxPair({ label, value }: { label: string; value: React.ReactNode }) {
+function CtxPair({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -293,7 +306,7 @@ function NavButton({
   onClick,
   disabled,
 }: {
-  label: string
+  label: React.ReactNode
   onClick?: () => void
   disabled?: boolean
 }) {

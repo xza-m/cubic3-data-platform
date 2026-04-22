@@ -17,7 +17,7 @@ import {
   fmtDuration,
 } from './_shared/extraction-run-detail-content'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { useAppShell } from '@v2/layout/AppShell'
@@ -45,7 +45,11 @@ export default function ExtractionRunDetail() {
 
   useEffect(() => {
     if (!run) return
-    setBreadcrumbs(['数据', '执行记录', `#${run.id}`])
+    setBreadcrumbs([
+      t('extractionRunDetail.breadcrumb.data', '数据'),
+      t('extractionRunDetail.breadcrumb.runs', '执行记录'),
+      `#${run.id}`,
+    ])
   }, [run, setBreadcrumbs])
 
   useEffect(() => {
@@ -71,7 +75,7 @@ export default function ExtractionRunDetail() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <ArrowLeft size={12} /> 返回列表
+          <ArrowLeft size={12} /> {t('extractionRunDetail.action.back', '返回列表')}
         </button>
         <button
           type="button"
@@ -79,7 +83,7 @@ export default function ExtractionRunDetail() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} /> 刷新
+          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} /> {t('extractionRunDetail.action.refresh', '刷新')}
         </button>
       </div>,
     )
@@ -92,49 +96,49 @@ export default function ExtractionRunDetail() {
       title: (
         <div className="flex items-center gap-1.5">
           <Activity size={12} style={{ color: 'var(--text-3)' }} />
-          运行 #{run.id}
+          {t('extractionRunDetail.ctx.title', '运行')} #{run.id}
         </div>
       ),
       subtitle: `Task #${run.task_id}`,
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
-            <CtxLabel>状态</CtxLabel>
+            <CtxLabel>{t('extractionRunDetail.ctx.status', '状态')}</CtxLabel>
             <div className="mt-2">{runStatusChip(run.status)}</div>
           </section>
           <section>
-            <CtxLabel>指标</CtxLabel>
+            <CtxLabel>{t('extractionRunDetail.ctx.metrics', '指标')}</CtxLabel>
             <div className="mt-2 space-y-1 text-xs">
-              <Pair label="行数" value={run.row_count != null ? run.row_count.toLocaleString() : '—'} />
-              <Pair label="耗时" value={run.duration_ms != null ? fmtDuration(run.duration_ms) : '—'} />
-              <Pair label="触发" value={run.run_type} />
-              <Pair label="触发人" value={run.triggered_by ?? '—'} />
+              <Pair label={t('extractionRunDetail.metric.rowCount', '行数')} value={run.row_count != null ? run.row_count.toLocaleString() : '—'} />
+              <Pair label={t('extractionRunDetail.metric.duration', '耗时')} value={run.duration_ms != null ? fmtDuration(run.duration_ms) : '—'} />
+              <Pair label={t('extractionRunDetail.metric.trigger', '触发')} value={run.run_type} />
+              <Pair label={t('extractionRunDetail.metric.triggeredBy', '触发人')} value={run.triggered_by ?? '—'} />
             </div>
           </section>
           <section>
-            <CtxLabel>时间</CtxLabel>
+            <CtxLabel>{t('extractionRunDetail.ctx.time', '时间')}</CtxLabel>
             <div className="mt-2 space-y-1 text-xs">
-              <Pair label="开始" value={run.start_time ? fmtRelative(run.start_time) : '—'} />
-              <Pair label="结束" value={run.end_time ? fmtDateTime(run.end_time) : '—'} />
+              <Pair label={t('extractionRunDetail.time.start', '开始')} value={run.start_time ? fmtRelative(run.start_time) : '—'} />
+              <Pair label={t('extractionRunDetail.time.end', '结束')} value={run.end_time ? fmtDateTime(run.end_time) : '—'} />
             </div>
           </section>
           <section>
-            <CtxLabel>邻接导航</CtxLabel>
+            <CtxLabel>{t('extractionRunDetail.ctx.neighbors', '邻接导航')}</CtxLabel>
             <div className="mt-2 space-y-1.5 text-xs">
               <NeighborBtn
-                label={neighbors.prev ? `← Run #${neighbors.prev.id}` : '没有上一项'}
+                label={neighbors.prev ? `← Run #${neighbors.prev.id}` : t('extractionRunDetail.neighbor.noPrev', '没有上一项')}
                 disabled={!neighbors.prev}
                 onClick={neighbors.prev ? () => navigate(`/extraction/runs/${neighbors.prev!.id}`) : undefined}
               />
               <NeighborBtn
-                label={neighbors.next ? `Run #${neighbors.next.id} →` : '没有下一项'}
+                label={neighbors.next ? `Run #${neighbors.next.id} →` : t('extractionRunDetail.neighbor.noNext', '没有下一项')}
                 disabled={!neighbors.next}
                 onClick={neighbors.next ? () => navigate(`/extraction/runs/${neighbors.next!.id}`) : undefined}
               />
             </div>
           </section>
           <section>
-            <CtxLabel>快捷跳转</CtxLabel>
+            <CtxLabel>{t('extractionRunDetail.ctx.shortcuts', '快捷跳转')}</CtxLabel>
             <div className="mt-2 text-xs">
               <button
                 type="button"
@@ -142,7 +146,7 @@ export default function ExtractionRunDetail() {
                 className="flex w-full rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
-                查看任务 #{run.task_id}
+                {t('extractionRunDetail.shortcut.viewTask', '查看任务')} #{run.task_id}
               </button>
             </div>
           </section>
@@ -153,15 +157,15 @@ export default function ExtractionRunDetail() {
   }, [run, neighbors, setContextPanel, navigate])
 
   if (!Number.isFinite(numericId)) {
-    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>非法的运行 ID</div>
+    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>{t('extractionRunDetail.error.invalidId', '非法的运行 ID')}</div>
   }
   if (isLoading) {
-    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>加载中…</div>
+    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>{t('extractionRunDetail.loading', '加载中…')}</div>
   }
   if (isError || !run) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--danger)' }}>
-        未找到运行记录 #{numericId}
+        {t('extractionRunDetail.error.notFound', '未找到运行记录 #{id}', { id: numericId })}
       </div>
     )
   }
@@ -204,7 +208,7 @@ function CtxLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>{children}</div>
 }
 
-function Pair({ label, value }: { label: string; value: React.ReactNode }) {
+function Pair({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -213,7 +217,7 @@ function Pair({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-function NeighborBtn({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) {
+function NeighborBtn({ label, onClick, disabled }: { label: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"

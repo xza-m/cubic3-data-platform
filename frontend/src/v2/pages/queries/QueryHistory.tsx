@@ -13,17 +13,16 @@ import {
   QueryHistoryDetailContent,
   statusChip,
 } from './_shared/query-history-content'
+import { t } from '@v2/i18n'
 
-// ──────────────────────────────────────────────────────────────────────────
-// Filters
-// ──────────────────────────────────────────────────────────────────────────
-
-const STATUS_OPTIONS = [
-  { value: '', label: '全部状态' },
-  { value: 'success', label: '成功' },
-  { value: 'failed', label: '失败' },
-  { value: 'running', label: '运行中' },
-]
+function statusOptions() {
+  return [
+    { value: '', label: t('queryHistoryList.status.all', '全部状态') },
+    { value: 'success', label: t('queryHistoryList.status.success', '成功') },
+    { value: 'failed', label: t('queryHistoryList.status.failed', '失败') },
+    { value: 'running', label: t('queryHistoryList.status.running', '运行中') },
+  ]
+}
 
 export default function QueryHistory() {
   const navigate = useNavigate()
@@ -65,7 +64,7 @@ export default function QueryHistory() {
         >
           <div>
             <div className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              查询历史
+              {t('queryHistoryList.title', '查询历史')}
             </div>
             <div className="text-xs" style={{ color: 'var(--text-3)' }}>
               GET /api/v1/queries/histories
@@ -76,7 +75,7 @@ export default function QueryHistory() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="按 SQL / 执行人 / 数据源搜索…"
+              placeholder={t('queryHistoryList.search.placeholder', '按 SQL / 执行人 / 数据源搜索…')}
               className="w-56 rounded border bg-transparent px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
               style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
             />
@@ -87,7 +86,7 @@ export default function QueryHistory() {
               className="rounded border bg-transparent px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
               style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
             >
-              {STATUS_OPTIONS.map((o) => (
+              {statusOptions().map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -102,19 +101,19 @@ export default function QueryHistory() {
             <SkeletonRows />
           ) : isError ? (
             <div className="flex h-full flex-col items-center justify-center gap-2">
-              <span className="text-xs text-red-500">加载失败</span>
+              <span className="text-xs text-red-500">{t('queryHistoryList.error.load', '加载失败')}</span>
               <button
                 type="button"
                 onClick={() => void refetch()}
                 className="text-xs underline"
                 style={{ color: 'var(--accent)' }}
               >
-                重试
+                {t('queryHistoryList.action.retry', '重试')}
               </button>
             </div>
           ) : rows.length === 0 ? (
             <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-              暂无查询历史
+              {t('queryHistoryList.empty', '暂无查询历史')}
             </div>
           ) : (
             <table className="w-full border-collapse text-xs">
@@ -125,12 +124,12 @@ export default function QueryHistory() {
                 <tr>
                   <Th>#</Th>
                   <Th>SQL</Th>
-                  <Th>状态</Th>
-                  <Th>数据源</Th>
-                  <Th>执行人</Th>
-                  <Th>执行时间</Th>
-                  <Th align="right">耗时</Th>
-                  <Th align="right">行数</Th>
+                  <Th>{t('queryHistoryList.col.status', '状态')}</Th>
+                  <Th>{t('queryHistoryList.col.source', '数据源')}</Th>
+                  <Th>{t('queryHistoryList.col.executor', '执行人')}</Th>
+                  <Th>{t('queryHistoryList.col.executedAt', '执行时间')}</Th>
+                  <Th align="right">{t('queryHistoryList.col.duration', '耗时')}</Th>
+                  <Th align="right">{t('queryHistoryList.col.rowCount', '行数')}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -182,7 +181,7 @@ export default function QueryHistory() {
             className="flex items-center justify-between border-t px-4 py-2 text-xs"
             style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
           >
-            <span>共 {fmtNum(total)} 条</span>
+            <span>{t('queryHistoryList.pagination.total', '共 {n} 条', { n: fmtNum(total) })}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -191,7 +190,7 @@ export default function QueryHistory() {
                 className="rounded border px-2 py-1 disabled:opacity-40"
                 style={{ borderColor: 'var(--border)' }}
               >
-                上一页
+                {t('queryHistoryList.pagination.prev', '上一页')}
               </button>
               <span>
                 {page} / {Math.ceil(total / pageSize)}
@@ -203,7 +202,7 @@ export default function QueryHistory() {
                 className="rounded border px-2 py-1 disabled:opacity-40"
                 style={{ borderColor: 'var(--border)' }}
               >
-                下一页
+                {t('queryHistoryList.pagination.next', '下一页')}
               </button>
             </div>
           </div>
@@ -222,7 +221,7 @@ export default function QueryHistory() {
           >
             <div>
               <div className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>
-                运行 #{peekRow.id}
+                {t('queryHistoryList.peek.runId', '运行 #{id}', { id: peekRow.id })}
               </div>
               <div className="text-xs" style={{ color: 'var(--text-3)' }}>
                 {peekRow.status} · {peekRow.source_name ?? '—'}
@@ -235,7 +234,7 @@ export default function QueryHistory() {
                 className="rounded px-2 py-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
                 style={{ color: 'var(--accent)' }}
               >
-                详情
+                {t('queryHistoryList.action.detail', '详情')}
               </button>
               <button
                 type="button"
