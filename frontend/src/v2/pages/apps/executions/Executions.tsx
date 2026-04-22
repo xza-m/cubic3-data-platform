@@ -55,7 +55,7 @@ function PeekPanel({
             <ExecStatusChip status={execution.status} />
           </div>
           <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-            {execution.instance?.name ?? `实例 #${execution.instance_id}`}
+            {execution.instance?.name ?? t('executions.instanceRef', '实例 #{id}', { id: execution.instance_id })}
           </div>
         </div>
         <button
@@ -160,7 +160,7 @@ export default function Executions() {
             {(appCodeFilter || instanceIdFilter) && (
               <span className="ml-2 text-xs" style={{ color: 'var(--text-3)' }}>
                 {appCodeFilter && `app: ${appCodeFilter}`}
-                {instanceIdFilter && `实例 #${instanceIdFilter}`}
+                {instanceIdFilter ? t('executions.instanceRef', '实例 #{id}', { id: instanceIdFilter }) : ''}
               </span>
             )}
           </div>

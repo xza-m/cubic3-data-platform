@@ -3,6 +3,7 @@
 // 与 Peek 互不干扰 —— Peek 打开期间 ContextPanel 自动隐藏。
 import type { ReactNode } from 'react'
 import { Kbd } from '@v2/components/ui'
+import { t } from '@v2/i18n'
 
 export function ListContextBody({ children }: { children: ReactNode }) {
   return <div className="space-y-4 px-4 py-4">{children}</div>
@@ -73,7 +74,7 @@ export function DistList({
   items: Array<{ label: ReactNode; value: ReactNode }>
 }) {
   if (items.length === 0) {
-    return <div className="text-[12px] text-3">暂无数据</div>
+    return <div className="text-[12px] text-3">{t('common.noData', '暂无数据')}</div>
   }
   return (
     <div className="space-y-1">
@@ -111,12 +112,12 @@ export function QuickAction({
 export function PeekHint() {
   return (
     <ul className="space-y-1 text-[11px] leading-5 text-3">
-      <li>· 单击行 → 打开预览 (Peek)</li>
+      <li>· {t('peekHint.rowClick', '单击行 → 打开预览 (Peek)')}</li>
       <li>
-        · <Kbd>↑</Kbd>/<Kbd>↓</Kbd> 切换预览对象
+        · <Kbd>↑</Kbd>/<Kbd>↓</Kbd> {t('peekHint.switch', '切换预览对象')}
       </li>
       <li>
-        · <Kbd>Esc</Kbd> 关闭预览
+        · <Kbd>Esc</Kbd> {t('peekHint.close', '关闭预览')}
       </li>
     </ul>
   )

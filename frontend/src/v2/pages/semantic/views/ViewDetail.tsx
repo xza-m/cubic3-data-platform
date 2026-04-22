@@ -194,7 +194,7 @@ export default function ViewDetail() {
           </div>
         ) : tab === 'cubes' ? (
           <Card>
-            <CardHead title={`${t('view.cubes', '关联 Cube')} (${cubes.length})`} />
+            <CardHead title={t('view.cubesTitle', '关联 Cube ({n})', { n: cubes.length })} />
             <CardBody className="p-0">
               {cubes.length === 0 ? (
                 <div className="px-4 py-6 text-center text-xs text-3">{t('view.noCubes', '此 View 尚未关联任何 Cube')}</div>
@@ -326,7 +326,7 @@ function MaterializeRunsList({
 
   return (
     <Card>
-      <CardHead title={`${t('view.tab.materialize', '物化历史')} · ${total} 条`} />
+      <CardHead title={t('view.materializeHistoryCount', '物化历史 · {n} 条', { n: total })} />
       <CardBody className="p-0">
         <table className="w-full text-xs">
           <thead>
@@ -366,7 +366,7 @@ function MaterializeRunsList({
         {pageCount > 1 && (
           <div className="flex items-center justify-between border-t px-3 py-2 text-xs" style={{ borderColor: 'var(--border)' }}>
             <span className="text-3">
-              {t('pagination.total', `共 ${total} 条，第 ${page} / ${pageCount} 页`)}
+              {t('pagination.total', '共 {total} 条，第 {page} / {pageCount} 页', { total, page, pageCount })}
             </span>
             <div className="flex items-center gap-1">
               <button

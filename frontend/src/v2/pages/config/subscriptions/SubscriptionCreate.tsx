@@ -166,7 +166,7 @@ export default function SubscriptionCreate() {
               disabled={submitting}
               className="rounded-md bg-[color:var(--accent)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:ring-2"
             >
-              {submitting ? t('common.saving', '创建中…') : t('common.create', '创建订阅')}
+              {submitting ? t('common.creating', '创建中…') : t('common.create.subscription', '创建订阅')}
             </button>
             <button
               type="button"

@@ -181,7 +181,7 @@ function SubscriptionFormDialog({
               ? t('common.saving', '保存中…')
               : mode === 'create'
                 ? t('common.create', '创建')
-                : t('common.save', '保存修改')}
+                : t('common.saveChanges', '保存修改')}
           </button>
         </div>
       </form>

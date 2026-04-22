@@ -331,7 +331,7 @@ function MetricDryRunPanel({
             <div className="space-y-1">
               <div className="text-[11px] text-3">{t('metric.dryRun.sqlPreview', 'SQL 预览')}</div>
               <div className="overflow-hidden rounded border" style={{ borderColor: 'var(--border)', height: 120 }}>
-                <Suspense fallback={<div className="p-2 text-xs text-3">加载编辑器…</div>}>
+                <Suspense fallback={<div className="p-2 text-xs text-3">{t('metric.dryRun.loadingEditor', '加载编辑器…')}</div>}>
                   <MonacoEditor
                     value={result.sql_preview}
                     language="sql"

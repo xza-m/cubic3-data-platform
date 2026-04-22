@@ -358,7 +358,7 @@ function SubscriptionEditDialog({
             disabled={submitting}
             className="rounded-md bg-[color:var(--accent)] px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {submitting ? t('common.saving', '保存中…') : t('common.save', '保存修改')}
+            {submitting ? t('common.saving', '保存中…') : t('common.saveChanges', '保存修改')}
           </button>
         </div>
       </form>

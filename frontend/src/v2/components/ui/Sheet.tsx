@@ -2,6 +2,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@v2/lib/cn'
+import { t } from '@v2/i18n'
 
 interface SheetProps {
   open: boolean
@@ -43,7 +44,7 @@ export function Sheet({ open, onClose, title, width = 360, side = 'right', child
             type="button"
             className="rail-btn"
             onClick={onClose}
-            aria-label="关闭面板"
+            aria-label={t('sheet.close', '关闭面板')}
           >
             <X size={14} />
           </button>

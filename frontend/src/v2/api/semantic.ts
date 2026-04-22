@@ -6,6 +6,7 @@
 // 后端契约：app/interfaces/api/v1/semantic.py
 
 import { apiClient } from '@v2/api/client'
+import { t } from '@v2/i18n'
 
 // ─── 通用 ──────────────────────────────────────────────────────────────────
 
@@ -335,9 +336,9 @@ function _mockValidateFields(cubeName: string): Promise<CubeFieldValidationResul
       // 演示数据：后端上线前展示典型问题示例
       const sampleIssues: CubeFieldIssue[] = cubeName
         ? [
-            { field: 'order_date', code: 'TYPE_MISMATCH', message: '字段类型 string 与期望 time 不一致', severity: 'error' },
-            { field: 'amount', code: 'MISSING_AGG', message: '度量字段建议设置聚合函数', severity: 'warning' },
-            { field: 'status', code: 'LOW_CARDINALITY', message: '枚举字段建议设置 distinct values', severity: 'info' },
+            { field: 'order_date', code: 'TYPE_MISMATCH', message: t('semantic.validate.typeMismatch', '字段类型 string 与期望 time 不一致'), severity: 'error' },
+            { field: 'amount', code: 'MISSING_AGG', message: t('semantic.validate.missingAgg', '度量字段建议设置聚合函数'), severity: 'warning' },
+            { field: 'status', code: 'LOW_CARDINALITY', message: t('semantic.validate.lowCardinality', '枚举字段建议设置 distinct values'), severity: 'info' },
           ]
         : []
       resolve({ ok: sampleIssues.filter((i) => i.severity === 'error').length === 0, issues: sampleIssues })
@@ -364,7 +365,7 @@ function _mockDryRunMetric(formula: string): Promise<MetricDryRunResult> {
   return new Promise((resolve) =>
     setTimeout(() => {
       if (!formula || formula.trim() === '') {
-        resolve({ sql_preview: '', errors: [{ code: 'EMPTY_FORMULA', message: '公式不能为空' }] })
+        resolve({ sql_preview: '', errors: [{ code: 'EMPTY_FORMULA', message: t('semantic.metric.emptyFormula', '公式不能为空') }] })
         return
       }
       resolve({
@@ -459,7 +460,7 @@ function _mockDomainPublishHistory(domainId: string): Promise<{ records: DomainP
             published_at: new Date(Date.now() - 7 * 86400_000).toISOString(),
             published_by: 'admin',
             status: 'success',
-            diff_summary: '初始发布',
+            diff_summary: t('semantic.publish.initial', '初始发布'),
           },
         ],
         total: 3,

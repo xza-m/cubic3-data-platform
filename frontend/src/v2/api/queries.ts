@@ -5,6 +5,7 @@
 
 import { apiClient } from './client'
 import type { PaginatedResponse } from './types'
+import { t } from '@v2/i18n'
 
 // ============================================================================
 // 类型定义（按后端 wire 格式保持 snake_case）
@@ -167,7 +168,7 @@ export async function getQueryHistoryItem(id: number): Promise<QueryHistoryItem>
   // TODO(B-back-8): 等 histories/:id 上线后改为直接调接口
   const res = await listQueryHistories({ page: 1, page_size: 200 })
   const item = res.items.find((r) => r.id === id)
-  if (!item) throw new Error(`查询历史 #${id} 未找到`)
+  if (!item) throw new Error(t('queries.history.notFound', '查询历史 #{id} 未找到', { id }))
   return item
 }
 

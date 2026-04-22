@@ -1,6 +1,7 @@
 // frontend/src/v2/components/ui/Table.tsx
 import { type ReactNode } from 'react'
 import { cn } from '@v2/lib/cn'
+import { t } from '@v2/i18n'
 
 export interface TableColumn<T> {
   key: string
@@ -32,7 +33,7 @@ export function Table<T>({
   emptyText,
   className,
 }: TableProps<T>) {
-  const emptyNode = empty ?? emptyText ?? '暂无数据'
+  const emptyNode = empty ?? emptyText ?? t('common.noData', '暂无数据')
   return (
     <div className={cn('overflow-auto scroll-thin', className)}>
       <table className="wb-table">

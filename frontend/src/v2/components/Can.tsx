@@ -5,6 +5,7 @@
 // TODO(round-2): wire usePermissions() to GET /api/v1/users/me/permissions
 import { type ReactNode, cloneElement, isValidElement } from 'react'
 import { Tooltip } from '@v2/components/ui'
+import { t } from '@v2/i18n'
 
 // 权限 hook 占位：当前始终返回 ['*'] 表示有所有权限
 function usePermissions(): string[] {
@@ -30,7 +31,7 @@ export function Can({ action, children, disabledTip }: CanProps) {
 
   if (allowed) return <>{children}</>
 
-  const tip = disabledTip ?? `需要权限 ${action}`
+  const tip = disabledTip ?? t('can.requirePermission', '需要权限 {action}', { action })
 
   // 尝试给第一个有效子元素注入 disabled
   if (isValidElement<Record<string, unknown>>(children)) {

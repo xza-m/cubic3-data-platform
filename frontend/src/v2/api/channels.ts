@@ -6,6 +6,7 @@
 
 import { apiClient } from './client'
 import type { PaginatedResponse } from './types'
+import { t } from '@v2/i18n'
 
 // ============================================================================
 // 类型定义（snake_case 与后端 wire 格式一致）
@@ -117,7 +118,7 @@ export async function testChannel(id: number): Promise<ChannelTestResult> {
     const appErr = err as { code?: string; message?: string }
     return {
       ok: false,
-      message: appErr.message ?? '测试发送失败',
+      message: appErr.message ?? t('channels.test.failed', '测试发送失败'),
       latency_ms: 0,
       sent_at: new Date().toISOString(),
       error_code: appErr.code ?? 'UNKNOWN_ERROR',

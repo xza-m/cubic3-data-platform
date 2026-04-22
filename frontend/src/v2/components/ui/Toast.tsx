@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react'
 import { cn } from '@v2/lib/cn'
+import { t } from '@v2/i18n'
 
 type ToastTone = 'info' | 'success' | 'warning' | 'danger'
 
@@ -87,7 +88,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 type="button"
                 className="rail-btn !w-5 !h-5"
                 onClick={() => remove(it.id)}
-                aria-label="关闭通知"
+                aria-label={t('toast.close', '关闭通知')}
               >
                 <X size={12} />
               </button>

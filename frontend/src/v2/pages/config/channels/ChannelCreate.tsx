@@ -186,7 +186,7 @@ export default function ChannelCreate() {
               disabled={submitting}
               className="rounded-md bg-[color:var(--accent)] px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:ring-2"
             >
-              {submitting ? t('common.saving', '创建中…') : t('common.create', '创建渠道')}
+              {submitting ? t('common.creating', '创建中…') : t('common.create.channel', '创建渠道')}
             </button>
             <button
               type="button"

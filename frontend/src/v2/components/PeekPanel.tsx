@@ -13,6 +13,7 @@ import {
 import { ArrowUpRight, X } from 'lucide-react'
 import { Kbd } from '@v2/components/ui'
 import { useAppShell } from '@v2/layout/AppShell'
+import { t } from '@v2/i18n'
 
 export interface PeekPanelProps {
   open: boolean
@@ -118,7 +119,7 @@ export function PeekPanel({
         ref={panelRef}
         tabIndex={-1}
         role="complementary"
-        aria-label="行预览"
+        aria-label={t('peek.aria.preview', '行预览')}
         onKeyDown={onPanelKeyDown}
         className="absolute right-0 top-0 bottom-0 z-20 flex flex-col border-l shadow-xl outline-none transition-transform duration-200 ease-out"
         style={{
@@ -148,18 +149,18 @@ export function PeekPanel({
               <button
                 type="button"
                 onClick={onOpenFull}
-                title="在新 Tab 打开 (⌘↵)"
+                title={t('peek.action.openInTab', '在新 Tab 打开 (⌘↵)')}
                 className="flex h-7 items-center gap-1 rounded-md px-2 text-[11px] text-2 transition-colors hover:bg-[color:var(--bg-hover)] hover:text-1"
               >
-                <ArrowUpRight size={12} /> 打开
+                <ArrowUpRight size={12} /> {t('peek.action.open', '打开')}
                 <Kbd className="ml-0.5">⌘↵</Kbd>
               </button>
             ) : null}
             <button
               type="button"
               onClick={onClose}
-              title="关闭 (Esc)"
-              aria-label="关闭预览"
+              title={t('peek.action.closeEsc', '关闭 (Esc)')}
+              aria-label={t('peek.action.closePreview', '关闭预览')}
               className="flex h-7 w-7 items-center justify-center rounded-md text-3 transition-colors hover:bg-[color:var(--bg-hover)] hover:text-1"
             >
               <X size={14} aria-hidden />

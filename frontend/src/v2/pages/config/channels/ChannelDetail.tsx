@@ -47,7 +47,7 @@ export default function ChannelDetail() {
 
   // 更新 document title（X-Crosscut openTab 就绪后替换）
   useEffect(() => {
-    if (channel) document.title = `${channel.name} · 渠道`
+    if (channel) document.title = `${channel.name} · ${t('channel.titleSuffix', '渠道')}`
   }, [channel])
 
   // 邻接导航
@@ -258,17 +258,17 @@ function TestResultBanner({
       )}
       <div className="flex-1 text-xs">
         <div className="font-semibold" style={{ color: result.ok ? 'var(--success)' : 'var(--danger)' }}>
-          {result.ok ? '发送成功' : '发送失败'}
+          {result.ok ? t('channel.test.success', '发送成功') : t('channel.test.failed', '发送失败')}
           {result.latency_ms > 0 && (
             <span className="ml-2 font-normal" style={{ color: 'var(--text-3)' }}>
-              耗时 {result.latency_ms} ms
+              {t('channel.test.latency', '耗时 {n} ms', { n: result.latency_ms })}
             </span>
           )}
         </div>
         <div className="mt-0.5" style={{ color: 'var(--text-2)' }}>{result.message}</div>
         {result.error_code && (
           <div className="mt-1" style={{ color: 'var(--text-3)' }}>
-            错误码：<code>{result.error_code}</code>
+            {t('channel.test.errorCode', '错误码')}：<code>{result.error_code}</code>
           </div>
         )}
         <div className="mt-0.5" style={{ color: 'var(--text-3)' }}>
@@ -280,7 +280,7 @@ function TestResultBanner({
         onClick={onClose}
         className="text-xs hover:underline focus-visible:ring-2"
         style={{ color: 'var(--text-3)', flexShrink: 0 }}
-        aria-label="关闭"
+        aria-label={t('common.close', '关闭')}
       >
         ✕
       </button>
@@ -379,7 +379,7 @@ function ChannelEditDialog({
             disabled={submitting}
             className="rounded-md bg-[color:var(--accent)] px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {submitting ? t('common.saving', '保存中…') : t('common.save', '保存修改')}
+            {submitting ? t('common.saving', '保存中…') : t('common.saveChanges', '保存修改')}
           </button>
         </div>
       </form>

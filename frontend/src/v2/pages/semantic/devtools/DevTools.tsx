@@ -73,28 +73,31 @@ export default function DevTools() {
 
 // ── DiagnosePanel (B-back-9) ──────────────────────────────────────────────
 
-const KIND_PLACEHOLDER: Record<DiagnoseInputKind, string> = {
-  sql: 'SELECT user_id, SUM(amount) AS total\nFROM orders\nGROUP BY 1',
-  yaml: 'name: my_cube\ndimensions:\n  - name: id\n    sql: "id"\nmeasures:\n  - name: total\n    type: sum\n    sql: "amount"',
-  nl: '过去 30 天内每个区域的活跃用户数',
+function kindPlaceholder(): Record<DiagnoseInputKind, string> {
+  return {
+    sql: 'SELECT user_id, SUM(amount) AS total\nFROM orders\nGROUP BY 1',
+    yaml: 'name: my_cube\ndimensions:\n  - name: id\n    sql: "id"\nmeasures:\n  - name: total\n    type: sum\n    sql: "amount"',
+    nl: t('devtools.placeholder.nl', '过去 30 天内每个区域的活跃用户数'),
+  }
 }
 
 function DiagnosePanel() {
+  const placeholders = kindPlaceholder()
   const [kind, setKind] = useState<DiagnoseInputKind>('sql')
-  const [text, setText] = useState<string>(KIND_PLACEHOLDER.sql)
+  const [text, setText] = useState<string>(placeholders.sql)
   const [result, setResult] = useState<DiagnoseRun | null>(null)
   const [error, setError] = useState<string | null>(null)
   const runDiag = useRunDiagnose()
 
   const switchKind = (k: DiagnoseInputKind) => {
     setKind(k)
-    if (!text || text === KIND_PLACEHOLDER.sql || text === KIND_PLACEHOLDER.yaml || text === KIND_PLACEHOLDER.nl) {
-      setText(KIND_PLACEHOLDER[k])
+    if (!text || text === placeholders.sql || text === placeholders.yaml || text === placeholders.nl) {
+      setText(placeholders[k])
     }
   }
 
   const reset = () => {
-    setText(KIND_PLACEHOLDER[kind])
+    setText(placeholders[kind])
     setResult(null)
     setError(null)
   }

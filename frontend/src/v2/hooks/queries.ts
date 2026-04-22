@@ -7,6 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from './query-client'
 import { ev, obs } from '@v2/observability'
+import { t } from '@v2/i18n'
 import {
   createFolder,
   createSavedQuery,
@@ -84,7 +85,7 @@ export function useQueryHistoryDetail(id: number) {
       // TODO(B-back-8): histories/:id 上线后改为直接调接口
       const page = await listQueryHistories({ page: 1, page_size: 200 })
       const item = page.items.find((r) => r.id === id)
-      if (!item) throw new Error(`查询历史 #${id} 未找到`)
+      if (!item) throw new Error(t('queries.history.notFound', '查询历史 #{id} 未找到', { id }))
       return item
     },
     enabled: Number.isFinite(id) && id > 0,

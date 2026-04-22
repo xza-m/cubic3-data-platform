@@ -199,7 +199,7 @@ export default function Dashboard() {
           <Card className="lg:col-span-2">
             <CardHead
               title={t('dashboard.recent.queries', '最近查询')}
-              extra={<span className="text-[11px] text-3">来自 query_history</span>}
+              extra={<span className="text-[11px] text-3">{t('dashboard.recent.source', '来自 query_history')}</span>}
             />
             <CardBody className="!p-0">
               {isLoading ? (

@@ -1,6 +1,7 @@
 // frontend/src/v2/layout/TabStrip.tsx
 import { type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { t } from '@v2/i18n'
 
 export interface TabItem {
   id: string
@@ -36,7 +37,7 @@ export function TabStrip({ tabs, onSelect, onClose, trailing }: TabStripProps) {
               <button
                 type="button"
                 className="close rail-btn !w-4 !h-4 ml-1"
-                aria-label="关闭标签"
+                aria-label={t('tabStrip.close', '关闭标签')}
                 onClick={(e) => {
                   e.stopPropagation()
                   onClose?.(tab.id)

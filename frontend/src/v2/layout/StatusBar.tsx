@@ -1,6 +1,7 @@
 // frontend/src/v2/layout/StatusBar.tsx
 import { Activity, GitBranch, Wifi } from 'lucide-react'
 import { Kbd } from '@v2/components/ui'
+import { t } from '@v2/i18n'
 
 interface StatusBarProps {
   envLabel?: string
@@ -22,7 +23,7 @@ export function StatusBar({
     >
       <span className="flex items-center gap-1">
         <Wifi size={11} className="text-[color:var(--success)]" />
-        在线 · {apiTarget}
+        {t('statusBar.online', '在线')} · {apiTarget}
       </span>
       <span className="divider-v" />
       <span className="flex items-center gap-1">
@@ -37,9 +38,9 @@ export function StatusBar({
       <div className="ml-auto flex items-center gap-2">
         {rightExtra}
         <Kbd>⌘K</Kbd>
-        <span>命令</span>
+        <span>{t('statusBar.command', '命令')}</span>
         <Kbd>⌘/</Kbd>
-        <span>快捷键</span>
+        <span>{t('statusBar.shortcuts', '快捷键')}</span>
       </div>
     </footer>
   )
