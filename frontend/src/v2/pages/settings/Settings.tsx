@@ -21,6 +21,7 @@ import { useToast } from '@v2/components/ui/Toast'
 import { useMyPreferences, useUpdateMyPreferences } from '@v2/hooks/userPreferences'
 import type { ThemePreference, TableDensity, UserPreferences } from '@v2/api/userPreferences'
 import { cn } from '@v2/lib/cn'
+import { useA11yPreferences, type OverrideMode } from '@v2/components/A11yPreferencesProvider'
 
 // ── 本地表单状态 ──────────────────────────────────────────────────────────────
 
@@ -123,6 +124,7 @@ export default function Settings() {
 
   const { data: prefs, isLoading } = useMyPreferences()
   const updateMutation = useUpdateMyPreferences()
+  const a11y = useA11yPreferences()
 
   const [form, setForm] = useState<FormState | null>(null)
 
@@ -242,6 +244,41 @@ export default function Settings() {
               路径必须以 / 开头
             </p>
           ) : null}
+        </div>
+
+        {/* 动效与对比度（A-1 / A-2） */}
+        <div className="flex items-center justify-between px-5 py-4 gap-4">
+          <div>
+            <div className="text-[13px] font-medium text-1">减少动态效果</div>
+            <div className="mt-0.5 text-[12px] text-3">对眩晕敏感的用户推荐开启；默认跟随系统</div>
+          </div>
+          <SegmentedControl<OverrideMode>
+            aria-label="减少动态效果"
+            value={a11y.reducedMotion}
+            onChange={a11y.setReducedMotion}
+            options={[
+              { value: 'auto', label: '跟随系统' },
+              { value: 'on', label: '始终开启' },
+              { value: 'off', label: '始终关闭' },
+            ]}
+          />
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-4 gap-4">
+          <div>
+            <div className="text-[13px] font-medium text-1">高对比主题</div>
+            <div className="mt-0.5 text-[12px] text-3">加强边框与文字对比；默认跟随系统</div>
+          </div>
+          <SegmentedControl<OverrideMode>
+            aria-label="高对比主题"
+            value={a11y.highContrast}
+            onChange={a11y.setHighContrast}
+            options={[
+              { value: 'auto', label: '跟随系统' },
+              { value: 'on', label: '始终开启' },
+              { value: 'off', label: '始终关闭' },
+            ]}
+          />
         </div>
 
         {/* 列表页尺寸 */}

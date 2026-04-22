@@ -4,6 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, useLocation } from 'react-router-dom'
 import AppRoutes from '@v2/routes'
 import { ThemeProvider } from '@v2/components/ThemeProvider'
+import { A11yPreferencesProvider } from '@v2/components/A11yPreferencesProvider'
 import { ToastProvider } from '@v2/components/ui/Toast'
 import { createQueryClient } from '@v2/hooks/query-client'
 import { ErrorBoundary } from '@v2/components/ErrorBoundary'
@@ -15,14 +16,16 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <ToastProvider>
-          <ErrorBoundary>
-            <BrowserRouter>
-              <NavigationTracker />
-              <AppRoutes />
-            </BrowserRouter>
-          </ErrorBoundary>
-        </ToastProvider>
+        <A11yPreferencesProvider>
+          <ToastProvider>
+            <ErrorBoundary>
+              <BrowserRouter>
+                <NavigationTracker />
+                <AppRoutes />
+              </BrowserRouter>
+            </ErrorBoundary>
+          </ToastProvider>
+        </A11yPreferencesProvider>
       </ThemeProvider>
     </QueryClientProvider>
   )

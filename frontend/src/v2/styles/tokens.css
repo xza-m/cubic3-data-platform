@@ -543,3 +543,79 @@ mark {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ==========================================================================
+ * Round 4 · A-1 — prefers-reduced-motion
+ *   用户在 OS / 浏览器开启「减少动态效果」时：
+ *     - 动画时长压到 0.01ms（不是 0，保留事件回调）
+ *     - transition / animation 不再循环
+ *     - scroll-behavior: smooth → auto
+ *   这是 WCAG 2.3.3 Animation from Interactions 的最低门槛。
+ *
+ *   工程约束：只覆盖 v2 自写样式；三方库（recharts / react-flow 等）如有动画自行遵循。
+ *   测试：frontend/tests/e2e-v2/a11y-reduced-motion.spec.ts 断言覆盖生效。
+ * ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 组件级：允许 JS 侧通过 document.documentElement.dataset.reducedMotion='true'
+ * 强制开启（比如"可访问性设置"里的显式开关，覆盖 OS 信号）。 */
+:root[data-reduced-motion='true'] *,
+:root[data-reduced-motion='true'] *::before,
+:root[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ==========================================================================
+ * Round 4 · A-2 — prefers-contrast: more
+ *   OS 开启高对比模式 → 叠加"更硬"的边框 / 文本色，强化焦点环。
+ *   不改业务色语义，只加强可见性。
+ *
+ *   覆盖顺序：tokens → [data-theme='dark'] → @media(contrast:more) / data-contrast=more
+ * ========================================================================== */
+@media (prefers-contrast: more) {
+  :root {
+    --border: #1a1d22;
+    --border-strong: #000000;
+    --text-3: #3c4248;
+    --text-4: #5b626b;
+  }
+  :root[data-theme='dark'] {
+    --border: #e6e8ec;
+    --border-strong: #ffffff;
+    --text-3: #e6e8ec;
+    --text-4: #c9ced4;
+  }
+  :focus-visible {
+    outline: 3px solid currentColor !important;
+    outline-offset: 2px;
+  }
+}
+
+:root[data-contrast='more'] {
+  --border: #1a1d22;
+  --border-strong: #000000;
+  --text-3: #3c4248;
+  --text-4: #5b626b;
+}
+:root[data-contrast='more'][data-theme='dark'] {
+  --border: #e6e8ec;
+  --border-strong: #ffffff;
+  --text-3: #e6e8ec;
+  --text-4: #c9ced4;
+}
+:root[data-contrast='more'] :focus-visible {
+  outline: 3px solid currentColor !important;
+  outline-offset: 2px;
+}
