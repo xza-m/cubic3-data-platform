@@ -351,6 +351,184 @@ def list_runs():
     })
 
 
+@bp.route('/runs/<int:run_id>/rerun', methods=['POST'])
+@require_auth
+def rerun_run(run_id: int):
+    """
+    基于已存在的执行记录发起重跑（Round 4 · R-001-P17c）。
+
+    语义：
+      - 不修改原 run；以原 run.task_id 构造新的 ExecuteTaskCommand，交给标准执行器
+      - 触发人取自 header（g.user_id），保留 source_run_id 便于审计
+      - 不支持 query 参数覆盖；如需覆写 filter_conditions 请走 /tasks/<id>/execute
+
+    Returns:
+        200: { data: { run_id, source_run_id, task_id, status, job_id }, ... }
+        401: 未认证
+        404: 原 run 不存在
+    """
+    trace_id = generate_trace_id()
+    container = get_app_container()
+    repo = container.extraction_repository()
+
+    source_run = repo.find_run_by_id(run_id)
+    if not source_run:
+        return not_found(f'执行记录 {run_id} 不存在')
+
+    command = ExecuteTaskCommand(
+        task_id=source_run.task_id,
+        triggered_by=g.user_id,
+        user_id=g.user_id,
+        trace_id=trace_id,
+    )
+
+    handler = container.execute_task_handler()
+    result = handler.handle(command)
+
+    logger.info(
+        'Extraction run rerun initiated',
+        source_run_id=run_id,
+        task_id=source_run.task_id,
+        new_run_id=result['run_id'],
+        job_id=result.get('job_id'),
+        triggered_by=g.user_id,
+        trace_id=trace_id,
+    )
+
+    from app.infrastructure.cache.redis_client import get_redis_client
+    get_redis_client().delete_pattern('query_cache:list_tasks:*')
+
+    return success(
+        data={
+            'run_id': result['run_id'],
+            'source_run_id': run_id,
+            'task_id': source_run.task_id,
+            'status': result['status'],
+            'job_id': result.get('job_id'),
+        },
+        message='已基于原执行记录重新提交',
+    )
+
+
+def _synthesize_run_logs(run, include_sql: bool, include_stack: bool, levels: set | None):
+    """
+    Round 4 · R-001-P17c — 从 ExtractionRun 的状态字段合成结构化日志。
+
+    现阶段 DB 未持久化逐步日志，本函数以 (start_time / end_time / status / error_message /
+    error_stack / generated_sql / row_count / result_file_path / duration_ms) 为蓝本，
+    稳定地生成 {ts, level, message} 列表，供前端日志面板展示。
+
+    未来若接入真正的日志存储（ClickHouse / OpenSearch / 文件），应替换本函数的实现、
+    保持返回结构不变（items: List[Dict] + total: int）。
+    """
+    from app.shared.enums import TaskStatus
+
+    items: list[dict] = []
+
+    def _append(ts, level: str, message: str):
+        if levels and level not in levels:
+            return
+        if ts is None:
+            return
+        items.append(
+            {
+                'ts': ts.isoformat() if hasattr(ts, 'isoformat') else str(ts),
+                'level': level,
+                'message': message,
+            }
+        )
+
+    status = run.status or ''
+    start_ts = run.start_time or run.created_at
+    end_ts = run.end_time
+    run_type = run.run_type or 'manual'
+
+    _append(start_ts, 'INFO', f'run#{run.id} · task#{run.task_id} · type={run_type} · triggered_by={run.triggered_by or "-"}')
+
+    if include_sql and run.generated_sql:
+        sql = run.generated_sql.strip()
+        if len(sql) > 4000:
+            sql = sql[:4000] + '…(truncated)'
+        _append(start_ts, 'DEBUG', f'SQL: {sql}')
+
+    if status == TaskStatus.RUNNING.value and not end_ts:
+        _append(start_ts, 'INFO', 'status=running')
+    elif status == TaskStatus.SUCCESS.value:
+        parts = [f'rows={run.row_count or 0}']
+        if run.result_size_mb is not None:
+            parts.append(f'size_mb={run.result_size_mb:.3f}')
+        if run.duration_ms:
+            parts.append(f'duration_ms={run.duration_ms}')
+        if run.delivery_method:
+            parts.append(f'delivery={run.delivery_method}')
+        _append(end_ts, 'INFO', 'completed · ' + ' · '.join(parts))
+    elif status == TaskStatus.FAILED.value:
+        _append(end_ts, 'ERROR', run.error_message or 'task failed')
+        if include_stack and run.error_stack:
+            stack = run.error_stack.strip()
+            if len(stack) > 8000:
+                stack = stack[:8000] + '…(truncated)'
+            _append(end_ts, 'ERROR', stack)
+    elif status == TaskStatus.TIMEOUT.value:
+        _append(end_ts, 'ERROR', run.error_message or 'task execution timeout')
+    elif status == TaskStatus.PENDING.value:
+        _append(start_ts, 'INFO', 'status=pending (queued)')
+
+    return items
+
+
+@bp.route('/runs/<int:run_id>/logs', methods=['GET'])
+@require_auth
+def run_logs(run_id: int):
+    """
+    获取执行记录的结构化日志（Round 4 · R-001-P17c）。
+
+    Query Parameters:
+        - include_sql    = true/false（默认 false）
+        - include_stack  = true/false（默认 false）
+        - levels         = INFO,ERROR  逗号分隔，子集过滤；为空表示全部
+        - page/page_size = 分页（默认 1/200）；当前合成行数有限，一般一次取完即可
+
+    Returns:
+        200: { items: [{ts, level, message}], total, page, page_size }
+        401: 未认证
+        404: run 不存在
+    """
+    container = get_app_container()
+    repo = container.extraction_repository()
+
+    run = repo.find_run_by_id(run_id)
+    if not run:
+        return not_found(f'执行记录 {run_id} 不存在')
+
+    def _bool(v):
+        return str(v or '').lower() in ('1', 'true', 'yes', 'on')
+
+    include_sql = _bool(request.args.get('include_sql'))
+    include_stack = _bool(request.args.get('include_stack'))
+
+    levels_raw = request.args.get('levels') or ''
+    levels = {lv.strip().upper() for lv in levels_raw.split(',') if lv.strip()} or None
+
+    page = max(1, request.args.get('page', 1, type=int))
+    page_size = max(1, min(request.args.get('page_size', 200, type=int), 1000))
+
+    all_items = _synthesize_run_logs(run, include_sql=include_sql, include_stack=include_stack, levels=levels)
+    total = len(all_items)
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = all_items[start:end]
+
+    return success(
+        data={
+            'items': items,
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+        }
+    )
+
+
 @bp.route('/runs/<int:run_id>/download', methods=['GET'])
 @require_auth
 def download_result(run_id: int):
