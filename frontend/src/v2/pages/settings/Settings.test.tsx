@@ -25,6 +25,7 @@ vi.mock('@v2/layout/AppShell', () => ({
 import { useMyPreferences, useUpdateMyPreferences } from '@v2/hooks/userPreferences'
 import Settings from './Settings'
 import type { UserPreferences } from '@v2/api/userPreferences'
+import { A11yPreferencesProvider } from '@v2/components/A11yPreferencesProvider'
 
 const mockUsePrefs = useMyPreferences as ReturnType<typeof vi.fn>
 const mockUseUpdate = useUpdateMyPreferences as ReturnType<typeof vi.fn>
@@ -43,7 +44,9 @@ function renderSettings() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } })
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <MemoryRouter>
+        <A11yPreferencesProvider>{children}</A11yPreferencesProvider>
+      </MemoryRouter>
     </QueryClientProvider>
   )
   return render(<Settings />, { wrapper: Wrapper })
@@ -70,9 +73,12 @@ describe('Settings page', () => {
 
     expect(screen.getByRole('button', { name: '浅色' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '深色' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '跟随系统' })).toBeInTheDocument()
+    // A-1/A-2 加入 SegmentedControl 后有 3 处"跟随系统"（主题 / 减少动态效果 / 高对比）
+    expect(screen.getAllByRole('button', { name: '跟随系统' })).toHaveLength(3)
     expect(screen.getByLabelText('默认落地页')).toBeInTheDocument()
     expect(screen.getByLabelText('列表默认条数')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: '减少动态效果' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: '高对比主题' })).toBeInTheDocument()
   })
 
   it('保存 button is disabled when form is pristine', () => {

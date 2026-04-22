@@ -8,9 +8,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowRight, Command as CommandIcon, Database, Globe, Search as SearchIcon, TrendingUp, type LucideIcon } from 'lucide-react'
 import { Kbd } from '@v2/components/ui'
-import { NAV_MODULES, moduleHomePath } from '@v2/layout/navigation'
+import { NAV_MODULES, moduleHomePath, groupLabel } from '@v2/layout/navigation'
 import { useCubeList, useDomainList } from '@v2/hooks/semantic'
 import { useMetricList } from '@v2/hooks/ontology'
+import { t } from '@v2/i18n'
 
 interface PaletteItem {
   id: string
@@ -103,46 +104,49 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   // ── 静态导航条目 ──
   const staticItems = useMemo<PaletteItem[]>(() => {
+    const shortcutGroup = t('nav.palette.group.shortcut', '快捷')
     const quick: PaletteItem[] = [
       {
         id: 'quick:dashboard',
-        label: '回到总览',
+        label: t('nav.palette.quick.dashboard', '回到总览'),
         hint: '/dashboard',
         icon: NAV_MODULES[0].icon,
-        group: '快捷',
+        group: shortcutGroup,
         run: () => { navigate('/dashboard'); stableOnClose() },
       },
       {
         id: 'quick:semantic',
-        label: '打开本体语义 · 总览',
+        label: t('nav.palette.quick.semantic', '打开本体语义 · 总览'),
         hint: '/semantic/ontology',
         icon: NAV_MODULES.find((m) => m.id === 'semantic')!.icon,
-        group: '快捷',
+        group: shortcutGroup,
         run: () => { navigate('/semantic/ontology'); stableOnClose() },
       },
       {
         id: 'quick:semantic-cubes',
-        label: '业务语义 · Cube 列表',
+        label: t('nav.palette.quick.cubes', '业务语义 · Cube 列表'),
         hint: '/semantic/cubes',
         icon: NAV_MODULES.find((m) => m.id === 'semantic')!.icon,
-        group: '快捷',
+        group: shortcutGroup,
         run: () => { navigate('/semantic/cubes'); stableOnClose() },
       },
       {
         id: 'quick:relation-canvas',
-        label: '语义关系画布',
+        label: t('nav.palette.quick.relations', '语义关系画布'),
         hint: '/semantic/relations',
         icon: NAV_MODULES.find((m) => m.id === 'semantic')!.icon,
-        group: '快捷',
+        group: shortcutGroup,
         run: () => { navigate('/semantic/relations'); stableOnClose() },
       },
     ]
+    const hintJump = t('nav.palette.hint.jump', '跳转到模块')
+    const hintPlaceholder = t('nav.palette.hint.placeholder', '即将上线（占位页）')
     const fromNav: PaletteItem[] = NAV_MODULES.map((m) => ({
       id: `nav:${m.id}`,
       label: m.label,
-      hint: m.implemented ? '跳转到模块' : '即将上线（占位页）',
+      hint: m.implemented ? hintJump : hintPlaceholder,
       icon: m.icon,
-      group: m.group,
+      group: groupLabel(m.group),
       run: () => {
         navigate(moduleHomePath(m))
         stableOnClose()

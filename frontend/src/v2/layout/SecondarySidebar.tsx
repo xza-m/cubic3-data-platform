@@ -2,7 +2,7 @@
 import { type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { ChevronRight } from 'lucide-react'
-import { type NavModule, type SubNavItem } from './navigation'
+import { type NavModule, type SubNavItem, groupLabel } from './navigation'
 
 interface SecondarySidebarProps {
   module: NavModule
@@ -48,7 +48,7 @@ export function SecondarySidebar({ module, extraSections }: SecondarySidebarProp
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
       <div className="px-3 pt-3 pb-2">
-        <div className="text-[11px] uppercase tracking-wide text-3">{module.group}</div>
+        <div className="text-[11px] uppercase tracking-wide text-3">{groupLabel(module.group)}</div>
         <div className="mt-1 flex items-center gap-2">
           <module.icon size={14} className="text-[color:var(--accent)]" />
           <div className="text-[13px] font-semibold text-1">{module.label}</div>
