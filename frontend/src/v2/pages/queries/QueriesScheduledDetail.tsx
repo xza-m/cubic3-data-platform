@@ -6,7 +6,7 @@
 //
 // 后端契约：app/interfaces/api/v1/scheduled_queries.py
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -32,6 +32,7 @@ import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
 import { CRON_PRESETS, nextRuns, parseCron } from '@v2/lib/cron'
 import { Tabs, Tab, useToast } from '@v2/components/ui'
 import type { ScheduledQuery } from '@v2/api/queries'
+import { t } from '@v2/i18n'
 
 type TabKey = 'overview' | 'sql' | 'runs'
 
@@ -57,13 +58,23 @@ export default function QueriesScheduledDetail() {
     try {
       if (row.enabled) {
         await disableMut.mutateAsync(row.id)
-        toast.show({ tone: 'success', title: `${row.name} 已禁用` })
+        toast.show({
+          tone: 'success',
+          title: t('queriesScheduledDetail.toast.disabled', '{name} 已禁用', { name: row.name }),
+        })
       } else {
         await enableMut.mutateAsync(row.id)
-        toast.show({ tone: 'success', title: `${row.name} 已启用` })
+        toast.show({
+          tone: 'success',
+          title: t('queriesScheduledDetail.toast.enabled', '{name} 已启用', { name: row.name }),
+        })
       }
     } catch (e) {
-      toast.show({ tone: 'danger', title: '操作失败', description: String(e) })
+      toast.show({
+        tone: 'danger',
+        title: t('queriesScheduledDetail.toast.toggleFailed', '操作失败'),
+        description: String(e),
+      })
     }
   }
 
@@ -73,24 +84,44 @@ export default function QueriesScheduledDetail() {
       await triggerMut.mutateAsync(row.id)
       toast.show({
         tone: 'success',
-        title: '已触发',
-        description: '执行结果将出现在执行历史中',
+        title: t('queriesScheduledDetail.toast.triggered', '已触发'),
+        description: t('queriesScheduledDetail.toast.triggeredDesc', '执行结果将出现在执行历史中'),
       })
       setTab('runs')
     } catch (e) {
-      toast.show({ tone: 'danger', title: '触发失败', description: String(e) })
+      toast.show({
+        tone: 'danger',
+        title: t('queriesScheduledDetail.toast.triggerFailed', '触发失败'),
+        description: String(e),
+      })
     }
   }
 
   async function handleDelete() {
     if (!row) return
-    if (!window.confirm(`删除调度「${row.name}」？此操作将解除关联 APScheduler job。`)) return
+    if (
+      !window.confirm(
+        t(
+          'queriesScheduledDetail.confirm.delete',
+          '删除调度「{name}」？此操作将解除关联 APScheduler job。',
+          { name: row.name },
+        ),
+      )
+    )
+      return
     try {
       await deleteMut.mutateAsync(row.id)
-      toast.show({ tone: 'success', title: `${row.name} 已删除` })
+      toast.show({
+        tone: 'success',
+        title: t('queriesScheduledDetail.toast.deleted', '{name} 已删除', { name: row.name }),
+      })
       navigate('/queries/scheduled')
     } catch (e) {
-      toast.show({ tone: 'danger', title: '删除失败', description: String(e) })
+      toast.show({
+        tone: 'danger',
+        title: t('queriesScheduledDetail.toast.deleteFailed', '删除失败'),
+        description: String(e),
+      })
     }
   }
 
@@ -100,7 +131,7 @@ export default function QueriesScheduledDetail() {
         className="flex flex-1 items-center justify-center text-xs"
         style={{ color: 'var(--text-3)' }}
       >
-        非法的调度查询 ID
+        {t('queriesScheduledDetail.state.invalidId', '非法的调度查询 ID')}
       </div>
     )
   }
@@ -111,7 +142,7 @@ export default function QueriesScheduledDetail() {
         className="flex flex-1 items-center justify-center text-xs"
         style={{ color: 'var(--text-3)' }}
       >
-        加载中…
+        {t('queriesScheduledDetail.state.loading', '加载中…')}
       </div>
     )
   }
@@ -119,7 +150,7 @@ export default function QueriesScheduledDetail() {
   if (isError || !row) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-red-500 dark:text-red-400">
-        未找到调度查询 #{numericId}
+        {t('queriesScheduledDetail.state.notFound', '未找到调度查询 #{id}', { id: numericId })}
       </div>
     )
   }
@@ -136,7 +167,7 @@ export default function QueriesScheduledDetail() {
           className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          <ArrowLeft size={12} /> 返回列表
+          <ArrowLeft size={12} /> {t('queriesScheduledDetail.action.back', '返回列表')}
         </button>
         <button
           type="button"
@@ -144,7 +175,10 @@ export default function QueriesScheduledDetail() {
           className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          <Edit2 size={12} /> {editing ? '取消编辑' : '编辑'}
+          <Edit2 size={12} />{' '}
+          {editing
+            ? t('queriesScheduledDetail.action.cancelEdit', '取消编辑')
+            : t('queriesScheduledDetail.action.edit', '编辑')}
         </button>
         <button
           type="button"
@@ -155,11 +189,12 @@ export default function QueriesScheduledDetail() {
         >
           {row.enabled ? (
             <>
-              <PauseCircle size={12} style={{ color: 'var(--success)' }} /> 禁用
+              <PauseCircle size={12} style={{ color: 'var(--success)' }} />{' '}
+              {t('queriesScheduledDetail.action.disable', '禁用')}
             </>
           ) : (
             <>
-              <PlayCircle size={12} /> 启用
+              <PlayCircle size={12} /> {t('queriesScheduledDetail.action.enable', '启用')}
             </>
           )}
         </button>
@@ -168,9 +203,13 @@ export default function QueriesScheduledDetail() {
           onClick={() => void handleTrigger()}
           disabled={triggerMut.isPending || !row.enabled}
           className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-          title={row.enabled ? '立即手动触发一次' : '禁用状态下无法触发'}
+          title={
+            row.enabled
+              ? t('queriesScheduledDetail.tooltip.triggerNow', '立即手动触发一次')
+              : t('queriesScheduledDetail.tooltip.triggerDisabled', '禁用状态下无法触发')
+          }
         >
-          <Play size={12} /> 立即触发
+          <Play size={12} /> {t('queriesScheduledDetail.action.triggerNow', '立即触发')}
         </button>
         <button
           type="button"
@@ -178,7 +217,7 @@ export default function QueriesScheduledDetail() {
           disabled={deleteMut.isPending}
           className="ml-auto flex items-center gap-1.5 rounded border border-red-300 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
         >
-          <Trash2 size={12} /> 删除
+          <Trash2 size={12} /> {t('queriesScheduledDetail.action.delete', '删除')}
         </button>
       </div>
 
@@ -204,13 +243,15 @@ export default function QueriesScheduledDetail() {
                   className="rounded-full px-2 py-0.5 text-xs font-normal"
                   style={{ background: 'var(--bg-hover)', color: 'var(--text-3)' }}
                 >
-                  已禁用
+                  {t('queriesScheduledDetail.state.disabled', '已禁用')}
                 </span>
               )}
             </div>
             <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-              <code>{row.cron}</code> ({row.timezone}) · 下次{' '}
-              {row.next_run_at ? fmtDateTime(row.next_run_at) : '—'} · 更新{' '}
+              <code>{row.cron}</code> ({row.timezone}) ·{' '}
+              {t('queriesScheduledDetail.header.nextRunLabel', '下次')}{' '}
+              {row.next_run_at ? fmtDateTime(row.next_run_at) : '—'} ·{' '}
+              {t('queriesScheduledDetail.header.updatedLabel', '更新')}{' '}
               {fmtRelative(row.updated_at)}
             </div>
           </div>
@@ -218,9 +259,9 @@ export default function QueriesScheduledDetail() {
       </header>
 
       <Tabs value={tab} onChange={(v) => setTab(v as TabKey)} className="px-4">
-        <Tab value="overview">概览</Tab>
+        <Tab value="overview">{t('queriesScheduledDetail.tab.overview', '概览')}</Tab>
         <Tab value="sql">SQL</Tab>
-        <Tab value="runs">执行历史</Tab>
+        <Tab value="runs">{t('queriesScheduledDetail.tab.runs', '执行历史')}</Tab>
       </Tabs>
 
       <div className="flex-1 overflow-auto">
@@ -230,7 +271,10 @@ export default function QueriesScheduledDetail() {
             onCancel={() => setEditing(false)}
             onSubmit={async (payload) => {
               await updateMut.mutateAsync({ id: row.id, payload })
-              toast.show({ tone: 'success', title: '已保存' })
+              toast.show({
+                tone: 'success',
+                title: t('queriesScheduledDetail.toast.saved', '已保存'),
+              })
               setEditing(false)
             }}
             saving={updateMut.isPending}
@@ -255,36 +299,62 @@ function OverviewTab({ row }: { row: ScheduledQuery }) {
   const previewRuns = useMemo(() => nextRuns(row.cron, 5), [row.cron])
   return (
     <div className="grid gap-4 p-4 md:grid-cols-2">
-      <Card title="基本信息">
+      <Card title={t('queriesScheduledDetail.card.basic', '基本信息')}>
         <dl className="space-y-2 text-xs">
           <CtxPair label="ID" value={`#${row.id}`} />
-          <CtxPair label="名称" value={row.name} />
-          <CtxPair label="说明" value={row.description || <Muted>—</Muted>} />
-          <CtxPair label="数据源" value={`#${row.datasource_id}`} />
-          <CtxPair label="负责人" value={String(row.owner_id)} />
-          <CtxPair label="创建" value={fmtDateTime(row.created_at)} />
-          <CtxPair label="更新" value={fmtDateTime(row.updated_at)} />
+          <CtxPair label={t('queriesScheduledDetail.field.name', '名称')} value={row.name} />
+          <CtxPair
+            label={t('queriesScheduledDetail.field.description', '说明')}
+            value={row.description || <Muted>—</Muted>}
+          />
+          <CtxPair
+            label={t('queriesScheduledDetail.field.datasource', '数据源')}
+            value={`#${row.datasource_id}`}
+          />
+          <CtxPair
+            label={t('queriesScheduledDetail.field.owner', '负责人')}
+            value={String(row.owner_id)}
+          />
+          <CtxPair
+            label={t('queriesScheduledDetail.field.created', '创建')}
+            value={fmtDateTime(row.created_at)}
+          />
+          <CtxPair
+            label={t('queriesScheduledDetail.field.updated', '更新')}
+            value={fmtDateTime(row.updated_at)}
+          />
         </dl>
       </Card>
 
-      <Card title="调度">
+      <Card title={t('queriesScheduledDetail.card.schedule', '调度')}>
         <dl className="space-y-2 text-xs">
           <CtxPair label="Cron" value={<code>{row.cron}</code>} />
-          <CtxPair label="时区" value={row.timezone} />
           <CtxPair
-            label="状态"
+            label={t('queriesScheduledDetail.field.timezone', '时区')}
+            value={row.timezone}
+          />
+          <CtxPair
+            label={t('queriesScheduledDetail.field.status', '状态')}
             value={
               row.enabled ? (
-                <span style={{ color: 'var(--success)' }}>已启用</span>
+                <span style={{ color: 'var(--success)' }}>
+                  {t('queriesScheduledDetail.state.enabled', '已启用')}
+                </span>
               ) : (
-                <Muted>已禁用</Muted>
+                <Muted>{t('queriesScheduledDetail.state.disabled', '已禁用')}</Muted>
               )
             }
           />
-          <CtxPair label="下次触发" value={fmtDateTime(row.next_run_at)} />
-          <CtxPair label="上次执行" value={fmtRelative(row.last_run_at)} />
           <CtxPair
-            label="上次状态"
+            label={t('queriesScheduledDetail.field.nextRun', '下次触发')}
+            value={fmtDateTime(row.next_run_at)}
+          />
+          <CtxPair
+            label={t('queriesScheduledDetail.field.lastRun', '上次执行')}
+            value={fmtRelative(row.last_run_at)}
+          />
+          <CtxPair
+            label={t('queriesScheduledDetail.field.lastStatus', '上次状态')}
             value={row.last_status ? <code>{row.last_status}</code> : <Muted>—</Muted>}
           />
         </dl>
@@ -294,10 +364,10 @@ function OverviewTab({ row }: { row: ScheduledQuery }) {
             className="mb-2 text-xs font-medium uppercase tracking-wide"
             style={{ color: 'var(--text-3)' }}
           >
-            未来 5 次触发预览
+            {t('queriesScheduledDetail.preview.title', '未来 5 次触发预览')}
           </div>
           {previewRuns.length === 0 ? (
-            <Muted>cron 表达式不可达</Muted>
+            <Muted>{t('queriesScheduledDetail.preview.unreachable', 'cron 表达式不可达')}</Muted>
           ) : (
             <ul className="space-y-1 text-xs" style={{ color: 'var(--text-2)' }}>
               {previewRuns.map((d, i) => (
@@ -308,7 +378,10 @@ function OverviewTab({ row }: { row: ScheduledQuery }) {
             </ul>
           )}
           <p className="mt-2 text-xs" style={{ color: 'var(--text-4)' }}>
-            * 前端预览基于浏览器本地时区；权威以后端 APScheduler 为准
+            {t(
+              'queriesScheduledDetail.preview.tzNote',
+              '* 前端预览基于浏览器本地时区；权威以后端 APScheduler 为准',
+            )}
           </p>
         </div>
       </Card>
@@ -359,27 +432,31 @@ function RunsTab({ queryId }: { queryId: number }) {
         className="flex items-center gap-2 border-b px-4 py-2 text-xs"
         style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
       >
-        <span>共 {fmtNum(total)} 次执行</span>
+        <span>
+          {t('queriesScheduledDetail.runs.total', '共 {n} 次执行', { n: fmtNum(total) })}
+        </span>
         <button
           type="button"
           onClick={() => void refetch()}
           className="ml-auto flex items-center gap-1 rounded px-2 py-1 hover:bg-[color:var(--bg-hover)]"
           style={{ color: 'var(--text-2)' }}
         >
-          <RefreshCw size={11} /> 刷新
+          <RefreshCw size={11} /> {t('queriesScheduledDetail.action.refresh', '刷新')}
         </button>
       </div>
 
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="p-4 text-xs" style={{ color: 'var(--text-3)' }}>
-            加载中…
+            {t('queriesScheduledDetail.state.loading', '加载中…')}
           </div>
         ) : isError ? (
-          <div className="p-4 text-xs text-red-500">加载失败</div>
+          <div className="p-4 text-xs text-red-500">
+            {t('queriesScheduledDetail.state.loadFailed', '加载失败')}
+          </div>
         ) : items.length === 0 ? (
           <div className="p-4 text-xs" style={{ color: 'var(--text-3)' }}>
-            尚无执行记录
+            {t('queriesScheduledDetail.runs.empty', '尚无执行记录')}
           </div>
         ) : (
           <table className="w-full border-collapse text-xs">
@@ -388,12 +465,12 @@ function RunsTab({ queryId }: { queryId: number }) {
               style={{ background: 'var(--bg-surface)', color: 'var(--text-2)' }}
             >
               <tr>
-                <Th>状态</Th>
-                <Th>开始</Th>
-                <Th>结束</Th>
-                <Th>耗时</Th>
-                <Th>行数</Th>
-                <Th>错误</Th>
+                <Th>{t('queriesScheduledDetail.runs.col.status', '状态')}</Th>
+                <Th>{t('queriesScheduledDetail.runs.col.started', '开始')}</Th>
+                <Th>{t('queriesScheduledDetail.runs.col.finished', '结束')}</Th>
+                <Th>{t('queriesScheduledDetail.runs.col.duration', '耗时')}</Th>
+                <Th>{t('queriesScheduledDetail.runs.col.rows', '行数')}</Th>
+                <Th>{t('queriesScheduledDetail.runs.col.error', '错误')}</Th>
               </tr>
             </thead>
             <tbody>
@@ -442,7 +519,10 @@ function RunsTab({ queryId }: { queryId: number }) {
           style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
         >
           <span>
-            {fmtNum(total)} 条 · 每页 {pageSize}
+            {t('queriesScheduledDetail.pager.totalPageSize', '{total} 条 · 每页 {pageSize}', {
+              total: fmtNum(total),
+              pageSize,
+            })}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -452,7 +532,7 @@ function RunsTab({ queryId }: { queryId: number }) {
               className="rounded border px-2 py-1 disabled:opacity-40"
               style={{ borderColor: 'var(--border)' }}
             >
-              上一页
+              {t('queriesScheduledDetail.pager.prev', '上一页')}
             </button>
             <span>
               {page} / {Math.ceil(total / pageSize)}
@@ -464,7 +544,7 @@ function RunsTab({ queryId }: { queryId: number }) {
               className="rounded border px-2 py-1 disabled:opacity-40"
               style={{ borderColor: 'var(--border)' }}
             >
-              下一页
+              {t('queriesScheduledDetail.pager.next', '下一页')}
             </button>
           </div>
         </div>
@@ -528,7 +608,7 @@ function ScheduledQueryEditForm({
         })
       }}
     >
-      <Field label="名称">
+      <Field label={t('queriesScheduledDetail.field.name', '名称')}>
         <input
           required
           maxLength={128}
@@ -539,7 +619,7 @@ function ScheduledQueryEditForm({
         />
       </Field>
 
-      <Field label="描述">
+      <Field label={t('queriesScheduledDetail.field.description', '描述')}>
         <textarea
           rows={2}
           value={form.description}
@@ -550,7 +630,7 @@ function ScheduledQueryEditForm({
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="数据源">
+        <Field label={t('queriesScheduledDetail.field.datasource', '数据源')}>
           <select
             required
             value={form.datasource_id}
@@ -566,7 +646,7 @@ function ScheduledQueryEditForm({
           </select>
         </Field>
 
-        <Field label="时区">
+        <Field label={t('queriesScheduledDetail.field.timezone', '时区')}>
           <input
             value={form.timezone}
             onChange={(e) => setForm({ ...form, timezone: e.target.value })}
@@ -576,12 +656,12 @@ function ScheduledQueryEditForm({
         </Field>
       </div>
 
-      <Field label="Cron 表达式">
+      <Field label={t('queriesScheduledDetail.field.cron', 'Cron 表达式')}>
         <input
           required
           value={form.cron}
           onChange={(e) => setForm({ ...form, cron: e.target.value })}
-          placeholder="例如 0 8 * * 1-5"
+          placeholder={t('queriesScheduledDetail.cron.placeholder', '例如 0 8 * * 1-5')}
           className="w-full rounded border bg-transparent px-3 py-1.5 font-mono text-xs"
           style={{
             borderColor: cronCheck.ok ? 'var(--border)' : 'var(--danger)',
@@ -607,15 +687,21 @@ function ScheduledQueryEditForm({
           </div>
         ) : (
           <div className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
-            前 3 次：
+            {t('queriesScheduledDetail.cron.preview3', '前 3 次：')}
             {previewRuns.length > 0
-              ? previewRuns.map((d, i) => <span key={i}> {fmtDateTime(d)}{i < previewRuns.length - 1 ? ' · ' : ''}</span>)
-              : '不可达'}
+              ? previewRuns.map((d, i) => (
+                  <span key={i}>
+                    {' '}
+                    {fmtDateTime(d)}
+                    {i < previewRuns.length - 1 ? ' · ' : ''}
+                  </span>
+                ))
+              : t('queriesScheduledDetail.cron.unreachableShort', '不可达')}
           </div>
         )}
       </Field>
 
-      <Field label="SQL">
+      <Field label={t('queriesScheduledDetail.field.sql', 'SQL')}>
         <div
           className="overflow-hidden rounded border"
           style={{ borderColor: 'var(--border)' }}
@@ -640,7 +726,9 @@ function ScheduledQueryEditForm({
           disabled={saving || !cronCheck.ok}
           className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
         >
-          {saving ? '保存中…' : '保存'}
+          {saving
+            ? t('queriesScheduledDetail.action.saving', '保存中…')
+            : t('queriesScheduledDetail.action.save', '保存')}
         </button>
         <button
           type="button"
@@ -648,7 +736,7 @@ function ScheduledQueryEditForm({
           className="rounded border px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          取消
+          {t('queriesScheduledDetail.action.cancel', '取消')}
         </button>
       </div>
     </form>
@@ -659,7 +747,7 @@ function ScheduledQueryEditForm({
 // Internal primitives
 // ──────────────────────────────────────────────────────────────────────────
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, children }: { title: ReactNode; children: React.ReactNode }) {
   return (
     <section
       className="rounded-lg border"
@@ -676,7 +764,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   )
 }
 
-function CtxPair({ label, value }: { label: string; value: React.ReactNode }) {
+function CtxPair({ label, value }: { label: ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 text-xs">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -691,7 +779,7 @@ function Muted({ children }: { children: React.ReactNode }) {
   return <span style={{ color: 'var(--text-4)' }}>{children}</span>
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: ReactNode; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
       <div
@@ -727,10 +815,26 @@ function Td({ children }: { children?: React.ReactNode }) {
 function StatusChip({ status }: { status: string | null | undefined }) {
   if (!status) return <span style={{ color: 'var(--text-4)' }}>—</span>
   const map: Record<string, { bg: string; fg: string; label: string }> = {
-    success: { bg: 'var(--success-soft)', fg: 'var(--success)', label: '成功' },
-    failed: { bg: 'var(--danger-soft)', fg: 'var(--danger)', label: '失败' },
-    running: { bg: 'var(--accent-soft)', fg: 'var(--accent-text)', label: '运行中' },
-    timeout: { bg: 'var(--warning-soft)', fg: 'var(--warning)', label: '超时' },
+    success: {
+      bg: 'var(--success-soft)',
+      fg: 'var(--success)',
+      label: t('queriesScheduledDetail.status.success', '成功'),
+    },
+    failed: {
+      bg: 'var(--danger-soft)',
+      fg: 'var(--danger)',
+      label: t('queriesScheduledDetail.status.failed', '失败'),
+    },
+    running: {
+      bg: 'var(--accent-soft)',
+      fg: 'var(--accent-text)',
+      label: t('queriesScheduledDetail.status.running', '运行中'),
+    },
+    timeout: {
+      bg: 'var(--warning-soft)',
+      fg: 'var(--warning)',
+      label: t('queriesScheduledDetail.status.timeout', '超时'),
+    },
   }
   const tone = map[status] ?? { bg: 'var(--bg-hover)', fg: 'var(--text-2)', label: status }
   return (

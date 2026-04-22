@@ -15,19 +15,21 @@ import {
   syncStatusChip,
 } from './_shared/dataset-detail-content'
 import { fmtDateTime } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { useAppShell } from '@v2/layout/AppShell'
 
-const TABS = [
-  { id: 'overview', label: '概览' },
-  { id: 'schema',   label: 'Schema' },
-  { id: 'profile',  label: '字段画像' },
-  { id: 'lineage',  label: '血缘' },
-] as const
+function buildTabs() {
+  return [
+    { id: 'overview', label: t('datasetDetail.tab.overview', '概览') },
+    { id: 'schema',   label: 'Schema' },
+    { id: 'profile',  label: t('datasetDetail.tab.profile', '字段画像') },
+    { id: 'lineage',  label: t('datasetDetail.tab.lineage', '血缘') },
+  ] as const
+}
 
-type TabId = (typeof TABS)[number]['id']
+type TabId = 'overview' | 'schema' | 'profile' | 'lineage'
 
 export default function DatasetDetail() {
   const { id } = useParams<{ id: string }>()
@@ -44,7 +46,11 @@ export default function DatasetDetail() {
 
   useEffect(() => {
     if (!data) return
-    setBreadcrumbs(['数据', '数据集', data.dataset_name])
+    setBreadcrumbs([
+      t('datasetDetail.breadcrumb.data', '数据'),
+      t('datasetDetail.breadcrumb.datasets', '数据集'),
+      data.dataset_name,
+    ])
   }, [data, setBreadcrumbs])
 
   useEffect(() => {
@@ -70,7 +76,7 @@ export default function DatasetDetail() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <ArrowLeft size={12} /> 返回列表
+          <ArrowLeft size={12} /> {t('datasetDetail.action.back', '返回列表')}
         </button>
         <button
           type="button"
@@ -78,7 +84,8 @@ export default function DatasetDetail() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} /> 重新加载
+          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
+          {t('datasetDetail.action.reload', '重新加载')}
         </button>
         {data ? (
           <>
@@ -90,7 +97,7 @@ export default function DatasetDetail() {
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
             >
               <RotateCw size={12} className={syncSchema.isPending ? 'animate-spin' : ''} />
-              同步 Schema
+              {t('datasetDetail.action.syncSchema', '同步 Schema')}
             </button>
             <button
               type="button"
@@ -100,7 +107,7 @@ export default function DatasetDetail() {
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
             >
               <ScanSearch size={12} className={refreshProfile.isPending ? 'animate-spin' : ''} />
-              刷新画像
+              {t('datasetDetail.action.refreshProfile', '刷新画像')}
             </button>
           </>
         ) : null}
@@ -110,7 +117,7 @@ export default function DatasetDetail() {
           className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
           style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
         >
-          <Pencil size={12} /> 编辑
+          <Pencil size={12} /> {t('datasetDetail.action.edit', '编辑')}
         </button>
       </div>,
     )
@@ -138,38 +145,50 @@ export default function DatasetDetail() {
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
-            <CtxLabel>状态</CtxLabel>
+            <CtxLabel>{t('datasetDetail.context.status', '状态')}</CtxLabel>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {datasetTypeChip(data.dataset_type)}
               {syncStatusChip(data.sync_status)}
             </div>
           </section>
           <section>
-            <CtxLabel>邻接导航</CtxLabel>
+            <CtxLabel>{t('datasetDetail.context.neighbors', '邻接导航')}</CtxLabel>
             <div className="mt-2 space-y-1.5 text-xs">
               <NeighborBtn
-                label={neighbors.prev ? `← ${neighbors.prev.dataset_name}` : '没有上一项'}
+                label={
+                  neighbors.prev
+                    ? `← ${neighbors.prev.dataset_name}`
+                    : t('datasetDetail.neighbor.noPrev', '没有上一项')
+                }
                 disabled={!neighbors.prev}
                 onClick={neighbors.prev ? () => navigate(`/data-center/datasets/${neighbors.prev!.id}`) : undefined}
               />
               <NeighborBtn
-                label={neighbors.next ? `${neighbors.next.dataset_name} →` : '没有下一项'}
+                label={
+                  neighbors.next
+                    ? `${neighbors.next.dataset_name} →`
+                    : t('datasetDetail.neighbor.noNext', '没有下一项')
+                }
                 disabled={!neighbors.next}
                 onClick={neighbors.next ? () => navigate(`/data-center/datasets/${neighbors.next!.id}`) : undefined}
               />
             </div>
           </section>
           <section>
-            <CtxLabel>下游引用</CtxLabel>
+            <CtxLabel>{t('datasetDetail.context.references', '下游引用')}</CtxLabel>
             <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-3)' }}>
-              通过 <code>/api/v1/cubes?source_dataset_id={data.id}</code> 查询关联 Cube。
+              {t(
+                'datasetDetail.context.refsHint',
+                '通过 /api/v1/cubes?source_dataset_id={id} 查询关联 Cube。',
+                { id: data.id },
+              )}
             </p>
             <button
               type="button"
               className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
               style={{ color: 'var(--text-2)' }}
             >
-              <ExternalLink size={11} /> 查看引用关系
+              <ExternalLink size={11} /> {t('datasetDetail.action.viewRefs', '查看引用关系')}
             </button>
           </section>
         </div>
@@ -179,19 +198,43 @@ export default function DatasetDetail() {
   }, [data, neighbors, setContextPanel, navigate])
 
   if (!Number.isFinite(numericId)) {
-    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>非法的数据集 ID</div>
+    return (
+      <div
+        className="flex flex-1 items-center justify-center text-xs"
+        style={{ color: 'var(--text-3)' }}
+      >
+        {t('datasetDetail.state.invalidId', '非法的数据集 ID')}
+      </div>
+    )
   }
   if (isLoading) {
-    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>加载中…</div>
+    return (
+      <div
+        className="flex flex-1 items-center justify-center text-xs"
+        style={{ color: 'var(--text-3)' }}
+      >
+        {t('datasetDetail.state.loading', '加载中…')}
+      </div>
+    )
   }
   if (isError || !data) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2">
-        <p className="text-xs" style={{ color: 'var(--danger)' }}>{error instanceof Error ? error.message : '加载失败'}</p>
-        <button type="button" onClick={() => refetch()} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>重试</button>
+        <p className="text-xs" style={{ color: 'var(--danger)' }}>
+          {error instanceof Error ? error.message : t('datasetDetail.state.loadFailed', '加载失败')}
+        </p>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="rounded-md border px-3 py-1.5 text-xs"
+          style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+        >
+          {t('datasetDetail.action.retry', '重试')}
+        </button>
       </div>
     )
   }
+  const tabs = buildTabs()
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -213,18 +256,18 @@ export default function DatasetDetail() {
           </div>
         </div>
         <div className="mt-3 flex items-center gap-1">
-          {TABS.map((t) => (
+          {tabs.map((item) => (
             <button
-              key={t.id}
+              key={item.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => setTab(item.id)}
               className="rounded px-2.5 py-1 text-xs"
               style={{
-                background: tab === t.id ? 'var(--accent-soft)' : 'transparent',
-                color: tab === t.id ? 'var(--accent)' : 'var(--text-2)',
+                background: tab === item.id ? 'var(--accent-soft)' : 'transparent',
+                color: tab === item.id ? 'var(--accent)' : 'var(--text-2)',
               }}
             >
-              {t.label}
+              {item.label}
             </button>
           ))}
         </div>
@@ -260,12 +303,20 @@ function SchemaTab({ fields }: { fields: DatasetField[] }) {
           </span>
         </div>
         {fields.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs" style={{ color: 'var(--text-3)' }}>无字段</div>
+          <div className="px-4 py-6 text-center text-xs" style={{ color: 'var(--text-3)' }}>
+            {t('datasetDetail.schema.empty', '无字段')}
+          </div>
         ) : (
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['字段', '类型', '业务类型', '敏感级别', '说明'].map((h) => (
+                {[
+                  t('datasetDetail.schema.col.field', '字段'),
+                  t('datasetDetail.schema.col.type', '类型'),
+                  t('datasetDetail.schema.col.businessType', '业务类型'),
+                  t('datasetDetail.schema.col.sensitivity', '敏感级别'),
+                  t('datasetDetail.schema.col.comment', '说明'),
+                ].map((h) => (
                   <th key={h} className="px-4 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>{h}</th>
                 ))}
               </tr>
@@ -310,7 +361,7 @@ function ProfileTab({
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs" style={{ color: 'var(--text-3)' }}>
-        加载字段画像中…
+        {t('datasetDetail.profile.loading', '加载字段画像中…')}
       </div>
     )
   }
@@ -319,8 +370,10 @@ function ProfileTab({
     <div className="p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-          {generatedAt ? `生成于 ${fmtDateTime(generatedAt)}` : ''}
-          {rowCount > 0 ? `  ·  共 ${rowCount.toLocaleString()} 行` : ''}
+          {generatedAt ? t('datasetDetail.profile.generatedAt', '生成于 {time}', { time: fmtDateTime(generatedAt) }) : ''}
+          {rowCount > 0
+            ? `  ·  ${t('datasetDetail.profile.rowCount', '共 {n} 行', { n: rowCount.toLocaleString() })}`
+            : ''}
         </div>
         <button
           type="button"
@@ -328,7 +381,7 @@ function ProfileTab({
           className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          <RefreshCcw size={11} /> 重新生成
+          <RefreshCcw size={11} /> {t('datasetDetail.profile.regenerate', '重新生成')}
         </button>
       </div>
 
@@ -338,14 +391,25 @@ function ProfileTab({
           style={{ borderColor: 'var(--border)', color: 'var(--text-3)', borderStyle: 'dashed' }}
         >
           {/* TODO: 后端 GET /api/v1/data-center/datasets/:id/profile 未就绪，点击"刷新画像"触发生成 */}
-          暂无字段画像数据，请点击右上角"刷新画像"生成
+          {t(
+            'datasetDetail.profile.empty',
+            '暂无字段画像数据，请点击右上角"刷新画像"生成',
+          )}
         </div>
       ) : (
         <div className="rounded-lg border" style={{ borderColor: 'var(--border)' }}>
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-                {['字段名', '类型', 'null 数', '唯一值', '最小值', '最大值', '非空分布'].map((h) => (
+                {[
+                  t('datasetDetail.profile.col.name', '字段名'),
+                  t('datasetDetail.profile.col.type', '类型'),
+                  t('datasetDetail.profile.col.nullCount', 'null 数'),
+                  t('datasetDetail.profile.col.distinct', '唯一值'),
+                  t('datasetDetail.profile.col.min', '最小值'),
+                  t('datasetDetail.profile.col.max', '最大值'),
+                  t('datasetDetail.profile.col.dist', '非空分布'),
+                ].map((h) => (
                   <th key={h} className="px-3 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>
                     {h}
                   </th>
@@ -403,16 +467,24 @@ function ProfileTab({
 }
 
 function LineageTab({ item }: { item: Dataset }) {
+  const currentLabel = t('datasetDetail.lineage.current', '当前')
+  const cubeLine = t(
+    'datasetDetail.lineage.cubeLine',
+    'cube / app  (通过 /api/v1/cubes?source_dataset_id={id} 聚合)',
+    { id: item.id },
+  )
   return (
     <div className="p-4">
       <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
-        <p className="mb-3 text-xs font-medium" style={{ color: 'var(--text-1)' }}>血缘关系</p>
+        <p className="mb-3 text-xs font-medium" style={{ color: 'var(--text-1)' }}>
+          {t('datasetDetail.lineage.title', '血缘关系')}
+        </p>
         <pre className="text-xs leading-6" style={{ color: 'var(--text-2)' }}>
 {`source: ${item.source_type ?? '—'} #${item.source_id ?? '—'}
    ↓
-dataset: ${item.dataset_code}  ← 当前
+dataset: ${item.dataset_code}  ← ${currentLabel}
    ↓
-cube / app  (通过 /api/v1/cubes?source_dataset_id=${item.id} 聚合)`}
+${cubeLine}`}
         </pre>
       </div>
     </div>

@@ -16,16 +16,18 @@ import {
   taskTabLabel,
 } from './_shared/extraction-task-detail-content'
 import { fmtRelative } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { useAppShell } from '@v2/layout/AppShell'
 
-const DETAIL_TABS = [
-  { id: 'overview', label: '概览' },
-  { id: 'schedule', label: '调度' },
-] as const
-type DetailTabId = (typeof DETAIL_TABS)[number]['id']
+function buildDetailTabs() {
+  return [
+    { id: 'overview', label: t('extractionTaskDetail.tab.overview', '概览') },
+    { id: 'schedule', label: t('extractionTaskDetail.tab.schedule', '调度') },
+  ] as const
+}
+type DetailTabId = 'overview' | 'schedule'
 
 export default function ExtractionTaskDetail() {
   const { id } = useParams<{ id: string }>()
@@ -54,7 +56,11 @@ export default function ExtractionTaskDetail() {
 
   useEffect(() => {
     if (!task) return
-    setBreadcrumbs(['数据', '提取任务', task.task_name])
+    setBreadcrumbs([
+      t('extractionTaskDetail.breadcrumb.data', '数据'),
+      t('extractionTaskDetail.breadcrumb.tasks', '提取任务'),
+      task.task_name,
+    ])
   }, [task, setBreadcrumbs])
 
   useEffect(() => {
@@ -80,7 +86,7 @@ export default function ExtractionTaskDetail() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <ArrowLeft size={12} /> 返回列表
+          <ArrowLeft size={12} /> {t('extractionTaskDetail.action.back', '返回列表')}
         </button>
         <button
           type="button"
@@ -88,7 +94,8 @@ export default function ExtractionTaskDetail() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} /> 刷新
+          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
+          {t('extractionTaskDetail.action.refresh', '刷新')}
         </button>
         <button
           type="button"
@@ -96,7 +103,7 @@ export default function ExtractionTaskDetail() {
           className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          <ExternalLink size={12} /> 查看执行记录
+          <ExternalLink size={12} /> {t('extractionTaskDetail.action.viewRuns', '查看执行记录')}
         </button>
       </div>,
     )
@@ -116,7 +123,7 @@ export default function ExtractionTaskDetail() {
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
-            <CtxLabel>状态</CtxLabel>
+            <CtxLabel>{t('extractionTaskDetail.context.status', '状态')}</CtxLabel>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {taskStatusChip(task.last_run_status)}
               <span
@@ -126,27 +133,43 @@ export default function ExtractionTaskDetail() {
                   color: task.is_active ? 'var(--success)' : 'var(--text-3)',
                 }}
               >
-                {task.is_active ? '启用' : '停用'}
+                {task.is_active
+                  ? t('extractionTaskDetail.state.active', '启用')
+                  : t('extractionTaskDetail.state.inactive', '停用')}
               </span>
             </div>
           </section>
           <section>
-            <CtxLabel>最近运行</CtxLabel>
+            <CtxLabel>{t('extractionTaskDetail.context.lastRun', '最近运行')}</CtxLabel>
             <div className="mt-2 space-y-1 text-xs">
-              <Pair label="最近" value={task.last_run_at ? fmtRelative(task.last_run_at) : '—'} />
-              <Pair label="数据集" value={`#${task.dataset_id}`} />
+              <Pair
+                label={t('extractionTaskDetail.pair.last', '最近')}
+                value={task.last_run_at ? fmtRelative(task.last_run_at) : '—'}
+              />
+              <Pair
+                label={t('extractionTaskDetail.pair.dataset', '数据集')}
+                value={`#${task.dataset_id}`}
+              />
             </div>
           </section>
           <section>
-            <CtxLabel>邻接导航</CtxLabel>
+            <CtxLabel>{t('extractionTaskDetail.context.neighbors', '邻接导航')}</CtxLabel>
             <div className="mt-2 space-y-1.5 text-xs">
               <NeighborBtn
-                label={neighbors.prev ? `← ${neighbors.prev.task_name}` : '没有上一项'}
+                label={
+                  neighbors.prev
+                    ? `← ${neighbors.prev.task_name}`
+                    : t('extractionTaskDetail.neighbor.noPrev', '没有上一项')
+                }
                 disabled={!neighbors.prev}
                 onClick={neighbors.prev ? () => navigate(`/extraction/tasks/${neighbors.prev!.id}`) : undefined}
               />
               <NeighborBtn
-                label={neighbors.next ? `${neighbors.next.task_name} →` : '没有下一项'}
+                label={
+                  neighbors.next
+                    ? `${neighbors.next.task_name} →`
+                    : t('extractionTaskDetail.neighbor.noNext', '没有下一项')
+                }
                 disabled={!neighbors.next}
                 onClick={neighbors.next ? () => navigate(`/extraction/tasks/${neighbors.next!.id}`) : undefined}
               />
@@ -159,18 +182,33 @@ export default function ExtractionTaskDetail() {
   }, [task, neighbors, setContextPanel, navigate])
 
   if (!Number.isFinite(numericId)) {
-    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>非法的任务 ID</div>
+    return (
+      <div
+        className="flex flex-1 items-center justify-center text-xs"
+        style={{ color: 'var(--text-3)' }}
+      >
+        {t('extractionTaskDetail.state.invalidId', '非法的任务 ID')}
+      </div>
+    )
   }
   if (isLoading) {
-    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>加载中…</div>
+    return (
+      <div
+        className="flex flex-1 items-center justify-center text-xs"
+        style={{ color: 'var(--text-3)' }}
+      >
+        {t('extractionTaskDetail.state.loading', '加载中…')}
+      </div>
+    )
   }
   if (isError || !task) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--danger)' }}>
-        未找到任务 #{numericId}
+        {t('extractionTaskDetail.state.notFound', '未找到任务 #{id}', { id: numericId })}
       </div>
     )
   }
+  const detailTabs = buildDetailTabs()
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -193,18 +231,18 @@ export default function ExtractionTaskDetail() {
           </div>
         </div>
         <div className="mt-3 flex items-center gap-1">
-          {DETAIL_TABS.map((t) => (
+          {detailTabs.map((item) => (
             <button
-              key={t.id}
+              key={item.id}
               type="button"
-              onClick={() => setDetailTab(t.id)}
+              onClick={() => setDetailTab(item.id)}
               className="rounded px-2.5 py-1 text-xs"
               style={{
-                background: detailTab === t.id ? 'var(--accent-soft)' : 'transparent',
-                color: detailTab === t.id ? 'var(--accent)' : 'var(--text-2)',
+                background: detailTab === item.id ? 'var(--accent-soft)' : 'transparent',
+                color: detailTab === item.id ? 'var(--accent)' : 'var(--text-2)',
               }}
             >
-              {t.label}
+              {item.label}
             </button>
           ))}
         </div>
@@ -245,15 +283,17 @@ const COMMON_TIMEZONES = [
   'Europe/London',
 ]
 
-const CRON_PRESETS = [
-  { label: '每分钟', value: '* * * * *' },
-  { label: '每 5 分钟', value: '*/5 * * * *' },
-  { label: '每小时', value: '0 * * * *' },
-  { label: '每天 0:00', value: '0 0 * * *' },
-  { label: '每天 8:00', value: '0 8 * * *' },
-  { label: '每周一 9:00', value: '0 9 * * 1' },
-  { label: '每月 1 号', value: '0 0 1 * *' },
-]
+function buildCronPresets() {
+  return [
+    { label: t('extractionTaskDetail.cronPreset.everyMinute', '每分钟'), value: '* * * * *' },
+    { label: t('extractionTaskDetail.cronPreset.every5Min', '每 5 分钟'), value: '*/5 * * * *' },
+    { label: t('extractionTaskDetail.cronPreset.hourly', '每小时'), value: '0 * * * *' },
+    { label: t('extractionTaskDetail.cronPreset.daily0', '每天 0:00'), value: '0 0 * * *' },
+    { label: t('extractionTaskDetail.cronPreset.daily8', '每天 8:00'), value: '0 8 * * *' },
+    { label: t('extractionTaskDetail.cronPreset.mon9', '每周一 9:00'), value: '0 9 * * 1' },
+    { label: t('extractionTaskDetail.cronPreset.monthly1', '每月 1 号'), value: '0 0 1 * *' },
+  ]
+}
 
 /**
  * 简版 5 段 cron 解析，计算下一次触发时间（前端只做简单整分钟级别）
@@ -338,16 +378,20 @@ function ScheduleTab({
       <div className="mx-auto max-w-lg space-y-5 rounded-lg border p-5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
         <div className="flex items-center gap-2">
           <Clock size={14} style={{ color: 'var(--accent)' }} />
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>调度配置</span>
+          <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+            {t('extractionTaskDetail.schedule.title', '调度配置')}
+          </span>
           {/* TODO: PATCH /extraction/tasks/:id 后端需补 schedule_cron / schedule_enabled / schedule_timezone 字段 */}
           <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'var(--warning-soft)', color: 'var(--warning)' }}>
-            TODO: 后端字段待补
+            {t('extractionTaskDetail.schedule.todoBackend', 'TODO: 后端字段待补')}
           </span>
         </div>
 
         {/* 启用开关 */}
         <div className="flex items-center justify-between rounded-md border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
-          <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>启用定时调度</span>
+          <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
+            {t('extractionTaskDetail.schedule.enableToggle', '启用定时调度')}
+          </span>
           <button
             type="button"
             role="switch"
@@ -365,9 +409,11 @@ function ScheduleTab({
 
         {/* 快捷预设 */}
         <div>
-          <div className="mb-1.5 text-xs font-medium" style={{ color: 'var(--text-3)' }}>常用预设</div>
+          <div className="mb-1.5 text-xs font-medium" style={{ color: 'var(--text-3)' }}>
+            {t('extractionTaskDetail.schedule.commonPresets', '常用预设')}
+          </div>
           <div className="flex flex-wrap gap-1.5">
-            {CRON_PRESETS.map((p) => (
+            {buildCronPresets().map((p) => (
               <button
                 key={p.value}
                 type="button"
@@ -388,7 +434,10 @@ function ScheduleTab({
         {/* Cron 输入 */}
         <div>
           <label className="mb-1.5 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-            Cron 表达式 <span className="text-[10px] font-normal" style={{ color: 'var(--text-3)' }}>（分 时 日 月 周，5 段）</span>
+            {t('extractionTaskDetail.schedule.cronLabel', 'Cron 表达式')}{' '}
+            <span className="text-[10px] font-normal" style={{ color: 'var(--text-3)' }}>
+              {t('extractionTaskDetail.schedule.cronHint', '（分 时 日 月 周，5 段）')}
+            </span>
           </label>
           <input
             type="text"
@@ -404,15 +453,17 @@ function ScheduleTab({
           />
           <div className="mt-1.5 text-xs" style={{ color: nextRun ? 'var(--text-3)' : 'var(--danger)' }}>
             {nextRun
-              ? `下次触发：${nextRun.toLocaleString('zh-CN', { timeZone: timezone })}`
-              : '无效的 cron 表达式'}
+              ? t('extractionTaskDetail.schedule.nextRun', '下次触发：{time}', {
+                  time: nextRun.toLocaleString('zh-CN', { timeZone: timezone }),
+                })
+              : t('extractionTaskDetail.schedule.cronInvalid', '无效的 cron 表达式')}
           </div>
         </div>
 
         {/* 时区选择 */}
         <div>
           <label className="mb-1.5 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-            时区
+            {t('extractionTaskDetail.schedule.timezone', '时区')}
           </label>
           <select
             value={timezone}
@@ -433,7 +484,9 @@ function ScheduleTab({
         {/* 保存 */}
         <div className="flex items-center justify-end gap-2 pt-1">
           {saveSuccess && (
-            <span className="text-xs" style={{ color: 'var(--success)' }}>已保存 ✓</span>
+            <span className="text-xs" style={{ color: 'var(--success)' }}>
+              {t('extractionTaskDetail.schedule.saved', '已保存 ✓')}
+            </span>
           )}
           <button
             type="button"
@@ -443,7 +496,9 @@ function ScheduleTab({
             style={{ background: 'var(--accent)' }}
           >
             <Save size={12} />
-            {isSaving ? '保存中…' : '保存调度'}
+            {isSaving
+              ? t('extractionTaskDetail.schedule.saving', '保存中…')
+              : t('extractionTaskDetail.schedule.save', '保存调度')}
           </button>
         </div>
       </div>
@@ -457,7 +512,7 @@ function CtxLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>{children}</div>
 }
 
-function Pair({ label, value }: { label: string; value: React.ReactNode }) {
+function Pair({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -466,7 +521,7 @@ function Pair({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-function NeighborBtn({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) {
+function NeighborBtn({ label, onClick, disabled }: { label: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"

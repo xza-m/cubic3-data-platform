@@ -13,15 +13,30 @@ import { ArrowLeft, ArrowRight, Check, FileUp, Table } from 'lucide-react'
 import { useCreateDataset, usePreviewDataset } from '@v2/hooks/datasets'
 import { useDatasources } from '@v2/hooks/datasources'
 import type { DatasetField } from '@v2/api/datasets'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { useAppShell } from '@v2/layout/AppShell'
 
 type Mode = 'choose' | 'physical' | 'file'
 
-const STEPS_PHYSICAL = ['选择数据源', '选择表', '字段确认', '完成']
-const STEPS_FILE      = ['上传文件', '解析预览', '字段映射', '完成']
+function stepsPhysical() {
+  return [
+    t('datasetCreate.step.pickSource', '选择数据源'),
+    t('datasetCreate.step.pickTable', '选择表'),
+    t('datasetCreate.step.confirmFields', '字段确认'),
+    t('datasetCreate.step.done', '完成'),
+  ]
+}
+
+function stepsFile() {
+  return [
+    t('datasetCreate.step.upload', '上传文件'),
+    t('datasetCreate.step.parsePreview', '解析预览'),
+    t('datasetCreate.step.fieldMapping', '字段映射'),
+    t('datasetCreate.step.done', '完成'),
+  ]
+}
 
 export default function DatasetCreate() {
   const navigate = useNavigate()
@@ -40,11 +55,15 @@ export default function DatasetCreate() {
   const [previewFields, setPreviewFields] = useState<DatasetField[]>([])
   const [, setDone] = useState(false)
 
-  const steps = mode === 'file' ? STEPS_FILE : STEPS_PHYSICAL
+  const steps = mode === 'file' ? stepsFile() : stepsPhysical()
   const sources = sourcesData?.items ?? []
 
   useEffect(() => {
-    setBreadcrumbs(['数据', '数据集', '注册'])
+    setBreadcrumbs([
+      t('datasetCreate.breadcrumb.data', '数据'),
+      t('datasetCreate.breadcrumb.datasets', '数据集'),
+      t('datasetCreate.breadcrumb.register', '注册'),
+    ])
     setTopBarActions(
       <button
         type="button"
@@ -52,7 +71,7 @@ export default function DatasetCreate() {
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
         style={{ color: 'var(--text-2)' }}
       >
-        <ArrowLeft size={12} /> 返回列表
+        <ArrowLeft size={12} /> {t('datasetCreate.action.back', '返回列表')}
       </button>,
     )
     return () => setTopBarActions(null)
@@ -107,14 +126,14 @@ export default function DatasetCreate() {
         <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
           <ModeCard
             icon={<Table size={24} style={{ color: 'var(--accent)' }} />}
-            title="从已接入的库表注册"
-            description="从 MaxCompute / MySQL / PG 等数据源选择物理表"
+            title={t('datasetCreate.mode.physicalTitle', '从已接入的库表注册')}
+            description={t('datasetCreate.mode.physicalDesc', '从 MaxCompute / MySQL / PG 等数据源选择物理表')}
             onClick={() => setMode('physical')}
           />
           <ModeCard
             icon={<FileUp size={24} style={{ color: 'var(--violet)' }} />}
-            title="从文件上传注册"
-            description="支持 CSV / Excel，自动推断 schema"
+            title={t('datasetCreate.mode.fileTitle', '从文件上传注册')}
+            description={t('datasetCreate.mode.fileDesc', '支持 CSV / Excel，自动推断 schema')}
             onClick={() => setMode('file')}
           />
         </div>
@@ -134,7 +153,9 @@ export default function DatasetCreate() {
           style={{ borderColor: 'var(--border)' }}
         >
           <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
-            {mode === 'physical' ? '从库表注册数据集' : '从文件注册数据集'}
+            {mode === 'physical'
+              ? t('datasetCreate.title.physical', '从库表注册数据集')
+              : t('datasetCreate.title.file', '从文件注册数据集')}
           </span>
           <ol className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-3)' }}>
             {steps.map((s, i) => (
@@ -159,13 +180,13 @@ export default function DatasetCreate() {
         <div className="flex-1 overflow-auto p-4">
           {mode === 'physical' && step === 0 && (
             <div className="space-y-3">
-              <Field label="选择数据源">
+              <Field label={t('datasetCreate.field.source', '选择数据源')}>
                 <select
                   value={sourceId ?? ''}
                   onChange={(e) => setSourceId(Number(e.target.value))}
                   style={inputStyle}
                 >
-                  <option value="">请选择…</option>
+                  <option value="">{t('datasetCreate.field.pickPlaceholder', '请选择…')}</option>
                   {sources.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} ({s.source_type})
@@ -178,25 +199,27 @@ export default function DatasetCreate() {
 
           {mode === 'physical' && step === 1 && (
             <div className="space-y-3">
-              <Field label="数据库">
+              <Field label={t('datasetCreate.field.database', '数据库')}>
                 <input
                   value={database}
                   onChange={(e) => setDatabase(e.target.value)}
-                  placeholder="如 default"
+                  placeholder={t('datasetCreate.placeholder.database', '如 default')}
                   style={inputStyle}
                 />
               </Field>
-              <Field label="表名">
+              <Field label={t('datasetCreate.field.table', '表名')}>
                 <input
                   value={table}
                   onChange={(e) => setTable(e.target.value)}
-                  placeholder="如 dwd_order_df"
+                  placeholder={t('datasetCreate.placeholder.table', '如 dwd_order_df')}
                   style={inputStyle}
                 />
               </Field>
               {previewDataset.isError && (
                 <p className="text-xs" style={{ color: 'var(--danger)' }}>
-                  {previewDataset.error instanceof Error ? previewDataset.error.message : '预览失败'}
+                  {previewDataset.error instanceof Error
+                    ? previewDataset.error.message
+                    : t('datasetCreate.state.previewFailed', '预览失败')}
                 </p>
               )}
             </div>
@@ -204,16 +227,21 @@ export default function DatasetCreate() {
 
           {step === 2 && (
             <div className="space-y-3">
-              <Field label="数据集名称">
+              <Field label={t('datasetCreate.field.datasetName', '数据集名称')}>
                 <input value={datasetName} onChange={(e) => setDatasetName(e.target.value)} style={inputStyle} />
               </Field>
-              <Field label="负责人">
-                <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="可选" style={inputStyle} />
+              <Field label={t('datasetCreate.field.owner', '负责人')}>
+                <input
+                  value={owner}
+                  onChange={(e) => setOwner(e.target.value)}
+                  placeholder={t('datasetCreate.placeholder.optional', '可选')}
+                  style={inputStyle}
+                />
               </Field>
               {previewFields.length > 0 && (
                 <div>
                   <p className="mb-1 text-[11px]" style={{ color: 'var(--text-3)' }}>
-                    字段预览（{previewFields.length} 个）
+                    {t('datasetCreate.preview.fields', '字段预览（{n} 个）', { n: previewFields.length })}
                   </p>
                   <div className="max-h-64 overflow-auto rounded-md border" style={{ borderColor: 'var(--border)' }}>
                     {previewFields.slice(0, 20).map((f) => (
@@ -241,10 +269,11 @@ export default function DatasetCreate() {
                 <Check size={24} />
               </div>
               <div className="text-sm font-medium" style={{ color: 'var(--text-1)' }}>
-                注册成功
+                {t('datasetCreate.done.title', '注册成功')}
               </div>
               <p className="max-w-sm text-xs" style={{ color: 'var(--text-3)' }}>
-                <strong>{datasetName}</strong> 已成功注册为数据集。
+                <strong>{datasetName}</strong>{' '}
+                {t('datasetCreate.done.descSuffix', '已成功注册为数据集。')}
               </p>
               <button
                 type="button"
@@ -252,7 +281,7 @@ export default function DatasetCreate() {
                 className="rounded-md px-4 py-2 text-xs font-medium"
                 style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
               >
-                返回数据集列表
+                {t('datasetCreate.done.backToList', '返回数据集列表')}
               </button>
             </div>
           )}
@@ -264,7 +293,9 @@ export default function DatasetCreate() {
                 style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
               >
                 <FileUp size={24} className="mx-auto mb-2" />
-                <p className="text-xs">文件上传功能开发中</p>
+                <p className="text-xs">
+                  {t('datasetCreate.file.wip', '文件上传功能开发中')}
+                </p>
               </div>
             </div>
           )}
@@ -283,7 +314,7 @@ export default function DatasetCreate() {
               className="rounded-md border px-4 py-2 text-xs"
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)', opacity: step === 0 ? 0.5 : 1 }}
             >
-              上一步
+              {t('datasetCreate.action.prev', '上一步')}
             </button>
             {step < steps.length - 1 ? (
               <button
@@ -299,7 +330,10 @@ export default function DatasetCreate() {
                 className="inline-flex items-center gap-1 rounded-md px-4 py-2 text-xs font-medium"
                 style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
               >
-                {previewDataset.isPending ? '加载中…' : '下一步'} <ArrowRight size={12} />
+                {previewDataset.isPending
+                  ? t('datasetCreate.action.loading', '加载中…')
+                  : t('datasetCreate.action.next', '下一步')}{' '}
+                <ArrowRight size={12} />
               </button>
             ) : (
               <button
@@ -313,7 +347,9 @@ export default function DatasetCreate() {
                   opacity: createDataset.isPending || !datasetName ? 0.6 : 1,
                 }}
               >
-                {createDataset.isPending ? '注册中…' : '完成注册'}
+                {createDataset.isPending
+                  ? t('datasetCreate.action.submitting', '注册中…')
+                  : t('datasetCreate.action.submit', '完成注册')}
               </button>
             )}
           </div>
@@ -335,7 +371,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: 12,
 }
 
-function ModeCard({ icon, title, description, onClick }: { icon: React.ReactNode; title: string; description: string; onClick: () => void }) {
+function ModeCard({ icon, title, description, onClick }: { icon: React.ReactNode; title: React.ReactNode; description: React.ReactNode; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -350,7 +386,7 @@ function ModeCard({ icon, title, description, onClick }: { icon: React.ReactNode
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[140px_1fr] items-start gap-3">
       <div className="pt-1.5 text-xs" style={{ color: 'var(--text-3)' }}>{label}</div>

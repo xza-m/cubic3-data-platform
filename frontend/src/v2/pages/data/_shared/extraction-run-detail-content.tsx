@@ -15,15 +15,16 @@ import {
   useRerunExtractionRun,
 } from '@v2/hooks/extraction'
 import { RefreshCcw, ScrollText } from 'lucide-react'
+import { t } from '@v2/i18n'
 
 // ── 徽章渲染助手 ──────────────────────────────────────────────────────────────
 
 export function runStatusChip(status: string): ReactNode {
   const map: Record<string, { label: string; tone: string }> = {
-    success: { label: '成功',  tone: 'success' },
-    failed:  { label: '失败',  tone: 'danger' },
-    running: { label: '运行中', tone: 'accent' },
-    pending: { label: '排队',  tone: 'neutral' },
+    success: { label: t('extractionRunDetail.status.success', '成功'),  tone: 'success' },
+    failed:  { label: t('extractionRunDetail.status.failed', '失败'),   tone: 'danger' },
+    running: { label: t('extractionRunDetail.status.running', '运行中'), tone: 'accent' },
+    pending: { label: t('extractionRunDetail.status.pending', '排队'),  tone: 'neutral' },
   }
   const { label = status, tone = 'neutral' } = map[status] ?? {}
   return (
@@ -98,19 +99,23 @@ export function ExtractionRunDetailContent({
 
   return (
     <div className="px-4 py-3.5">
-      <Section title="操作">
+      <Section title={t('extractionRunDetail.section.actions', '操作')}>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={handleRerun}
             disabled={!canRerun || rerun.isPending}
-            aria-label="重新执行此次运行"
+            aria-label={t('extractionRunDetail.rerun.ariaLabel', '重新执行此次运行')}
             data-testid="run-rerun"
             className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50"
             style={{ borderColor: 'var(--border)', color: 'var(--text-1)', background: 'var(--bg-surface-2)' }}
           >
             <RefreshCcw size={12} className={rerun.isPending ? 'animate-spin' : ''} />
-            {rerun.isPending ? '提交中…' : canRerun ? '重跑' : '无法重跑'}
+            {rerun.isPending
+              ? t('extractionRunDetail.rerun.submitting', '提交中…')
+              : canRerun
+                ? t('extractionRunDetail.rerun.action', '重跑')
+                : t('extractionRunDetail.rerun.blocked', '无法重跑')}
           </button>
           {onJumpTask ? (
             <button
@@ -119,7 +124,7 @@ export function ExtractionRunDetailContent({
               className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium"
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
             >
-              查看所属任务
+              {t('extractionRunDetail.action.viewTask', '查看所属任务')}
             </button>
           ) : null}
           {run.result_file_path ? (
@@ -129,7 +134,7 @@ export function ExtractionRunDetailContent({
               className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium"
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
             >
-              下载结果
+              {t('extractionRunDetail.action.download', '下载结果')}
             </a>
           ) : null}
         </div>
@@ -137,32 +142,32 @@ export function ExtractionRunDetailContent({
 
       <RunLogsSection run={run} />
 
-      <Section title="基础信息">
+      <Section title={t('extractionRunDetail.section.basic', '基础信息')}>
         <dl
           className="divide-y rounded-md border text-xs"
           style={{ borderColor: 'var(--border)' }}
         >
-          <Row label="执行 ID"    value={run.id} />
-          <Row label="所属任务"   value={`Task #${run.task_id}`} />
-          <Row label="状态"       value={runStatusChip(run.status)} />
-          <Row label="触发类型"   value={run.run_type} />
-          <Row label="触发人"     value={run.triggered_by} />
-          <Row label="开始时间"   value={fmtDateTime(run.start_time)} />
+          <Row label={t('extractionRunDetail.field.runId', '执行 ID')}    value={run.id} />
+          <Row label={t('extractionRunDetail.field.task', '所属任务')}     value={`Task #${run.task_id}`} />
+          <Row label={t('extractionRunDetail.field.status', '状态')}      value={runStatusChip(run.status)} />
+          <Row label={t('extractionRunDetail.field.runType', '触发类型')}  value={run.run_type} />
+          <Row label={t('extractionRunDetail.field.triggeredBy', '触发人')} value={run.triggered_by} />
+          <Row label={t('extractionRunDetail.field.startTime', '开始时间')} value={fmtDateTime(run.start_time)} />
           <Row
-            label="结束时间"
-            value={run.end_time ? fmtDateTime(run.end_time) : '运行中'}
+            label={t('extractionRunDetail.field.endTime', '结束时间')}
+            value={run.end_time ? fmtDateTime(run.end_time) : t('extractionRunDetail.state.running', '运行中')}
           />
-          <Row label="耗时"       value={fmtDuration(run.duration_ms)} />
-          <Row label="行数"       value={run.row_count !== null ? fmtNum(run.row_count) : '—'} />
-          <Row label="投递方式"   value={run.delivery_method} />
+          <Row label={t('extractionRunDetail.field.duration', '耗时')} value={fmtDuration(run.duration_ms)} />
+          <Row label={t('extractionRunDetail.field.rowCount', '行数')} value={run.row_count !== null ? fmtNum(run.row_count) : '—'} />
+          <Row label={t('extractionRunDetail.field.deliveryMethod', '投递方式')} value={run.delivery_method} />
           {run.result_size_mb !== null ? (
-            <Row label="结果大小" value={`${run.result_size_mb?.toFixed(2)} MB`} />
+            <Row label={t('extractionRunDetail.field.resultSize', '结果大小')} value={`${run.result_size_mb?.toFixed(2)} MB`} />
           ) : null}
         </dl>
       </Section>
 
       {run.error_message ? (
-        <Section title="错误信息">
+        <Section title={t('extractionRunDetail.section.error', '错误信息')}>
           <p
             className="rounded-md border px-2.5 py-1.5 text-xs leading-5"
             style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
@@ -173,7 +178,7 @@ export function ExtractionRunDetailContent({
       ) : null}
 
       {run.delivery_info ? (
-        <Section title="投递详情">
+        <Section title={t('extractionRunDetail.section.delivery', '投递详情')}>
           <pre
             className="max-h-40 overflow-auto rounded-md border p-2 text-[11px] leading-4"
             style={{
@@ -187,21 +192,25 @@ export function ExtractionRunDetailContent({
         </Section>
       ) : null}
 
-      <Section title="时间轴">
+      <Section title={t('extractionRunDetail.section.timeline', '时间轴')}>
         <ol
           className="relative ml-3 space-y-3 border-l pl-4"
           style={{ borderColor: 'var(--border)' }}
         >
           {run.start_time ? (
             <TimelineItem
-              label="开始"
+              label={t('extractionRunDetail.timeline.started', '开始')}
               time={run.start_time}
               tone="accent"
             />
           ) : null}
           {run.end_time ? (
             <TimelineItem
-              label={run.status === 'failed' ? '失败' : '完成'}
+              label={
+                run.status === 'failed'
+                  ? t('extractionRunDetail.status.failed', '失败')
+                  : t('extractionRunDetail.timeline.finished', '完成')
+              }
               time={run.end_time}
               tone={run.status === 'failed' ? 'danger' : 'success'}
             />
@@ -233,17 +242,21 @@ function RunLogsSection({ run }: { run: ExtractionRun }) {
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1.5">
             <ScrollText size={11} />
-            日志（{data?.total ?? '…'}）
+            {t('extractionRunDetail.logs.title', '日志（{n}）', {
+              n: data?.total ?? '…',
+            })}
           </span>
           <button
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            aria-label="刷新日志"
+            aria-label={t('extractionRunDetail.logs.refreshAria', '刷新日志')}
             className="rounded px-1 text-[10px]"
             style={{ color: 'var(--text-3)' }}
           >
-            {isFetching ? '刷新中…' : '刷新'}
+            {isFetching
+              ? t('extractionRunDetail.logs.refreshing', '刷新中…')
+              : t('extractionRunDetail.logs.refresh', '刷新')}
           </button>
         </div>
       }
@@ -254,7 +267,7 @@ function RunLogsSection({ run }: { run: ExtractionRun }) {
             type="checkbox"
             checked={includeSql}
             onChange={(e) => setIncludeSql(e.target.checked)}
-            aria-label="包含 SQL"
+            aria-label={t('extractionRunDetail.logs.includeSqlAria', '包含 SQL')}
           />
           SQL
         </label>
@@ -263,18 +276,18 @@ function RunLogsSection({ run }: { run: ExtractionRun }) {
             type="checkbox"
             checked={includeStack}
             onChange={(e) => setIncludeStack(e.target.checked)}
-            aria-label="包含堆栈"
+            aria-label={t('extractionRunDetail.logs.includeStackAria', '包含堆栈')}
           />
-          堆栈
+          {t('extractionRunDetail.logs.stack', '堆栈')}
         </label>
         <select
           value={levelFilter}
           onChange={(e) => setLevelFilter(e.target.value as typeof levelFilter)}
           className="rounded border px-1 py-0.5"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
-          aria-label="日志等级过滤"
+          aria-label={t('extractionRunDetail.logs.levelFilterAria', '日志等级过滤')}
         >
-          <option value="">全部等级</option>
+          <option value="">{t('extractionRunDetail.logs.levelAll', '全部等级')}</option>
           <option value="INFO">INFO</option>
           <option value="WARNING">WARNING</option>
           <option value="ERROR">ERROR</option>
@@ -282,11 +295,17 @@ function RunLogsSection({ run }: { run: ExtractionRun }) {
       </div>
 
       {isLoading ? (
-        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>加载日志…</p>
+        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+          {t('extractionRunDetail.logs.loading', '加载日志…')}
+        </p>
       ) : isError ? (
-        <p className="text-[11px]" style={{ color: 'var(--danger)' }}>日志读取失败</p>
+        <p className="text-[11px]" style={{ color: 'var(--danger)' }}>
+          {t('extractionRunDetail.logs.loadFailed', '日志读取失败')}
+        </p>
       ) : (data?.items.length ?? 0) === 0 ? (
-        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>暂无日志</p>
+        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+          {t('extractionRunDetail.logs.empty', '暂无日志')}
+        </p>
       ) : (
         <ol
           data-testid="run-logs"
@@ -339,7 +358,7 @@ function TimelineItem({
   time,
   tone,
 }: {
-  label: string
+  label: ReactNode
   time: string
   tone: string
 }) {
@@ -373,7 +392,7 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
   )
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
+function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
