@@ -13,6 +13,8 @@
 //   - 未改动时"保存"禁用
 //   - 保存成功/失败 toast
 //   - "重置"还原到上次服务端快照
+//
+// Round 4 · T-001c（第二批）— 全量走 t()；key 命名遵守 NAMING.md。
 
 import { useEffect, useState } from 'react'
 import { useAppShell } from '@v2/layout/AppShell'
@@ -22,8 +24,7 @@ import { useMyPreferences, useUpdateMyPreferences } from '@v2/hooks/userPreferen
 import type { ThemePreference, TableDensity, UserPreferences } from '@v2/api/userPreferences'
 import { cn } from '@v2/lib/cn'
 import { useA11yPreferences, type OverrideMode } from '@v2/components/A11yPreferencesProvider'
-
-// ── 本地表单状态 ──────────────────────────────────────────────────────────────
+import { t } from '@v2/i18n'
 
 interface FormState {
   theme: ThemePreference
@@ -49,8 +50,6 @@ function isPristine(form: FormState, prefs: UserPreferences): boolean {
     form.table_density === prefs.table_density
   )
 }
-
-// ── 分段控件 ───────────────────────────────────────────────────────────────────
 
 interface SegmentedOption<T extends string> {
   value: T
@@ -104,19 +103,15 @@ function SegmentedControl<T extends string>({
   )
 }
 
-// ── 错误文案 ───────────────────────────────────────────────────────────────────
-
 function validateForm(form: FormState): string | null {
   if (!form.default_landing.startsWith('/')) {
-    return '默认落地页必须以 / 开头'
+    return t('settings.validate.landingPrefix', '默认落地页必须以 / 开头')
   }
   if (!Number.isInteger(form.list_page_size) || form.list_page_size < 5 || form.list_page_size > 200) {
-    return '列表页尺寸必须是 5 到 200 之间的整数'
+    return t('settings.validate.pageSizeRange', '列表页尺寸必须是 5 到 200 之间的整数')
   }
   return null
 }
-
-// ── 主组件 ─────────────────────────────────────────────────────────────────────
 
 export default function Settings() {
   const { setBreadcrumbs } = useAppShell()
@@ -129,11 +124,13 @@ export default function Settings() {
   const [form, setForm] = useState<FormState | null>(null)
 
   useEffect(() => {
-    setBreadcrumbs(['设置', '我的偏好'])
+    setBreadcrumbs([
+      t('settings.breadcrumb.root', '设置'),
+      t('settings.breadcrumb.mine', '我的偏好'),
+    ])
     return () => setBreadcrumbs([])
   }, [setBreadcrumbs])
 
-  // 服务端快照加载后初始化表单（仅第一次）
   useEffect(() => {
     if (prefs && !form) {
       setForm(toForm(prefs))
@@ -142,7 +139,9 @@ export default function Settings() {
 
   if (isLoading || !form || !prefs) {
     return (
-      <div className="flex flex-1 items-center justify-center text-[12px] text-3">加载中…</div>
+      <div className="flex flex-1 items-center justify-center text-[12px] text-3">
+        {t('settings.state.loading', '加载中…')}
+      </div>
     )
   }
 
@@ -162,7 +161,6 @@ export default function Settings() {
       return
     }
 
-    // 只发送与当前服务端快照不同的字段
     const patch: Partial<FormState> = {}
     if (form.theme !== prefs.theme) patch.theme = form.theme
     if (form.default_landing !== prefs.default_landing) patch.default_landing = form.default_landing
@@ -171,120 +169,135 @@ export default function Settings() {
 
     try {
       await updateMutation.mutateAsync(patch)
-      toast.show({ tone: 'success', title: '偏好已保存' })
+      toast.show({ tone: 'success', title: t('settings.toast.saved', '偏好已保存') })
     } catch {
-      toast.show({ tone: 'danger', title: '保存失败，请重试' })
+      toast.show({ tone: 'danger', title: t('settings.toast.saveFailed', '保存失败，请重试') })
     }
   }
 
   const themeOptions: SegmentedOption<ThemePreference>[] = [
-    { value: 'light', label: '浅色' },
-    { value: 'dark', label: '深色' },
-    { value: 'system', label: '跟随系统' },
+    { value: 'light', label: t('settings.theme.light', '浅色') },
+    { value: 'dark', label: t('settings.theme.dark', '深色') },
+    { value: 'system', label: t('settings.theme.system', '跟随系统') },
   ]
 
   const densityOptions: SegmentedOption<TableDensity>[] = [
-    { value: 'comfortable', label: '舒适' },
-    { value: 'compact', label: '紧凑' },
+    { value: 'comfortable', label: t('settings.density.comfortable', '舒适') },
+    { value: 'compact', label: t('settings.density.compact', '紧凑') },
   ]
+
+  const overrideModeOptions: SegmentedOption<OverrideMode>[] = [
+    { value: 'auto', label: t('settings.override.auto', '跟随系统') },
+    { value: 'on', label: t('settings.override.on', '始终开启') },
+    { value: 'off', label: t('settings.override.off', '始终关闭') },
+  ]
+
+  const labelTheme = t('settings.label.theme', '界面主题')
+  const labelDensity = t('settings.label.density', '表格密度')
+  const labelLanding = t('settings.label.landing', '默认落地页')
+  const labelMotion = t('settings.label.reduceMotion', '减少动态效果')
+  const labelContrast = t('settings.label.highContrast', '高对比主题')
+  const labelPageSize = t('settings.label.pageSize', '列表默认条数')
 
   return (
     <div className="mx-auto w-full max-w-[600px] px-6 py-8 flex flex-col gap-6">
       <div>
-        <h1 className="text-[15px] font-semibold text-1">我的偏好</h1>
-        <p className="mt-1 text-[12px] text-3">个性化平台外观与交互行为</p>
+        <h1 className="text-[15px] font-semibold text-1">
+          {t('settings.page.title', '我的偏好')}
+        </h1>
+        <p className="mt-1 text-[12px] text-3">
+          {t('settings.page.subtitle', '个性化平台外观与交互行为')}
+        </p>
       </div>
 
-      {/* 设置卡片 */}
       <div
         className="rounded-lg border divide-y"
         style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
       >
-        {/* 主题 */}
         <div className="flex items-center justify-between px-5 py-4 gap-4">
           <div>
-            <div className="text-[13px] font-medium text-1">界面主题</div>
-            <div className="mt-0.5 text-[12px] text-3">选择浅色、深色模式或跟随系统设置</div>
+            <div className="text-[13px] font-medium text-1">{labelTheme}</div>
+            <div className="mt-0.5 text-[12px] text-3">
+              {t('settings.desc.theme', '选择浅色、深色模式或跟随系统设置')}
+            </div>
           </div>
           <SegmentedControl
-            aria-label="界面主题"
+            aria-label={labelTheme}
             value={form.theme}
             onChange={(v) => setForm((f) => f && { ...f, theme: v })}
             options={themeOptions}
           />
         </div>
 
-        {/* 表格密度 */}
         <div className="flex items-center justify-between px-5 py-4 gap-4">
           <div>
-            <div className="text-[13px] font-medium text-1">表格密度</div>
-            <div className="mt-0.5 text-[12px] text-3">控制表格行高与内容间距</div>
+            <div className="text-[13px] font-medium text-1">{labelDensity}</div>
+            <div className="mt-0.5 text-[12px] text-3">
+              {t('settings.desc.density', '控制表格行高与内容间距')}
+            </div>
           </div>
           <SegmentedControl
-            aria-label="表格密度"
+            aria-label={labelDensity}
             value={form.table_density}
             onChange={(v) => setForm((f) => f && { ...f, table_density: v })}
             options={densityOptions}
           />
         </div>
 
-        {/* 默认落地页 */}
         <div className="px-5 py-4">
-          <div className="text-[13px] font-medium text-1">默认落地页</div>
-          <div className="mt-0.5 text-[12px] text-3">登录后自动跳转到此路径（必须以 / 开头）</div>
+          <div className="text-[13px] font-medium text-1">{labelLanding}</div>
+          <div className="mt-0.5 text-[12px] text-3">
+            {t('settings.desc.landing', '登录后自动跳转到此路径（必须以 / 开头）')}
+          </div>
           <Input
             className="mt-2 w-full max-w-[320px]"
             value={form.default_landing}
             onChange={(e) => setForm((f) => f && { ...f, default_landing: e.target.value })}
             placeholder="/dashboard"
-            aria-label="默认落地页"
+            aria-label={labelLanding}
           />
           {form.default_landing && !form.default_landing.startsWith('/') ? (
             <p className="mt-1 text-[11px]" style={{ color: 'var(--danger)' }}>
-              路径必须以 / 开头
+              {t('settings.validate.landingPrefixShort', '路径必须以 / 开头')}
             </p>
           ) : null}
         </div>
 
-        {/* 动效与对比度（A-1 / A-2） */}
         <div className="flex items-center justify-between px-5 py-4 gap-4">
           <div>
-            <div className="text-[13px] font-medium text-1">减少动态效果</div>
-            <div className="mt-0.5 text-[12px] text-3">对眩晕敏感的用户推荐开启；默认跟随系统</div>
+            <div className="text-[13px] font-medium text-1">{labelMotion}</div>
+            <div className="mt-0.5 text-[12px] text-3">
+              {t('settings.desc.reduceMotion', '对眩晕敏感的用户推荐开启；默认跟随系统')}
+            </div>
           </div>
           <SegmentedControl<OverrideMode>
-            aria-label="减少动态效果"
+            aria-label={labelMotion}
             value={a11y.reducedMotion}
             onChange={a11y.setReducedMotion}
-            options={[
-              { value: 'auto', label: '跟随系统' },
-              { value: 'on', label: '始终开启' },
-              { value: 'off', label: '始终关闭' },
-            ]}
+            options={overrideModeOptions}
           />
         </div>
 
         <div className="flex items-center justify-between px-5 py-4 gap-4">
           <div>
-            <div className="text-[13px] font-medium text-1">高对比主题</div>
-            <div className="mt-0.5 text-[12px] text-3">加强边框与文字对比；默认跟随系统</div>
+            <div className="text-[13px] font-medium text-1">{labelContrast}</div>
+            <div className="mt-0.5 text-[12px] text-3">
+              {t('settings.desc.highContrast', '加强边框与文字对比；默认跟随系统')}
+            </div>
           </div>
           <SegmentedControl<OverrideMode>
-            aria-label="高对比主题"
+            aria-label={labelContrast}
             value={a11y.highContrast}
             onChange={a11y.setHighContrast}
-            options={[
-              { value: 'auto', label: '跟随系统' },
-              { value: 'on', label: '始终开启' },
-              { value: 'off', label: '始终关闭' },
-            ]}
+            options={overrideModeOptions}
           />
         </div>
 
-        {/* 列表页尺寸 */}
         <div className="px-5 py-4">
-          <div className="text-[13px] font-medium text-1">列表默认条数</div>
-          <div className="mt-0.5 text-[12px] text-3">列表页每页默认展示条数（5–200）</div>
+          <div className="text-[13px] font-medium text-1">{labelPageSize}</div>
+          <div className="mt-0.5 text-[12px] text-3">
+            {t('settings.desc.pageSize', '列表页每页默认展示条数（5–200）')}
+          </div>
           <Input
             className="mt-2 w-[120px]"
             type="number"
@@ -295,34 +308,33 @@ export default function Settings() {
               const v = parseInt(e.target.value, 10)
               setForm((f) => f && { ...f, list_page_size: Number.isNaN(v) ? f.list_page_size : v })
             }}
-            aria-label="列表默认条数"
+            aria-label={labelPageSize}
           />
           {(form.list_page_size < 5 || form.list_page_size > 200) ? (
             <p className="mt-1 text-[11px]" style={{ color: 'var(--danger)' }}>
-              请输入 5 到 200 之间的数字
+              {t('settings.validate.pageSizeRangeShort', '请输入 5 到 200 之间的数字')}
             </p>
           ) : null}
         </div>
       </div>
 
-      {/* 操作按钮 */}
       <div className="flex items-center gap-3">
         <Button
           variant="primary"
           disabled={saveDisabled}
           loading={updateMutation.isPending}
           onClick={handleSave}
-          aria-label="保存偏好"
+          aria-label={t('settings.action.save', '保存偏好')}
         >
-          保存
+          {t('settings.action.saveShort', '保存')}
         </Button>
         <Button
           variant="ghost"
           disabled={pristine || updateMutation.isPending}
           onClick={handleReset}
-          aria-label="重置为上次保存"
+          aria-label={t('settings.action.reset', '重置为上次保存')}
         >
-          重置
+          {t('settings.action.resetShort', '重置')}
         </Button>
       </div>
     </div>

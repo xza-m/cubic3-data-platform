@@ -1,11 +1,14 @@
 // frontend/src/v2/pages/queries/_shared/saved-query-content.tsx
 //
 // 已保存查询详情内容组件 —— Peek panel 与 L3 Detail 共用。
+//
+// Round 4 · T-001c（第二批）— 全量 t() 替换；key 命名：queries.saved.*
 
 import { useState, type ReactNode } from 'react'
 import { Star } from 'lucide-react'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import type { SavedQuery, SavedQueryDetail, CreateSavedQueryPayload, UpdateSavedQueryPayload } from '@v2/api/queries'
+import { t } from '@v2/i18n'
 
 // ──────────────────────────────────────────────────────────────────────────
 // Tab label
@@ -51,7 +54,7 @@ export function SavedQueryDetailContent({
             onClick={actions.onOpen}
             className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
           >
-            在工作台打开
+            {t('queries.saved.action.openInWorkbench', '在工作台打开')}
           </button>
         )}
         {actions?.onEdit && (
@@ -61,7 +64,7 @@ export function SavedQueryDetailContent({
             className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)' }}
           >
-            编辑
+            {t('queries.saved.action.edit', '编辑')}
           </button>
         )}
         {actions?.onToggleFavorite && (
@@ -71,7 +74,9 @@ export function SavedQueryDetailContent({
             className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)' }}
           >
-            {row.is_favorite ? '取消收藏' : '收藏'}
+            {row.is_favorite
+              ? t('queries.saved.action.unfavorite', '取消收藏')
+              : t('queries.saved.action.favorite', '收藏')}
           </button>
         )}
         {actions?.onDelete && (
@@ -80,18 +85,18 @@ export function SavedQueryDetailContent({
             onClick={actions.onDelete}
             className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
           >
-            删除
+            {t('queries.saved.action.delete', '删除')}
           </button>
         )}
       </div>
 
-      <Section title="基础信息">
-        <Row label="编号" value={<code>#{row.id}</code>} />
-        <Row label="名称" value={row.query_name} />
-        <Row label="代码" value={<code>{row.query_code}</code>} />
-        <Row label="负责人" value={row.created_by} />
+      <Section title={t('queries.saved.section.basic', '基础信息')}>
+        <Row label={t('queries.saved.field.id', '编号')} value={<code>#{row.id}</code>} />
+        <Row label={t('queries.saved.field.name', '名称')} value={row.query_name} />
+        <Row label={t('queries.saved.field.code', '代码')} value={<code>{row.query_code}</code>} />
+        <Row label={t('queries.saved.field.owner', '负责人')} value={row.created_by} />
         <Row
-          label="收藏"
+          label={t('queries.saved.field.favorite', '收藏')}
           value={
             <span className="flex items-center gap-1">
               <Star
@@ -99,22 +104,26 @@ export function SavedQueryDetailContent({
                 className={row.is_favorite ? 'text-yellow-500' : 'text-neutral-400'}
                 fill={row.is_favorite ? 'currentColor' : 'none'}
               />
-              {row.is_favorite ? '已收藏' : '未收藏'}
+              {row.is_favorite
+                ? t('queries.saved.favorite.on', '已收藏')
+                : t('queries.saved.favorite.off', '未收藏')}
             </span>
           }
         />
-        {row.description && <Row label="描述" value={row.description} />}
+        {row.description && (
+          <Row label={t('queries.saved.field.description', '描述')} value={row.description} />
+        )}
         <Row
-          label="标签"
+          label={t('queries.saved.field.tags', '标签')}
           value={
             row.tags?.length ? (
               <span className="flex flex-wrap justify-end gap-1">
-                {row.tags.map((t) => (
+                {row.tags.map((tag) => (
                   <span
-                    key={t}
+                    key={tag}
                     className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
                   >
-                    {t}
+                    {tag}
                   </span>
                 ))}
               </span>
@@ -123,11 +132,11 @@ export function SavedQueryDetailContent({
             )
           }
         />
-        <Row label="创建于" value={fmtDateTime(row.created_at)} />
-        <Row label="更新于" value={fmtDateTime(row.updated_at)} />
+        <Row label={t('queries.saved.field.createdAt', '创建于')} value={fmtDateTime(row.created_at)} />
+        <Row label={t('queries.saved.field.updatedAt', '更新于')} value={fmtDateTime(row.updated_at)} />
       </Section>
 
-      <Section title="预览 SQL">
+      <Section title={t('queries.saved.section.previewSql', '预览 SQL')}>
         <pre
           className="overflow-auto rounded border p-2 text-xs leading-4"
           style={{
@@ -160,7 +169,7 @@ export function SavedQueryContextBody({
     <div className="space-y-4 px-4 py-4">
       <section>
         <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-          收藏状态
+          {t('queries.saved.section.favoriteState', '收藏状态')}
         </div>
         <div className="mt-2 flex items-center gap-1.5">
           <Star
@@ -168,26 +177,32 @@ export function SavedQueryContextBody({
             className={row.is_favorite ? 'text-yellow-500' : 'text-neutral-400'}
             fill={row.is_favorite ? 'currentColor' : 'none'}
           />
-          <span className="text-xs">{row.is_favorite ? '已收藏' : '未收藏'}</span>
+          <span className="text-xs">
+            {row.is_favorite
+              ? t('queries.saved.favorite.on', '已收藏')
+              : t('queries.saved.favorite.off', '未收藏')}
+          </span>
         </div>
       </section>
       <section>
         <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-          信息
+          {t('queries.saved.section.info', '信息')}
         </div>
         <dl className="mt-2 space-y-1 text-xs">
-          <Pair label="负责人" value={row.created_by} />
-          <Pair label="更新" value={fmtRelative(row.updated_at)} />
+          <Pair label={t('queries.saved.field.owner', '负责人')} value={row.created_by} />
+          <Pair label={t('queries.saved.field.updated', '更新')} value={fmtRelative(row.updated_at)} />
           {row.tags?.length ? (
             <div className="flex items-start justify-between gap-2">
-              <dt style={{ color: 'var(--text-3)' }}>标签</dt>
+              <dt style={{ color: 'var(--text-3)' }}>
+                {t('queries.saved.field.tags', '标签')}
+              </dt>
               <dd className="flex flex-wrap justify-end gap-1">
-                {row.tags.map((t) => (
+                {row.tags.map((tag) => (
                   <span
-                    key={t}
+                    key={tag}
                     className="rounded-full bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
                   >
-                    {t}
+                    {tag}
                   </span>
                 ))}
               </dd>
@@ -197,16 +212,24 @@ export function SavedQueryContextBody({
       </section>
       <section>
         <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-          邻接导航
+          {t('queries.saved.section.neighbors', '邻接导航')}
         </div>
         <div className="mt-2 space-y-1.5 text-xs">
           <NeighborButton
-            label={neighbors.prev ? `← ${neighbors.prev.query_name}` : '没有上一项'}
+            label={
+              neighbors.prev
+                ? `← ${neighbors.prev.query_name}`
+                : t('queries.saved.neighbor.noPrev', '没有上一项')
+            }
             disabled={!neighbors.prev}
             onClick={neighbors.prev ? () => onNavigate(neighbors.prev!.id) : undefined}
           />
           <NeighborButton
-            label={neighbors.next ? `${neighbors.next.query_name} →` : '没有下一项'}
+            label={
+              neighbors.next
+                ? `${neighbors.next.query_name} →`
+                : t('queries.saved.neighbor.noNext', '没有下一项')
+            }
             disabled={!neighbors.next}
             onClick={neighbors.next ? () => onNavigate(neighbors.next!.id) : undefined}
           />
@@ -250,13 +273,13 @@ export function SavedQueryInlineForm({
       query_name: name || undefined,
       description: desc || undefined,
       sql_query: sql || undefined,
-      tags: tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      tags: tags ? tags.split(',').map((tag) => tag.trim()).filter(Boolean) : [],
     })
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3 px-4 py-4 text-xs">
-      <Field label="名称">
+      <Field label={t('queries.saved.field.name', '名称')}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -265,7 +288,7 @@ export function SavedQueryInlineForm({
           style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
         />
       </Field>
-      <Field label="描述">
+      <Field label={t('queries.saved.field.description', '描述')}>
         <input
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
@@ -273,16 +296,19 @@ export function SavedQueryInlineForm({
           style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
         />
       </Field>
-      <Field label="标签" hint="逗号分隔">
+      <Field
+        label={t('queries.saved.field.tags', '标签')}
+        hint={t('queries.saved.hint.tagsCsv', '逗号分隔')}
+      >
         <input
           value={tags}
           onChange={(e) => setTags(e.target.value)}
-          placeholder="BI, 运营"
+          placeholder={t('queries.saved.placeholder.tags', 'BI, 运营')}
           className="w-full rounded border bg-transparent px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
           style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
         />
       </Field>
-      <Field label="SQL">
+      <Field label={t('queries.saved.field.sql', 'SQL')}>
         <textarea
           value={sql}
           onChange={(e) => setSql(e.target.value)}
@@ -297,7 +323,9 @@ export function SavedQueryInlineForm({
           disabled={loading}
           className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
         >
-          {loading ? '保存中…' : '保存修改'}
+          {loading
+            ? t('queries.saved.action.saving', '保存中…')
+            : t('queries.saved.action.saveEdit', '保存修改')}
         </button>
         <button
           type="button"
@@ -305,7 +333,7 @@ export function SavedQueryInlineForm({
           className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)]"
           style={{ borderColor: 'var(--border)' }}
         >
-          取消
+          {t('queries.saved.action.cancel', '取消')}
         </button>
       </div>
     </form>
@@ -345,23 +373,23 @@ export function CreateSavedQueryForm({
       source_id: Number(sourceId),
       sql_query: sql,
       description: desc || undefined,
-      tags: tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
+      tags: tags ? tags.split(',').map((tag) => tag.trim()).filter(Boolean) : [],
     })
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3 px-4 py-4 text-xs">
-      <Field label="名称">
+      <Field label={t('queries.saved.field.name', '名称')}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          placeholder="如：GMV_周报"
+          placeholder={t('queries.saved.placeholder.name', '如：GMV_周报')}
           className="w-full rounded border bg-transparent px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
           style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
         />
       </Field>
-      <Field label="数据源">
+      <Field label={t('queries.saved.field.source', '数据源')}>
         <select
           value={sourceId}
           onChange={(e) => setSourceId(e.target.value)}
@@ -376,7 +404,7 @@ export function CreateSavedQueryForm({
           ))}
         </select>
       </Field>
-      <Field label="描述">
+      <Field label={t('queries.saved.field.description', '描述')}>
         <input
           value={desc}
           onChange={(e) => setDesc(e.target.value)}
@@ -384,16 +412,19 @@ export function CreateSavedQueryForm({
           style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
         />
       </Field>
-      <Field label="标签" hint="逗号分隔">
+      <Field
+        label={t('queries.saved.field.tags', '标签')}
+        hint={t('queries.saved.hint.tagsCsv', '逗号分隔')}
+      >
         <input
           value={tags}
           onChange={(e) => setTags(e.target.value)}
-          placeholder="BI, 运营"
+          placeholder={t('queries.saved.placeholder.tags', 'BI, 运营')}
           className="w-full rounded border bg-transparent px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
           style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
         />
       </Field>
-      <Field label="SQL">
+      <Field label={t('queries.saved.field.sql', 'SQL')}>
         <textarea
           value={sql}
           onChange={(e) => setSql(e.target.value)}
@@ -410,7 +441,9 @@ export function CreateSavedQueryForm({
           disabled={loading}
           className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
         >
-          {loading ? '创建中…' : '创建查询'}
+          {loading
+            ? t('queries.saved.action.creating', '创建中…')
+            : t('queries.saved.action.create', '创建查询')}
         </button>
         <button
           type="button"
@@ -418,7 +451,7 @@ export function CreateSavedQueryForm({
           className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)]"
           style={{ borderColor: 'var(--border)' }}
         >
-          取消
+          {t('queries.saved.action.cancel', '取消')}
         </button>
       </div>
     </form>
@@ -440,7 +473,7 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
   )
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
+function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -451,7 +484,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
-function Pair({ label, value }: { label: string; value: ReactNode }) {
+function Pair({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -467,8 +500,8 @@ function Field({
   hint,
   children,
 }: {
-  label: string
-  hint?: string
+  label: ReactNode
+  hint?: ReactNode
   children: ReactNode
 }) {
   return (

@@ -25,6 +25,7 @@ import {
 import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
 import { useToast } from '@v2/components/ui'
 import type { ScheduledQuery } from '@v2/api/queries'
+import { t } from '@v2/i18n'
 
 export default function QueriesScheduled() {
   const navigate = useNavigate()
@@ -51,16 +52,26 @@ export default function QueriesScheduled() {
     try {
       if (row.enabled) {
         await disableMut.mutateAsync(row.id)
-        toast.show({ tone: 'success', title: `${row.name} 已禁用` })
+        toast.show({
+          tone: 'success',
+          title: t('queries.scheduled.toast.disabled', '{name} 已禁用', { name: row.name }),
+        })
       } else {
         await enableMut.mutateAsync(row.id)
-        toast.show({ tone: 'success', title: `${row.name} 已启用` })
+        toast.show({
+          tone: 'success',
+          title: t('queries.scheduled.toast.enabled', '{name} 已启用', { name: row.name }),
+        })
       }
       if (peekRow?.id === row.id) {
         setPeekRow({ ...row, enabled: !row.enabled })
       }
     } catch (e) {
-      toast.show({ tone: 'danger', title: '操作失败', description: String(e) })
+      toast.show({
+        tone: 'danger',
+        title: t('queries.scheduled.toast.toggleFailed', '操作失败'),
+        description: String(e),
+      })
     }
   }
 
@@ -69,22 +80,45 @@ export default function QueriesScheduled() {
       await triggerMut.mutateAsync(row.id)
       toast.show({
         tone: 'success',
-        title: `已触发 ${row.name}`,
-        description: '执行结果将出现在 runs 历史中',
+        title: t('queries.scheduled.toast.triggered', '已触发 {name}', { name: row.name }),
+        description: t(
+          'queries.scheduled.toast.triggeredDesc',
+          '执行结果将出现在 runs 历史中',
+        ),
       })
     } catch (e) {
-      toast.show({ tone: 'danger', title: '触发失败', description: String(e) })
+      toast.show({
+        tone: 'danger',
+        title: t('queries.scheduled.toast.triggerFailed', '触发失败'),
+        description: String(e),
+      })
     }
   }
 
   async function handleDelete(row: ScheduledQuery) {
-    if (!window.confirm(`删除调度「${row.name}」？此操作将解除关联 APScheduler job。`)) return
+    if (
+      !window.confirm(
+        t(
+          'queries.scheduled.confirm.delete',
+          '删除调度「{name}」？此操作将解除关联 APScheduler job。',
+          { name: row.name },
+        ),
+      )
+    )
+      return
     try {
       await deleteMut.mutateAsync(row.id)
-      toast.show({ tone: 'success', title: `${row.name} 已删除` })
+      toast.show({
+        tone: 'success',
+        title: t('queries.scheduled.toast.deleted', '{name} 已删除', { name: row.name }),
+      })
       if (peekRow?.id === row.id) setPeekRow(null)
     } catch (e) {
-      toast.show({ tone: 'danger', title: '删除失败', description: String(e) })
+      toast.show({
+        tone: 'danger',
+        title: t('queries.scheduled.toast.deleteFailed', '删除失败'),
+        description: String(e),
+      })
     }
   }
 
@@ -97,7 +131,7 @@ export default function QueriesScheduled() {
         >
           <div>
             <div className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              调度查询
+              {t('queries.scheduled.page.title', '调度查询')}
             </div>
             <div className="text-xs" style={{ color: 'var(--text-3)' }}>
               GET /api/v1/queries/scheduled · APScheduler in-process
@@ -108,7 +142,7 @@ export default function QueriesScheduled() {
             onClick={() => navigate('/queries/scheduled/new')}
             className="ml-auto flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
           >
-            <Plus size={12} /> 新建调度
+            <Plus size={12} /> {t('queries.scheduled.action.new', '新建调度')}
           </button>
         </div>
 
@@ -117,40 +151,42 @@ export default function QueriesScheduled() {
             <SkeletonRows />
           ) : isError ? (
             <div className="flex h-full flex-col items-center justify-center gap-2">
-              <span className="text-xs text-red-500">加载失败</span>
+              <span className="text-xs text-red-500">
+                {t('queries.scheduled.state.loadFailed', '加载失败')}
+              </span>
               <button
                 type="button"
                 onClick={() => void refetch()}
                 className="text-xs underline"
                 style={{ color: 'var(--accent)' }}
               >
-                重试
+                {t('queries.scheduled.action.retry', '重试')}
               </button>
             </div>
           ) : rows.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3">
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-                暂无调度查询
+                {t('queries.scheduled.state.empty', '暂无调度查询')}
               </p>
               <button
                 type="button"
                 onClick={() => navigate('/queries/scheduled/new')}
                 className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
               >
-                新建第一个调度
+                {t('queries.scheduled.action.newFirst', '新建第一个调度')}
               </button>
             </div>
           ) : (
             <table className="w-full border-collapse text-xs">
               <thead className="sticky top-0" style={{ background: 'var(--bg-surface)', color: 'var(--text-2)' }}>
                 <tr>
-                  <Th>名称</Th>
+                  <Th>{t('queries.scheduled.col.name', '名称')}</Th>
                   <Th>Cron</Th>
-                  <Th>下次触发</Th>
-                  <Th>上次状态</Th>
-                  <Th>启用</Th>
-                  <Th>更新</Th>
-                  <Th>操作</Th>
+                  <Th>{t('queries.scheduled.col.nextRun', '下次触发')}</Th>
+                  <Th>{t('queries.scheduled.col.lastStatus', '上次状态')}</Th>
+                  <Th>{t('queries.scheduled.col.enabled', '启用')}</Th>
+                  <Th>{t('queries.scheduled.col.updated', '更新')}</Th>
+                  <Th>{t('queries.scheduled.col.actions', '操作')}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -222,9 +258,13 @@ export default function QueriesScheduled() {
                           disabled={triggerMut.isPending || !row.enabled}
                           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)] disabled:opacity-40"
                           style={{ color: 'var(--accent)' }}
-                          title={row.enabled ? '立即手动触发一次' : '禁用状态下无法触发'}
+                          title={
+                            row.enabled
+                              ? t('queries.scheduled.tooltip.triggerNow', '立即手动触发一次')
+                              : t('queries.scheduled.tooltip.triggerDisabled', '禁用状态下无法触发')
+                          }
                         >
-                          <Play size={11} /> 触发
+                          <Play size={11} /> {t('queries.scheduled.action.trigger', '触发')}
                         </button>
                         <button
                           type="button"
@@ -232,7 +272,7 @@ export default function QueriesScheduled() {
                           className="rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
                           style={{ color: 'var(--text-2)' }}
                         >
-                          详情
+                          {t('queries.scheduled.action.detail', '详情')}
                         </button>
                         <button
                           type="button"
@@ -255,7 +295,9 @@ export default function QueriesScheduled() {
             className="flex items-center justify-between border-t px-4 py-2 text-xs"
             style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
           >
-            <span>共 {fmtNum(total)} 条</span>
+            <span>
+              {t('queries.scheduled.pager.total', '共 {n} 条', { n: fmtNum(total) })}
+            </span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -264,7 +306,7 @@ export default function QueriesScheduled() {
                 className="rounded border px-2 py-1 disabled:opacity-40"
                 style={{ borderColor: 'var(--border)' }}
               >
-                上一页
+                {t('queries.scheduled.pager.prev', '上一页')}
               </button>
               <span>
                 {page} / {Math.ceil(total / pageSize)}
@@ -276,7 +318,7 @@ export default function QueriesScheduled() {
                 className="rounded border px-2 py-1 disabled:opacity-40"
                 style={{ borderColor: 'var(--border)' }}
               >
-                下一页
+                {t('queries.scheduled.pager.next', '下一页')}
               </button>
             </div>
           </div>
@@ -334,7 +376,7 @@ function PeekPanel({
             className="rounded px-2 py-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ color: 'var(--accent)' }}
           >
-            详情
+            {t('queries.scheduled.action.detail', '详情')}
           </button>
           <button
             type="button"
@@ -350,32 +392,49 @@ function PeekPanel({
       <div className="space-y-4 px-4 py-4 text-xs">
         <section>
           <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-            调度
+            {t('queries.scheduled.peek.schedule', '调度')}
           </div>
           <dl className="mt-2 space-y-1">
             <CtxPair label="Cron" value={<code>{row.cron}</code>} />
-            <CtxPair label="时区" value={row.timezone} />
+            <CtxPair label={t('queries.scheduled.peek.tz', '时区')} value={row.timezone} />
             <CtxPair
-              label="启用"
-              value={row.enabled ? <span style={{ color: 'var(--success)' }}>已启用</span> : '已禁用'}
+              label={t('queries.scheduled.peek.enabledLabel', '启用')}
+              value={
+                row.enabled ? (
+                  <span style={{ color: 'var(--success)' }}>
+                    {t('queries.scheduled.peek.enabled', '已启用')}
+                  </span>
+                ) : (
+                  t('queries.scheduled.peek.disabled', '已禁用')
+                )
+              }
             />
-            <CtxPair label="下次触发" value={fmtDateTime(row.next_run_at)} />
-            <CtxPair label="上次执行" value={fmtRelative(row.last_run_at)} />
-            <CtxPair label="上次状态" value={<StatusChip status={row.last_status} />} />
+            <CtxPair
+              label={t('queries.scheduled.peek.nextRun', '下次触发')}
+              value={fmtDateTime(row.next_run_at)}
+            />
+            <CtxPair
+              label={t('queries.scheduled.peek.lastRun', '上次执行')}
+              value={fmtRelative(row.last_run_at)}
+            />
+            <CtxPair
+              label={t('queries.scheduled.peek.lastStatus', '上次状态')}
+              value={<StatusChip status={row.last_status} />}
+            />
           </dl>
         </section>
 
         <section>
           <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-            最近 5 次执行
+            {t('queries.scheduled.peek.recentRuns', '最近 5 次执行')}
           </div>
           {isLoading ? (
             <div className="mt-2 text-xs" style={{ color: 'var(--text-4)' }}>
-              加载中…
+              {t('queries.scheduled.state.loading', '加载中…')}
             </div>
           ) : recentRuns.length === 0 ? (
             <div className="mt-2 text-xs" style={{ color: 'var(--text-4)' }}>
-              尚无执行记录
+              {t('queries.scheduled.peek.noRuns', '尚无执行记录')}
             </div>
           ) : (
             <ul className="mt-2 space-y-1.5">
@@ -385,7 +444,7 @@ function PeekPanel({
                   <span style={{ color: 'var(--text-3)' }}>{fmtRelative(r.started_at)}</span>
                   {r.rows_returned != null && (
                     <span className="ml-auto text-xs" style={{ color: 'var(--text-2)' }}>
-                      {fmtNum(r.rows_returned)} 行
+                      {t('queries.scheduled.peek.rows', '{n} 行', { n: fmtNum(r.rows_returned) })}
                     </span>
                   )}
                 </li>
@@ -396,7 +455,7 @@ function PeekPanel({
 
         <section>
           <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-            SQL 预览
+            {t('queries.scheduled.peek.sqlPreview', 'SQL 预览')}
           </div>
           <pre
             className="mt-2 max-h-32 overflow-auto rounded border p-2 text-xs"
@@ -427,10 +486,10 @@ function StatusChip({ status }: { status: string | null | undefined }) {
     )
   }
   const map: Record<string, { bg: string; fg: string; label: string }> = {
-    success: { bg: 'var(--success-soft)', fg: 'var(--success)', label: '成功' },
-    failed: { bg: 'var(--danger-soft)', fg: 'var(--danger)', label: '失败' },
-    running: { bg: 'var(--accent-soft)', fg: 'var(--accent)', label: '运行中' },
-    timeout: { bg: 'var(--warning-soft)', fg: 'var(--warning)', label: '超时' },
+    success: { bg: 'var(--success-soft)', fg: 'var(--success)', label: t('queries.scheduled.status.success', '成功') },
+    failed: { bg: 'var(--danger-soft)', fg: 'var(--danger)', label: t('queries.scheduled.status.failed', '失败') },
+    running: { bg: 'var(--accent-soft)', fg: 'var(--accent)', label: t('queries.scheduled.status.running', '运行中') },
+    timeout: { bg: 'var(--warning-soft)', fg: 'var(--warning)', label: t('queries.scheduled.status.timeout', '超时') },
   }
   const tone = map[status] ?? {
     bg: 'var(--bg-hover)',
@@ -472,7 +531,7 @@ function Td({
   )
 }
 
-function CtxPair({ label, value }: { label: string; value: React.ReactNode }) {
+function CtxPair({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>

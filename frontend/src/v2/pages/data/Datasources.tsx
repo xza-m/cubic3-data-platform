@@ -16,9 +16,8 @@ import {
   sourceTypeChip,
 } from './_shared/datasource-detail-content'
 import { fmtDateTime } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
-// X-Crosscut 提供的共享组件（编译错误留待 Phase 3 修复）
 import { PeekPanel } from '@v2/components/PeekPanel'
 import { useAppShell } from '@v2/layout/AppShell'
 
@@ -35,7 +34,10 @@ export default function Datasources() {
 
   // 面包屑
   useEffect(() => {
-    setBreadcrumbs(['数据', '数据源'])
+    setBreadcrumbs([
+      t('datasources.breadcrumb.data', '数据'),
+      t('datasources.breadcrumb.datasources', '数据源'),
+    ])
   }, [setBreadcrumbs])
 
   // TopBar 操作
@@ -49,7 +51,7 @@ export default function Datasources() {
           style={{ color: 'var(--text-2)' }}
         >
           <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-          刷新
+          {t('datasources.action.refresh', '刷新')}
         </button>
         <button
           type="button"
@@ -58,7 +60,7 @@ export default function Datasources() {
           style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
         >
           <Plus size={12} />
-          新建数据源
+          {t('datasources.action.create', '新建数据源')}
         </button>
       </div>,
     )
@@ -96,38 +98,40 @@ export default function Datasources() {
       title: (
         <div className="flex items-center gap-1.5">
           <ServerCog size={12} style={{ color: 'var(--text-3)' }} />
-          数据源概览
+          {t('datasources.context.title', '数据源概览')}
         </div>
       ),
       subtitle: 'GET /api/v1/data-center/datasources',
       body: (
         <div className="space-y-4 px-4 py-4">
-          <CtxSection title="规模">
+          <CtxSection title={t('datasources.context.scale', '规模')}>
             <div className="grid grid-cols-3 gap-2">
-              <StatCard label="总计"  value={summary.total} />
-              <StatCard label="已连接" value={summary.connected} tone="success" />
+              <StatCard label={t('datasources.stats.total', '总计')} value={summary.total} />
+              <StatCard label={t('datasources.stats.connected', '已连接')} value={summary.connected} tone="success" />
               <StatCard
-                label="异常"
+                label={t('datasources.stats.errors', '异常')}
                 value={summary.errors}
                 tone={summary.errors ? 'danger' : 'neutral'}
               />
             </div>
           </CtxSection>
-          <CtxSection title="类型分布">
+          <CtxSection title={t('datasources.context.typeDist', '类型分布')}>
             {summary.byType.length === 0 ? (
-              <p className="text-[12px]" style={{ color: 'var(--text-3)' }}>暂无数据</p>
+              <p className="text-[12px]" style={{ color: 'var(--text-3)' }}>
+                {t('datasources.context.noData', '暂无数据')}
+              </p>
             ) : (
               <div className="space-y-1">
-                {summary.byType.map(([t, n]) => (
-                  <div key={t} className="flex items-center justify-between text-[12px]">
-                    {sourceTypeChip(t)}
+                {summary.byType.map(([type, n]) => (
+                  <div key={type} className="flex items-center justify-between text-[12px]">
+                    {sourceTypeChip(type)}
                     <span style={{ color: 'var(--text-2)' }}>{n}</span>
                   </div>
                 ))}
               </div>
             )}
           </CtxSection>
-          <CtxSection title="快捷操作">
+          <CtxSection title={t('datasources.context.shortcuts', '快捷操作')}>
             <div className="space-y-1.5 text-[12px]">
               <button
                 type="button"
@@ -135,7 +139,7 @@ export default function Datasources() {
                 className="flex w-full items-center rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
-                + 新建数据源
+                + {t('datasources.action.create', '新建数据源')}
               </button>
               <button
                 type="button"
@@ -143,16 +147,16 @@ export default function Datasources() {
                 className="flex w-full items-center rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
-                ↻ 重新拉取
+                ↻ {t('datasources.action.refetch', '重新拉取')}
               </button>
             </div>
           </CtxSection>
-          <CtxSection title="使用提示">
+          <CtxSection title={t('datasources.context.hints', '使用提示')}>
             <ul className="space-y-1 text-[11px] leading-5" style={{ color: 'var(--text-3)' }}>
-              <li>· 单击行 → 打开预览 (Peek)</li>
-              <li>· ↑/↓ 切换预览对象</li>
-              <li>· ⌘↵ 升级到全屏 Tab</li>
-              <li>· Esc 关闭预览</li>
+              <li>{t('datasources.hint.clickPeek', '· 单击行 → 打开预览 (Peek)')}</li>
+              <li>{t('datasources.hint.arrowNav', '· ↑/↓ 切换预览对象')}</li>
+              <li>{t('datasources.hint.cmdEnter', '· ⌘↵ 升级到全屏 Tab')}</li>
+              <li>{t('datasources.hint.esc', '· Esc 关闭预览')}</li>
             </ul>
           </CtxSection>
         </div>
@@ -180,13 +184,13 @@ export default function Datasources() {
   )
 
   const columns = useMemo<
-    Array<{ key: string; title: string; width?: number; render?: (r: Datasource) => React.ReactNode }>
+    Array<{ key: string; title: React.ReactNode; width?: number; render?: (r: Datasource) => React.ReactNode }>
   >(() => {
     const peekOpen = peekRow != null
     const base = [
       {
         key: 'name',
-        title: '名称',
+        title: t('datasources.col.name', '名称'),
         render: (row: Datasource) => (
           <div className="flex min-w-0 items-center gap-2">
             <div
@@ -208,7 +212,7 @@ export default function Datasources() {
       },
       {
         key: 'connection_status',
-        title: '连通',
+        title: t('datasources.col.connection', '连通'),
         width: 96,
         render: (row: Datasource) => connectionStatusChip(row.connection_status),
       },
@@ -217,11 +221,16 @@ export default function Datasources() {
     if (!peekOpen) {
       return [
         base[0],
-        { key: 'source_type', title: '类型', width: 140, render: (r: Datasource) => sourceTypeChip(r.source_type) },
+        {
+          key: 'source_type',
+          title: t('datasources.col.type', '类型'),
+          width: 140,
+          render: (r: Datasource) => sourceTypeChip(r.source_type),
+        },
         base[1],
         {
           key: 'is_active',
-          title: '状态',
+          title: t('datasources.col.status', '状态'),
           width: 88,
           render: (r: Datasource) => (
             <span
@@ -231,13 +240,15 @@ export default function Datasources() {
                 color: r.is_active ? 'var(--success)' : 'var(--text-3)',
               }}
             >
-              {r.is_active ? '启用' : '停用'}
+              {r.is_active
+                ? t('datasources.status.active', '启用')
+                : t('datasources.status.inactive', '停用')}
             </span>
           ),
         },
         {
           key: 'last_test_at',
-          title: '最近测试',
+          title: t('datasources.col.lastTest', '最近测试'),
           width: 170,
           render: (r: Datasource) => (
             <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
@@ -247,7 +258,7 @@ export default function Datasources() {
         },
         {
           key: 'updated_at',
-          title: '更新于',
+          title: t('datasources.col.updated', '更新于'),
           width: 160,
           render: (r: Datasource) => (
             <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
@@ -276,7 +287,7 @@ export default function Datasources() {
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="按名称、类型搜索…"
+            placeholder={t('datasources.search.placeholder', '按名称、类型搜索…')}
             className="w-full rounded-md border px-3 py-1.5 pl-7 text-xs outline-none focus:ring-1"
             style={{
               borderColor: 'var(--border)',
@@ -290,7 +301,7 @@ export default function Datasources() {
           className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          <Filter size={12} /> 过滤
+          <Filter size={12} /> {t('datasources.action.filter', '过滤')}
         </button>
         <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
           {data ? `${rows.length} / ${data.total}` : '—'}
@@ -303,11 +314,14 @@ export default function Datasources() {
           <SkeletonRows rows={8} columns={6} />
         ) : isError ? (
           <ErrorState
-            message={error instanceof Error ? error.message : '加载失败'}
+            message={error instanceof Error ? error.message : t('datasources.state.loadFailed', '加载失败')}
             onRetry={() => refetch()}
           />
         ) : rows.length === 0 ? (
-          <EmptyState icon={<Database size={20} />} message="暂无数据源" />
+          <EmptyState
+            icon={<Database size={20} />}
+            message={t('datasources.state.empty', '暂无数据源')}
+          />
         ) : (
           // ResourceListPage 由 X-Crosscut 提供；此处回退到内联 Table
           // 编译错误留待 Phase 3 修复（X-Crosscut 交付后切换至 ResourceListPage）
@@ -335,7 +349,9 @@ export default function Datasources() {
           footer={
             peekRow ? (
               <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-                最近更新 {fmtDateTime(peekRow.updated_at)}
+                {t('datasources.peek.lastUpdate', '最近更新 {time}', {
+                  time: fmtDateTime(peekRow.updated_at),
+                })}
               </span>
             ) : null
           }
@@ -351,7 +367,7 @@ export default function Datasources() {
 
 // ── 内部辅助组件 ──────────────────────────────────────────────────────────────
 
-function CtxSection({ title, children }: { title: string; children: React.ReactNode }) {
+function CtxSection({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <section>
       <div
@@ -370,7 +386,7 @@ function StatCard({
   value,
   tone = 'neutral',
 }: {
-  label: string
+  label: React.ReactNode
   value: number
   tone?: 'neutral' | 'success' | 'danger'
 }) {
@@ -428,7 +444,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
         className="rounded-md border px-3 py-1.5 text-xs"
         style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
       >
-        重试
+        {t('datasources.action.retry', '重试')}
       </button>
     </div>
   )
@@ -452,7 +468,7 @@ function InlineTable<T extends { id: number }>({
   activeId,
   onRowClick,
 }: {
-  columns: Array<{ key: string; title: string; width?: number; render?: (r: T) => React.ReactNode }>
+  columns: Array<{ key: string; title: React.ReactNode; width?: number; render?: (r: T) => React.ReactNode }>
   rows: T[]
   activeId: number | null
   onRowClick: (r: T) => void

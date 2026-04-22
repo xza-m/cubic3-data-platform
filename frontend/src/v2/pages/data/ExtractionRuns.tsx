@@ -16,27 +16,30 @@ import {
   fmtDuration,
 } from './_shared/extraction-run-detail-content'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
-// X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { PeekPanel } from '@v2/components/PeekPanel'
 import { useAppShell } from '@v2/layout/AppShell'
 
-const STATUS_OPTIONS = [
-  { value: '', label: '全部状态' },
-  { value: 'success', label: '成功' },
-  { value: 'failed',  label: '失败' },
-  { value: 'running', label: '运行中' },
-  { value: 'pending', label: '排队' },
-  { value: 'cancelled', label: '已取消' },
-]
+function statusOptions() {
+  return [
+    { value: '', label: t('extractionRuns.filter.status.all', '全部状态') },
+    { value: 'success', label: t('extractionRuns.status.success', '成功') },
+    { value: 'failed', label: t('extractionRuns.status.failed', '失败') },
+    { value: 'running', label: t('extractionRuns.status.running', '运行中') },
+    { value: 'pending', label: t('extractionRuns.status.pending', '排队') },
+    { value: 'cancelled', label: t('extractionRuns.status.cancelled', '已取消') },
+  ]
+}
 
-const TRIGGER_OPTIONS = [
-  { value: '', label: '全部触发' },
-  { value: 'manual',    label: '手动' },
-  { value: 'scheduled', label: '调度' },
-  { value: 'api',       label: 'API' },
-]
+function triggerOptions() {
+  return [
+    { value: '', label: t('extractionRuns.filter.trigger.all', '全部触发') },
+    { value: 'manual', label: t('extractionRuns.trigger.manual', '手动') },
+    { value: 'scheduled', label: t('extractionRuns.trigger.scheduled', '调度') },
+    { value: 'api', label: 'API' },
+  ]
+}
 
 export default function ExtractionRuns() {
   const navigate = useNavigate()
@@ -72,7 +75,10 @@ export default function ExtractionRuns() {
   }, [allRows])
 
   useEffect(() => {
-    setBreadcrumbs(['数据', '执行记录'])
+    setBreadcrumbs([
+      t('extractionRuns.breadcrumb.data', '数据'),
+      t('extractionRuns.breadcrumb.runs', '执行记录'),
+    ])
   }, [setBreadcrumbs])
 
   useEffect(() => {
@@ -81,7 +87,7 @@ export default function ExtractionRuns() {
         <input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="搜索任务ID…"
+          placeholder={t('extractionRuns.filter.searchTask', '搜索任务ID…')}
           className="rounded-md border px-3 py-1.5 text-xs"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)', width: 140 }}
         />
@@ -91,7 +97,7 @@ export default function ExtractionRuns() {
           className="rounded-md border px-2 py-1.5 text-xs"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
         >
-          {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {statusOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select
           value={triggerFilter}
@@ -99,7 +105,7 @@ export default function ExtractionRuns() {
           className="rounded-md border px-2 py-1.5 text-xs"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
         >
-          {TRIGGER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {triggerOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <button
           type="button"
@@ -107,7 +113,8 @@ export default function ExtractionRuns() {
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} /> 刷新
+          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
+          {t('extractionRuns.action.refresh', '刷新')}
         </button>
       </div>,
     )
@@ -119,23 +126,23 @@ export default function ExtractionRuns() {
       title: (
         <div className="flex items-center gap-1.5">
           <Activity size={12} style={{ color: 'var(--text-3)' }} />
-          执行记录
+          {t('extractionRuns.context.title', '执行记录')}
         </div>
       ),
       subtitle: 'GET /api/v1/extraction/runs',
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
-            <CtxLabel>概览</CtxLabel>
+            <CtxLabel>{t('extractionRuns.context.overview', '概览')}</CtxLabel>
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <StatCard label="总计" value={stats.total} />
-              <StatCard label="成功" value={stats.success} tone="success" />
-              <StatCard label="运行中" value={stats.running} tone={stats.running ? 'accent' : 'neutral'} />
-              <StatCard label="失败" value={stats.failed} tone={stats.failed ? 'danger' : 'neutral'} />
+              <StatCard label={t('extractionRuns.stats.total', '总计')} value={stats.total} />
+              <StatCard label={t('extractionRuns.stats.success', '成功')} value={stats.success} tone="success" />
+              <StatCard label={t('extractionRuns.stats.running', '运行中')} value={stats.running} tone={stats.running ? 'accent' : 'neutral'} />
+              <StatCard label={t('extractionRuns.stats.failed', '失败')} value={stats.failed} tone={stats.failed ? 'danger' : 'neutral'} />
             </div>
           </section>
           <section>
-            <CtxLabel>跳转</CtxLabel>
+            <CtxLabel>{t('extractionRuns.context.jump', '跳转')}</CtxLabel>
             <div className="mt-2 space-y-1.5 text-xs">
               <button
                 type="button"
@@ -143,7 +150,7 @@ export default function ExtractionRuns() {
                 className="flex w-full rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
-                查看任务列表
+                {t('extractionRuns.context.viewTasks', '查看任务列表')}
               </button>
             </div>
           </section>
@@ -177,10 +184,18 @@ export default function ExtractionRuns() {
       if (rerun.isPending) return
       try {
         const result = await rerun.mutateAsync(row.id)
-        toast.show({ tone: 'success', title: `已提交重跑 · 新 Run #${result.run_id}` })
+        toast.show({
+          tone: 'success',
+          title: t('extractionRuns.toast.rerunSubmitted', '已提交重跑 · 新 Run #{id}', {
+            id: result.run_id,
+          }),
+        })
         setPeekId(result.run_id)
       } catch {
-        toast.show({ tone: 'danger', title: '重跑失败，请稍后重试' })
+        toast.show({
+          tone: 'danger',
+          title: t('extractionRuns.toast.rerunFailed', '重跑失败，请稍后重试'),
+        })
       }
     },
     [rerun, toast],
@@ -196,7 +211,10 @@ export default function ExtractionRuns() {
 
       <div className="relative flex-1 overflow-hidden">
         {isLoading ? <SkeletonRows /> : isError ? (
-          <ErrorState message={error instanceof Error ? error.message : '加载失败'} onRetry={() => refetch()} />
+          <ErrorState
+            message={error instanceof Error ? error.message : t('extractionRuns.state.loadFailed', '加载失败')}
+            onRetry={() => refetch()}
+          />
         ) : rows.length === 0 ? (
           <EmptyState />
         ) : (
@@ -222,7 +240,12 @@ export default function ExtractionRuns() {
               run={peekRow}
               onJumpTask={() => navigate(`/extraction/tasks/${peekRow.task_id}`)}
               onRerunSuccess={(newRunId) => {
-                toast.show({ tone: 'success', title: `已提交重跑 · 新 Run #${newRunId}` })
+                toast.show({
+                  tone: 'success',
+                  title: t('extractionRuns.toast.rerunSubmitted', '已提交重跑 · 新 Run #{id}', {
+                    id: newRunId,
+                  }),
+                })
                 setPeekId(newRunId)
               }}
             />
@@ -253,7 +276,16 @@ function RunTable({
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border)' }}>
-            {['运行 #', '任务', '状态', '触发', '行数', '耗时', '开始时间', '操作'].map((h) => (
+            {[
+              t('extractionRuns.col.runId', '运行 #'),
+              t('extractionRuns.col.task', '任务'),
+              t('extractionRuns.col.status', '状态'),
+              t('extractionRuns.col.trigger', '触发'),
+              t('extractionRuns.col.rows', '行数'),
+              t('extractionRuns.col.duration', '耗时'),
+              t('extractionRuns.col.startedAt', '开始时间'),
+              t('extractionRuns.col.actions', '操作'),
+            ].map((h) => (
               <th key={h} className="px-4 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>{h}</th>
             ))}
           </tr>
@@ -291,13 +323,19 @@ function RunTable({
                     onClick={(e) => onRerun(row, e)}
                     disabled={!canRerun || pending}
                     data-testid={`run-rerun-${row.id}`}
-                    aria-label={`重跑运行 #${row.id}`}
-                    title={canRerun ? '基于此次运行重新执行' : '任务在运行中或排队，无法重跑'}
+                    aria-label={t('extractionRuns.rerun.ariaLabel', '重跑运行 #{id}', { id: row.id })}
+                    title={
+                      canRerun
+                        ? t('extractionRuns.rerun.tooltipOk', '基于此次运行重新执行')
+                        : t('extractionRuns.rerun.tooltipBlocked', '任务在运行中或排队，无法重跑')
+                    }
                     className="inline-flex items-center gap-1 rounded border px-2 py-1 disabled:opacity-40"
                     style={{ borderColor: 'var(--border)', color: 'var(--text-2)', background: 'var(--bg-surface-2)' }}
                   >
                     <Play size={11} className={pending ? 'animate-pulse' : ''} />
-                    {pending ? '提交中' : '重跑'}
+                    {pending
+                      ? t('extractionRuns.rerun.pending', '提交中')
+                      : t('extractionRuns.rerun.action', '重跑')}
                   </button>
                 </td>
               </tr>
@@ -313,7 +351,7 @@ function CtxLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>{children}</div>
 }
 
-function StatCard({ label, value, tone = 'neutral' }: { label: string; value: number; tone?: string }) {
+function StatCard({ label, value, tone = 'neutral' }: { label: React.ReactNode; value: number; tone?: string }) {
   const color = tone === 'success' ? 'var(--success)' : tone === 'danger' ? 'var(--danger)' : tone === 'accent' ? 'var(--accent)' : 'var(--text-1)'
   return (
     <div className="rounded-md border px-2 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
@@ -341,7 +379,9 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <p className="text-xs" style={{ color: 'var(--danger)' }}>{message}</p>
-      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>重试</button>
+      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
+        {t('extractionRuns.action.retry', '重试')}
+      </button>
     </div>
   )
 }
@@ -350,7 +390,9 @@ function EmptyState() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <Activity size={20} style={{ color: 'var(--text-3)' }} />
-      <p className="text-xs" style={{ color: 'var(--text-3)' }}>暂无执行记录</p>
+      <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+        {t('extractionRuns.state.empty', '暂无执行记录')}
+      </p>
     </div>
   )
 }
