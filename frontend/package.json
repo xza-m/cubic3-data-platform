@@ -16,6 +16,7 @@
     "lint:legacy": "eslint src/legacy --ext ts,tsx --report-unused-disable-directives",
     "lint:css": "stylelint 'src/v2/**/*.css'",
     "check:v2-tokens": "node scripts/check-v2-tokens.mjs",
+    "i18n:extract": "node scripts/i18n-extract.mjs",
     "lint:all": "npm run lint && npm run lint:css && npm run check:v2-tokens",
     "test:unit": "vitest run",
     "test:unit:coverage": "node -e \"require('fs').mkdirSync('coverage/.tmp', { recursive: true })\" && vitest run --coverage",
