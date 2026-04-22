@@ -7,16 +7,16 @@
 import type { ReactNode } from 'react'
 import type { Datasource } from '@v2/api/datasources'
 import { fmtDateTime } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // ── 徽章渲染助手 ──────────────────────────────────────────────────────────────
 
 export function connectionStatusChip(status: string): ReactNode {
   const map: Record<string, { label: string; tone: string }> = {
-    connected:    { label: '已连接',   tone: 'success' },
-    disconnected: { label: '未连接',   tone: 'neutral' },
-    error:        { label: '异常',     tone: 'danger' },
-    testing:      { label: '测试中',   tone: 'warning' },
+    connected:    { label: t('datasourceDetailContent.conn.connected', '已连接'),    tone: 'success' },
+    disconnected: { label: t('datasourceDetailContent.conn.disconnected', '未连接'), tone: 'neutral' },
+    error:        { label: t('datasourceDetailContent.conn.error', '异常'),          tone: 'danger' },
+    testing:      { label: t('datasourceDetailContent.conn.testing', '测试中'),      tone: 'warning' },
   }
   const { label = status, tone = 'neutral' } = map[status] ?? {}
   return (
@@ -76,31 +76,31 @@ export function datasourceTabLabel(item: Datasource): ReactNode {
 export function DatasourceDetailContent({ item }: { item: Datasource }) {
   return (
     <div className="px-4 py-3.5">
-      <Section title="基础信息">
+      <Section title={t('datasourceDetailContent.section.basic', '基础信息')}>
         <dl
           className="divide-y rounded-md border text-xs"
           style={{ borderColor: 'var(--border)' }}
         >
-          <Row label="ID"        value={item.id} />
-          <Row label="类型"      value={sourceTypeChip(item.source_type)} />
-          <Row label="启用"      value={item.is_active ? '是' : '否'} />
-          <Row label="连通"      value={connectionStatusChip(item.connection_status)} />
-          <Row label="创建人"    value={item.created_by} />
-          <Row label="创建时间"  value={fmtDateTime(item.created_at)} />
-          <Row label="更新时间"  value={fmtDateTime(item.updated_at)} />
-          <Row label="最近测试"  value={fmtDateTime(item.last_test_at)} />
+          <Row label="ID"                                                     value={item.id} />
+          <Row label={t('datasourceDetailContent.row.type', '类型')}          value={sourceTypeChip(item.source_type)} />
+          <Row label={t('datasourceDetailContent.row.active', '启用')}        value={item.is_active ? t('datasourceDetailContent.yes', '是') : t('datasourceDetailContent.no', '否')} />
+          <Row label={t('datasourceDetailContent.row.conn', '连通')}          value={connectionStatusChip(item.connection_status)} />
+          <Row label={t('datasourceDetailContent.row.createdBy', '创建人')}   value={item.created_by} />
+          <Row label={t('datasourceDetailContent.row.createdAt', '创建时间')} value={fmtDateTime(item.created_at)} />
+          <Row label={t('datasourceDetailContent.row.updatedAt', '更新时间')} value={fmtDateTime(item.updated_at)} />
+          <Row label={t('datasourceDetailContent.row.lastTest', '最近测试')}  value={fmtDateTime(item.last_test_at)} />
         </dl>
       </Section>
 
       {item.description ? (
-        <Section title="描述">
+        <Section title={t('datasourceDetailContent.section.description', '描述')}>
           <p className="text-xs leading-5" style={{ color: 'var(--text-2)' }}>
             {item.description}
           </p>
         </Section>
       ) : null}
 
-      <Section title="连接配置（已脱敏）">
+      <Section title={t('datasourceDetailContent.section.connConfig', '连接配置（已脱敏）')}>
         <pre
           className="max-h-64 overflow-auto rounded-md border p-2 text-[11px] leading-4"
           style={{
@@ -114,7 +114,7 @@ export function DatasourceDetailContent({ item }: { item: Datasource }) {
       </Section>
 
       {item.last_test_error ? (
-        <Section title="最近测试错误">
+        <Section title={t('datasourceDetailContent.section.lastTestError', '最近测试错误')}>
           <p className="text-xs leading-5" style={{ color: 'var(--danger)' }}>
             {item.last_test_error}
           </p>
@@ -140,7 +140,7 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
   )
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
+function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div
       className="flex items-center justify-between gap-3 px-2.5 py-1.5"

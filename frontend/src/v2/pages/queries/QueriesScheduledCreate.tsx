@@ -11,7 +11,7 @@ import {
   useCreateScheduledQuery,
   useDatasourcesForConsole,
 } from '@v2/hooks/queries'
-import { CRON_PRESETS, nextRuns, parseCron } from '@v2/lib/cron'
+import { cronPresets, nextRuns, parseCron } from '@v2/lib/cron'
 import { fmtDateTime } from '@v2/lib/format'
 import { useToast } from '@v2/components/ui'
 import { t } from '@v2/i18n'
@@ -161,7 +161,7 @@ export default function QueriesScheduledCreate() {
             }}
           />
           <div className="mt-2 flex flex-wrap gap-1">
-            {CRON_PRESETS.map((p) => (
+            {cronPresets().map((p) => (
               <button
                 key={p.value}
                 type="button"

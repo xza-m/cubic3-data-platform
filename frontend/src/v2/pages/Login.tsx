@@ -93,7 +93,7 @@ export default function Login() {
             type="button"
             className="rail-btn"
             onClick={toggle}
-            title={effectiveTheme === 'dark' ? '切换为浅色' : '切换为深色'}
+            title={effectiveTheme === 'dark' ? t('theme.toLight', '切换为浅色') : t('theme.toDark', '切换为深色')}
             aria-label={t('theme.toggle', '切换主题')}
           >
             <Sun size={12} />
@@ -216,10 +216,10 @@ export default function Login() {
 
 function BrandPanel() {
   const features: Array<{ icon: typeof Brain; title: string; desc: string }> = [
-    { icon: Brain, title: '本体语义', desc: '业务对象 / 指标 / 关系 / 治理 一体化' },
-    { icon: Database, title: '业务语义', desc: 'Cube + 业务域 + 视图 + 诊断' },
-    { icon: Sparkles, title: 'AI 协同', desc: 'Data Chat 与命令面板贯穿全平台' },
-    { icon: ShieldCheck, title: '可治理', desc: '策略 / 一致性 / 审计 全程留痕' },
+    { icon: Brain,       title: t('login.brand.f1.title', '本体语义'), desc: t('login.brand.f1.desc', '业务对象 / 指标 / 关系 / 治理 一体化') },
+    { icon: Database,    title: t('login.brand.f2.title', '业务语义'), desc: t('login.brand.f2.desc', 'Cube + 业务域 + 视图 + 诊断') },
+    { icon: Sparkles,    title: t('login.brand.f3.title', 'AI 协同'),  desc: t('login.brand.f3.desc', 'Data Chat 与命令面板贯穿全平台') },
+    { icon: ShieldCheck, title: t('login.brand.f4.title', '可治理'),   desc: t('login.brand.f4.desc', '策略 / 一致性 / 审计 全程留痕') },
   ]
   return (
     <section
@@ -249,15 +249,15 @@ function BrandPanel() {
             C³
           </div>
           <div>
-            <div className="text-[14px] font-semibold">Cubic³ 数据平台</div>
-            <div className="text-[11px] text-white/70">语义优先 · 数据驱动</div>
+            <div className="text-[14px] font-semibold">{t('platform.name', 'Cubic³ 数据平台')}</div>
+            <div className="text-[11px] text-white/70">{t('login.brand.tagline', '语义优先 · 数据驱动')}</div>
           </div>
         </div>
 
         <div className="mt-10">
-          <div className="text-[13px] font-semibold text-white/90">全新设计系统</div>
+          <div className="text-[13px] font-semibold text-white/90">{t('login.brand.sysTitle', '全新设计系统')}</div>
           <div className="mt-1 text-[12px] leading-5 text-white/60">
-            基于 demo 验证的 UIUX，严格对齐后端契约，无 mock 数据。
+            {t('login.brand.sysDesc', '基于 demo 验证的 UIUX，严格对齐后端契约，无 mock 数据。')}
           </div>
         </div>
 
@@ -280,7 +280,7 @@ function BrandPanel() {
 
         <div className="mt-auto flex items-center gap-2 pt-8 text-[11px] text-white/40">
           <CommandIcon size={12} />
-          <span>⌘K 调出命令面板</span>
+          <span>{t('login.brand.paletteHint', '⌘K 调出命令面板')}</span>
         </div>
       </div>
     </section>

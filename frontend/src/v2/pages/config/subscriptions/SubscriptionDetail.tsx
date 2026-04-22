@@ -27,11 +27,14 @@ import {
 // TODO: 等待 X-Crosscut 提供 useAppShell 布局 hook —— 当前用 document.title 占位
 // import { useAppShell } from '@v2/layout/AppShell'
 
-const SUB_TABS = [
-  { id: 'overview', label: '概览' },
-  { id: 'history',  label: '触发历史' },
-] as const
-type SubTabId = (typeof SUB_TABS)[number]['id']
+type SubTabId = 'overview' | 'history'
+
+function buildSubTabs(): { id: SubTabId; label: string }[] {
+  return [
+    { id: 'overview', label: t('subscriptionDetail.tab.overview', '概览') },
+    { id: 'history',  label: t('subscriptionDetail.tab.history', '触发历史') },
+  ]
+}
 
 export default function SubscriptionDetail() {
   const { id } = useParams<{ id: string }>()
@@ -54,7 +57,7 @@ export default function SubscriptionDetail() {
   const [editing, setEditing] = useState(false)
 
   useEffect(() => {
-    if (subscription) document.title = `${subscription.name} · 订阅`
+    if (subscription) document.title = `${subscription.name} · ${t('subscriptionDetail.titleSuffix', '订阅')}`
   }, [subscription])
 
   // 邻接导航
@@ -148,7 +151,7 @@ export default function SubscriptionDetail() {
                   : <Chip tone="neutral">{t('common.disabled', '已停')}</Chip>}
               </div>
               <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>
-                {subscription.channel?.name ?? `渠道 #${subscription.channel_id}`}
+                {subscription.channel?.name ?? t('subscriptionDetail.channelPrefix', '渠道 #{id}', { id: subscription.channel_id })}
                 {' · '}
                 {t('common.updatedAt', '更新')}：{fmtRelative(subscription.updated_at)}
               </p>
@@ -180,7 +183,7 @@ export default function SubscriptionDetail() {
 
         {/* Sub-tabs */}
         <div className="flex items-center gap-1 border-b px-4 pb-0 pt-2" style={{ borderColor: 'var(--border)' }}>
-          {SUB_TABS.map((tab) => (
+          {buildSubTabs().map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -381,7 +384,7 @@ function HistoryTab({
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center p-8 text-xs" style={{ color: 'var(--text-3)' }}>
-        加载中…
+        {t('common.loading', '加载中…')}
       </div>
     )
   }
@@ -390,8 +393,7 @@ function HistoryTab({
     <div className="p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-          {/* TODO: 后端 GET /api/v1/subscriptions/:id/history 未就绪，暂显 mock 空列表 */}
-          共 {total} 条记录
+          {t('subscriptionDetail.history.count', '共 {n} 条记录', { n: total })}
         </span>
         <button
           type="button"
@@ -399,7 +401,7 @@ function HistoryTab({
           className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          <RefreshCcw size={11} /> 刷新
+          <RefreshCcw size={11} /> {t('action.refresh', '刷新')}
         </button>
       </div>
 
@@ -408,14 +410,20 @@ function HistoryTab({
           className="rounded-lg border p-8 text-center text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-3)', borderStyle: 'dashed' }}
         >
-          暂无触发记录
+          {t('subscriptionDetail.history.empty', '暂无触发记录')}
         </div>
       ) : (
         <div className="rounded-lg border" style={{ borderColor: 'var(--border)' }}>
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-                {['触发时间', '状态', '事件类型', '消息', '耗时'].map((h) => (
+                {[
+                  t('subscriptionDetail.history.col.triggerAt', '触发时间'),
+                  t('subscriptionDetail.history.col.status', '状态'),
+                  t('subscriptionDetail.history.col.eventType', '事件类型'),
+                  t('subscriptionDetail.history.col.message', '消息'),
+                  t('subscriptionDetail.history.col.duration', '耗时'),
+                ].map((h) => (
                   <th key={h} className="px-3 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>
                     {h}
                   </th>
@@ -452,9 +460,9 @@ function HistoryTab({
 
 function HistoryStatusChip({ status }: { status: SubscriptionHistoryItem['status'] }) {
   const map: Record<string, { label: string; bg: string; color: string }> = {
-    success: { label: '成功', bg: 'var(--success-soft)', color: 'var(--success)' },
-    failed:  { label: '失败', bg: 'var(--danger-soft)',  color: 'var(--danger)' },
-    skipped: { label: '跳过', bg: 'var(--bg-surface-2)', color: 'var(--text-3)' },
+    success: { label: t('subscriptionDetail.history.status.success', '成功'), bg: 'var(--success-soft)', color: 'var(--success)' },
+    failed:  { label: t('subscriptionDetail.history.status.failed', '失败'),  bg: 'var(--danger-soft)',  color: 'var(--danger)' },
+    skipped: { label: t('subscriptionDetail.history.status.skipped', '跳过'), bg: 'var(--bg-surface-2)', color: 'var(--text-3)' },
   }
   const { label, bg, color } = map[status] ?? { label: status, bg: 'var(--bg-surface-2)', color: 'var(--text-3)' }
   return (

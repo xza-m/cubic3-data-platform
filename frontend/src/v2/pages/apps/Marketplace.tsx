@@ -22,11 +22,13 @@ type ViewMode = 'grid' | 'list'
 type StatusFilter = 'all' | 'enabled' | 'disabled'
 
 const ALL_CATEGORY = t('marketplace.all', '全部')
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-  { value: 'all',      label: '全部状态' },
-  { value: 'enabled',  label: '已启用' },
-  { value: 'disabled', label: '已禁用' },
-]
+function statusOptions(): { value: StatusFilter; label: string }[] {
+  return [
+    { value: 'all',      label: t('marketplace.status.all',      '全部状态') },
+    { value: 'enabled',  label: t('marketplace.status.enabled',  '已启用') },
+    { value: 'disabled', label: t('marketplace.status.disabled', '已禁用') },
+  ]
+}
 
 export default function Marketplace() {
   const navigate = useNavigate()
@@ -68,13 +70,13 @@ export default function Marketplace() {
     try {
       if (app.enabled) {
         await disableMutation.mutateAsync(app.code)
-        toast.show({ tone: 'warning', title: '已停用', description: app.name })
+        toast.show({ tone: 'warning', title: t('marketplace.toast.disabled', '已停用'), description: app.name })
       } else {
         await enableMutation.mutateAsync(app.code)
-        toast.show({ tone: 'success', title: '已启用', description: app.name })
+        toast.show({ tone: 'success', title: t('marketplace.toast.enabled', '已启用'), description: app.name })
       }
     } catch {
-      toast.show({ tone: 'danger', title: '操作失败', description: app.name })
+      toast.show({ tone: 'danger', title: t('marketplace.toast.error', '操作失败'), description: app.name })
     }
   }
 
@@ -178,7 +180,7 @@ export default function Marketplace() {
 
           {/* Status facet */}
           <div className="flex items-center gap-1">
-            {STATUS_OPTIONS.map((opt) => {
+            {statusOptions().map((opt) => {
               const active = statusFilter === opt.value
               return (
                 <button
@@ -301,7 +303,7 @@ function AppCardWithMenu({
       <div className="absolute right-2 top-2">
         <button
           type="button"
-          aria-label="更多操作"
+          aria-label={t('marketplace.more', '更多操作')}
           onClick={(e) => {
             e.stopPropagation()
             setMenuOpen((v) => !v)
@@ -328,7 +330,7 @@ function AppCardWithMenu({
               className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
               style={{ color: 'var(--text-1)' }}
             >
-              查看详情
+              {t('marketplace.menu.detail', '查看详情')}
             </button>
             <button
               type="button"
@@ -341,7 +343,7 @@ function AppCardWithMenu({
               className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)] disabled:opacity-50"
               style={{ color: app.enabled ? 'var(--danger)' : 'var(--success)' }}
             >
-              {app.enabled ? '停用应用' : '启用应用'}
+              {app.enabled ? t('marketplace.menu.disable', '停用应用') : t('marketplace.menu.enable', '启用应用')}
             </button>
             <button
               type="button"
@@ -353,7 +355,7 @@ function AppCardWithMenu({
               className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
               style={{ color: 'var(--text-2)' }}
             >
-              创建实例
+              {t('marketplace.menu.createInstance', '创建实例')}
             </button>
           </div>
         )}
@@ -381,7 +383,7 @@ function AppRowWithMenu({
       <div className="absolute right-2 top-1/2 -translate-y-1/2">
         <button
           type="button"
-          aria-label="更多操作"
+          aria-label={t('marketplace.more', '更多操作')}
           onClick={(e) => {
             e.stopPropagation()
             setMenuOpen((v) => !v)
@@ -407,7 +409,7 @@ function AppRowWithMenu({
               className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
               style={{ color: 'var(--text-1)' }}
             >
-              查看详情
+              {t('marketplace.menu.detail', '查看详情')}
             </button>
             <button
               type="button"
@@ -420,7 +422,7 @@ function AppRowWithMenu({
               className="flex w-full items-center px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)] disabled:opacity-50"
               style={{ color: app.enabled ? 'var(--danger)' : 'var(--success)' }}
             >
-              {app.enabled ? '停用应用' : '启用应用'}
+              {app.enabled ? t('marketplace.menu.disable', '停用应用') : t('marketplace.menu.enable', '启用应用')}
             </button>
           </div>
         )}

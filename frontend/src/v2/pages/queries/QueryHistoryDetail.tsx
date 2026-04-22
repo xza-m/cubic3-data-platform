@@ -8,6 +8,7 @@ import { useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Play } from 'lucide-react'
 import { useQueryHistories } from '@v2/hooks/queries'
+import { t } from '@v2/i18n'
 import { fmtNum, fmtRelative } from '@v2/lib/format'
 import type { QueryHistoryItem } from '@v2/api/queries'
 import {
@@ -40,7 +41,7 @@ export default function QueryHistoryDetail() {
   if (!Number.isFinite(numericId) || numericId <= 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        非法的运行 ID
+        {t('queryHistoryDetail.error.invalidId', '非法的运行 ID')}
       </div>
     )
   }
@@ -48,7 +49,7 @@ export default function QueryHistoryDetail() {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        加载中…
+        {t('common.loading', '加载中…')}
       </div>
     )
   }
@@ -56,7 +57,7 @@ export default function QueryHistoryDetail() {
   if (isError) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-red-500">
-        加载失败
+        {t('common.loadError', '加载失败')}
       </div>
     )
   }
@@ -64,7 +65,7 @@ export default function QueryHistoryDetail() {
   if (!row) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-red-500 dark:text-red-400">
-        未找到运行记录 #{numericId}
+        {t('queryHistoryDetail.error.notFound', '未找到运行记录 #{id}', { id: numericId })}
       </div>
     )
   }
@@ -84,7 +85,7 @@ export default function QueryHistoryDetail() {
             className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
           >
-            <ArrowLeft size={12} /> 返回列表
+            <ArrowLeft size={12} /> {t('common.backToList', '返回列表')}
           </button>
           <button
             type="button"
@@ -92,7 +93,7 @@ export default function QueryHistoryDetail() {
             className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
           >
-            <Play size={12} /> 在工作台重跑
+            <Play size={12} /> {t('queryHistoryDetail.action.replay', '在工作台重跑')}
           </button>
         </div>
 
@@ -110,7 +111,7 @@ export default function QueryHistoryDetail() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-                <span>运行 #{row.id}</span>
+                <span>{t('queryHistoryDetail.run', '运行 #{id}', { id: row.id })}</span>
                 {statusChip(row.status)}
               </div>
               <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
@@ -141,7 +142,7 @@ export default function QueryHistoryDetail() {
           className="border-b px-4 py-3 text-xs font-medium"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          运行 #{row.id}
+          {t('queryHistoryDetail.run', '运行 #{id}', { id: row.id })}
           <div className="mt-0.5 text-xs font-normal" style={{ color: 'var(--text-3)' }}>
             {row.source_name ?? '—'}
           </div>
@@ -149,17 +150,17 @@ export default function QueryHistoryDetail() {
         <div className="space-y-4 px-4 py-4">
           <section>
             <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-              状态
+              {t('queryHistoryDetail.ctx.status', '状态')}
             </div>
             <div className="mt-2 flex items-center gap-1.5">{statusChip(row.status)}</div>
           </section>
           <section>
             <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-              执行
+              {t('queryHistoryDetail.ctx.exec', '执行')}
             </div>
             <dl className="mt-2 space-y-1 text-xs">
               <CtxPair
-                label="耗时"
+                label={t('queryHistoryDetail.ctx.duration', '耗时')}
                 value={
                   row.execution_time_ms != null
                     ? `${(row.execution_time_ms / 1000).toFixed(2)}s`
@@ -167,20 +168,20 @@ export default function QueryHistoryDetail() {
                 }
               />
               <CtxPair
-                label="行数"
+                label={t('queryHistoryDetail.ctx.rowCount', '行数')}
                 value={row.row_count != null ? fmtNum(row.row_count) : '—'}
               />
-              <CtxPair label="执行人" value={row.executed_by} />
-              <CtxPair label="时间" value={fmtRelative(row.executed_at)} />
+              <CtxPair label={t('queryHistoryDetail.ctx.executedBy', '执行人')} value={row.executed_by} />
+              <CtxPair label={t('queryHistoryDetail.ctx.executedAt', '时间')} value={fmtRelative(row.executed_at)} />
             </dl>
           </section>
           <section>
             <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-              邻接导航
+              {t('queryHistoryDetail.ctx.nav', '邻接导航')}
             </div>
             <div className="mt-2 space-y-1.5 text-xs">
               <NavButton
-                label={neighbors.prev ? `← #${neighbors.prev.id}` : '没有上一项'}
+                label={neighbors.prev ? `← #${neighbors.prev.id}` : t('queryHistoryDetail.nav.noPrev', '没有上一项')}
                 disabled={!neighbors.prev}
                 onClick={
                   neighbors.prev
@@ -189,7 +190,7 @@ export default function QueryHistoryDetail() {
                 }
               />
               <NavButton
-                label={neighbors.next ? `#${neighbors.next.id} →` : '没有下一项'}
+                label={neighbors.next ? `#${neighbors.next.id} →` : t('queryHistoryDetail.nav.noNext', '没有下一项')}
                 disabled={!neighbors.next}
                 onClick={
                   neighbors.next
@@ -209,7 +210,7 @@ export default function QueryHistoryDetail() {
 // Internal primitives
 // ──────────────────────────────────────────────────────────────────────────
 
-function CtxPair({ label, value }: { label: string; value: React.ReactNode }) {
+function CtxPair({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -225,7 +226,7 @@ function NavButton({
   onClick,
   disabled,
 }: {
-  label: string
+  label: React.ReactNode
   onClick?: () => void
   disabled?: boolean
 }) {

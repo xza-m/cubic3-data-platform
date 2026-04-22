@@ -29,7 +29,7 @@ import {
   useDatasourcesForConsole,
 } from '@v2/hooks/queries'
 import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
-import { CRON_PRESETS, nextRuns, parseCron } from '@v2/lib/cron'
+import { cronPresets, nextRuns, parseCron } from '@v2/lib/cron'
 import { Tabs, Tab, useToast } from '@v2/components/ui'
 import type { ScheduledQuery } from '@v2/api/queries'
 import { t } from '@v2/i18n'
@@ -669,7 +669,7 @@ function ScheduledQueryEditForm({
           }}
         />
         <div className="mt-2 flex flex-wrap gap-1">
-          {CRON_PRESETS.map((p) => (
+          {cronPresets().map((p) => (
             <button
               key={p.value}
               type="button"
