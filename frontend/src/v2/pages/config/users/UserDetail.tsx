@@ -11,13 +11,18 @@ import { Skeleton, useToast } from '@v2/components/ui'
 import { fmtDateTime } from '@v2/lib/format'
 import { useUser, useUpdateUser, useAssignUserRoles } from '@v2/hooks/users'
 import { useListRoles } from '@v2/hooks/roles'
+import { t } from '@v2/i18n'
 
-const TABS = [
-  { id: 'info',  label: '基本信息' },
-  { id: 'roles', label: '角色绑定' },
-  { id: 'login', label: '最近登录' },
-] as const
-type TabId = (typeof TABS)[number]['id']
+const TAB_IDS = ['info', 'roles', 'login'] as const
+type TabId = (typeof TAB_IDS)[number]
+
+function buildTabs(): { id: TabId; label: string }[] {
+  return [
+    { id: 'info',  label: t('userDetail.tab.info', '基本信息') },
+    { id: 'roles', label: t('userDetail.tab.roles', '角色绑定') },
+    { id: 'login', label: t('userDetail.tab.login', '最近登录') },
+  ]
+}
 
 export default function UserDetail() {
   const { id } = useParams<{ id: string }>()
@@ -33,7 +38,7 @@ export default function UserDetail() {
   const allRoles = rolesData?.items ?? []
 
   useEffect(() => {
-    if (user) document.title = `${user.username} · 用户`
+    if (user) document.title = t('userDetail.docTitle', '{name} · 用户', { name: user.username })
   }, [user])
 
   const handleToggleRole = async (roleId: number) => {
@@ -45,13 +50,13 @@ export default function UserDetail() {
       current.add(roleId)
     }
     await assignRoles.mutateAsync({ id: user.id, payload: { role_ids: Array.from(current) } })
-    toast.show({ tone: 'success', title: '角色已更新' })
+    toast.show({ tone: 'success', title: t('userDetail.toast.rolesUpdated', '角色已更新') })
   }
 
   if (!Number.isFinite(numericId) || numericId <= 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        非法的用户 ID
+        {t('userDetail.state.invalidId', '非法的用户 ID')}
       </div>
     )
   }
@@ -68,8 +73,12 @@ export default function UserDetail() {
   if (isError || !user) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2">
-        <p className="text-xs" style={{ color: 'var(--danger)' }}>未找到用户 #{numericId}</p>
-        <button type="button" onClick={() => refetch()} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)' }}>重试</button>
+        <p className="text-xs" style={{ color: 'var(--danger)' }}>
+          {t('userDetail.state.notFound', '未找到用户 #{id}', { id: numericId })}
+        </p>
+        <button type="button" onClick={() => refetch()} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)' }}>
+          {t('userDetail.action.retry', '重试')}
+        </button>
       </div>
     )
   }
@@ -85,7 +94,7 @@ export default function UserDetail() {
             className="inline-flex items-center gap-1 text-xs hover:underline"
             style={{ color: 'var(--text-3)' }}
           >
-            <ArrowLeft size={11} /> 返回用户列表
+            <ArrowLeft size={11} /> {t('userDetail.action.back', '返回用户列表')}
           </button>
           <button
             type="button"
@@ -118,37 +127,53 @@ export default function UserDetail() {
                   color: user.is_active ? 'var(--success)' : 'var(--text-3)',
                 }}
               >
-                {user.is_active ? '启用' : '停用'}
+                {user.is_active
+                  ? t('userDetail.status.active', '启用')
+                  : t('userDetail.status.inactive', '停用')}
               </span>
             </div>
             <p className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-              #{user.id} · {user.email ?? '无邮箱'} · 创建于 {fmtDateTime(user.created_at)}
+              #{user.id} · {user.email ?? t('userDetail.meta.noEmail', '无邮箱')} ·{' '}
+              {t('userDetail.meta.createdAt', '创建于 {time}', { time: fmtDateTime(user.created_at) })}
             </p>
           </div>
           <button
             type="button"
-            onClick={() => void updateMutation.mutateAsync({ id: user.id, payload: { is_active: !user.is_active } }).then(() => toast.show({ tone: user.is_active ? 'warning' : 'success', title: user.is_active ? '已停用' : '已启用' }))}
+            onClick={() =>
+              void updateMutation
+                .mutateAsync({ id: user.id, payload: { is_active: !user.is_active } })
+                .then(() =>
+                  toast.show({
+                    tone: user.is_active ? 'warning' : 'success',
+                    title: user.is_active
+                      ? t('userDetail.toast.deactivated', '已停用')
+                      : t('userDetail.toast.activated', '已启用'),
+                  }),
+                )
+            }
             className="rounded-md border px-3 py-1.5 text-xs transition-colors"
             style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
           >
-            {user.is_active ? '停用账号' : '启用账号'}
+            {user.is_active
+              ? t('userDetail.action.deactivate', '停用账号')
+              : t('userDetail.action.activate', '启用账号')}
           </button>
         </div>
 
         {/* Tabs */}
         <div className="mt-3 flex items-center gap-1">
-          {TABS.map((t) => (
+          {buildTabs().map((tb) => (
             <button
-              key={t.id}
+              key={tb.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => setTab(tb.id)}
               className="rounded px-2.5 py-1 text-xs"
               style={{
-                background: tab === t.id ? 'var(--accent-soft)' : 'transparent',
-                color: tab === t.id ? 'var(--accent)' : 'var(--text-2)',
+                background: tab === tb.id ? 'var(--accent-soft)' : 'transparent',
+                color: tab === tb.id ? 'var(--accent)' : 'var(--text-2)',
               }}
             >
-              {t.label}
+              {tb.label}
             </button>
           ))}
         </div>
@@ -178,13 +203,21 @@ function UserInfoTab({ user }: { user: import('@v2/api/users').User }) {
     <div className="p-4">
       <dl className="mx-auto max-w-lg divide-y rounded-lg border text-xs" style={{ borderColor: 'var(--border)' }}>
         {[
-          { label: '用户名',   value: user.username },
-          { label: '显示名',   value: user.display_name ?? '—' },
-          { label: '邮箱',     value: user.email ?? '—' },
-          { label: 'ID',       value: `#${user.id}` },
-          { label: '状态',     value: user.is_active ? '启用' : '停用' },
-          { label: '最近登录', value: user.last_login_at ? fmtDateTime(user.last_login_at) : '从未登录' },
-          { label: '创建时间', value: fmtDateTime(user.created_at) },
+          { label: t('userDetail.info.username', '用户名'),    value: user.username },
+          { label: t('userDetail.info.displayName', '显示名'), value: user.display_name ?? '—' },
+          { label: t('userDetail.info.email', '邮箱'),         value: user.email ?? '—' },
+          { label: 'ID',                                         value: `#${user.id}` },
+          {
+            label: t('userDetail.info.status', '状态'),
+            value: user.is_active
+              ? t('userDetail.status.active', '启用')
+              : t('userDetail.status.inactive', '停用'),
+          },
+          {
+            label: t('userDetail.info.lastLogin', '最近登录'),
+            value: user.last_login_at ? fmtDateTime(user.last_login_at) : t('userDetail.info.neverLogin', '从未登录'),
+          },
+          { label: t('userDetail.info.createdAt', '创建时间'), value: fmtDateTime(user.created_at) },
         ].map(({ label, value }) => (
           <div key={label} className="flex items-center justify-between px-3 py-2">
             <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -211,11 +244,11 @@ function RolesTab({
   return (
     <div className="p-4">
       <p className="mb-3 text-xs" style={{ color: 'var(--text-3)' }}>
-        点击勾选/取消角色绑定，立即生效。
+        {t('userDetail.roles.hint', '点击勾选/取消角色绑定，立即生效。')}
       </p>
       {allRoles.length === 0 ? (
         <div className="rounded-lg border p-6 text-center text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-3)', borderStyle: 'dashed' }}>
-          暂无可分配角色
+          {t('userDetail.roles.empty', '暂无可分配角色')}
         </div>
       ) : (
         <div className="mx-auto max-w-lg space-y-2">
@@ -244,7 +277,7 @@ function RolesTab({
                     </div>
                   )}
                   <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-                    {role.permissions.length} 项权限
+                    {t('userDetail.roles.permCount', '{n} 项权限', { n: role.permissions.length })}
                   </div>
                 </div>
                 <div
@@ -277,14 +310,14 @@ function LoginHistoryTab({ user }: { user: import('@v2/api/users').User }) {
     <div className="p-4">
       <p className="mb-3 text-xs" style={{ color: 'var(--text-3)' }}>
         {/* TODO: 后端 /api/v1/users/:id/login-history 未就绪，仅展示最近一次 */}
-        最近登录记录（后端待补完整历史接口）
+        {t('userDetail.login.hint', '最近登录记录（后端待补完整历史接口）')}
       </p>
       {mockHistory.length === 0 ? (
         <div
           className="rounded-lg border p-6 text-center text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-3)', borderStyle: 'dashed' }}
         >
-          暂无登录记录
+          {t('userDetail.login.empty', '暂无登录记录')}
         </div>
       ) : (
         <div className="mx-auto max-w-lg rounded-lg border" style={{ borderColor: 'var(--border)' }}>
@@ -292,7 +325,7 @@ function LoginHistoryTab({ user }: { user: import('@v2/api/users').User }) {
             <div key={i} className="flex items-center justify-between border-b px-3 py-2 last:border-0 text-xs" style={{ borderColor: 'var(--border)' }}>
               <span style={{ color: 'var(--text-2)' }}>{fmtDateTime(entry.at)}</span>
               <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>
-                成功
+                {t('userDetail.login.success', '成功')}
               </span>
             </div>
           ))}

@@ -14,7 +14,7 @@ import {
   syncStatusChip,
 } from './_shared/dataset-detail-content'
 import { fmtDateTime } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { PeekPanel } from '@v2/components/PeekPanel'
@@ -54,7 +54,10 @@ export default function Datasets() {
   }, [allRows])
 
   useEffect(() => {
-    setBreadcrumbs(['数据', '数据集'])
+    setBreadcrumbs([
+      t('datasets.breadcrumb.data', '数据'),
+      t('datasets.breadcrumb.datasets', '数据集'),
+    ])
   }, [setBreadcrumbs])
 
   useEffect(() => {
@@ -67,7 +70,7 @@ export default function Datasets() {
           style={{ color: 'var(--text-2)' }}
         >
           <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-          刷新
+          {t('datasets.action.refresh', '刷新')}
         </button>
         <button
           type="button"
@@ -76,7 +79,7 @@ export default function Datasets() {
           style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
         >
           <Plus size={12} />
-          注册数据集
+          {t('datasets.action.register', '注册数据集')}
         </button>
       </div>,
     )
@@ -85,18 +88,18 @@ export default function Datasets() {
 
   useEffect(() => {
     setContextPanel({
-      title: '数据集',
+      title: t('datasets.ctx.title', '数据集'),
       subtitle: 'GET /api/v1/data-center/datasets',
       body: (
         <div className="space-y-4 px-4 py-4">
-          <CtxSection title="规模">
+          <CtxSection title={t('datasets.ctx.scale', '规模')}>
             <div className="grid grid-cols-3 gap-2">
-              <StatCard label="总计"  value={stats.total} />
-              <StatCard label="已同步" value={stats.synced} tone="success" />
-              <StatCard label="失败"  value={stats.failed} tone={stats.failed ? 'danger' : 'neutral'} />
+              <StatCard label={t('datasets.stats.total', '总计')} value={stats.total} />
+              <StatCard label={t('datasets.stats.synced', '已同步')} value={stats.synced} tone="success" />
+              <StatCard label={t('datasets.stats.failed', '失败')} value={stats.failed} tone={stats.failed ? 'danger' : 'neutral'} />
             </div>
           </CtxSection>
-          <CtxSection title="类型分布">
+          <CtxSection title={t('datasets.ctx.typeDist', '类型分布')}>
             {Array.from(stats.typeMap.entries()).map(([k, v]) => (
               <div key={k} className="flex items-center justify-between py-0.5 text-xs">
                 {datasetTypeChip(k)}
@@ -104,7 +107,7 @@ export default function Datasets() {
               </div>
             ))}
           </CtxSection>
-          <CtxSection title="快捷操作">
+          <CtxSection title={t('datasets.ctx.shortcuts', '快捷操作')}>
             <div className="space-y-1.5 text-xs">
               <button
                 type="button"
@@ -112,7 +115,7 @@ export default function Datasets() {
                 className="flex w-full rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
-                + 注册数据集
+                + {t('datasets.action.register', '注册数据集')}
               </button>
               <button
                 type="button"
@@ -120,7 +123,7 @@ export default function Datasets() {
                 className="flex w-full rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
-                ↻ 刷新列表
+                ↻ {t('datasets.action.refreshList', '刷新列表')}
               </button>
             </div>
           </CtxSection>
@@ -149,13 +152,13 @@ export default function Datasets() {
   )
 
   const columns = useMemo<
-    Array<{ key: string; title: string; width?: number; render?: (r: Dataset) => React.ReactNode }>
+    Array<{ key: string; title: React.ReactNode; width?: number; render?: (r: Dataset) => React.ReactNode }>
   >(() => {
     const peekOpen = peekRow != null
     const base = [
       {
         key: 'dataset_name',
-        title: '名称',
+        title: t('datasets.col.name', '名称'),
         render: (r: Dataset) => (
           <div className="min-w-0">
             <div className="truncate text-xs font-medium" style={{ color: 'var(--text-1)' }}>
@@ -169,7 +172,7 @@ export default function Datasets() {
       },
       {
         key: 'sync_status',
-        title: '同步',
+        title: t('datasets.col.sync', '同步'),
         width: 100,
         render: (r: Dataset) => syncStatusChip(r.sync_status),
       },
@@ -177,10 +180,10 @@ export default function Datasets() {
     if (!peekOpen) {
       return [
         base[0],
-        { key: 'dataset_type', title: '类型', width: 120, render: (r: Dataset) => datasetTypeChip(r.dataset_type) },
+        { key: 'dataset_type', title: t('datasets.col.type', '类型'), width: 120, render: (r: Dataset) => datasetTypeChip(r.dataset_type) },
         {
           key: 'physical_table',
-          title: '物理表 / SQL',
+          title: t('datasets.col.physicalSql', '物理表 / SQL'),
           render: (r: Dataset) =>
             r.physical_table ? (
               <code className="text-[11px]" style={{ color: 'var(--text-2)' }}>{r.physical_table}</code>
@@ -198,13 +201,13 @@ export default function Datasets() {
         base[1],
         {
           key: 'field_count',
-          title: '字段',
+          title: t('datasets.col.fieldCount', '字段'),
           width: 70,
           render: (r: Dataset) => <span style={{ color: 'var(--text-2)' }}>{r.field_count ?? '—'}</span>,
         },
         {
           key: 'updated_at',
-          title: '更新于',
+          title: t('datasets.col.updatedAt', '更新于'),
           width: 180,
           render: (r: Dataset) => (
             <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
@@ -232,7 +235,7 @@ export default function Datasets() {
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="按名称、编码、表名搜索…"
+            placeholder={t('datasets.search.placeholder', '按名称、编码、表名搜索…')}
             className="w-full rounded-md border px-3 py-1.5 pl-7 text-xs outline-none"
             style={{
               borderColor: 'var(--border)',
@@ -251,7 +254,7 @@ export default function Datasets() {
           <SkeletonRows />
         ) : isError ? (
           <ErrorState
-            message={error instanceof Error ? error.message : '加载失败'}
+            message={error instanceof Error ? error.message : t('datasets.error.load', '加载失败')}
             onRetry={() => refetch()}
           />
         ) : rows.length === 0 ? (
@@ -294,14 +297,14 @@ function DatasetPeekBody({ row }: { row: Dataset }) {
   if (isLoading) {
     return (
       <div className="px-4 py-6 text-xs" style={{ color: 'var(--text-3)' }}>
-        加载详情…
+        {t('datasets.peek.loading', '加载详情…')}
       </div>
     )
   }
   if (isError) {
     return (
       <div className="px-4 py-6 text-xs" style={{ color: 'var(--danger)' }}>
-        {error instanceof Error ? error.message : '加载失败'}
+        {error instanceof Error ? error.message : t('datasets.error.load', '加载失败')}
       </div>
     )
   }
@@ -310,7 +313,7 @@ function DatasetPeekBody({ row }: { row: Dataset }) {
 
 // ── 内部辅助组件 ──────────────────────────────────────────────────────────────
 
-function CtxSection({ title, children }: { title: string; children: React.ReactNode }) {
+function CtxSection({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
   return (
     <section>
       <div className="mb-2 text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
@@ -321,7 +324,7 @@ function CtxSection({ title, children }: { title: string; children: React.ReactN
   )
 }
 
-function StatCard({ label, value, tone = 'neutral' }: { label: string; value: number; tone?: string }) {
+function StatCard({ label, value, tone = 'neutral' }: { label: React.ReactNode; value: number; tone?: string }) {
   const color = tone === 'success' ? 'var(--success)' : tone === 'danger' ? 'var(--danger)' : 'var(--text-1)'
   return (
     <div className="rounded-md border px-2 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
@@ -349,7 +352,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <p className="text-xs" style={{ color: 'var(--danger)' }}>{message}</p>
-      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>重试</button>
+      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>{t('datasets.action.retry', '重试')}</button>
     </div>
   )
 }
@@ -358,7 +361,7 @@ function EmptyState() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <Database size={20} style={{ color: 'var(--text-3)' }} />
-      <p className="text-xs" style={{ color: 'var(--text-3)' }}>暂无数据集</p>
+      <p className="text-xs" style={{ color: 'var(--text-3)' }}>{t('datasets.empty', '暂无数据集')}</p>
     </div>
   )
 }
@@ -369,7 +372,7 @@ function InlineTable<T extends { id: number }>({
   activeId,
   onRowClick,
 }: {
-  columns: Array<{ key: string; title: string; width?: number; render?: (r: T) => React.ReactNode }>
+  columns: Array<{ key: string; title: React.ReactNode; width?: number; render?: (r: T) => React.ReactNode }>
   rows: T[]
   activeId: number | null
   onRowClick: (r: T) => void

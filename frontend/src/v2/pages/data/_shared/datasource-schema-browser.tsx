@@ -12,6 +12,7 @@ import {
   useDatasourceSchemaTableColumns,
 } from '@v2/hooks/datasources'
 import { fmtNum, fmtDateTime } from '@v2/lib/format'
+import { t } from '@v2/i18n'
 
 interface Props {
   datasourceId: number
@@ -42,7 +43,7 @@ export function DatasourceSchemaBrowser({ datasourceId }: Props) {
     >
       <DbColumn
         loading={dbs.isLoading}
-        error={dbs.isError ? (dbs.error instanceof Error ? dbs.error.message : '加载失败') : null}
+        error={dbs.isError ? (dbs.error instanceof Error ? dbs.error.message : t('schemaBrowser.error.load', '加载失败')) : null}
         items={dbs.data?.databases ?? []}
         active={activeDb}
         onSelect={setActiveDb}
@@ -51,7 +52,7 @@ export function DatasourceSchemaBrowser({ datasourceId }: Props) {
       />
       <TableColumn
         loading={tables.isLoading}
-        error={tables.isError ? (tables.error instanceof Error ? tables.error.message : '加载失败') : null}
+        error={tables.isError ? (tables.error instanceof Error ? tables.error.message : t('schemaBrowser.error.load', '加载失败')) : null}
         database={activeDb}
         items={tables.data?.tables ?? []}
         active={activeTable}
@@ -61,7 +62,7 @@ export function DatasourceSchemaBrowser({ datasourceId }: Props) {
       />
       <ColumnPanel
         loading={columns.isLoading}
-        error={columns.isError ? (columns.error instanceof Error ? columns.error.message : '加载失败') : null}
+        error={columns.isError ? (columns.error instanceof Error ? columns.error.message : t('schemaBrowser.error.load', '加载失败')) : null}
         database={activeDb}
         table={activeTable}
         rowCount={columns.data?.row_count_estimate}
@@ -86,13 +87,17 @@ function DbColumn(props: {
 }) {
   return (
     <ColumnShell
-      title="数据库"
+      title={t('schemaBrowser.col.databases', '数据库')}
       icon={<Database size={12} />}
       onRefresh={props.onRefresh}
       fetchedAt={props.fetchedAt}
       width="w-44"
     >
-      <ColumnBody loading={props.loading} error={props.error} empty={!props.items.length && '无数据库'}>
+      <ColumnBody
+        loading={props.loading}
+        error={props.error}
+        empty={!props.items.length && t('schemaBrowser.empty.db', '无数据库')}
+      >
         {props.items.map((db) => (
           <RowItem
             key={db}
@@ -118,7 +123,11 @@ function TableColumn(props: {
 }) {
   return (
     <ColumnShell
-      title={props.database ? `表（${props.database}）` : '表'}
+      title={
+        props.database
+          ? t('schemaBrowser.col.tablesIn', '表（{db}）', { db: props.database })
+          : t('schemaBrowser.col.tables', '表')
+      }
       icon={<TableIcon size={12} />}
       onRefresh={props.onRefresh}
       fetchedAt={props.fetchedAt}
@@ -127,13 +136,22 @@ function TableColumn(props: {
       <ColumnBody
         loading={props.loading}
         error={props.error}
-        empty={!props.database ? '请先选择数据库' : !props.items.length && '无表'}
+        empty={
+          !props.database
+            ? t('schemaBrowser.empty.pickDb', '请先选择数据库')
+            : !props.items.length && t('schemaBrowser.empty.table', '无表')
+        }
       >
         {props.items.map((it) => (
           <RowItem
             key={it.table_name}
             label={it.table_name}
-            secondary={it.comment || (it.row_count != null ? `${fmtNum(it.row_count)} 行` : undefined)}
+            secondary={
+              it.comment ||
+              (it.row_count != null
+                ? t('schemaBrowser.rows', '{n} 行', { n: fmtNum(it.row_count) })
+                : undefined)
+            }
             active={props.active === it.table_name}
             onClick={() => props.onSelect(it.table_name)}
           />
@@ -155,29 +173,37 @@ function ColumnPanel(props: {
 }) {
   return (
     <ColumnShell
-      title={props.table ? `字段（${props.table}）` : '字段'}
+      title={
+        props.table
+          ? t('schemaBrowser.col.columnsIn', '字段（{table}）', { table: props.table })
+          : t('schemaBrowser.col.columns', '字段')
+      }
       icon={<ColumnsIcon size={12} />}
       onRefresh={props.onRefresh}
       fetchedAt={props.fetchedAt}
       width="flex-1"
       meta={
         props.rowCount != null
-          ? `估算行数 ${fmtNum(props.rowCount)}`
+          ? t('schemaBrowser.rowEstimate', '估算行数 {n}', { n: fmtNum(props.rowCount) })
           : undefined
       }
     >
       <ColumnBody
         loading={props.loading}
         error={props.error}
-        empty={!props.table ? '请先选择表' : !props.items.length && '无字段'}
+        empty={
+          !props.table
+            ? t('schemaBrowser.empty.pickTable', '请先选择表')
+            : !props.items.length && t('schemaBrowser.empty.column', '无字段')
+        }
       >
         <table className="w-full text-xs">
           <thead>
             <tr style={{ color: 'var(--text-3)' }}>
-              <th className="px-3 py-1.5 text-left font-medium">字段名</th>
-              <th className="px-3 py-1.5 text-left font-medium">类型</th>
-              <th className="px-3 py-1.5 text-left font-medium">可空</th>
-              <th className="px-3 py-1.5 text-left font-medium">注释</th>
+              <th className="px-3 py-1.5 text-left font-medium">{t('schemaBrowser.col.name', '字段名')}</th>
+              <th className="px-3 py-1.5 text-left font-medium">{t('schemaBrowser.col.type', '类型')}</th>
+              <th className="px-3 py-1.5 text-left font-medium">{t('schemaBrowser.col.nullable', '可空')}</th>
+              <th className="px-3 py-1.5 text-left font-medium">{t('schemaBrowser.col.comment', '注释')}</th>
             </tr>
           </thead>
           <tbody>
@@ -219,10 +245,10 @@ function ColumnShell({
   fetchedAt,
   children,
 }: {
-  title: string
+  title: React.ReactNode
   icon: React.ReactNode
   width: string
-  meta?: string
+  meta?: React.ReactNode
   onRefresh: () => void
   fetchedAt?: string
   children: React.ReactNode
@@ -245,7 +271,11 @@ function ColumnShell({
           onClick={onRefresh}
           className={`${meta ? 'ml-2' : 'ml-auto'} inline-flex items-center rounded p-1`}
           style={{ color: 'var(--text-3)' }}
-          title={fetchedAt ? `更新于 ${fmtDateTime(fetchedAt)}` : '刷新'}
+          title={
+            fetchedAt
+              ? t('schemaBrowser.updatedAt', '更新于 {time}', { time: fmtDateTime(fetchedAt) })
+              : t('schemaBrowser.refresh', '刷新')
+          }
         >
           <RefreshCcw size={11} />
         </button>
@@ -263,13 +293,13 @@ function ColumnBody({
 }: {
   loading: boolean
   error: string | null
-  empty?: string | false
+  empty?: React.ReactNode | false
   children: React.ReactNode
 }) {
   if (loading) {
     return (
       <div className="px-3 py-3 text-[11px]" style={{ color: 'var(--text-3)' }}>
-        加载中…
+        {t('schemaBrowser.loading', '加载中…')}
       </div>
     )
   }
@@ -296,8 +326,8 @@ function RowItem({
   active,
   onClick,
 }: {
-  label: string
-  secondary?: string
+  label: React.ReactNode
+  secondary?: React.ReactNode
   active: boolean
   onClick: () => void
 }) {

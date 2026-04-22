@@ -8,17 +8,17 @@
 import type { ReactNode } from 'react'
 import type { ExtractionTask, ExtractionTaskDetail } from '@v2/api/extraction'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // ── 徽章渲染助手 ──────────────────────────────────────────────────────────────
 
 export function taskStatusChip(status: string | null | undefined): ReactNode {
   if (!status) return <span style={{ color: 'var(--text-3)' }}>—</span>
   const map: Record<string, { label: string; tone: string }> = {
-    success: { label: '成功',  tone: 'success' },
-    failed:  { label: '失败',  tone: 'danger' },
-    running: { label: '运行中', tone: 'accent' },
-    pending: { label: '排队',  tone: 'neutral' },
+    success: { label: t('extractionTaskDetail.status.success', '成功'),  tone: 'success' },
+    failed:  { label: t('extractionTaskDetail.status.failed', '失败'),   tone: 'danger' },
+    running: { label: t('extractionTaskDetail.status.running', '运行中'), tone: 'accent' },
+    pending: { label: t('extractionTaskDetail.status.pending', '排队'),  tone: 'neutral' },
   }
   const { label = status, tone = 'neutral' } = map[status] ?? {}
   return (
@@ -36,9 +36,9 @@ export function taskStatusChip(status: string | null | undefined): ReactNode {
 
 export function taskTypeChip(type: string): ReactNode {
   const map: Record<string, { label: string; tone: string }> = {
-    manual:    { label: '手动',  tone: 'neutral' },
-    scheduled: { label: '调度',  tone: 'accent' },
-    api:       { label: 'API',   tone: 'violet' },
+    manual:    { label: t('extractionTaskDetail.type.manual', '手动'),     tone: 'neutral' },
+    scheduled: { label: t('extractionTaskDetail.type.scheduled', '调度'), tone: 'accent' },
+    api:       { label: 'API',                                              tone: 'violet' },
   }
   const { label = type, tone = 'neutral' } = map[type] ?? {}
   return (
@@ -97,7 +97,7 @@ export function TaskActionButtons({ task, actions }: { task: ExtractionTask; act
             opacity: task.last_run_status === 'running' ? 0.5 : 1,
           }}
         >
-          立即执行
+          {t('extractionTaskDetail.action.execute', '立即执行')}
         </button>
       ) : null}
       {actions.onToggleActive ? (
@@ -110,7 +110,9 @@ export function TaskActionButtons({ task, actions }: { task: ExtractionTask; act
             color: 'var(--text-2)',
           }}
         >
-          {task.is_active ? '停用' : '启用'}
+          {task.is_active
+            ? t('extractionTaskDetail.action.deactivate', '停用')
+            : t('extractionTaskDetail.action.activate', '启用')}
         </button>
       ) : null}
     </div>
@@ -132,36 +134,39 @@ export function ExtractionTaskDetailContent({
   return (
     <div className="px-4 py-3.5">
       {actions ? (
-        <Section title="操作">
+        <Section title={t('extractionTaskDetail.section.actions', '操作')}>
           <TaskActionButtons task={task} actions={actions} />
         </Section>
       ) : null}
 
-      <Section title="基础信息">
+      <Section title={t('extractionTaskDetail.section.basic', '基础信息')}>
         <dl
           className="divide-y rounded-md border text-xs"
           style={{ borderColor: 'var(--border)' }}
         >
-          <Row label="任务名称"   value={task.task_name} />
-          <Row label="任务编码"   value={<code>{task.task_code}</code>} />
-          <Row label="数据集 ID"  value={task.dataset_id} />
-          <Row label="类型"       value={taskTypeChip(task.task_type)} />
-          <Row label="启用"       value={task.is_active ? '是' : '否'} />
-          <Row label="最近状态"   value={taskStatusChip(task.last_run_status)} />
-          <Row label="最近运行"   value={fmtDateTime(task.last_run_at)} />
-          <Row label="创建时间"   value={fmtDateTime(task.created_at)} />
+          <Row label={t('extractionTaskDetail.row.name', '任务名称')} value={task.task_name} />
+          <Row label={t('extractionTaskDetail.row.code', '任务编码')} value={<code>{task.task_code}</code>} />
+          <Row label={t('extractionTaskDetail.row.datasetId', '数据集 ID')} value={task.dataset_id} />
+          <Row label={t('extractionTaskDetail.row.type', '类型')} value={taskTypeChip(task.task_type)} />
+          <Row
+            label={t('extractionTaskDetail.row.active', '启用')}
+            value={task.is_active ? t('common.yes', '是') : t('common.no', '否')}
+          />
+          <Row label={t('extractionTaskDetail.row.lastStatus', '最近状态')} value={taskStatusChip(task.last_run_status)} />
+          <Row label={t('extractionTaskDetail.row.lastRun', '最近运行')} value={fmtDateTime(task.last_run_at)} />
+          <Row label={t('extractionTaskDetail.row.createdAt', '创建时间')} value={fmtDateTime(task.created_at)} />
           {hasDetail ? (
             <>
-              <Row label="更新时间"  value={fmtDateTime(detail.updated_at)} />
-              <Row label="创建人"    value={detail.created_by} />
-              <Row label="行数限制"  value={detail.row_limit} />
+              <Row label={t('extractionTaskDetail.row.updatedAt', '更新时间')} value={fmtDateTime(detail.updated_at)} />
+              <Row label={t('extractionTaskDetail.row.createdBy', '创建人')} value={detail.created_by} />
+              <Row label={t('extractionTaskDetail.row.rowLimit', '行数限制')} value={detail.row_limit} />
             </>
           ) : null}
         </dl>
       </Section>
 
       {hasDetail && detail.select_fields.length > 0 ? (
-        <Section title={`选择字段 (${detail.select_fields.length})`}>
+        <Section title={t('extractionTaskDetail.section.selectFields', '选择字段 ({n})', { n: detail.select_fields.length })}>
           <div className="flex flex-wrap gap-1">
             {detail.select_fields.map((f) => (
               <code
@@ -177,7 +182,7 @@ export function ExtractionTaskDetailContent({
       ) : null}
 
       {hasDetail && detail.schedule_config ? (
-        <Section title="调度配置">
+        <Section title={t('extractionTaskDetail.section.schedule', '调度配置')}>
           <pre
             className="max-h-40 overflow-auto rounded-md border p-2 text-[11px] leading-4"
             style={{
@@ -192,7 +197,7 @@ export function ExtractionTaskDetailContent({
       ) : null}
 
       {hasDetail && detail.filter_conditions && Object.keys(detail.filter_conditions).length > 0 ? (
-        <Section title="过滤条件">
+        <Section title={t('extractionTaskDetail.section.filter', '过滤条件')}>
           <pre
             className="max-h-40 overflow-auto rounded-md border p-2 text-[11px] leading-4"
             style={{
@@ -225,7 +230,7 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
   )
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
+function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 px-2.5 py-1.5">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>

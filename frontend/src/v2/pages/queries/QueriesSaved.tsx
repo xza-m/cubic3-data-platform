@@ -15,6 +15,7 @@ import {
 import { fmtNum, fmtRelative } from '@v2/lib/format'
 import type { SavedQuery } from '@v2/api/queries'
 import { SavedQueryDetailContent } from './_shared/saved-query-content'
+import { t } from '@v2/i18n'
 
 export default function QueriesSaved() {
   const navigate = useNavigate()
@@ -39,7 +40,14 @@ export default function QueriesSaved() {
   const pageSize = data?.page_size ?? 20
 
   async function handleDelete(row: SavedQuery) {
-    if (!window.confirm(`删除查询「${row.query_name}」？此操作不可撤销。`)) return
+    if (
+      !window.confirm(
+        t('queries.saved.confirm.delete', '删除查询「{name}」？此操作不可撤销。', {
+          name: row.query_name,
+        }),
+      )
+    )
+      return
     await deleteMut.mutateAsync(row.id)
     if (peekRow?.id === row.id) setPeekRow(null)
   }
@@ -55,7 +63,7 @@ export default function QueriesSaved() {
         >
           <div>
             <div className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              已保存查询
+              {t('queries.saved.title', '已保存查询')}
             </div>
             <div className="text-xs" style={{ color: 'var(--text-3)' }}>
               GET /api/v1/queries
@@ -66,7 +74,7 @@ export default function QueriesSaved() {
               type="search"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-              placeholder="搜索名称…"
+              placeholder={t('queries.saved.search.placeholder', '搜索名称…')}
               className="w-48 rounded border bg-transparent px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
               style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
             />
@@ -80,14 +88,14 @@ export default function QueriesSaved() {
               }}
             >
               <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />
-              收藏
+              {t('queries.saved.filter.favorites', '收藏')}
             </button>
             <button
               type="button"
               onClick={() => navigate('/queries/saved/new')}
               className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
             >
-              <Plus size={12} /> 新建查询
+              <Plus size={12} /> {t('queries.saved.action.create', '新建查询')}
             </button>
           </div>
         </div>
@@ -98,20 +106,22 @@ export default function QueriesSaved() {
             <SkeletonRows />
           ) : isError ? (
             <div className="flex h-full flex-col items-center justify-center gap-2">
-              <span className="text-xs text-red-500">加载失败</span>
+              <span className="text-xs text-red-500">{t('queries.saved.error.load', '加载失败')}</span>
               <button
                 type="button"
                 onClick={() => void refetch()}
                 className="text-xs underline"
                 style={{ color: 'var(--accent)' }}
               >
-                重试
+                {t('queries.saved.action.retry', '重试')}
               </button>
             </div>
           ) : rows.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3">
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-                {search || isFavorite ? '没有匹配结果' : '暂无已保存查询'}
+                {search || isFavorite
+                  ? t('queries.saved.empty.filtered', '没有匹配结果')
+                  : t('queries.saved.empty.all', '暂无已保存查询')}
               </p>
               {!search && !isFavorite && (
                 <button
@@ -119,7 +129,7 @@ export default function QueriesSaved() {
                   onClick={() => navigate('/queries/saved/new')}
                   className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
                 >
-                  新建第一个查询
+                  {t('queries.saved.action.createFirst', '新建第一个查询')}
                 </button>
               )}
             </div>
@@ -130,13 +140,13 @@ export default function QueriesSaved() {
                 style={{ background: 'var(--bg-surface)', color: 'var(--text-2)' }}
               >
                 <tr>
-                  <Th>名称</Th>
-                  <Th>代码</Th>
-                  <Th>负责人</Th>
-                  <Th>标签</Th>
-                  <Th>收藏</Th>
-                  <Th>更新于</Th>
-                  <Th>操作</Th>
+                  <Th>{t('queries.saved.col.name', '名称')}</Th>
+                  <Th>{t('queries.saved.col.code', '代码')}</Th>
+                  <Th>{t('queries.saved.col.owner', '负责人')}</Th>
+                  <Th>{t('queries.saved.col.tags', '标签')}</Th>
+                  <Th>{t('queries.saved.col.favorite', '收藏')}</Th>
+                  <Th>{t('queries.saved.col.updatedAt', '更新于')}</Th>
+                  <Th>{t('queries.saved.col.actions', '操作')}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -190,7 +200,11 @@ export default function QueriesSaved() {
                           void favMut.mutateAsync(row.id)
                         }}
                         className="rounded p-0.5 transition-colors hover:bg-[color:var(--bg-hover)]"
-                        aria-label={row.is_favorite ? '取消收藏' : '收藏'}
+                        aria-label={
+                          row.is_favorite
+                            ? t('queries.saved.action.unfavorite', '取消收藏')
+                            : t('queries.saved.filter.favorites', '收藏')
+                        }
                       >
                         <Star
                           size={13}
@@ -214,7 +228,7 @@ export default function QueriesSaved() {
                           className="rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
                           style={{ color: 'var(--accent)' }}
                         >
-                          详情
+                          {t('queries.saved.action.detail', '详情')}
                         </button>
                         <button
                           type="button"
@@ -224,7 +238,7 @@ export default function QueriesSaved() {
                           }}
                           className="rounded px-1.5 py-0.5 text-xs text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
                         >
-                          删除
+                          {t('queries.saved.action.delete', '删除')}
                         </button>
                       </div>
                     </Td>
@@ -241,7 +255,7 @@ export default function QueriesSaved() {
             className="flex items-center justify-between border-t px-4 py-2 text-xs"
             style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
           >
-            <span>共 {fmtNum(total)} 条</span>
+            <span>{t('queries.saved.pagination.total', '共 {n} 条', { n: fmtNum(total) })}</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -250,7 +264,7 @@ export default function QueriesSaved() {
                 className="rounded border px-2 py-1 disabled:opacity-40"
                 style={{ borderColor: 'var(--border)' }}
               >
-                上一页
+                {t('queries.saved.pagination.prev', '上一页')}
               </button>
               <span>
                 {page} / {Math.ceil(total / pageSize)}
@@ -262,7 +276,7 @@ export default function QueriesSaved() {
                 className="rounded border px-2 py-1 disabled:opacity-40"
                 style={{ borderColor: 'var(--border)' }}
               >
-                下一页
+                {t('queries.saved.pagination.next', '下一页')}
               </button>
             </div>
           </div>
@@ -297,7 +311,7 @@ export default function QueriesSaved() {
                 className="rounded px-2 py-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
                 style={{ color: 'var(--accent)' }}
               >
-                详情
+                {t('queries.saved.action.detail', '详情')}
               </button>
               <button
                 type="button"

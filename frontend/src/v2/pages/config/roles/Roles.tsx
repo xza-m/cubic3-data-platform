@@ -11,6 +11,7 @@ import { Dialog, Input, Skeleton, useToast } from '@v2/components/ui'
 import { fmtDateTime } from '@v2/lib/format'
 import { useListRoles, useCreateRole, useDeleteRole } from '@v2/hooks/roles'
 import type { Role, CreateRolePayload } from '@v2/api/roles'
+import { t } from '@v2/i18n'
 
 export default function Roles() {
   const navigate = useNavigate()
@@ -26,14 +27,22 @@ export default function Roles() {
 
   const handleCreate = async (payload: CreateRolePayload) => {
     await createMutation.mutateAsync(payload)
-    toast.show({ tone: 'success', title: '已创建角色', description: payload.name })
+    toast.show({
+      tone: 'success',
+      title: t('roles.toast.created', '已创建角色'),
+      description: payload.name,
+    })
     setCreating(false)
   }
 
   const handleDelete = async (role: Role) => {
-    if (!window.confirm(`删除角色「${role.name}」？`)) return
+    if (!window.confirm(t('roles.confirm.delete', '删除角色「{name}」？', { name: role.name }))) return
     await deleteMutation.mutateAsync(role.id)
-    toast.show({ tone: 'warning', title: '已删除角色', description: role.name })
+    toast.show({
+      tone: 'warning',
+      title: t('roles.toast.deleted', '已删除角色'),
+      description: role.name,
+    })
   }
 
   return (
@@ -48,9 +57,11 @@ export default function Roles() {
           style={{ borderColor: 'var(--border)' }}
         >
           <div>
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>角色管理</span>
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+              {t('roles.page.title', '角色管理')}
+            </span>
             <span className="ml-2 text-xs" style={{ color: 'var(--text-3)' }}>
-              共 {data?.total ?? 0} 个角色
+              {t('roles.page.count', '共 {n} 个角色', { n: data?.total ?? 0 })}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -59,7 +70,7 @@ export default function Roles() {
               <input
                 className="rounded border py-1 pl-6 pr-2 text-xs outline-none focus:ring-1"
                 style={{ background: 'var(--bg-surface-2)', borderColor: 'var(--border)', color: 'var(--text-1)', width: 160 }}
-                placeholder="搜索角色名…"
+                placeholder={t('roles.search.placeholder', '搜索角色名…')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -68,6 +79,7 @@ export default function Roles() {
               type="button"
               className="btn btn-sm btn-ghost"
               onClick={() => refetch()}
+              title={t('roles.action.refresh', '刷新')}
             >
               <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
             </button>
@@ -77,7 +89,7 @@ export default function Roles() {
               className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-white"
               style={{ background: 'var(--accent)' }}
             >
-              <Plus size={12} /> 新建角色
+              <Plus size={12} /> {t('roles.action.create', '新建角色')}
             </button>
           </div>
         </div>
@@ -94,14 +106,20 @@ export default function Roles() {
 
           {isError && !isLoading && (
             <div className="flex flex-col items-center gap-3 p-8">
-              <p className="text-xs" style={{ color: 'var(--danger)' }}>加载失败</p>
-              <button type="button" className="btn btn-sm" onClick={() => refetch()}>重试</button>
+              <p className="text-xs" style={{ color: 'var(--danger)' }}>
+                {t('roles.state.loadFailed', '加载失败')}
+              </p>
+              <button type="button" className="btn btn-sm" onClick={() => refetch()}>
+                {t('roles.action.retry', '重试')}
+              </button>
             </div>
           )}
 
           {!isLoading && !isError && roles.length === 0 && (
             <div className="flex items-center justify-center p-8 text-xs" style={{ color: 'var(--text-3)' }}>
-              {search ? `未找到匹配「${search}」的角色` : '暂无角色'}
+              {search
+                ? t('roles.state.noMatch', '未找到匹配「{q}」的角色', { q: search })
+                : t('roles.state.empty', '暂无角色')}
             </div>
           )}
 
@@ -109,7 +127,13 @@ export default function Roles() {
             <table className="w-full border-collapse text-xs">
               <thead>
                 <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-                  {['角色名', '描述', '权限数', '创建时间', '操作'].map((h) => (
+                  {[
+                    t('roles.col.name', '角色名'),
+                    t('roles.col.description', '描述'),
+                    t('roles.col.permCount', '权限数'),
+                    t('roles.col.createdAt', '创建时间'),
+                    t('roles.col.actions', '操作'),
+                  ].map((h) => (
                     <th key={h} className="px-4 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>
                       {h}
                     </th>
@@ -146,7 +170,7 @@ export default function Roles() {
                         className="text-xs hover:underline"
                         style={{ color: 'var(--danger)' }}
                       >
-                        删除
+                        {t('roles.action.delete', '删除')}
                       </button>
                     </td>
                   </tr>
@@ -191,22 +215,31 @@ function CreateRoleDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="新建角色">
+    <Dialog open={open} onClose={onClose} title={t('roles.dialog.create.title', '新建角色')}>
       <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 p-4">
         <div>
           <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-            角色名 *
+            {t('roles.dialog.field.name', '角色名 *')}
           </label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="角色名称" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            placeholder={t('roles.dialog.placeholder.name', '角色名称')}
+          />
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-            描述
+            {t('roles.dialog.field.description', '描述')}
           </label>
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="可选" />
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={t('roles.dialog.placeholder.optional', '可选')}
+          />
         </div>
         <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-          创建后在角色详情页配置权限矩阵。
+          {t('roles.dialog.hint', '创建后在角色详情页配置权限矩阵。')}
         </p>
         <div className="flex justify-end gap-2 pt-2">
           <button
@@ -215,7 +248,7 @@ function CreateRoleDialog({
             className="rounded-md border px-4 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)' }}
           >
-            取消
+            {t('roles.dialog.cancel', '取消')}
           </button>
           <button
             type="submit"
@@ -223,7 +256,9 @@ function CreateRoleDialog({
             className="rounded-md px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50"
             style={{ background: 'var(--accent)' }}
           >
-            {isPending ? '创建中…' : '创建'}
+            {isPending
+              ? t('roles.dialog.creating', '创建中…')
+              : t('roles.dialog.submit', '创建')}
           </button>
         </div>
       </form>

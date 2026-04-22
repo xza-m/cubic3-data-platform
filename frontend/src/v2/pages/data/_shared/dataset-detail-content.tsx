@@ -8,15 +8,15 @@
 import type { ReactNode } from 'react'
 import type { Dataset, DatasetField } from '@v2/api/datasets'
 import { fmtDateTime } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import { t } from '@v2/i18n'
 
 // ── 徽章渲染助手 ──────────────────────────────────────────────────────────────
 
 export function datasetTypeChip(type: string): ReactNode {
   const map: Record<string, { label: string; tone: string }> = {
-    physical: { label: '物理表', tone: 'accent' },
-    virtual:  { label: '虚拟',   tone: 'violet' },
-    file:     { label: '文件',   tone: 'warning' },
+    physical: { label: t('datasetDetail.type.physical', '物理表'), tone: 'accent' },
+    virtual:  { label: t('datasetDetail.type.virtual', '虚拟'),    tone: 'violet' },
+    file:     { label: t('datasetDetail.type.file', '文件'),       tone: 'warning' },
   }
   const { label = type, tone = 'neutral' } = map[type] ?? {}
   return (
@@ -34,10 +34,10 @@ export function datasetTypeChip(type: string): ReactNode {
 
 export function syncStatusChip(status: string): ReactNode {
   const map: Record<string, { label: string; tone: string }> = {
-    synced:  { label: '已同步', tone: 'success' },
-    syncing: { label: '同步中', tone: 'warning' },
-    failed:  { label: '失败',   tone: 'danger' },
-    pending: { label: '待同步', tone: 'neutral' },
+    synced:  { label: t('datasetDetail.sync.synced', '已同步'),  tone: 'success' },
+    syncing: { label: t('datasetDetail.sync.syncing', '同步中'), tone: 'warning' },
+    failed:  { label: t('datasetDetail.sync.failed', '失败'),    tone: 'danger' },
+    pending: { label: t('datasetDetail.sync.pending', '待同步'), tone: 'neutral' },
   }
   const { label = status, tone = 'neutral' } = map[status] ?? {}
   return (
@@ -79,25 +79,25 @@ export function DatasetDetailContent({ item }: { item: Dataset }) {
   const fields = item.fields ?? []
   return (
     <div className="px-4 py-3.5">
-      <Section title="基础信息">
+      <Section title={t('datasetDetail.section.basic', '基础信息')}>
         <dl
           className="divide-y rounded-md border text-xs"
           style={{ borderColor: 'var(--border)' }}
         >
-          <Row label="编码"     value={<code>{item.dataset_code}</code>} />
-          <Row label="名称"     value={item.dataset_name} />
-          <Row label="类型"     value={datasetTypeChip(item.dataset_type)} />
-          <Row label="负责人"   value={item.owner} />
-          <Row label="物理表"   value={item.physical_table} />
-          <Row label="同步状态" value={syncStatusChip(item.sync_status)} />
-          <Row label="字段数"   value={item.field_count ?? fields.length} />
-          <Row label="最近同步" value={fmtDateTime(item.last_sync_at)} />
-          <Row label="更新时间" value={fmtDateTime(item.updated_at)} />
+          <Row label={t('datasetDetail.field.code', '编码')}      value={<code>{item.dataset_code}</code>} />
+          <Row label={t('datasetDetail.field.name', '名称')}      value={item.dataset_name} />
+          <Row label={t('datasetDetail.field.type', '类型')}      value={datasetTypeChip(item.dataset_type)} />
+          <Row label={t('datasetDetail.field.owner', '负责人')}   value={item.owner} />
+          <Row label={t('datasetDetail.field.physicalTable', '物理表')} value={item.physical_table} />
+          <Row label={t('datasetDetail.field.syncStatus', '同步状态')} value={syncStatusChip(item.sync_status)} />
+          <Row label={t('datasetDetail.field.fieldCount', '字段数')}   value={item.field_count ?? fields.length} />
+          <Row label={t('datasetDetail.field.lastSync', '最近同步')}   value={fmtDateTime(item.last_sync_at)} />
+          <Row label={t('datasetDetail.field.updatedAt', '更新时间')}  value={fmtDateTime(item.updated_at)} />
         </dl>
       </Section>
 
       {item.description ? (
-        <Section title="描述">
+        <Section title={t('datasetDetail.section.description', '描述')}>
           <p className="text-xs leading-5" style={{ color: 'var(--text-2)' }}>
             {item.description}
           </p>
@@ -105,7 +105,7 @@ export function DatasetDetailContent({ item }: { item: Dataset }) {
       ) : null}
 
       {item.sql_query ? (
-        <Section title="SQL">
+        <Section title={t('datasetDetail.section.sql', 'SQL')}>
           <pre
             className="max-h-64 overflow-auto rounded-md border p-2 text-[11px] leading-4"
             style={{
@@ -120,7 +120,7 @@ export function DatasetDetailContent({ item }: { item: Dataset }) {
       ) : null}
 
       {item.sync_error ? (
-        <Section title="同步错误">
+        <Section title={t('datasetDetail.section.syncError', '同步错误')}>
           <p className="text-xs leading-5" style={{ color: 'var(--danger)' }}>
             {item.sync_error}
           </p>
@@ -131,7 +131,7 @@ export function DatasetDetailContent({ item }: { item: Dataset }) {
         <Section
           title={
             <span className="flex items-center justify-between">
-              <span>字段</span>
+              <span>{t('datasetDetail.section.fields', '字段')}</span>
               <span style={{ color: 'var(--text-3)' }}>{fields.length}</span>
             </span>
           }
@@ -142,7 +142,7 @@ export function DatasetDetailContent({ item }: { item: Dataset }) {
             ))}
             {fields.length > 30 ? (
               <li className="px-2 py-1 text-[11px]" style={{ color: 'var(--text-3)' }}>
-                … 还有 {fields.length - 30} 个字段
+                {t('datasetDetail.fieldMore', '… 还有 {n} 个字段', { n: fields.length - 30 })}
               </li>
             ) : null}
           </ul>
@@ -206,7 +206,7 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
   )
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
+function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div
       className="flex items-center justify-between gap-3 px-2.5 py-1.5"

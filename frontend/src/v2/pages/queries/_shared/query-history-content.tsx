@@ -5,6 +5,7 @@
 import type { ReactNode } from 'react'
 import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
 import type { QueryHistoryItem } from '@v2/api/queries'
+import { t } from '@v2/i18n'
 
 // ──────────────────────────────────────────────────────────────────────────
 // Tab label
@@ -69,7 +70,7 @@ export function QueryHistoryDetailContent({
               onClick={actions.onReplay}
               className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
             >
-              在工作台重跑
+              {t('queryHistory.action.replay', '在工作台重跑')}
             </button>
           )}
           {actions.onDownload && (
@@ -79,31 +80,31 @@ export function QueryHistoryDetailContent({
               className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)]"
               style={{ borderColor: 'var(--border)' }}
             >
-              下载结果
+              {t('queryHistory.action.download', '下载结果')}
             </button>
           )}
         </div>
       )}
 
-      <Section title="基础信息">
-        <Row label="编号" value={<code>#{row.id}</code>} />
-        <Row label="状态" value={statusChip(row.status)} />
-        <Row label="数据源" value={row.source_name ? <code>{row.source_name}</code> : '—'} />
-        <Row label="执行人" value={row.executed_by} />
-        <Row label="执行时间" value={fmtDateTime(row.executed_at)} />
+      <Section title={t('queryHistory.section.basic', '基础信息')}>
+        <Row label={t('queryHistory.field.id', '编号')}       value={<code>#{row.id}</code>} />
+        <Row label={t('queryHistory.field.status', '状态')}   value={statusChip(row.status)} />
+        <Row label={t('queryHistory.field.source', '数据源')} value={row.source_name ? <code>{row.source_name}</code> : '—'} />
+        <Row label={t('queryHistory.field.executor', '执行人')} value={row.executed_by} />
+        <Row label={t('queryHistory.field.executedAt', '执行时间')} value={fmtDateTime(row.executed_at)} />
         <Row
-          label="耗时"
+          label={t('queryHistory.field.duration', '耗时')}
           value={
             row.execution_time_ms != null
               ? `${(row.execution_time_ms / 1000).toFixed(2)}s`
               : '—'
           }
         />
-        <Row label="行数" value={row.row_count != null ? fmtNum(row.row_count) : '—'} />
+        <Row label={t('queryHistory.field.rowCount', '行数')} value={row.row_count != null ? fmtNum(row.row_count) : '—'} />
       </Section>
 
       {row.error_message && (
-        <Section title="错误信息">
+        <Section title={t('queryHistory.section.error', '错误信息')}>
           <pre
             className="overflow-auto rounded border p-2 text-xs leading-4 text-red-600 dark:text-red-400"
             style={{ background: 'var(--bg-surface-2)', borderColor: 'var(--border)' }}
@@ -113,7 +114,7 @@ export function QueryHistoryDetailContent({
         </Section>
       )}
 
-      <Section title="SQL">
+      <Section title={t('queryHistory.section.sql', 'SQL')}>
         <pre
           className="overflow-auto rounded border p-2 text-xs leading-4"
           style={{
@@ -146,40 +147,40 @@ export function QueryHistoryContextBody({
     <div className="space-y-4 px-4 py-4">
       <section>
         <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-          状态
+          {t('queryHistory.ctx.status', '状态')}
         </div>
         <div className="mt-2 flex items-center gap-1.5">{statusChip(row.status)}</div>
       </section>
       <section>
         <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-          执行
+          {t('queryHistory.ctx.execution', '执行')}
         </div>
         <dl className="mt-2 space-y-1 text-xs">
           <Pair
-            label="耗时"
+            label={t('queryHistory.field.duration', '耗时')}
             value={
               row.execution_time_ms != null
                 ? `${(row.execution_time_ms / 1000).toFixed(2)}s`
                 : '—'
             }
           />
-          <Pair label="行数" value={row.row_count != null ? fmtNum(row.row_count) : '—'} />
-          <Pair label="执行人" value={row.executed_by} />
-          <Pair label="时间" value={fmtRelative(row.executed_at)} />
+          <Pair label={t('queryHistory.field.rowCount', '行数')} value={row.row_count != null ? fmtNum(row.row_count) : '—'} />
+          <Pair label={t('queryHistory.field.executor', '执行人')} value={row.executed_by} />
+          <Pair label={t('queryHistory.field.time', '时间')} value={fmtRelative(row.executed_at)} />
         </dl>
       </section>
       <section>
         <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-          邻接导航
+          {t('queryHistory.ctx.neighbors', '邻接导航')}
         </div>
         <div className="mt-2 space-y-1.5 text-xs">
           <NeighborButton
-            label={neighbors.prev ? `← #${neighbors.prev.id}` : '没有上一项'}
+            label={neighbors.prev ? `← #${neighbors.prev.id}` : t('queryHistory.neighbor.noPrev', '没有上一项')}
             disabled={!neighbors.prev}
             onClick={neighbors.prev ? () => onNavigate(neighbors.prev!.id) : undefined}
           />
           <NeighborButton
-            label={neighbors.next ? `#${neighbors.next.id} →` : '没有下一项'}
+            label={neighbors.next ? `#${neighbors.next.id} →` : t('queryHistory.neighbor.noNext', '没有下一项')}
             disabled={!neighbors.next}
             onClick={neighbors.next ? () => onNavigate(neighbors.next!.id) : undefined}
           />
@@ -204,7 +205,7 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
   )
 }
 
-function Row({ label, value }: { label: string; value: ReactNode }) {
+function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -215,7 +216,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
-function Pair({ label, value }: { label: string; value: ReactNode }) {
+function Pair({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
@@ -231,7 +232,7 @@ function NeighborButton({
   onClick,
   disabled,
 }: {
-  label: string
+  label: ReactNode
   onClick?: () => void
   disabled?: boolean
 }) {
