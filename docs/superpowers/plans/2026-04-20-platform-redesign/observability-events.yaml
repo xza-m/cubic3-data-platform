@@ -81,6 +81,16 @@ events:
     call_site: src/v2/hooks/ontology.ts → usePublishEntity
     dashboards: [ontology_publish_funnel]
 
+  - name: ontology.object_edited
+    level: info
+    fields:
+      entity_name: string
+      changed_fields: list[string]
+      changed_count: int
+    description: 本体对象编辑保存（Round 4 · R-001-P04）
+    call_site: src/v2/hooks/ontology.ts → useUpdateObject
+    dashboards: [ontology_edit_funnel]
+
   - name: ontology.metric_dryrun
     level: info
     fields:

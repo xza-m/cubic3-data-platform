@@ -50,7 +50,7 @@
 | D+7 | 生产 | LHCI `numberOfRuns:3` + stub 说明 + `lighthouse-ci-dispatch.yml` | P2 | 0.5d | infra | — | **DONE** 2026-04-22 | 同上 |
 | T-DRILL | 生产 | 团队演练：本机 docker 全栈跑通 `deploy.sh` | P1 | 0.5d | OnCall | 环境 | **DONE** 2026-04-22 | `docs/superpowers/ops/drills/2026-04-22-round4-docker-stack-drill.md`；health_probe 8/8；修复两处环境缺陷（缺 `bcrypt`、nginx 变量版 `proxy_pass` 不改 URI） |
 | T-005 | 闸门 | `make verify-cutover` 增强：alembic dry-run / 或 nginx 与脚本对齐文档 | P2 | 1d | infra | T-002 | **DONE** 2026-04-22 | `scripts/checks/alembic_head_guard.py` + `make verify-alembic` 接入 `verify-cutover` |
-| R-001-P04 | 功能 | 本体对象编辑 Tab（校验、保存、撤销、版本对比） | L1 | 5d | FE-A | — | **OPEN** | p04 e2e 去 fixme 且通过 |
+| R-001-P04 | 功能 | 本体对象编辑 Tab（校验、保存、撤销、版本对比） | L1 | 5d | FE-A | — | **DONE** 2026-04-22 | `ObjectEdit.tsx` 新路由 `/semantic/ontology/objects/:name/edit`；`updateObject` 走后端 `POST /ontology/objects` 幂等 upsert；表单 dirty 跟踪 + 字段级校验（title 必填 / 长度 / 别名）+ 撤销全部；右栏 diff 面板做"当前 vs baseline"字段对比；埋点 `ontology.object_edited`；`p04` E2E 去 fixme 全绿（校验→撤销→保存→跳回详情） |
 | R-001-P17a | 功能 | 抽取 Run 列表：重跑按钮 | L1 | 1d | FE-B | P17c 接口可 mock | **DONE** 2026-04-22 | 列表行 + PeekPanel + 详情页三处均有 `重跑`；running/pending 禁用；新 Run 自动刷新并切入 Peek |
 | R-001-P17b | 功能 | 抽取 Run 日志面板 / PeekPanel | L1 | 2d | FE-B | 同左 | **DONE** 2026-04-22 | `useExtractionRunLogs` + `RunLogsSection`（SQL/stack/级别过滤 + 首屏拉取） |
 | R-001-P17c | 功能 | 后端：Run rerun + 日志查询 API | L1 | 2d | BE-A | — | **DONE** 2026-04-22 | `POST /extraction/runs/<id>/rerun` + `GET /…/logs`；集成测试 14 项过 |

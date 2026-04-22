@@ -51,6 +51,17 @@ export const ev = {
       entity_name: entityName,
     }),
 
+  /** 本体对象编辑保存（Round 4 · R-001-P04） */
+  objectEdited: (
+    entityName: string,
+    changedFields: readonly string[],
+  ): ObsEvent =>
+    make('ontology.object_edited', 'info', {
+      entity_name: entityName,
+      changed_fields: [...changedFields],
+      changed_count: changedFields.length,
+    }),
+
   /** 指标公式 dry-run */
   metricDryrun: (name: string, ok: boolean): ObsEvent =>
     make('ontology.metric_dryrun', 'info', { metric_name: name, ok }),

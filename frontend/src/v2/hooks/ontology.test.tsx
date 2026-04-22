@@ -9,6 +9,7 @@ vi.mock('@v2/api/ontology', () => ({
   listObjects: vi.fn(),
   getObject: vi.fn(),
   createObject: vi.fn(),
+  updateObject: vi.fn(),
   listProperties: vi.fn(),
   getProperty: vi.fn(),
   createProperty: vi.fn(),
@@ -42,6 +43,7 @@ import {
   useObjectList,
   useObjectDetail,
   useCreateObject,
+  useUpdateObject,
   usePropertyList,
   usePropertyDetail,
   useCreateProperty,
@@ -174,6 +176,26 @@ describe('ontology - mutations', () => {
     const { result } = renderHook(() => hook(), { wrapper })
     await act(async () => {
       await result.current.mutateAsync({} as never)
+    })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['ontology'] })
+  })
+
+  it('useUpdateObject posts upsert and invalidates', async () => {
+    (api.updateObject as ReturnType<typeof vi.fn>).mockResolvedValue({
+      name: 'student',
+    })
+    const { qc, wrapper } = makeWrapper()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useUpdateObject(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({
+        name: 'student',
+        body: { title: '学生（改）' },
+        changedFields: ['title'],
+      })
+    })
+    expect(api.updateObject).toHaveBeenCalledWith('student', {
+      title: '学生（改）',
     })
     expect(spy).toHaveBeenCalledWith({ queryKey: ['ontology'] })
   })

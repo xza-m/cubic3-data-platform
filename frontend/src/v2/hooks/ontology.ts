@@ -17,6 +17,7 @@ import {
   createPolicy,
   createProperty,
   createRelation,
+  updateObject,
   getAction,
   getEntityHistory,
   getEntityImpact,
@@ -102,6 +103,29 @@ export function useCreateObject() {
   return useMutation({
     mutationFn: (body: Partial<BusinessObject>) => createObject(body),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ontology'] })
+    },
+  })
+}
+
+// Round 4 · R-001-P04 — 幂等 upsert 编辑。
+// mutationFn 形参刻意保持 { name, body, changedFields } 分开：
+//   · name 用于在 optimistic update 时做 cache 置换；
+//   · changedFields 用于埋点 `ontology.object_edited`，由调用方比对 dirty 字段传入；
+//   · invalidate 按 object-detail/workbench/entity-history 全粒度冲。
+export function useUpdateObject() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      name,
+      body,
+    }: {
+      name: string
+      body: Partial<BusinessObject>
+      changedFields?: readonly string[]
+    }) => updateObject(name, body),
+    onSuccess: (_data, { name, changedFields }) => {
+      obs.track(ev.objectEdited(name, changedFields ?? []))
       qc.invalidateQueries({ queryKey: ['ontology'] })
     },
   })

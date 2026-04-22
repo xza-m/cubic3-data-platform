@@ -98,6 +98,7 @@ const OntologyWorkbench = lazy(() => import('@v2/pages/semantic/ontology/Workben
 const OntologyObjects = lazy(() => import('@v2/pages/semantic/ontology/Objects'))
 const ObjectCreate = lazy(() => import('@v2/pages/semantic/ontology/ObjectCreate'))
 const ObjectDetail = lazy(() => import('@v2/pages/semantic/ontology/ObjectDetail'))
+const ObjectEdit = lazy(() => import('@v2/pages/semantic/ontology/ObjectEdit'))
 const OntologyMetrics = lazy(() => import('@v2/pages/semantic/ontology/Metrics'))
 const OntologyRelations = lazy(() => import('@v2/pages/semantic/ontology/Relations'))
 const OntologyGovernance = lazy(() => import('@v2/pages/semantic/ontology/Governance'))
@@ -265,7 +266,10 @@ export default function AppRoutes() {
               <Route path="objects">
                 <Route index element={wrap(<OntologyObjects />)} />
                 <Route path="new" element={wrap(<ObjectCreate />)} />
-                <Route path=":name" element={wrap(<ObjectDetail />)} />
+                <Route path=":name">
+                  <Route index element={wrap(<ObjectDetail />)} />
+                  <Route path="edit" element={wrap(<ObjectEdit />)} />
+                </Route>
               </Route>
               <Route path="metrics" element={wrap(<OntologyMetrics />)} />
               <Route path="relations" element={wrap(<OntologyRelations />)} />

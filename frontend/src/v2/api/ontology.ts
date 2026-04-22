@@ -225,6 +225,12 @@ export const getObject = (name: string) =>
 export const createObject = (body: Partial<BusinessObject>) =>
   post<BusinessObject>('/ontology/objects', body)
 
+// 后端 `POST /ontology/objects` 是幂等 upsert（`save_object`，定义服务见
+// `app/application/ontology/definition_service.py::save_object`）。P04 编辑 Tab
+// 走同一路径 —— body 带上 `name` 即视为更新；保持函数名分离以表意清晰。
+export const updateObject = (name: string, body: Partial<BusinessObject>) =>
+  post<BusinessObject>('/ontology/objects', { ...body, name })
+
 // ─── Properties API ─────────────────────────────────────────────────────────
 
 export const listProperties = () =>
