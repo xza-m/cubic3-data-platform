@@ -5,9 +5,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, RefreshCcw } from 'lucide-react'
-import { useExtractionRuns } from '@v2/hooks/extraction'
+import { Activity, RefreshCcw, Play } from 'lucide-react'
+import { useExtractionRuns, useRerunExtractionRun } from '@v2/hooks/extraction'
 import type { ExtractionRun } from '@v2/api/extraction'
+import { useToast } from '@v2/components/ui/Toast'
 import {
   ExtractionRunDetailContent,
   runStatusChip,
@@ -39,11 +40,13 @@ const TRIGGER_OPTIONS = [
 
 export default function ExtractionRuns() {
   const navigate = useNavigate()
+  const toast = useToast()
   const { setBreadcrumbs, setTopBarActions, setContextPanel, openTab } = useAppShell()
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [triggerFilter, setTriggerFilter] = useState('')
   const [peekId, setPeekId] = useState<number | null>(null)
+  const rerun = useRerunExtractionRun()
 
   const { data, isLoading, isError, error, refetch, isFetching } = useExtractionRuns({
     page: 1,
@@ -168,6 +171,21 @@ export default function ExtractionRuns() {
     [navigate, openTab],
   )
 
+  const handleRowRerun = useCallback(
+    async (row: ExtractionRun, e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (rerun.isPending) return
+      try {
+        const result = await rerun.mutateAsync(row.id)
+        toast.show({ tone: 'success', title: `已提交重跑 · 新 Run #${result.run_id}` })
+        setPeekId(result.run_id)
+      } catch {
+        toast.show({ tone: 'danger', title: '重跑失败，请稍后重试' })
+      }
+    },
+    [rerun, toast],
+  )
+
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b px-4 py-2" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
@@ -186,6 +204,8 @@ export default function ExtractionRuns() {
             rows={rows}
             activeId={peekId}
             onRowClick={(r) => setPeekId(r.id === peekId ? null : r.id)}
+            onRerun={handleRowRerun}
+            rerunPendingId={rerun.isPending ? rerun.variables ?? null : null}
           />
         )}
 
@@ -201,6 +221,10 @@ export default function ExtractionRuns() {
             <ExtractionRunDetailContent
               run={peekRow}
               onJumpTask={() => navigate(`/extraction/tasks/${peekRow.task_id}`)}
+              onRerunSuccess={(newRunId) => {
+                toast.show({ tone: 'success', title: `已提交重跑 · 新 Run #${newRunId}` })
+                setPeekId(newRunId)
+              }}
             />
           ) : null}
         </PeekPanel>
@@ -215,46 +239,70 @@ function RunTable({
   rows,
   activeId,
   onRowClick,
+  onRerun,
+  rerunPendingId,
 }: {
   rows: ExtractionRun[]
   activeId: number | null
   onRowClick: (r: ExtractionRun) => void
+  onRerun: (r: ExtractionRun, e: React.MouseEvent) => void
+  rerunPendingId: number | null
 }) {
   return (
     <div className="h-full overflow-auto">
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border)' }}>
-            {['运行 #', '任务', '状态', '触发', '行数', '耗时', '开始时间'].map((h) => (
+            {['运行 #', '任务', '状态', '触发', '行数', '耗时', '开始时间', '操作'].map((h) => (
               <th key={h} className="px-4 py-2 text-left font-medium" style={{ color: 'var(--text-3)' }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.id}
-              onClick={() => onRowClick(row)}
-              className="cursor-pointer"
-              style={{ borderBottom: '1px solid var(--border)', background: activeId === row.id ? 'var(--bg-hover)' : undefined }}
-            >
-              <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--text-1)' }}>#{row.id}</td>
-              <td className="px-4 py-2.5">
-                <code className="text-[11px]" style={{ color: 'var(--text-2)' }}>Task #{row.task_id}</code>
-              </td>
-              <td className="px-4 py-2.5">{runStatusChip(row.status)}</td>
-              <td className="px-4 py-2.5 text-[11px]" style={{ color: 'var(--text-3)' }}>{row.run_type}</td>
-              <td className="px-4 py-2.5 text-[11px] tabular-nums" style={{ color: 'var(--text-2)' }}>
-                {row.row_count != null ? row.row_count.toLocaleString() : '—'}
-              </td>
-              <td className="px-4 py-2.5 text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
-                {row.duration_ms != null ? fmtDuration(row.duration_ms) : '—'}
-              </td>
-              <td className="px-4 py-2.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-                {row.start_time ? fmtRelative(row.start_time) : fmtDateTime(row.created_at)}
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const canRerun =
+              row.status === 'success' || row.status === 'failed' || row.status === 'cancelled'
+            const pending = rerunPendingId === row.id
+            return (
+              <tr
+                key={row.id}
+                onClick={() => onRowClick(row)}
+                className="cursor-pointer"
+                style={{ borderBottom: '1px solid var(--border)', background: activeId === row.id ? 'var(--bg-hover)' : undefined }}
+              >
+                <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--text-1)' }}>#{row.id}</td>
+                <td className="px-4 py-2.5">
+                  <code className="text-[11px]" style={{ color: 'var(--text-2)' }}>Task #{row.task_id}</code>
+                </td>
+                <td className="px-4 py-2.5">{runStatusChip(row.status)}</td>
+                <td className="px-4 py-2.5 text-[11px]" style={{ color: 'var(--text-3)' }}>{row.run_type}</td>
+                <td className="px-4 py-2.5 text-[11px] tabular-nums" style={{ color: 'var(--text-2)' }}>
+                  {row.row_count != null ? row.row_count.toLocaleString() : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-[11px] tabular-nums" style={{ color: 'var(--text-3)' }}>
+                  {row.duration_ms != null ? fmtDuration(row.duration_ms) : '—'}
+                </td>
+                <td className="px-4 py-2.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {row.start_time ? fmtRelative(row.start_time) : fmtDateTime(row.created_at)}
+                </td>
+                <td className="px-4 py-2.5 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={(e) => onRerun(row, e)}
+                    disabled={!canRerun || pending}
+                    data-testid={`run-rerun-${row.id}`}
+                    aria-label={`重跑运行 #${row.id}`}
+                    title={canRerun ? '基于此次运行重新执行' : '任务在运行中或排队，无法重跑'}
+                    className="inline-flex items-center gap-1 rounded border px-2 py-1 disabled:opacity-40"
+                    style={{ borderColor: 'var(--border)', color: 'var(--text-2)', background: 'var(--bg-surface-2)' }}
+                  >
+                    <Play size={11} className={pending ? 'animate-pulse' : ''} />
+                    {pending ? '提交中' : '重跑'}
+                  </button>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>

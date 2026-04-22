@@ -1,28 +1,85 @@
 // frontend/tests/e2e-v2/p17-extraction-run-rerun.spec.ts
 //
-// P17 — 抽取 Run 详情 日志面板 + 重跑 happy path.
+// Round 4 · R-001-P17d — 抽取 Run 重跑 + 日志面板 happy path.
 //
-// FIXME(W4.C): rerun button is delivered by W3.C and the precise data-testid
-// is WIP. Lift once W3.C merges.
+// Upstream changes that unblock this spec (all landed 2026-04-22):
+//   • R-001-P17a  `重跑` 按钮（列表行 / PeekPanel 内 / 详情页）
+//   • R-001-P17b  日志面板（PeekPanel 内，走 GET /extraction/runs/:id/logs）
+//   • 后端 POST /extraction/runs/:id/rerun 已上线
+//
+// 覆盖点：
+//   1. 列表渲染 + Peek 打开，日志面板从后端拉取三条日志
+//   2. `失败` 状态允许重跑；点击 `重跑` 发 POST + 切到新 Run
+//   3. `运行中` 状态禁用 `重跑`（runs_after_rerun 中 9002 为 running）
 
 import { test, expect } from '@playwright/test'
-import { gotoV2, installApiCatchAll, mockJsonRoute, prepareV2Page, envelope } from './helpers'
+import {
+  gotoV2,
+  installApiCatchAll,
+  mockJsonRoute,
+  prepareV2Page,
+  envelope,
+} from './helpers'
 import exFx from './fixtures/extraction.json' with { type: 'json' }
 
 test.beforeEach(async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/data-center/extraction-runs?**', envelope(exFx.runs))
-  await mockJsonRoute(page, '**/api/v1/data-center/extraction-runs/9001', envelope(exFx.run_detail))
-  await mockJsonRoute(page, '**/api/v1/data-center/extraction-runs/9001/logs**', envelope({ items: exFx.run_detail.logs, total: 2 }))
-  await mockJsonRoute(page, '**/api/v1/data-center/extraction-tasks/201/execute', envelope({ run_id: 9002 }))
+
+  // 默认列表（重跑前）：1 条 failed
+  await mockJsonRoute(page, '**/api/v1/extraction/runs?**', envelope(exFx.runs))
+  // 日志（带参数 & 不带参数都匹配）
+  await mockJsonRoute(page, /\/api\/v1\/extraction\/runs\/9001\/logs/, envelope(exFx.logs))
+  await mockJsonRoute(page, /\/api\/v1\/extraction\/runs\/9002\/logs/, envelope({ items: [], total: 0, page: 1, page_size: 50 }))
 })
 
-// FIXME(W5.G-blocked): `ExtractionRunDetailContent` does not render a
-//   logs panel and exposes no "重跑" button. Both pieces of UI need to
-//   ship before this spec can assert anything beyond P18 (the jump-to-task
-//   slice that already exists).
-test.fixme('P17 抽取Run 日志可见 + 重跑 @p17', async ({ page }) => {
-  await gotoV2(page, '/extraction/runs/9001')
-  await expect(page.getByText('学习行为抽取').first()).toBeVisible()
+test('P17 抽取 Run 日志可见 + 重跑 @p17', async ({ page }) => {
+  // ── Arrange: 重跑 POST 返回 9002 + 之后列表切到 2 条 ─────────────────────
+  let rerunPostCount = 0
+  await page.route('**/api/v1/extraction/runs/9001/rerun', async (route) => {
+    rerunPostCount += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(envelope(exFx.rerun_result)),
+    })
+    // 一旦 rerun 成功，后续列表查询切到 runs_after_rerun
+    await mockJsonRoute(page, '**/api/v1/extraction/runs?**', envelope(exFx.runs_after_rerun))
+  })
+
+  // ── Act: 进入 runs 列表 ─────────────────────────────────────────────────
+  await gotoV2(page, '/extraction/runs')
+
+  // 渲染 Run #9001 行 + 行内 `重跑` 按钮（对 failed 允许点击）
+  const row9001 = page.getByText(/^#9001$/)
+  await expect(row9001).toBeVisible()
+  await expect(page.getByTestId('run-rerun-9001')).toBeEnabled()
+
+  // ── 打开 Peek，确认日志面板里能看到 INFO / WARNING / ERROR ───────────
+  await row9001.click()
+
+  const peek = page.getByRole('complementary', { name: '行预览' })
+  await expect(peek).toBeVisible()
+
+  const logList = peek.getByTestId('run-logs')
+  await expect(logList).toBeVisible()
+  await expect(logList.getByText('starting extraction')).toBeVisible()
+  await expect(logList.getByText('retry #1 due to timeout')).toBeVisible()
+  await expect(logList.getByText('connection refused').first()).toBeVisible()
+  await expect(logList.getByText('INFO', { exact: true })).toBeVisible()
+  await expect(logList.getByText('WARNING', { exact: true })).toBeVisible()
+  await expect(logList.getByText('ERROR', { exact: true })).toBeVisible()
+
+  // ── Act: 点击 Peek 里的 `重跑` ─────────────────────────────────────────
+  const peekRerunBtn = peek.getByTestId('run-rerun')
+  await expect(peekRerunBtn).toBeEnabled()
+  await peekRerunBtn.click()
+
+  await expect.poll(() => rerunPostCount).toBe(1)
+
+  // 列表自动刷新（useRerunExtractionRun invalidate 后重拉），出现 Run #9002
+  await expect(page.getByText(/^#9002$/)).toBeVisible({ timeout: 5000 })
+
+  // 9002 对应的 `重跑` 按钮因为 running 而 disabled
+  await expect(page.getByTestId('run-rerun-9002')).toBeDisabled()
 })

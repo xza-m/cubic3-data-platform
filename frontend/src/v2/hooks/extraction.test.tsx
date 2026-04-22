@@ -10,6 +10,8 @@ vi.mock('@v2/api/extraction', () => ({
   executeTask: vi.fn(),
   listRuns: vi.fn(),
   updateTaskSchedule: vi.fn(),
+  rerunRun: vi.fn(),
+  listRunLogs: vi.fn(),
 }))
 
 import * as api from '@v2/api/extraction'
@@ -21,6 +23,8 @@ import {
   useExecuteTask,
   useExtractionRuns,
   useUpdateTaskSchedule,
+  useRerunExtractionRun,
+  useExtractionRunLogs,
 } from './extraction'
 import { makeWrapper } from './test-utils'
 
@@ -97,5 +101,45 @@ describe('extraction', () => {
       await result.current.mutateAsync({ id: 1, payload: {} as never })
     })
     expect(spy).toHaveBeenCalledWith({ queryKey: ['extraction-tasks'] })
+  })
+
+  // ── Round 4 · P17a/P17b ──
+  it('useRerunExtractionRun invalidates tasks+runs', async () => {
+    (api.rerunRun as ReturnType<typeof vi.fn>).mockResolvedValue({
+      run_id: 42,
+      source_run_id: 1,
+      task_id: 7,
+      status: 'queued',
+      job_id: null,
+    })
+    const { qc, wrapper } = makeWrapper()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useRerunExtractionRun(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync(1)
+    })
+    expect(api.rerunRun).toHaveBeenCalledWith(1)
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['extraction-runs'] })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['extraction-tasks'] })
+  })
+
+  it('useExtractionRunLogs disabled when id is null', () => {
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useExtractionRunLogs(null), { wrapper })
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(api.listRunLogs).not.toHaveBeenCalled()
+  })
+
+  it('useExtractionRunLogs fetches when id is provided', async () => {
+    (api.listRunLogs as ReturnType<typeof vi.fn>).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+    })
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useExtractionRunLogs(7, { include_sql: true }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(api.listRunLogs).toHaveBeenCalledWith(7, { include_sql: true })
   })
 })

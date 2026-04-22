@@ -88,3 +88,34 @@ export function useUpdateTaskSchedule() {
     },
   })
 }
+
+// ── Round 4 · R-001-P17a / P17b Run rerun + logs ─────────────────────────────
+
+/** 重跑一个已完成/失败的 run —— 服务端会基于 run.task_id 创建新 run */
+export function useRerunExtractionRun() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (runId: number) => api.rerunRun(runId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['extraction-runs'] })
+      qc.invalidateQueries({ queryKey: ['extraction-tasks'] })
+    },
+  })
+}
+
+/**
+ * 读 run 日志，用于 PeekPanel。
+ * staleTime 0：running 状态下面板打开时会自动 refetch。
+ * 参数对象内部会参与 queryKey 相等判断，调用方稳定传入即可。
+ */
+export function useExtractionRunLogs(
+  runId: number | null | undefined,
+  params?: api.ListRunLogsParams,
+) {
+  return useQuery({
+    queryKey: qk('extraction-runs', 'logs', runId, params),
+    queryFn: () => api.listRunLogs(runId as number, params),
+    enabled: runId != null,
+    staleTime: 0,
+  })
+}

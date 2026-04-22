@@ -141,6 +141,55 @@ export function getRunDownloadUrl(runId: number): string {
   return `/api/v1/extraction/runs/${runId}/download`
 }
 
+// ── Round 4 · R-001-P17c Run rerun + logs（后端已上线 on 2026-04-22） ───────────
+
+export interface RerunRunResult {
+  run_id: number
+  source_run_id: number
+  task_id: number
+  status: string
+  job_id: string | null
+}
+
+/**
+ * 基于 source run 发起重跑（实际调 ExecuteTask，使用 source run 的 task_id）。
+ * 返回新的 run_id；旧 run 仍保留在 runs 列表里做对比。
+ */
+export async function rerunRun(runId: number): Promise<RerunRunResult> {
+  const resp = await apiClient.post(`${RUNS_BASE}/${runId}/rerun`)
+  return resp.data.data
+}
+
+export interface ExtractionRunLogItem {
+  ts: string | null
+  level: 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | string
+  message: string
+}
+
+export interface ListRunLogsParams {
+  include_sql?: boolean
+  include_stack?: boolean
+  levels?: string // comma-separated: "INFO,WARNING,ERROR"
+  page?: number
+  page_size?: number
+}
+
+export interface RunLogsResponse {
+  items: ExtractionRunLogItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+/** 读取一次 run 的合成日志流（后端 GET /runs/:id/logs，见 extraction.py::_synthesize_run_logs） */
+export async function listRunLogs(
+  runId: number,
+  params?: ListRunLogsParams,
+): Promise<RunLogsResponse> {
+  const resp = await apiClient.get(`${RUNS_BASE}/${runId}/logs`, { params })
+  return resp.data.data
+}
+
 // ── 调度配置（P10）────────────────────────────────────────────────────────────
 // TODO: 后端 PATCH /api/v1/extraction/tasks/:id 需接受 schedule_cron / schedule_enabled / schedule_timezone
 // 目前暂存在 schedule_config JSONB 字段，等后端补字段后迁移

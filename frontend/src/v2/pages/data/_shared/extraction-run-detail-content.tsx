@@ -6,11 +6,15 @@
 //   请通过跳转链接访问所属任务。
 // NOTE: result_file_path 不直接展示（安全考量），下载按钮通过 getRunDownloadUrl() 触发。
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type { ExtractionRun } from '@v2/api/extraction'
 import { getRunDownloadUrl } from '@v2/api/extraction'
 import { fmtDateTime, fmtRelative, fmtNum } from '@v2/lib/format'
-// import { t } from '@v2/i18n'  // TODO: pending X-Crosscut delivery
+import {
+  useExtractionRunLogs,
+  useRerunExtractionRun,
+} from '@v2/hooks/extraction'
+import { RefreshCcw, ScrollText } from 'lucide-react'
 
 // ── 徽章渲染助手 ──────────────────────────────────────────────────────────────
 
@@ -72,14 +76,42 @@ export function fmtDuration(ms: number | null | undefined): string {
 export function ExtractionRunDetailContent({
   run,
   onJumpTask,
+  onRerunSuccess,
 }: {
   run: ExtractionRun
   onJumpTask?: () => void
+  /** Round 4 · P17a — rerun 成功后父组件回调（通常跳转到新 run） */
+  onRerunSuccess?: (newRunId: number) => void
 }) {
+  const rerun = useRerunExtractionRun()
+  const canRerun = run.status === 'success' || run.status === 'failed' || run.status === 'cancelled'
+
+  async function handleRerun() {
+    if (!canRerun || rerun.isPending) return
+    try {
+      const result = await rerun.mutateAsync(run.id)
+      onRerunSuccess?.(result.run_id)
+    } catch {
+      // 错误已经通过 apiClient 的 axios 拦截器冒泡到 toast；这里静默
+    }
+  }
+
   return (
     <div className="px-4 py-3.5">
       <Section title="操作">
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRerun}
+            disabled={!canRerun || rerun.isPending}
+            aria-label="重新执行此次运行"
+            data-testid="run-rerun"
+            className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-1)', background: 'var(--bg-surface-2)' }}
+          >
+            <RefreshCcw size={12} className={rerun.isPending ? 'animate-spin' : ''} />
+            {rerun.isPending ? '提交中…' : canRerun ? '重跑' : '无法重跑'}
+          </button>
           {onJumpTask ? (
             <button
               type="button"
@@ -102,6 +134,8 @@ export function ExtractionRunDetailContent({
           ) : null}
         </div>
       </Section>
+
+      <RunLogsSection run={run} />
 
       <Section title="基础信息">
         <dl
@@ -176,6 +210,126 @@ export function ExtractionRunDetailContent({
       </Section>
     </div>
   )
+}
+
+// ── Round 4 · P17b — 日志面板 ─────────────────────────────────────────────────
+
+function RunLogsSection({ run }: { run: ExtractionRun }) {
+  const [includeSql, setIncludeSql] = useState(false)
+  const [includeStack, setIncludeStack] = useState(run.status === 'failed')
+  const [levelFilter, setLevelFilter] = useState<'' | 'INFO' | 'WARNING' | 'ERROR'>('')
+
+  const { data, isLoading, isError, refetch, isFetching } = useExtractionRunLogs(run.id, {
+    include_sql: includeSql,
+    include_stack: includeStack,
+    levels: levelFilter || undefined,
+    page: 1,
+    page_size: 200,
+  })
+
+  return (
+    <Section
+      title={
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <ScrollText size={11} />
+            日志（{data?.total ?? '…'}）
+          </span>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            aria-label="刷新日志"
+            className="rounded px-1 text-[10px]"
+            style={{ color: 'var(--text-3)' }}
+          >
+            {isFetching ? '刷新中…' : '刷新'}
+          </button>
+        </div>
+      }
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-3 text-[11px]" style={{ color: 'var(--text-2)' }}>
+        <label className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={includeSql}
+            onChange={(e) => setIncludeSql(e.target.checked)}
+            aria-label="包含 SQL"
+          />
+          SQL
+        </label>
+        <label className="flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={includeStack}
+            onChange={(e) => setIncludeStack(e.target.checked)}
+            aria-label="包含堆栈"
+          />
+          堆栈
+        </label>
+        <select
+          value={levelFilter}
+          onChange={(e) => setLevelFilter(e.target.value as typeof levelFilter)}
+          className="rounded border px-1 py-0.5"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
+          aria-label="日志等级过滤"
+        >
+          <option value="">全部等级</option>
+          <option value="INFO">INFO</option>
+          <option value="WARNING">WARNING</option>
+          <option value="ERROR">ERROR</option>
+        </select>
+      </div>
+
+      {isLoading ? (
+        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>加载日志…</p>
+      ) : isError ? (
+        <p className="text-[11px]" style={{ color: 'var(--danger)' }}>日志读取失败</p>
+      ) : (data?.items.length ?? 0) === 0 ? (
+        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>暂无日志</p>
+      ) : (
+        <ol
+          data-testid="run-logs"
+          className="max-h-56 overflow-auto rounded-md border font-mono text-[11px] leading-4"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+        >
+          {data!.items.map((log, i) => (
+            <li
+              key={`${log.ts}-${i}`}
+              className="flex items-start gap-2 border-b px-2 py-1 last:border-b-0"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <span className="shrink-0 tabular-nums" style={{ color: 'var(--text-3)' }}>
+                {log.ts ? log.ts.slice(11, 19) : '—'}
+              </span>
+              <span
+                className="shrink-0 w-14 font-semibold"
+                style={{ color: logLevelColor(log.level) }}
+              >
+                {log.level}
+              </span>
+              <span className="whitespace-pre-wrap break-all" style={{ color: 'var(--text-1)' }}>
+                {log.message}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Section>
+  )
+}
+
+function logLevelColor(level: string): string {
+  switch (level.toUpperCase()) {
+    case 'ERROR':
+      return 'var(--danger)'
+    case 'WARNING':
+      return 'var(--warning, var(--accent))'
+    case 'INFO':
+      return 'var(--accent)'
+    default:
+      return 'var(--text-3)'
+  }
 }
 
 // ── 内部组件 ──────────────────────────────────────────────────────────────────
