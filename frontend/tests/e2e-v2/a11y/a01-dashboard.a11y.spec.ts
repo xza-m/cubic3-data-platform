@@ -63,7 +63,6 @@ test('A01 Dashboard 无严重 a11y 违规 @a11y', async ({ page }) => {
   await expect(page.getByRole('heading', { name: /语义优先的数据工作台/ })).toBeVisible()
   await expect(page.getByText('日活按学段')).toBeVisible()
 
-  // Color-contrast disabled here — known follow-up W5.F (visual baseline refresh).
-  // TODO(W5.F): re-enable once token contrast pairs are re-tinted.
-  await expectNoSeriousA11yViolations(page, { disableRules: ['color-contrast'] })
+  // Round 4 · R-002b：color-contrast 重开；token 侧在 tokens.css 收紧到 ≥4.5:1。
+  await expectNoSeriousA11yViolations(page)
 })

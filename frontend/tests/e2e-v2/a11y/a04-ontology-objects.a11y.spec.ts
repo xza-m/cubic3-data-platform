@@ -28,5 +28,5 @@ test('A04 本体业务对象列表 无严重 a11y 违规 @a11y', async ({ page }
 
   await expect(page.getByText('学生').first()).toBeVisible()
 
-  await expectNoSeriousA11yViolations(page, { disableRules: ['color-contrast'] })
+  await expectNoSeriousA11yViolations(page)
 })

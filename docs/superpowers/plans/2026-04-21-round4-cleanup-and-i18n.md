@@ -57,8 +57,8 @@
 | R-001-P17d | 测试 | E2E `p17-extraction-run-rerun` 去 fixme | L1 | 1d | FE-B | P17a–c | **DONE** 2026-04-22 | `frontend/tests/e2e-v2/p17-extraction-run-rerun.spec.ts` 打开、fixture 对齐 schema、通过 PeekPanel 触发重跑断言新 Run 出现 |
 | R-001-OA | 研究 | Object Aggregate 重做 vs cherry-pick 决策文档，**不实施** | L1 | 3d | TL | — | **DONE** 2026-04-22 | `docs/superpowers/plans/2026-04-22-r001-oa-decision.md`（推荐 C1 · BE 增量 cherry-pick，FE 在 v2 原生重建；交 PM 排 PM-OA） |
 | R-002a | 体验 | Design tokens 对比度（`--text-tertiary` 等） | L2 | 1d | DS | — | **DONE** 2026-04-22 | `frontend/src/v2/styles/tokens.css` WCAG AA 对齐（`--text-3/4` 调色 + `--text-tertiary/disabled` 语义别名） |
-| R-002b | 体验 | 重开 axe `color-contrast` + 5 关键页 | L2 | 1d | FE-A | R-002a 可并行 | **OPEN** | e2e-v2-a11y job 绿 |
-| R-002c | 体验 | 视觉回归 baseline 更新 | L2 | 1d | FE-A | R-002a/b | **OPEN** | `e2e:v2:visual` 绿 |
+| R-002b | 体验 | 重开 axe `color-contrast` + 5 关键页 | L2 | 1d | FE-A | R-002a 可并行 | **DONE** 2026-04-22 | `tokens.css` 语义色收紧（`--accent #1956d1` / `--success #166534` / `--danger #b91c1c` / `--violet #6d28d9` / `--text-3 #626874`）；五页 a11y spec 去 `disableRules: ['color-contrast']`；10 个 distinct 违规全清；`e2e-v2-a11y` CI 注释同步更新 |
+| R-002c | 体验 | 视觉回归 baseline 更新 | L2 | 1d | FE-A | R-002a/b | **DONE** 2026-04-22 | V03/V04/V05 三张 baseline 重灌；V01/V02 在 `maxDiffPixels=220` 内；全部 `@visual` 复跑绿 |
 | D+21 | 清理 | 删除 `frontend/src/legacy/` + Makefile/CLAUDE/AGENTS/ESLint 双轨 | P2 | 1d | TL | 0 引用扫描 | **OPEN**（**预扫完成** 2026-04-22） | 预扫报告：`docs/superpowers/plans/2026-04-22-d21-legacy-references-prescan.md`（297 文件 / 3.1MB；零 runtime 引用，alias/config 14 处；与封盘报告 §7.2 一致） |
 | T-001a | i18n | `i18n-extract.mjs` | L1 | 1d | FE-C | — | **DONE** 2026-04-22 | `frontend/scripts/i18n-extract.mjs` + `npm run i18n:extract`；产出 `i18n-keys.summary.md` |
 | T-001b | i18n | key 命名规范 spec | L1 | 1d | FE-C+TL | T-001a | **DONE** 2026-04-22 | `frontend/src/v2/i18n/NAMING.md`（宽松版正则 + 段数 2–4 + 历史 camelCase 兼容） |

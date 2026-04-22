@@ -149,9 +149,11 @@ jobs:
           path: frontend/playwright-report-v2/
 
   e2e-v2-a11y:
-    # W5.C — axe-core scan on five key v2 pages. Gate is "0 violations of
-    # severity serious/critical". Color-contrast is intentionally disabled
-    # in the specs — see TODO(W5.F) for the visual baseline refresh task.
+    # W5.C + Round 4 · R-002b — axe-core scan on five key v2 pages. Gate is
+    # "0 violations of severity serious/critical". Color-contrast is **enabled**
+    # after R-002b token tightening (accent/success/danger/violet + text-3 all
+    # ≥4.5:1 on their usage backgrounds). See `frontend/src/v2/styles/tokens.css`
+    # header for the verified contrast table.
     name: e2e-v2-a11y (axe-core gate)
     runs-on: ubuntu-latest
     needs: v2-build

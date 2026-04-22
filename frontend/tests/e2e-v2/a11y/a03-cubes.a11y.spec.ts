@@ -53,10 +53,10 @@ test('A03 Cube 列表（卡片视图）无严重 a11y 违规 @a11y', async ({ pa
 
   await expect(page.getByText('课程事实')).toBeVisible()
 
-  await expectNoSeriousA11yViolations(page, { disableRules: ['color-contrast'] })
+  await expectNoSeriousA11yViolations(page)
 
   // Move focus to the first card to verify focus-visible styles + ARIA
   // metadata are also clean (cards are interactive).
   await page.keyboard.press('Tab')
-  await expectNoSeriousA11yViolations(page, { disableRules: ['color-contrast'] })
+  await expectNoSeriousA11yViolations(page)
 })

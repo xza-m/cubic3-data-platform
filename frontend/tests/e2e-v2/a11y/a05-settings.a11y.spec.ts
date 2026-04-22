@@ -30,5 +30,5 @@ test('A05 设置页 无严重 a11y 违规 @a11y', async ({ page }) => {
 
   await expect(page.getByText(/主题|theme/i).first()).toBeVisible()
 
-  await expectNoSeriousA11yViolations(page, { disableRules: ['color-contrast'] })
+  await expectNoSeriousA11yViolations(page)
 })

@@ -32,7 +32,7 @@ test('A02 数据源列表 无严重 a11y 违规 @a11y', async ({ page }) => {
 
   await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
 
-  await expectNoSeriousA11yViolations(page, { disableRules: ['color-contrast'] })
+  await expectNoSeriousA11yViolations(page)
 
   // Open the peek panel by clicking the first row, then re-scan with the
   // include selector scoped to the slide-over so we catch dialog-only issues.
@@ -42,6 +42,5 @@ test('A02 数据源列表 无严重 a11y 违规 @a11y', async ({ page }) => {
 
   await expectNoSeriousA11yViolations(page, {
     include: ['[role="complementary"][aria-label="行预览"]'],
-    disableRules: ['color-contrast'],
   })
 })
