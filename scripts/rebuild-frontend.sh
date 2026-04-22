@@ -7,7 +7,8 @@
 # 环境变量（可选）：
 #   BACKEND_CONTAINER     backend service 名，默认 backend
 #   COMPOSE_FILE          compose 文件路径，默认 docker-compose.yml
-#   BACKEND_HEALTH_PATH   后端健康检查路径，默认 /api/v1/health
+#   BACKEND_HEALTH_PATH   直连 backend 容器的健康路径，默认 /health
+#                         （Runbook 的 /api/v1/health 为 nginx 别名，容器内 gunicorn 无此路径）
 #   BACKEND_HEALTH_PORT   容器内后端端口，默认 5000（若失败会回退 8000）
 #   BACKEND_HEALTH_RETRY  探测次数，默认 5
 #   BACKEND_HEALTH_DELAY  每次间隔秒数，默认 3
@@ -24,7 +25,7 @@ PROJECT_NAME_UNDERSCORE=${PROJECT_NAME//-/_}
 
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-backend}"
-BACKEND_HEALTH_PATH="${BACKEND_HEALTH_PATH:-/api/v1/health}"
+BACKEND_HEALTH_PATH="${BACKEND_HEALTH_PATH:-/health}"
 BACKEND_HEALTH_PORT="${BACKEND_HEALTH_PORT:-5000}"
 BACKEND_HEALTH_RETRY="${BACKEND_HEALTH_RETRY:-5}"
 BACKEND_HEALTH_DELAY="${BACKEND_HEALTH_DELAY:-3}"

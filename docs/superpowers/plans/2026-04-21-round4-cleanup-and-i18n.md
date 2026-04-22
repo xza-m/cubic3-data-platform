@@ -2,9 +2,9 @@
 
 # Round 4 · Cleanup & I18n & Visual Polish · Implementation Plan
 
-> 状态：**Drafted · 待启动会评审排期**
+> 状态：**Sprint 0 执行中**（T-002/T-003/T-004a 已合 main）
 > 作者：UI/UX 重构小组（Round 3 收口同班底）
-> 最近更新：2026-04-21
+> 最近更新：2026-04-22
 > 目标节奏：**4 周（Sprint 0 + 1 + 2，含穿插 D+14/D+21/D+28 cleanup）**
 > 上游：[Round 3 封盘报告](2026-04-20-platform-redesign/round3-cutover-final-report.md) §4 / §7 / §9
 > 副本档：本文件即 Round 4 唯一正式 plan，不再拆子文档（R4 范围已足够聚焦）
@@ -47,13 +47,13 @@
   | --- | --- | --- | --- | --- | --- | --- |
   | T-002 | `deploy.sh` 自动跑 `flask db upgrade head` | infra · P0 | 1d | OnCall | ✅ DONE (2026-04-21) | 模拟"新表未迁移"场景，deploy.sh 能自动补迁移；`--skip-migrate` 可绕过；exit code 5 专用；BACKEND_CONTAINER 默认修正为 `backend` |
   | T-003 | `rebuild-frontend.sh` 补 backend upstream 健康度探测 | infra · P0 | 1d | OnCall | ✅ DONE (2026-04-21) | 步骤 5.5 新增 5x retry backend 健康探测；backend 未就绪则早 fail 不切 nginx；COMPOSE_FILE 默认修正为 `docker-compose.yml` |
-  | T-004a | `scripts/cutover/health_probe.sh` 实装 | infra · P1 | 0.5d | OnCall | ⏳ PENDING | 探测 /api/v1/health · /metrics · 5 大模块首屏 |
+  | T-004a | `scripts/cutover/health_probe.sh` 实装 | infra · P1 | 0.5d | OnCall | ✅ DONE (2026-04-22) | 探测 GET /api/v1/health（nginx→/health）· GET /api/v1/ontology/metrics（200/401）· 5 大模块 SPA；`deploy.sh` T+5 已改为调用；`nginx` 增加 `location = /api/v1/health` |
   | T-004b | `scripts/cutover/digest_oncall.py` 实装 | ops · P1 | 1d | OnCall | ⏳ PENDING | 拉 nginx error.log + backend log + 错误率 → 日报 markdown |
   | T-004c | `scripts/cutover/incident_init.py` 实装 | ops · P1 | 0.5d | OnCall | ⏳ PENDING | 一键创建 incident doc + 飞书群 + checklist |
   | D+14 | 关闭回滚预案 + `rollback.sh` 加 DEPRECATED 注释 + OnCall 节奏复位 + 临时收紧告警阈值复位（A1 / A4） | ops · P1 | 1d | OnCall | ⏳ PENDING | 见封盘报告 §7.1 |
   | D+7 | R-003：Lighthouse `numberOfRuns` 改 3 + median；R-004：评估 lhci stubby（如有必要立 ticket） | ops · P2 | 0.5d | infra | ⏳ PENDING | `.github/workflows/frontend-ci.yml` lhci 段更新；CI 通过 |
 
-  **Sprint 0 总计：5.5 day · 1 人 · 1 周完成 · 当前进度：2/7 (T-002 + T-003 done, 3.5d 剩余)**
+  **Sprint 0 总计：5.5 day · 1 人 · 1 周完成 · 当前进度：3/7 (T-002 + T-003 + T-004a done, 3.0d 剩余)**
 
 ### 2.2 Definition of Done
 

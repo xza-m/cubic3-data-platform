@@ -3,6 +3,7 @@
 #
 # Round 3 · W6.A · Day 0 切换部署脚本。
 # Round 4 · Sprint 0 · T-002：增加 alembic 自动 upgrade；T-003：rebuild 阶段增加 backend 健康度 gate。
+# Round 4 · Sprint 0 · T-004a：post-deploy 调用 health_probe（宽表探测，替代 2-URL 简易 smoke）。
 #
 # 用法：
 #   ./scripts/cutover/deploy.sh                  # 真切（生产）
@@ -21,7 +22,7 @@
 #   T- 5  alembic head 探测 + flask db upgrade head（Round 4 T-002 新增；可 --skip-migrate）
 #   T  0  vite 构建 v2 产物（无 VITE_AUTH_BYPASS）
 #   T+ 1  调用 ./scripts/rebuild-frontend.sh 切 nginx volume（含 backend 健康度 gate）
-#   T+ 5  smoke check：/api/v1/health + /dashboard
+#   T+ 5  smoke check：./scripts/cutover/health_probe.sh（/api/v1/health + /health + /api/v1/ontology/metrics + 5 大模块首屏）
 #
 # Exit codes：
 #   0 = 成功
@@ -155,24 +156,17 @@ else
   log "  ✓ 容器 + volume 切换完成"
 fi
 
-# ── 阶段 5：post-deploy smoke check（T+5） ──────────────────────────────────
-phase "Smoke：/api/v1/health & /dashboard"
-post_check_ok=1
+# ── 阶段 5：post-deploy health probe（T+5 / Round 4 T-004a） ─────────────────
+phase "Health probe：scripts/cutover/health_probe.sh"
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  log "  [dry-run] 跳过 HTTP 探测"
+  log "  [dry-run] 跳过 health_probe"
 else
-  for url in "http://localhost:81/api/v1/health" "http://localhost:81/dashboard"; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" || echo "000")
-    if [[ "$code" == "200" ]]; then
-      log "  ✓ $url → $code"
-    else
-      log "  ✗ $url → $code"
-      post_check_ok=0
-    fi
-  done
-  if [[ "$post_check_ok" -ne 1 ]]; then
-    fail 4 "post-deploy smoke check 未通过；进入 §5 回滚剧本。"
+  BASE_URL="http://localhost:81" "$REPO_ROOT/scripts/cutover/health_probe.sh" 2>&1 | tee -a "$LOG_FILE"
+  hp="${PIPESTATUS[0]}"
+  if [[ "$hp" -ne 0 ]]; then
+    fail 4 "health_probe 退出码 $hp；进入 §5 回滚剧本。详见 $LOG_FILE"
   fi
+  log "  ✓ health_probe 通过（/api/v1/health + /health + /api/v1/ontology/metrics + 5 大模块首屏）"
 fi
 
 # ── 收尾 ─────────────────────────────────────────────────────────────────────
