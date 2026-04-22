@@ -217,8 +217,9 @@ verify-frontend: lint-frontend typecheck-frontend test-frontend smoke-frontend
 #   - 不跑 test-regression-platform-* / test-regression-semantic（legacy spec 已 DEPRECATED）
 #   - 跑 v2 范围 vitest（components / hooks / lib / pages / api / observability）
 #   - 跑 v2 cutover smoke (e2e:smoke 6/6)
+#   - Round 4 · T-005：在前端闸门外挂 alembic 拓扑离线自检，防分叉 head 到 Day 0
 # 任一项失败即 fail-fast。scripts/cutover/deploy.sh 调用此目标。
-verify-cutover:
+verify-cutover: verify-alembic
 	@printf '%s\n' '[cutover][gate] Round 3 Day 0 专用前端闸门启动'
 	cd $(FRONTEND_DIR) && $(NPM) run lint
 	cd $(FRONTEND_DIR) && $(NPM) exec -- tsc --noEmit --pretty false
@@ -227,6 +228,12 @@ verify-cutover:
 	cd $(FRONTEND_DIR) && $(NPM) exec -- vitest run src/v2 --reporter=basic
 	cd $(FRONTEND_DIR) && $(NPM) run e2e:smoke
 	@printf '%s\n' '[cutover][gate] verify-cutover 通过'
+
+# Round 4 · T-005：alembic 迁移拓扑离线自检（无需 DB / Flask app）
+# 触发场景：verify-cutover 依赖；开发者本地合迁移后可单跑 `make verify-alembic`
+verify-alembic:
+	@printf '%s\n' '[cutover][gate] alembic 拓扑离线自检（single head + no orphans）'
+	$(PYTHON) scripts/checks/alembic_head_guard.py
 
 verify-docs: docs-health
 
