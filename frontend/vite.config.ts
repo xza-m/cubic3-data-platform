@@ -1,9 +1,8 @@
 // frontend/vite.config.ts
 //
-// 统一构建配置（Round 3 cutover · 2026-04-20）。
+// 统一构建配置（Round 3 cutover · 2026-04-20，Round 4 D+21 清理 2026-04-22）。
 // 入口为 frontend/index.html → /src/main.tsx → @v2/App。
-// Legacy 仍可以通过 dev:legacy / build:legacy 跑（参见 v2.vite.config.ts 兼容入口
-// 与 src/legacy/）但不进入正式产物。
+// `v2.vite.config.ts` 为兼容入口（不同端口 / outDir），仅 CI/deploy 沿用；新代码直接改本文件。
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -14,9 +13,6 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // @  → legacy（归档目录）。保留是为了避免 src/legacy/ 内部互相 @/ 引用断裂；
-      // 新代码不应再使用 @/，应改为 @v2/。
-      '@': path.resolve(__dirname, './src/legacy'),
       '@v2': path.resolve(__dirname, './src/v2'),
     },
   },

@@ -29,7 +29,6 @@ module.exports = {
     'tests/artifacts',
     'tests/e2e',
     'tests/e2e-node/**/*.png',
-    'src/legacy/**',
     'QueryBuilder.tsx',
   ],
   rules: {

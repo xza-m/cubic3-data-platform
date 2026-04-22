@@ -28,7 +28,6 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	verify-changed \
 	review \
 	verify-semantic \
-	semantic-layout \
 	smoke-semantic \
 	docs-health \
 	docs-impact \
@@ -49,11 +48,6 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	test-integration \
 	test-integration-backend \
 	test-integration-frontend \
-	test-regression \
-	test-regression-platform-layout \
-	test-regression-platform-data \
-	test-regression-platform-query \
-	test-regression-semantic \
 	smoke-backend \
 	smoke-frontend \
 	smoke-observability \
@@ -66,7 +60,7 @@ help:
 	@printf '  %-26s %s\n' 'make setup' '安装 Python / 前端依赖；首次创建 .env；安装 Playwright Chromium'
 	@printf '  %-26s %s\n' 'make lint' '层 1：静态检查总入口（lint / formatting / imports / patterns / schema）'
 	@printf '  %-26s %s\n' 'make typecheck' '层 2：类型与接口检查总入口（TS / Python / contracts）'
-	@printf '  %-26s %s\n' 'make test' '层 3：自动化测试总入口（unit / integration / regression）'
+	@printf '  %-26s %s\n' 'make test' '层 3：自动化测试总入口（unit / integration）'
 	@printf '  %-26s %s\n' 'make smoke' '层 4：运行验证总入口（backend API / frontend shell / observability）'
 	@printf '  %-26s %s\n' 'make verify' '顺序执行 lint -> typecheck -> test -> smoke'
 	@printf '  %-26s %s\n' 'make verify-backend' '后端交付入口（backend lint/typecheck/test/smoke）'
@@ -76,8 +70,7 @@ help:
 	@printf '  %-26s %s\n' 'make verify-detect' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 检测命中的验证规则'
 	@printf '  %-26s %s\n' 'make verify-changed' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 执行最低必跑 verify-* 目标'
 	@printf '  %-26s %s\n' 'make review' '审阅前总入口（verify + docs-health + docs-impact）'
-	@printf '  %-26s %s\n' 'make verify-semantic' '语义中心专项总入口（共享层 + 语义回归 + 语义 smoke）'
-	@printf '  %-26s %s\n' 'make semantic-layout' '语义中心布局与交互回归'
+	@printf '  %-26s %s\n' 'make verify-semantic' '语义中心专项总入口（共享层 + 语义 smoke）'
 	@printf '  %-26s %s\n' 'make smoke-semantic' '语义中心关键路径运行验证'
 	@printf '  %-26s %s\n' 'make coverage' 'coverage 聚合入口（backend + frontend，可选，不并入默认四层）'
 	@printf '  %-26s %s\n' 'make coverage-backend' '后端完整 pytest 覆盖率基线 + 模块守护检查（可选，不并入默认四层）'
@@ -91,10 +84,8 @@ help:
 	@printf '  %-26s %s\n' 'make typecheck-frontend' '前端 TypeScript 类型检查'
 	@printf '  %-26s %s\n' 'make test-unit' '单元测试聚合'
 	@printf '  %-26s %s\n' 'make test-integration' '集成测试聚合'
-	@printf '  %-26s %s\n' 'make test-regression' '平台定向回归聚合'
 	@printf '  %-26s %s\n' 'make test-backend' '后端自动化测试聚合'
 	@printf '  %-26s %s\n' 'make test-frontend' '前端自动化测试聚合'
-	@printf '  %-26s %s\n' 'make test-regression-semantic' '语义中心定向回归'
 	@printf '  %-26s %s\n' 'make smoke-backend' '后端关键 API smoke'
 	@printf '  %-26s %s\n' 'make smoke-frontend' '前端平台壳层 smoke'
 	@printf '  %-26s %s\n' 'make docs-health' '文档健康检查'
@@ -142,11 +133,11 @@ typecheck-backend:
 typecheck-contracts:
 	@printf '%s\n' '[layer2][contracts] skip: 当前仓库未配置 OpenAPI / protobuf / GraphQL 一致性检查'
 
-test: test-unit test-integration test-regression
+test: test-unit test-integration
 
 test-backend: test-unit-backend test-integration-backend
 
-test-frontend: test-unit-frontend test-integration-frontend test-regression
+test-frontend: test-unit-frontend test-integration-frontend
 
 test-unit: test-unit-backend test-unit-frontend
 
@@ -167,22 +158,10 @@ test-integration-backend:
 test-integration-frontend:
 	@printf '%s\n' '[layer3][integration][frontend] skip: 当前仓库未定义独立前端集成测试集合'
 
-test-regression: \
-	test-regression-platform-layout \
-	test-regression-platform-data \
-	test-regression-platform-query
-
-test-regression-platform-layout:
-	@printf '%s\n' '[layer3][regression][platform-layout] DEPRECATED · v2 cutover 已完成（W4），legacy src/pages 不复存在；请改用 make verify-cutover'
-
-test-regression-platform-data:
-	@printf '%s\n' '[layer3][regression][platform-data] DEPRECATED · 同上 · 请改用 make verify-cutover'
-
-test-regression-platform-query:
-	@printf '%s\n' '[layer3][regression][platform-query] DEPRECATED · 同上 · 请改用 make verify-cutover'
-
-test-regression-semantic:
-	@printf '%s\n' '[layer3][regression][semantic] DEPRECATED · v2 cutover 已完成（W4），legacy src/pages/Semantic 与 semantic.visual.spec.ts 不复存在；请改用 make verify-cutover'
+# Round 4 · D+21 cleanup：
+#   原 `test-regression-platform-*` / `test-regression-semantic` DEPRECATED 目标
+#   全部移除（legacy src/pages 已于本轮 `git rm -rf frontend/src/legacy`）。
+#   替代命令：`make verify-cutover`（v2 闸门，含 alembic 拓扑自检）。
 
 smoke: smoke-backend smoke-frontend smoke-observability
 
@@ -197,8 +176,6 @@ smoke-frontend:
 smoke-observability:
 	@printf '%s\n' '[layer4][observability] skip: 当前仓库未配置统一可观测阈值校验'
 
-semantic-layout: test-regression-semantic
-
 smoke-semantic:
 	@printf '%s\n' '[contract][semantic-smoke] 需要前端开发服务、最新后端代码和可写语义目录；该 smoke 会创建或更新草稿/测试资产，不属于默认 repo smoke'
 	@printf '%s\n' '[layer4][semantic] 运行语义中心关键路径 smoke'
@@ -212,12 +189,12 @@ verify-backend: lint-backend typecheck-backend test-backend smoke-backend
 
 verify-frontend: lint-frontend typecheck-frontend test-frontend smoke-frontend
 
-# Round 3 W6 · cutover Day 0 专用闸门：只跑 v2 相关检查，不依赖 legacy regression。
+# Round 3 W6 · cutover Day 0 专用闸门：只跑 v2 相关检查。
 # 与 verify-frontend 的差异：
-#   - 不跑 test-regression-platform-* / test-regression-semantic（legacy spec 已 DEPRECATED）
 #   - 跑 v2 范围 vitest（components / hooks / lib / pages / api / observability）
 #   - 跑 v2 cutover smoke (e2e:smoke 6/6)
 #   - Round 4 · T-005：在前端闸门外挂 alembic 拓扑离线自检，防分叉 head 到 Day 0
+#   - Round 4 · D+21：legacy regression 目标全量移除，本目标是唯一前端前置闸门
 # 任一项失败即 fail-fast。scripts/cutover/deploy.sh 调用此目标。
 verify-cutover: verify-alembic
 	@printf '%s\n' '[cutover][gate] Round 3 Day 0 专用前端闸门启动'
@@ -245,7 +222,7 @@ verify-changed:
 	@printf '%s\n' '[routing] 按规则检测结果执行当前改动的最低必跑交付入口'
 	$(PYTHON) scripts/checks/changed_validation.py --execute $(VERIFY_CONTEXT) $(VERIFY_FILES)
 
-verify-semantic: verify-backend verify-frontend test-regression-semantic smoke-semantic
+verify-semantic: verify-backend verify-frontend smoke-semantic
 
 coverage: coverage-backend coverage-frontend
 

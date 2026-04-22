@@ -59,7 +59,7 @@
 | R-002a | 体验 | Design tokens 对比度（`--text-tertiary` 等） | L2 | 1d | DS | — | **DONE** 2026-04-22 | `frontend/src/v2/styles/tokens.css` WCAG AA 对齐（`--text-3/4` 调色 + `--text-tertiary/disabled` 语义别名） |
 | R-002b | 体验 | 重开 axe `color-contrast` + 5 关键页 | L2 | 1d | FE-A | R-002a 可并行 | **DONE** 2026-04-22 | `tokens.css` 语义色收紧（`--accent #1956d1` / `--success #166534` / `--danger #b91c1c` / `--violet #6d28d9` / `--text-3 #626874`）；五页 a11y spec 去 `disableRules: ['color-contrast']`；10 个 distinct 违规全清；`e2e-v2-a11y` CI 注释同步更新 |
 | R-002c | 体验 | 视觉回归 baseline 更新 | L2 | 1d | FE-A | R-002a/b | **DONE** 2026-04-22 | V03/V04/V05 三张 baseline 重灌；V01/V02 在 `maxDiffPixels=220` 内；全部 `@visual` 复跑绿 |
-| D+21 | 清理 | 删除 `frontend/src/legacy/` + Makefile/CLAUDE/AGENTS/ESLint 双轨 | P2 | 1d | TL | 0 引用扫描 | **OPEN**（**预扫完成** 2026-04-22） | 预扫报告：`docs/superpowers/plans/2026-04-22-d21-legacy-references-prescan.md`（297 文件 / 3.1MB；零 runtime 引用，alias/config 14 处；与封盘报告 §7.2 一致） |
+| D+21 | 清理 | 删除 `frontend/src/legacy/` + Makefile/CLAUDE/AGENTS/ESLint 双轨 | P2 | 1d | TL | 0 引用扫描 | **DONE** 2026-04-22 | `git rm -rq frontend/src/legacy`（297 文件 / 3.1MB 全删）；清理 `vite.config.ts` / `v2.vite.config.ts` / `tsconfig.json` / `vitest.config.ts` 的 `@` legacy 别名与 paths；`.eslintrc.cjs` / `stylelint.config.js` 去 `src/legacy/**` 排除；`package.json` 去 `dev:legacy` / `build:legacy` / `lint:legacy` + 冗余 `test:visual*` / `verify:platform-*` / `verify:semantic-layout` / `verify:ui` 脚本；`Makefile` 去 `test-regression*` 与 `semantic-layout` 目标；`frontend-ci.yml` 去 "Vite build · legacy" 步骤 + job 名更新；`src/main.tsx` 拆掉启动期 legacy storage 迁移（cutover 已 21d+），`main.test.tsx` 同步为 D+21 版本；`tsc` / `lint` / `lint:css` / `check:v2-tokens` / `vitest run`（489/489）全绿 |
 | T-001a | i18n | `i18n-extract.mjs` | L1 | 1d | FE-C | — | **DONE** 2026-04-22 | `frontend/scripts/i18n-extract.mjs` + `npm run i18n:extract`；产出 `i18n-keys.summary.md` |
 | T-001b | i18n | key 命名规范 spec | L1 | 1d | FE-C+TL | T-001a | **DONE** 2026-04-22 | `frontend/src/v2/i18n/NAMING.md`（宽松版正则 + 段数 2–4 + 历史 camelCase 兼容） |
 | T-001c | i18n | 5 大模块先 `t()` 替换 | L1 | 4d | FE-C | T-001b | **IN_PROGRESS** | 首批：`layout/navigation.ts` + `SecondarySidebar` + `CommandPalette`；其余模块继续滚动 |
@@ -73,7 +73,7 @@
 | PM-P | 候选 | 三 placeholder 实装 | — | TBD | PM | PRD | **冻结** | 同原则 §1.3 |
 | PM-OA | 候选 | R-001-OA 实装 | — | TBD | PM | R-001-OA 报 GO | **冻结** | 见研究报告 |
 
-**进度速览（任务数，含选做/冻结行）：** 已关闭 12 行（+T-001a / R-001-P17c / R-002a / R-001-OA / T-005；D+21 预扫完成保持 OPEN 待单独 MR 执行） + 其余 **OPEN** 约 17 行 + 冻结 4 行（不占用容量）。
+**进度速览（任务数，含选做/冻结行）：** 已关闭 13 行（+D+21 于 2026-04-22 合入） + 其余 **OPEN** 约 16 行（T-001c 第二批 / D+28 为主） + 冻结 4 行（不占用容量）。
 
 ### 2.1 Round 4 收口径检查清单（与任务独立，可并行勾选）
 

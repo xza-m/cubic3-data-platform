@@ -32,5 +32,5 @@ export default {
     'import-notation': null,
     'at-rule-no-unknown': [true, { ignoreAtRules: ['tailwind', 'apply', 'variants', 'responsive', 'screen', 'layer'] }],
   },
-  ignoreFiles: ['dist/**', 'dist-v2/**', 'node_modules/**', 'src/legacy/**', 'src/index.css'],
+  ignoreFiles: ['dist/**', 'dist-v2/**', 'node_modules/**', 'src/index.css'],
 }

@@ -6,7 +6,6 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src/legacy'),
       '@v2': path.resolve(__dirname, './src/v2'),
     },
   },
@@ -16,10 +15,7 @@ export default defineConfig({
     globals: true,
     css: true,
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
-    exclude: [
-      'tests/**',
-      'src/legacy/**',
-    ],
+    exclude: ['tests/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov', 'json-summary'],
@@ -29,7 +25,6 @@ export default defineConfig({
       exclude: [
         'src/**/*.test.ts',
         'src/**/*.test.tsx',
-        'src/legacy/**',
         'src/v2/test/**',
         // Hook/component test helpers
         'src/v2/hooks/test-utils.tsx',

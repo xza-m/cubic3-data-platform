@@ -14,7 +14,7 @@ on:
 
 jobs:
   v2-build:
-    name: v2-build (tsc + vitest + vite legacy + v2)
+    name: v2-build (tsc + vitest + vite v2)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -50,9 +50,6 @@ jobs:
 
       - name: Vitest (unit + integration)
         run: npx vitest run --reporter=basic
-
-      - name: Vite build · legacy
-        run: npx vite build
 
       - name: Vite build · v2
         run: npx vite build --config v2.vite.config.ts --emptyOutDir
@@ -180,7 +177,7 @@ jobs:
           path: frontend/playwright-report-v2/
 
   route-parity-check:
-    name: route-parity-check (legacy ↔ v2)
+    name: route-parity-check
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
