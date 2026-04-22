@@ -16,6 +16,9 @@ pydantic==2.5.0
 PyYAML==6.0.1
 pyjwt==2.8.0
 tenacity==8.2.3
+# 密码哈希（BcryptHasher @ app/infrastructure/users/password.py）
+# Round 4 · T-DRILL 演练发现：backend 容器缺失 bcrypt 导致 gunicorn 无法 boot → 502
+bcrypt==4.1.2
 
 # 可选：RQ 监控面板
 rq-dashboard==0.6.1

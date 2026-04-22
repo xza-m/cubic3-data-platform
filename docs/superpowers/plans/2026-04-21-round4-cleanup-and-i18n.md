@@ -48,25 +48,25 @@
 | T-004c | 生产 | `incident_init.py` + incidents 目录 | P1 | 0.5d | OnCall | — | **DONE** 2026-04-22 | 同上 |
 | D+14 | 生产 | 回滚窗关闭：`rollback.sh` DEPRECATED、D+14 closure、oncall 手册、告警 A1/A4 复位提醒 | P1 | 1d | OnCall | — | **DONE** 2026-04-22 | 见 closure 与手册 |
 | D+7 | 生产 | LHCI `numberOfRuns:3` + stub 说明 + `lighthouse-ci-dispatch.yml` | P2 | 0.5d | infra | — | **DONE** 2026-04-22 | 同上 |
-| T-DRILL | 生产 | 团队演练：本机 docker 全栈跑通 `deploy.sh` | P1 | 0.5d | OnCall | 环境 | **OPEN** | 日志留存；不阻塞其它开发任务 |
+| T-DRILL | 生产 | 团队演练：本机 docker 全栈跑通 `deploy.sh` | P1 | 0.5d | OnCall | 环境 | **DONE** 2026-04-22 | `docs/superpowers/ops/drills/2026-04-22-round4-docker-stack-drill.md`；health_probe 8/8；修复两处环境缺陷（缺 `bcrypt`、nginx 变量版 `proxy_pass` 不改 URI） |
 | T-005 | 闸门 | `make verify-cutover` 增强：alembic dry-run / 或 nginx 与脚本对齐文档 | P2 | 1d | infra | T-002 | **DONE** 2026-04-22 | `scripts/checks/alembic_head_guard.py` + `make verify-alembic` 接入 `verify-cutover` |
 | R-001-P04 | 功能 | 本体对象编辑 Tab（校验、保存、撤销、版本对比） | L1 | 5d | FE-A | — | **OPEN** | p04 e2e 去 fixme 且通过 |
-| R-001-P17a | 功能 | 抽取 Run 列表：重跑按钮 | L1 | 1d | FE-B | P17c 接口可 mock | **OPEN** | UI 可见、可点 |
-| R-001-P17b | 功能 | 抽取 Run 日志面板 / PeekPanel | L1 | 2d | FE-B | 同左 | **OPEN** | 日志流与错误高亮 |
+| R-001-P17a | 功能 | 抽取 Run 列表：重跑按钮 | L1 | 1d | FE-B | P17c 接口可 mock | **DONE** 2026-04-22 | 列表行 + PeekPanel + 详情页三处均有 `重跑`；running/pending 禁用；新 Run 自动刷新并切入 Peek |
+| R-001-P17b | 功能 | 抽取 Run 日志面板 / PeekPanel | L1 | 2d | FE-B | 同左 | **DONE** 2026-04-22 | `useExtractionRunLogs` + `RunLogsSection`（SQL/stack/级别过滤 + 首屏拉取） |
 | R-001-P17c | 功能 | 后端：Run rerun + 日志查询 API | L1 | 2d | BE-A | — | **DONE** 2026-04-22 | `POST /extraction/runs/<id>/rerun` + `GET /…/logs`；集成测试 14 项过 |
-| R-001-P17d | 测试 | E2E `p17-extraction-run-rerun` 去 fixme | L1 | 1d | FE-B | P17a–c | **OPEN** | 全绿 |
+| R-001-P17d | 测试 | E2E `p17-extraction-run-rerun` 去 fixme | L1 | 1d | FE-B | P17a–c | **DONE** 2026-04-22 | `frontend/tests/e2e-v2/p17-extraction-run-rerun.spec.ts` 打开、fixture 对齐 schema、通过 PeekPanel 触发重跑断言新 Run 出现 |
 | R-001-OA | 研究 | Object Aggregate 重做 vs cherry-pick 决策文档，**不实施** | L1 | 3d | TL | — | **DONE** 2026-04-22 | `docs/superpowers/plans/2026-04-22-r001-oa-decision.md`（推荐 C1 · BE 增量 cherry-pick，FE 在 v2 原生重建；交 PM 排 PM-OA） |
 | R-002a | 体验 | Design tokens 对比度（`--text-tertiary` 等） | L2 | 1d | DS | — | **DONE** 2026-04-22 | `frontend/src/v2/styles/tokens.css` WCAG AA 对齐（`--text-3/4` 调色 + `--text-tertiary/disabled` 语义别名） |
 | R-002b | 体验 | 重开 axe `color-contrast` + 5 关键页 | L2 | 1d | FE-A | R-002a 可并行 | **OPEN** | e2e-v2-a11y job 绿 |
 | R-002c | 体验 | 视觉回归 baseline 更新 | L2 | 1d | FE-A | R-002a/b | **OPEN** | `e2e:v2:visual` 绿 |
 | D+21 | 清理 | 删除 `frontend/src/legacy/` + Makefile/CLAUDE/AGENTS/ESLint 双轨 | P2 | 1d | TL | 0 引用扫描 | **OPEN**（**预扫完成** 2026-04-22） | 预扫报告：`docs/superpowers/plans/2026-04-22-d21-legacy-references-prescan.md`（297 文件 / 3.1MB；零 runtime 引用，alias/config 14 处；与封盘报告 §7.2 一致） |
 | T-001a | i18n | `i18n-extract.mjs` | L1 | 1d | FE-C | — | **DONE** 2026-04-22 | `frontend/scripts/i18n-extract.mjs` + `npm run i18n:extract`；产出 `i18n-keys.summary.md` |
-| T-001b | i18n | key 命名规范 spec | L1 | 1d | FE-C+TL | T-001a | **OPEN** | spec 合入 |
-| T-001c | i18n | 5 大模块先 `t()` 替换 | L1 | 4d | FE-C | T-001b | **OPEN** | 残留中文行数门槛 |
-| T-001d | i18n | `zh.json` ≥90%；`en.json` 占位 | L2 | 1d | FE-C | T-001c | **OPEN** | 无 missing key |
-| T-001e | i18n | `i18n-coverage.py` + CI gate | L1 | 1d | infra | T-001c | **OPEN** | 硬编码中文超阈值即 fail |
-| A-1 | 体验 | `prefers-reduced-motion` | L2 | 2d | FE-A | — | **OPEN** | 动效可关 |
-| A-2 | 体验 | `prefers-contrast: more` 主题 | L2 | 2d | DS | R-002a | **OPEN** | 高对比可切换 |
+| T-001b | i18n | key 命名规范 spec | L1 | 1d | FE-C+TL | T-001a | **DONE** 2026-04-22 | `frontend/src/v2/i18n/NAMING.md`（宽松版正则 + 段数 2–4 + 历史 camelCase 兼容） |
+| T-001c | i18n | 5 大模块先 `t()` 替换 | L1 | 4d | FE-C | T-001b | **IN_PROGRESS** | 首批：`layout/navigation.ts` + `SecondarySidebar` + `CommandPalette`；其余模块继续滚动 |
+| T-001d | i18n | `zh.json` ≥90%；`en.json` 占位 | L2 | 1d | FE-C | T-001c | **DONE** 2026-04-22 | `i18n-populate.mjs` 一次入 629 key；`en.json` 同 key 占位；T-001e gate 校验 zh/en 键集一致 |
+| T-001e | i18n | `i18n-coverage.py` + CI gate | L1 | 1d | infra | T-001c | **DONE** 2026-04-22 | `frontend/scripts/i18n-coverage.mjs` + `npm run i18n:coverage`；frontend-ci.yml v2-build job 接入；基线 `bare=1145 / coverage≥48%`，字典 key 合法性 + zh/en 对齐三重校验 |
+| A-1 | 体验 | `prefers-reduced-motion` | L2 | 2d | FE-A | — | **DONE** 2026-04-22 | `tokens.css` 媒体查询 + `data-reduced-motion`；`A11yPreferencesProvider` + Settings 三态控件；单测覆盖 OS/显式两路 |
+| A-2 | 体验 | `prefers-contrast: more` 主题 | L2 | 2d | DS | R-002a | **DONE** 2026-04-22 | `tokens.css` 高对比叠加（明/暗均覆盖）+ `data-contrast`；与 A-1 共用 provider |
 | D+28 | 清理 | tmp demo 清 / `uiv2.pen` 归档 / platform-redesign ARCHIVED | P2 | 1d | TL | — | **OPEN** | 封盘 §7.3 |
 | PM-C | 候选 | 用户偏好扩展（暗黑/紧凑/默认页等） | — | TBD | PM | 产品数据 | **冻结** | 有数据再开 |
 | PM-D | 候选 | 后端 B-back 大项（PRD 驱动） | — | TBD | PM | PRD | **冻结** | 同上 |
@@ -78,7 +78,7 @@
 ### 2.1 Round 4 收口径检查清单（与任务独立，可并行勾选）
 
 - [x] 生产 P0/P1 脚本与手册落地（T-002—T-004c、D+14、D+7）
-- [ ] T-DRILL 团队演练
+- [x] T-DRILL 团队演练（见 `docs/superpowers/ops/drills/2026-04-22-round4-docker-stack-drill.md`）
 - [ ] 全量 `test.fixme` 清零
 - [ ] a11y + 视觉 + legacy + tmp + i18n 门槛（见上表 + North Star）
 - [ ] 冻结行（PM-*) 不纳入 Round 4 强交付
