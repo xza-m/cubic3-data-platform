@@ -74,7 +74,7 @@ const QueriesScheduled = lazy(() => import('@v2/pages/queries/QueriesScheduled')
 const QueriesScheduledDetail = lazy(() => import('@v2/pages/queries/QueriesScheduledDetail'))
 const QueriesScheduledCreate = lazy(() => import('@v2/pages/queries/QueriesScheduledCreate'))
 const QueriesSavedCreate = lazy(() => import('@v2/pages/queries/QueriesSavedCreate'))
-// TODO[R2-W3]: no QueriesVisual page on disk — /queries/visual remains Placeholder
+const QueryVisual = lazy(() => import('@v2/pages/queries/visual/QueryVisual'))
 
 // ── Apps 域 ───────────────────────────────────────────────────────────────────
 const Marketplace = lazy(() => import('@v2/pages/apps/Marketplace'))
@@ -210,15 +210,7 @@ export default function AppRoutes() {
           {/* ── 查询中心 ── */}
           <Route path="queries">
             <Route index element={wrap(<QueryConsole />)} />
-            <Route
-              path="visual" // TODO[R2-W3]: no QueriesVisual page on disk yet
-              element={wrap(
-                <Placeholder
-                  title={t('routes.placeholder.visualBuilder.title', '可视化构建')}
-                  description={t('routes.placeholder.visualBuilder.desc', '待可视化查询构建器实现')}
-                />,
-              )}
-            />
+            <Route path="visual" element={wrap(<QueryVisual />)} />
             <Route path="my">
               <Route index element={wrap(<QueriesSaved />)} />
               <Route path="new" element={wrap(<QueriesSavedCreate />)} />

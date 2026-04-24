@@ -14,6 +14,50 @@ import { t } from '@v2/i18n'
 // Monaco editor lazy import — 不进入 main chunk
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
 
+/**
+ * sessionStorage 预填 key —— 由 /queries/visual 跳转时写入，QueryConsole mount
+ * 时读取一次并清掉。与 visual/QueryVisual.tsx::V2_QUERY_VISUAL_PREFILL_KEY 约定。
+ */
+const V2_QUERY_VISUAL_PREFILL_KEY = 'v2:queryVisual:pendingPrefill'
+
+interface QueryVisualPrefill {
+  sql: string
+  source_id: number | null
+  origin: 'visual'
+  created_at: number
+}
+
+/** 读取一次并清空；解析失败 / 结构异常时返回 null。 */
+function consumeVisualPrefill(): QueryVisualPrefill | null {
+  try {
+    const raw = sessionStorage.getItem(V2_QUERY_VISUAL_PREFILL_KEY)
+    if (!raw) return null
+    sessionStorage.removeItem(V2_QUERY_VISUAL_PREFILL_KEY)
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      typeof (parsed as { sql?: unknown }).sql !== 'string'
+    ) {
+      return null
+    }
+    const obj = parsed as {
+      sql: string
+      source_id?: number | null
+      origin?: string
+      created_at?: number
+    }
+    return {
+      sql: obj.sql,
+      source_id: typeof obj.source_id === 'number' ? obj.source_id : null,
+      origin: 'visual',
+      created_at: typeof obj.created_at === 'number' ? obj.created_at : Date.now(),
+    }
+  } catch {
+    return null
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Constants
 // ──────────────────────────────────────────────────────────────────────────
@@ -27,8 +71,12 @@ SELECT 1 AS hello, NOW() AS run_at;
 // ──────────────────────────────────────────────────────────────────────────
 
 export default function QueryConsole() {
-  const [sql, setSql] = useState(DEFAULT_SQL)
-  const [sourceId, setSourceId] = useState<number | null>(null)
+  // 先尝试从 sessionStorage 读取 /queries/visual 传来的 prefill；命中则覆盖默认 SQL。
+  // 使用 lazy initializer，避免每次 render 都访问 sessionStorage。
+  const [initialPrefill] = useState<QueryVisualPrefill | null>(() => consumeVisualPrefill())
+
+  const [sql, setSql] = useState<string>(() => initialPrefill?.sql ?? DEFAULT_SQL)
+  const [sourceId, setSourceId] = useState<number | null>(initialPrefill?.source_id ?? null)
   const [result, setResult] = useState<QueryRunResult | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isDark, setIsDark] = useState(
@@ -38,15 +86,19 @@ export default function QueryConsole() {
   const [saveName, setSaveName] = useState('')
 
   const sources = useDatasourcesForConsole()
+  const sourceList = useMemo(
+    () => (Array.isArray(sources.data) ? sources.data : []),
+    [sources.data],
+  )
   const executeMut = useExecuteQuery()
   const createMut = useCreateSavedQuery()
 
   // auto-select first source
   useEffect(() => {
-    if (sourceId == null && sources.data?.length) {
-      setSourceId(sources.data[0].id)
+    if (sourceId == null && sourceList.length) {
+      setSourceId(sourceList[0].id)
     }
-  }, [sources.data, sourceId])
+  }, [sourceList, sourceId])
 
   // track theme changes
   useEffect(() => {
@@ -58,8 +110,8 @@ export default function QueryConsole() {
   }, [])
 
   const activeSource = useMemo(
-    () => sources.data?.find((s) => s.id === sourceId) ?? null,
-    [sources.data, sourceId],
+    () => sourceList.find((s) => s.id === sourceId) ?? null,
+    [sourceList, sourceId],
   )
 
   const handleRun = useCallback(async () => {
@@ -115,7 +167,7 @@ export default function QueryConsole() {
               <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-3)' }} />
             </div>
           ) : (
-            sources.data?.map((s) => (
+            sourceList.map((s) => (
               <button
                 key={s.id}
                 type="button"
@@ -151,11 +203,15 @@ export default function QueryConsole() {
             className="w-56 rounded border bg-transparent px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
           >
-            {sources.data?.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} · {s.source_type}
-              </option>
-            )) ?? <option value="">{t('queryConsole.toolbar.loading', '加载中…')}</option>}
+            {sourceList.length > 0 ? (
+              sourceList.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · {s.source_type}
+                </option>
+              ))
+            ) : (
+              <option value="">{t('queryConsole.toolbar.loading', '加载中…')}</option>
+            )}
           </select>
 
           <span className="ml-auto flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>

@@ -1,6 +1,30 @@
 /**
- * CUBIC3 - 查询构造器组件
- * 
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 归档说明（2026-04-22，Round 3 清理）
+ *
+ * 本文件是 v1 时代 "DATA_SERVICE_PLATFORM"（2026-01）的自助数据导出工具原型。
+ * 原型定位：选数据集 → 勾字段 → 加筛选 → 提交异步导出任务 → 轮询 → 下载文件。
+ *
+ * v2 在 Round 3 经讨论后决定将 /queries/visual 定位为"QueryConsole 的可视化
+ * 辅助构建"，而非异步数据导出。本文件保留作为**设计参考**：
+ *   - 字段树 × 筛选器 × DSL 预览 的三栏交互布局
+ *   - 敏感字段 (isSensitive) 标识
+ *   - 筛选操作符列表（EQ/NE/GT/GTE/LT/LTE/IN/BETWEEN/LIKE）
+ *
+ * 真实 v2 实现见：frontend/src/v2/pages/queries/visual/
+ *   - QueryVisual.tsx — 主编排
+ *   - FieldTree.tsx / FilterPanel.tsx / SqlPreview.tsx — 子组件
+ *   - buildSql.ts — SQL 生成逻辑（含单测）
+ *
+ * 如果未来要做真正的"异步数据导出"（需要 backend /api/v1/export/*
+ * + 异步执行器 + 文件交付存储），更合理的挂载点是
+ * /data-center/datasets/:id/export，而非 /queries/visual。
+ *
+ * 扩展名改为 .tsx.txt 以确保 tsc / eslint / vitest 不扫描本文件。
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * CUBIC3 - 查询构造器组件（原始 header，历史保留）
+ *
  * 功能：
  * - 左侧字段树：展示维度和度量，支持勾选
  * - 中间筛选器面板：动态表单，支持日期选择器、多选框
