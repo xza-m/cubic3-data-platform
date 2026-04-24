@@ -1,17 +1,23 @@
 // frontend/tests/e2e-v2/p30-query-visual-smoke.spec.ts
 //
-// P30 — /queries/visual 可视化构建 smoke（Round 3 承接 QueryBuilder 后的新路由）。
+// P30 — /queries/visual 可视化构建（Round 3 承接 QueryBuilder 后的新路由）。
 //
-// 覆盖：
+// 覆盖（smoke + 操作回路）：
 //   - 页面标题渲染
 //   - 左侧字段树列出后端返回的字段
 //   - 默认 SQL 预览含物理表
 //   - 勾选字段后 SQL 预览切成具名列
+//   - 添加筛选行（点 +）
+//   - 回路 A：勾字段 + 添加 filter → SQL 预览含 WHERE
+//   - 回路 B：勾字段 → 点「在查询控制台打开」→ 跳转 /queries 且 sessionStorage
+//     `v2:queryVisual:pendingPrefill` 被 QueryConsole mount 时消费清空
 //
 // 文档参考：docs/archive/legacy-prototypes/QueryBuilder.tsx.txt （历史原型）
 
 import { test, expect } from '@playwright/test'
 import { envelope, gotoV2, installApiCatchAll, mockJsonRoute, prepareV2Page } from './helpers'
+
+const PREFILL_KEY = 'v2:queryVisual:pendingPrefill'
 
 const DATASET_LIST_PAYLOAD = {
   items: [
@@ -141,4 +147,80 @@ test('P30 点"添加筛选"新增一行筛选器 @p30', async ({ page }) => {
 
   // 至少出现一行筛选
   await expect(panel.locator('[data-testid^="v2-filter-row-"]').first()).toBeVisible()
+})
+
+test('P30 回路A：勾字段 + 加 filter → SQL 预览含 WHERE @p30', async ({ page }) => {
+  await gotoV2(page, '/queries/visual')
+
+  // 勾 order_id
+  await page
+    .getByTestId('v2-field-tree-item-order_id')
+    .locator('input[type=checkbox]')
+    .check()
+
+  // 加一行筛选
+  const panel = page.getByTestId('v2-filter-panel')
+  await panel.getByTestId('v2-filter-panel-add').click()
+
+  // 取第一行，选择字段 order_id / 默认操作符 EQ / 输入值 123
+  const firstRow = panel.locator('[data-testid^="v2-filter-row-"]').first()
+  const rowTestId = await firstRow.getAttribute('data-testid')
+  expect(rowTestId).toBeTruthy()
+
+  await firstRow.locator(`[data-testid="${rowTestId}-field"]`).selectOption('order_id')
+  // 默认 op 是 EQ，先显式 set 一次确保 value input 是 single 形态
+  await firstRow.locator(`[data-testid="${rowTestId}-op"]`).selectOption('EQ')
+  await firstRow.locator(`[data-testid="${rowTestId}-value"]`).fill('123')
+
+  const preview = page.getByTestId('v2-sql-preview')
+  await expect(preview).toContainText('WHERE')
+  await expect(preview).toContainText('order_id')
+  // bigint 类型 → 不带引号
+  await expect(preview).toContainText('123')
+})
+
+test('P30 回路B：点"在查询控制台打开"跳 /queries 并消费 sessionStorage @p30', async ({ page }) => {
+  // QueryConsole 侧栏依赖 datasources，先 mock 一份带 id=7 的数据源
+  await mockJsonRoute(
+    page,
+    /\/api\/v1\/data-center\/datasources(\?.*)?$/,
+    envelope({
+      items: [
+        {
+          id: 7,
+          name: '教学 PostgreSQL',
+          source_type: 'postgresql',
+          description: null,
+          environment: 'prod',
+          is_active: true,
+          connection_config: {},
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 100,
+      total_pages: 1,
+    }),
+  )
+
+  await gotoV2(page, '/queries/visual')
+
+  // 勾 order_id → 产生一条有内容的 SQL，具备跳转意义
+  await page
+    .getByTestId('v2-field-tree-item-order_id')
+    .locator('input[type=checkbox]')
+    .check()
+
+  // 跳 /queries
+  await page.getByTestId('v2-sql-preview-open-console').click()
+  await expect(page).toHaveURL(/\/queries(?:\/|$|\?)/)
+
+  // 阻塞到 QueryConsole 真的 mount（lazy route 有可见 paint 延迟），
+  // 之后 useState lazy initializer 才会消费 sessionStorage。
+  await expect(page.getByRole('button', { name: /执行/ }).first()).toBeVisible()
+
+  // QueryConsole mount 时会 `sessionStorage.removeItem(PREFILL_KEY)`。
+  // 所以 e2e 侧读取必为 null；这正是"接力成功"的最强证据。
+  const leftover = await page.evaluate((key) => window.sessionStorage.getItem(key), PREFILL_KEY)
+  expect(leftover).toBeNull()
 })
