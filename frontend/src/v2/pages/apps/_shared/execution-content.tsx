@@ -1,4 +1,5 @@
 // frontend/src/v2/pages/apps/_shared/execution-content.tsx
+/* eslint-disable react-refresh/only-export-components -- 该文件与主组件/Provider 同时导出 helper/Context/hook，是项目历史共享约定；Fast Refresh 会丢热更粒度但不影响生产功能。 */
 //
 // 执行记录详情内容 shared 组件（Peek panel + ExecutionDetail 复用）。
 

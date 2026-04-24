@@ -24,7 +24,7 @@ export default function OntologyRelations() {
   const [showCreate, setShowCreate] = useState(false)
 
   const relationsQuery = useRelationList()
-  const items = relationsQuery.data?.items ?? []
+  const items = useMemo(() => relationsQuery.data?.items ?? [], [relationsQuery.data])
   const create = useCreateRelation()
 
   const filtered = useMemo(() => {

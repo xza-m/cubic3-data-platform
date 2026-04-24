@@ -198,7 +198,7 @@ export default function Subscriptions() {
   const toast = useToast()
 
   const { data, isLoading } = useSubscriptions()
-  const rows = data?.items ?? []
+  const rows = useMemo(() => data?.items ?? [], [data])
 
   const updateMutation = useUpdateSubscription()
   const createMutation = useCreateSubscription()

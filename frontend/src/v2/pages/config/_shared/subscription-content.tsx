@@ -1,4 +1,5 @@
 // frontend/src/v2/pages/config/_shared/subscription-content.tsx
+/* eslint-disable react-refresh/only-export-components -- 该文件与主组件/Provider 同时导出 helper/Context/hook，是项目历史共享约定；Fast Refresh 会丢热更粒度但不影响生产功能。 */
 //
 // 订阅详情内容组件 —— Peek panel 与 L3 Detail 共用。
 // 对齐后端：app/domain/entities/config/subscription.py

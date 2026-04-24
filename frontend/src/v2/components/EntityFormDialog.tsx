@@ -191,7 +191,7 @@ export function EntityFormDialog<T extends Record<string, unknown>>({
     } finally {
       setSubmitting(false)
     }
-  }, [submitting, runValidate, onSubmit, values, onClose])
+  }, [submitting, runValidate, onSubmit, values, onClose, setSubmitting])
 
   useEffect(() => {
     if (!open) return

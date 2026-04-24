@@ -70,8 +70,8 @@ export default function RelationCanvas() {
   const navigate = useNavigate()
   const { setBreadcrumbs, setTopBarActions, setContextPanel } = useAppShell()
   const graphQuery = useSemanticGraph()
-  const nodes: SemanticGraphNode[] = graphQuery.data?.nodes ?? []
-  const edges: SemanticGraphEdge[] = graphQuery.data?.edges ?? []
+  const nodes = useMemo<SemanticGraphNode[]>(() => graphQuery.data?.nodes ?? [], [graphQuery.data])
+  const edges = useMemo<SemanticGraphEdge[]>(() => graphQuery.data?.edges ?? [], [graphQuery.data])
 
   const [positions, setPositions] = useState<Positions>(() => loadPositions())
   const [selectedId, setSelectedId] = useState<string | null>(null)

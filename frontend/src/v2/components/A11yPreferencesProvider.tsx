@@ -1,4 +1,5 @@
 // frontend/src/v2/components/A11yPreferencesProvider.tsx
+/* eslint-disable react-refresh/only-export-components -- 该文件与主组件/Provider 同时导出 helper/Context/hook，是项目历史共享约定；Fast Refresh 会丢热更粒度但不影响生产功能。 */
 //
 // Round 4 · A-1 / A-2 — 可访问性偏好（动效减免 / 高对比）。
 //

@@ -19,7 +19,7 @@ import type { OntologyWorkbenchObjectSummary } from '@v2/api/ontology'
 export default function OntologyWorkbench() {
   const navigate = useNavigate()
   const objectsQuery = useWorkbenchObjects()
-  const items = objectsQuery.data?.items ?? []
+  const items = useMemo(() => objectsQuery.data?.items ?? [], [objectsQuery.data])
 
   // TODO(B-back-6): 全局搜索上线前用本地 filter
   const [keyword, setKeyword] = useState('')

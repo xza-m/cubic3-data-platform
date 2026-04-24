@@ -118,7 +118,7 @@ export default function Executions() {
     page: 1,
     page_size: 50,
   })
-  const executions = page?.items ?? []
+  const executions = useMemo(() => page?.items ?? [], [page])
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase()

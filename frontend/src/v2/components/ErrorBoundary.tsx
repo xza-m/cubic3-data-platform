@@ -1,4 +1,5 @@
 // frontend/src/v2/components/ErrorBoundary.tsx
+/* eslint-disable react-refresh/only-export-components -- 该文件与主组件/Provider 同时导出 helper/Context/hook，是项目历史共享约定；Fast Refresh 会丢热更粒度但不影响生产功能。 */
 // 通用 React error boundary。
 // fallback UI 含错误 ID（用于可观测性后台查询）+ "回到上一页" / "重试"。
 import { Component, type ErrorInfo, type ReactNode } from 'react'

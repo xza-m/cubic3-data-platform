@@ -1,4 +1,5 @@
 // frontend/src/v2/pages/semantic/_shared/cube-detail-content.tsx
+/* eslint-disable react-refresh/only-export-components -- 该文件与主组件/Provider 同时导出 helper/Context/hook，是项目历史共享约定；Fast Refresh 会丢热更粒度但不影响生产功能。 */
 //
 // Cube 详情内容组件——Peek Panel 和 CubeDetail 全屏页共用。
 // 维度/度量计数直接用 detail.dimensions.length，

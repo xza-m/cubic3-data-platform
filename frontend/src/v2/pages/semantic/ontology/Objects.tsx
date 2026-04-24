@@ -25,7 +25,7 @@ export default function OntologyObjects() {
   const [peekName, setPeekName] = useState<string | null>(null)
 
   const objectsQuery = useObjectList()
-  const items = objectsQuery.data?.items ?? []
+  const items = useMemo(() => objectsQuery.data?.items ?? [], [objectsQuery.data])
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase()

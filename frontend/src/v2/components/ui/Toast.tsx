@@ -1,4 +1,5 @@
 // frontend/src/v2/components/ui/Toast.tsx
+/* eslint-disable react-refresh/only-export-components -- 该文件与主组件/Provider 同时导出 helper/Context/hook，是项目历史共享约定；Fast Refresh 会丢热更粒度但不影响生产功能。 */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react'
 import { cn } from '@v2/lib/cn'

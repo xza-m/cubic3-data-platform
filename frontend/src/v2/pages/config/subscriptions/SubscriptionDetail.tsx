@@ -45,7 +45,7 @@ export default function SubscriptionDetail() {
 
   const { data: subscription, isLoading } = useSubscription(numericId)
   const { data: listData } = useSubscriptions()
-  const rows = listData?.items ?? []
+  const rows = useMemo(() => listData?.items ?? [], [listData])
   const {
     data: historyData,
     isLoading: historyLoading,

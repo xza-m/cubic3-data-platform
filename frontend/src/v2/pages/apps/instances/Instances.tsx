@@ -80,7 +80,7 @@ export default function Instances() {
     page: 1,
     page_size: 50,
   })
-  const instances = page?.items ?? []
+  const instances = useMemo(() => page?.items ?? [], [page])
 
   const enableMut = useEnableInstance()
   const disableMut = useDisableInstance()

@@ -33,7 +33,7 @@ export default function OntologyMetrics() {
   const [dryRunFormula, setDryRunFormula] = useState('')
 
   const metricsQuery = useMetricList()
-  const items = metricsQuery.data?.items ?? []
+  const items = useMemo(() => metricsQuery.data?.items ?? [], [metricsQuery.data])
   const create = useCreateMetric()
   const dryRun = useDryRunMetric()
 

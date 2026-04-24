@@ -1,4 +1,5 @@
 // frontend/src/v2/pages/apps/_shared/app-card.tsx
+/* eslint-disable react-refresh/only-export-components -- 该文件与主组件/Provider 同时导出 helper/Context/hook，是项目历史共享约定；Fast Refresh 会丢热更粒度但不影响生产功能。 */
 //
 // 应用卡片 & 行 shared 展示组件。Marketplace.tsx 复用。
 // drop-frontend 列表：

@@ -88,7 +88,7 @@ export default function CubeDetail() {
       </>,
     )
     return () => setTopBarActions(null)
-  }, [setTopBarActions, navigate, name, cube?.status, activateMutation, deprecateMutation])
+  }, [setTopBarActions, navigate, name, cube?.status, activateMutation, deprecateMutation, validateMutation])
 
   useEffect(() => {
     if (!cube) return

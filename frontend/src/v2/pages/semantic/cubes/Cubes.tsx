@@ -51,7 +51,7 @@ export default function Cubes() {
   const [peekName, setPeekName] = useState<string | null>(null)
 
   const cubeListQuery = useCubeList()
-  const allCubes: CubeSummary[] = cubeListQuery.data?.cubes ?? []
+  const allCubes = useMemo<CubeSummary[]>(() => cubeListQuery.data?.cubes ?? [], [cubeListQuery.data])
 
   const rows = useMemo(() => {
     const q = keyword.trim().toLowerCase()
