@@ -116,11 +116,14 @@ export async function listSubscriptionsByInstance(instanceId: number): Promise<S
   return res.data.data
 }
 
-// ── 触发历史（P13）────────────────────────────────────────────────────────────
-// TODO: 后端 GET /api/v1/subscriptions/:id/history 接口未就绪 — mock 占位
+// ── 触发历史 ──────────────────────────────────────────────────────────────────
+// 对接后端：GET /api/v1/subscriptions/:id/history
+// 响应契约：app/application/services/config/subscription_service.py::list_delivery_history
 
 export interface SubscriptionHistoryItem {
   id: number
+  subscription_id: number
+  channel_id: number | null
   trigger_at: string
   status: 'success' | 'failed' | 'skipped'
   message: string | null
@@ -128,16 +131,18 @@ export interface SubscriptionHistoryItem {
   event_type: string | null
 }
 
+export interface SubscriptionHistoryParams {
+  page?: number
+  page_size?: number
+}
+
 export async function listSubscriptionHistory(
   id: number,
+  params: SubscriptionHistoryParams = {},
 ): Promise<PaginatedResponse<SubscriptionHistoryItem>> {
-  try {
-    const res = await apiClient.get<{ data: PaginatedResponse<SubscriptionHistoryItem> }>(
-      `/subscriptions/${id}/history`,
-    )
-    return res.data.data
-  } catch {
-    // TODO: 后端 GET /api/v1/subscriptions/:id/history 未就绪 — 返回 mock 空列表
-    return { items: [], total: 0, page: 1, page_size: 20 }
-  }
+  const res = await apiClient.get<{ data: PaginatedResponse<SubscriptionHistoryItem> }>(
+    `/subscriptions/${id}/history`,
+    { params },
+  )
+  return res.data.data
 }

@@ -2,7 +2,6 @@
 //
 // 角色详情页（L3，P14）。包含权限矩阵（资源 × 动作）。
 // 接口：GET /api/v1/roles/:id  PUT /api/v1/roles/:id
-// TODO: 后端 /api/v1/roles/:id 待联调
 
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -119,6 +118,13 @@ export default function RoleDetail() {
 
   const handleDelete = async () => {
     if (!role) return
+    if (role.is_system) {
+      toast.show({
+        tone: 'warning',
+        title: t('roleDetail.toast.systemProtected', '系统内置角色不可删除'),
+      })
+      return
+    }
     if (!window.confirm(t('roleDetail.confirm.delete', '删除角色「{name}」？', { name: role.name }))) return
     await deleteMutation.mutateAsync(role.id)
     toast.show({
@@ -213,7 +219,9 @@ export default function RoleDetail() {
             <button
               type="button"
               onClick={() => void handleDelete()}
-              className="rounded-md border px-3 py-1.5 text-xs transition-colors"
+              disabled={role.is_system}
+              title={role.is_system ? t('roleDetail.tip.systemProtected', '系统内置角色不可删除') : undefined}
+              className="rounded-md border px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40"
               style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}
             >
               {t('roleDetail.action.delete', '删除')}
@@ -344,8 +352,10 @@ function RoleInfoTab({ role }: { role: import('@v2/api/roles').Role }) {
       <dl className="mx-auto max-w-lg divide-y rounded-lg border text-xs" style={{ borderColor: 'var(--border)' }}>
         {[
           { label: t('roleDetail.info.name', '角色名'),       value: role.name },
+          { label: t('roleDetail.info.code', 'code'),         value: role.code },
           { label: t('roleDetail.info.description', '描述'),  value: role.description ?? '—' },
           { label: 'ID',                                       value: `#${role.id}` },
+          { label: t('roleDetail.info.isSystem', '内置角色'), value: role.is_system ? t('common.yes', '是') : t('common.no', '否') },
           { label: t('roleDetail.info.permCount', '权限数'),  value: t('roleDetail.info.permCountValue', '{n} 项', { n: role.permissions.length }) },
           { label: t('roleDetail.info.createdAt', '创建时间'), value: fmtDateTime(role.created_at) },
           { label: t('roleDetail.info.updatedAt', '更新时间'), value: fmtDateTime(role.updated_at) },

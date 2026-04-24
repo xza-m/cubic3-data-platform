@@ -4,22 +4,56 @@
 负责将应用执行结果分发到订阅的渠道
 """
 import logging
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from app.shared.utils.time import utcnow
 
 from app.domain.entities.config.subscription import Subscription
 from app.domain.entities.config.channel import Channel, ChannelType
+from app.domain.entities.config.subscription_delivery_log import SubscriptionDeliveryLog
 from app.application.services.config.subscription_service import SubscriptionService
+from app.infrastructure.repositories.subscription_repository import SubscriptionRepository
 
 logger = logging.getLogger(__name__)
 
 
 class DeliveryService:
     """分发服务"""
-    
-    def __init__(self, subscription_service: SubscriptionService):
+
+    def __init__(
+        self,
+        subscription_service: SubscriptionService,
+        subscription_repository: Optional[SubscriptionRepository] = None,
+    ):
         self.subscription_service = subscription_service
+        self.subscription_repository = subscription_repository
+
+    def _record_log(
+        self,
+        *,
+        subscription: Subscription,
+        event_type: str,
+        status: str,
+        message: Optional[str],
+        duration_ms: Optional[int],
+    ) -> None:
+        """追加分发日志（幂等：无 repository 则静默跳过）"""
+        if self.subscription_repository is None:
+            return
+        try:
+            log = SubscriptionDeliveryLog(
+                subscription_id=subscription.id,
+                channel_id=subscription.channel_id,
+                event_type=event_type,
+                status=status,
+                message=message[:1000] if isinstance(message, str) else message,
+                duration_ms=duration_ms,
+                trigger_at=utcnow(),
+            )
+            self.subscription_repository.add_delivery_log(log)
+        except Exception as exc:  # 日志写入失败不能影响主链路
+            logger.warning(f"写入订阅分发日志失败: subscription_id={subscription.id}, err={exc}")
     
     def deliver_event(
         self,
@@ -62,28 +96,51 @@ class DeliveryService:
         
         # 2. 逐个分发
         for subscription in matching_subscriptions:
+            started_at = time.perf_counter()
             try:
                 delivery_result = self._deliver_to_channel(
                     subscription=subscription,
                     event_type=event_type,
                     event_data=event_data
                 )
-                
+
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
+
                 if delivery_result['success']:
                     results['successful'] += 1
+                    status = 'success'
+                    log_message = delivery_result.get('error') or delivery_result.get('detail')
                 else:
                     results['failed'] += 1
-                
+                    status = 'failed'
+                    log_message = delivery_result.get('error') or '未知失败'
+
+                self._record_log(
+                    subscription=subscription,
+                    event_type=event_type,
+                    status=status,
+                    message=log_message,
+                    duration_ms=duration_ms,
+                )
+
                 results['details'].append({
                     'subscription_id': subscription.id,
                     'subscription_name': subscription.name,
                     'channel_id': subscription.channel_id,
                     **delivery_result
                 })
-                
+
             except Exception as e:
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
                 logger.error(f"分发到订阅 {subscription.id} 失败: {e}")
                 results['failed'] += 1
+                self._record_log(
+                    subscription=subscription,
+                    event_type=event_type,
+                    status='failed',
+                    message=str(e),
+                    duration_ms=duration_ms,
+                )
                 results['details'].append({
                     'subscription_id': subscription.id,
                     'subscription_name': subscription.name,
@@ -91,7 +148,7 @@ class DeliveryService:
                     'success': False,
                     'error': str(e)
                 })
-        
+
         return results
     
     def _deliver_to_channel(

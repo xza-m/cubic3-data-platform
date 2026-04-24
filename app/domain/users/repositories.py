@@ -8,10 +8,35 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from datetime import datetime
+from typing import Any, Optional
 
 from app.domain.users.role import Role
 from app.domain.users.user import User
+
+
+@dataclass
+class LoginEventRecord:
+    """登录事件（领域层的简化模型，对应 ``user_login_events`` 表）"""
+
+    id: Optional[int] = None
+    user_id: int = 0
+    status: str = "success"  # "success" | "failed"
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    error_reason: Optional[str] = None
+    logged_at: Optional[datetime] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "status": self.status,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "error_reason": self.error_reason,
+            "logged_at": self.logged_at.isoformat() if self.logged_at else None,
+        }
 
 
 @dataclass
@@ -74,6 +99,16 @@ class UserRepository(ABC):
 
     @abstractmethod
     def count(self) -> int: ...
+
+    # ---- 登录事件（B-8）----
+
+    @abstractmethod
+    def add_login_event(self, event: LoginEventRecord) -> LoginEventRecord: ...
+
+    @abstractmethod
+    def list_login_events(
+        self, user_id: int, page: int = 1, size: int = 20
+    ) -> tuple[list[LoginEventRecord], int]: ...
 
 
 class RoleRepository(ABC):

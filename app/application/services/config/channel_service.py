@@ -3,13 +3,19 @@
 
 负责渠道的 CRUD 操作和配置验证
 """
+import time
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from app.shared.utils.time import utcnow
 
+import requests
+
 from app.domain.entities.config.channel import Channel, ChannelType
 from app.infrastructure.repositories.channel_repository import ChannelRepository
 from app.shared.exceptions import ValidationError, NotFoundError
+from app.shared.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ChannelService:
@@ -216,3 +222,146 @@ class ChannelService:
         self.channel_repository.commit()
         
         return channel.to_dict()
+
+    # ========================================================================
+    # 渠道连通性测试
+    # ========================================================================
+
+    def test_channel(
+        self,
+        channel_id: int,
+        message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """测试渠道连通性
+
+        Args:
+            channel_id: 渠道 ID
+            message: 可选的自定义测试消息（feishu/webhook 使用）
+
+        Returns:
+            ``{
+                ok: bool,
+                channel_type: str,
+                latency_ms: int,
+                status_code: Optional[int],
+                detail: str,
+                error: Optional[str],
+                dry_run: bool,  # True 表示仅做配置校验未实际发送
+            }``
+
+        Raises:
+            NotFoundError: 渠道不存在
+        """
+        channel = self.channel_repository.find_by_id(channel_id)
+        if not channel:
+            raise NotFoundError(f"渠道 {channel_id} 不存在")
+
+        config_errors = channel.validate_config()
+        if config_errors:
+            return {
+                "ok": False,
+                "channel_type": channel.channel_type,
+                "latency_ms": 0,
+                "status_code": None,
+                "detail": "渠道配置无效",
+                "error": "; ".join(config_errors),
+                "dry_run": True,
+            }
+
+        default_msg = message or "[Cubic3] 渠道连通性测试消息"
+        started = time.perf_counter()
+
+        try:
+            if channel.is_feishu():
+                webhook_url = channel.get_feishu_webhook_url()
+                if not webhook_url:
+                    return {
+                        "ok": True,
+                        "channel_type": channel.channel_type,
+                        "latency_ms": int((time.perf_counter() - started) * 1000),
+                        "status_code": None,
+                        "detail": "仅配置了 chat_id，未实际发送（需要 tenant_access_token 通道）",
+                        "error": None,
+                        "dry_run": True,
+                    }
+                resp = requests.post(
+                    webhook_url,
+                    json={"msg_type": "text", "content": {"text": default_msg}},
+                    timeout=10,
+                )
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                body: Dict[str, Any] = {}
+                try:
+                    body = resp.json() or {}
+                except Exception:
+                    body = {}
+                biz_code = body.get("code") if isinstance(body, dict) else None
+                ok = resp.status_code == 200 and (biz_code in (0, None))
+                return {
+                    "ok": ok,
+                    "channel_type": channel.channel_type,
+                    "latency_ms": latency_ms,
+                    "status_code": resp.status_code,
+                    "detail": "飞书 Webhook 发送成功" if ok else f"飞书返回 code={biz_code} msg={body.get('msg')}",
+                    "error": None if ok else str(body),
+                    "dry_run": False,
+                }
+
+            if channel.is_webhook():
+                cfg = channel.config or {}
+                url = cfg.get("url")
+                method = (cfg.get("method") or "POST").upper()
+                headers = cfg.get("headers") or {}
+                resp = requests.request(
+                    method,
+                    url,
+                    headers=headers,
+                    json={"test": True, "message": default_msg},
+                    timeout=10,
+                )
+                latency_ms = int((time.perf_counter() - started) * 1000)
+                ok = 200 <= resp.status_code < 400
+                return {
+                    "ok": ok,
+                    "channel_type": channel.channel_type,
+                    "latency_ms": latency_ms,
+                    "status_code": resp.status_code,
+                    "detail": f"{method} {url} -> {resp.status_code}",
+                    "error": None if ok else (resp.text[:200] if resp.text else f"HTTP {resp.status_code}"),
+                    "dry_run": False,
+                }
+
+            # email / oss：当前未集成真正的发送客户端，仅做配置校验。
+            return {
+                "ok": True,
+                "channel_type": channel.channel_type,
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+                "status_code": None,
+                "detail": "配置校验通过（邮件 / OSS 通道暂未接入真实客户端，未实际发送）",
+                "error": None,
+                "dry_run": True,
+            }
+
+        except requests.exceptions.Timeout:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            return {
+                "ok": False,
+                "channel_type": channel.channel_type,
+                "latency_ms": latency_ms,
+                "status_code": None,
+                "detail": "请求超时",
+                "error": "timeout",
+                "dry_run": False,
+            }
+        except requests.exceptions.RequestException as exc:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            logger.warning("channel_test_request_failed", channel_id=channel_id, error=str(exc))
+            return {
+                "ok": False,
+                "channel_type": channel.channel_type,
+                "latency_ms": latency_ms,
+                "status_code": None,
+                "detail": "请求失败",
+                "error": str(exc),
+                "dry_run": False,
+            }

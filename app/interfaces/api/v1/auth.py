@@ -45,6 +45,14 @@ def _user_service() -> UserService:
     )
 
 
+def _client_ip() -> str:
+    """提取客户端 IP（优先使用反向代理转发的头）。"""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()[:64]
+    return (request.remote_addr or "")[:64]
+
+
 @bp.post("/login")
 def login():
     """密码登录。
@@ -59,6 +67,9 @@ def login():
 
     if not username or not password:
         return bad_request("用户名和密码不能为空")
+
+    client_ip = _client_ip()
+    user_agent = (request.headers.get("User-Agent") or "")[:512]
 
     # ---- 数据库优先 ------------------------------------------------------
     try:
@@ -84,7 +95,29 @@ def login():
                 return error("登录失败：服务异常", status=500)
 
             if not authed:
+                # 尝试记录失败事件（若找得到用户）
+                try:
+                    from app.infrastructure.users.repositories import SqlUserRepository
+                    repo = SqlUserRepository(db.session)
+                    existing = repo.get_by_username(username)
+                    if existing and existing.id is not None:
+                        user_service.record_login_event(
+                            user_id=existing.id,
+                            status="failed",
+                            ip_address=client_ip,
+                            user_agent=user_agent,
+                            error_reason="invalid_credentials",
+                        )
+                except Exception:
+                    pass
                 return error("用户名或密码错误", status=401)
+
+            user_service.record_login_event(
+                user_id=int(authed["id"]),
+                status="success",
+                ip_address=client_ip,
+                user_agent=user_agent,
+            )
 
             roles = authed.get("role_codes") or []
             token = _generate_token_for(

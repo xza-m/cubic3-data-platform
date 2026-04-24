@@ -2,14 +2,13 @@
 //
 // 用户详情页（L3，P14）。
 // 接口：GET /api/v1/users/:id  PUT /api/v1/users/:id/roles
-// TODO: 后端 /api/v1/users/:id 待联调
 
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, RefreshCcw, Shield, User } from 'lucide-react'
 import { Skeleton, useToast } from '@v2/components/ui'
 import { fmtDateTime } from '@v2/lib/format'
-import { useUser, useUpdateUser, useAssignUserRoles } from '@v2/hooks/users'
+import { useUser, useUpdateUser, useAssignUserRoles, useUserLoginHistory } from '@v2/hooks/users'
 import { useListRoles } from '@v2/hooks/roles'
 import { t } from '@v2/i18n'
 
@@ -299,20 +298,33 @@ function RolesTab({
 }
 
 function LoginHistoryTab({ user }: { user: import('@v2/api/users').User }) {
-  // TODO: 后端暂无 /api/v1/users/:id/login-history 接口，mock 展示最近登录
-  const mockHistory = user.last_login_at
-    ? [
-        { at: user.last_login_at, ip: '—', ua: '—', status: 'success' as const },
-      ]
-    : []
+  const [page, setPage] = useState(1)
+  const { data, isLoading, isError } = useUserLoginHistory(user.id, { page, page_size: 20 })
+
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+  const pageSize = data?.page_size ?? 20
+  const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1
 
   return (
     <div className="p-4">
       <p className="mb-3 text-xs" style={{ color: 'var(--text-3)' }}>
-        {/* TODO: 后端 /api/v1/users/:id/login-history 未就绪，仅展示最近一次 */}
-        {t('userDetail.login.hint', '最近登录记录（后端待补完整历史接口）')}
+        {t('userDetail.login.hint', '最近登录事件（成功 / 失败）')}
       </p>
-      {mockHistory.length === 0 ? (
+      {isLoading ? (
+        <div className="mx-auto max-w-2xl space-y-2">
+          {[0, 1, 2].map((k) => (
+            <Skeleton key={k} className="h-8 w-full" />
+          ))}
+        </div>
+      ) : isError ? (
+        <div
+          className="rounded-lg border p-6 text-center text-xs"
+          style={{ borderColor: 'var(--border)', color: 'var(--danger)', borderStyle: 'dashed' }}
+        >
+          {t('userDetail.login.loadError', '加载登录历史失败')}
+        </div>
+      ) : items.length === 0 ? (
         <div
           className="rounded-lg border p-6 text-center text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-3)', borderStyle: 'dashed' }}
@@ -320,16 +332,74 @@ function LoginHistoryTab({ user }: { user: import('@v2/api/users').User }) {
           {t('userDetail.login.empty', '暂无登录记录')}
         </div>
       ) : (
-        <div className="mx-auto max-w-lg rounded-lg border" style={{ borderColor: 'var(--border)' }}>
-          {mockHistory.map((entry, i) => (
-            <div key={i} className="flex items-center justify-between border-b px-3 py-2 last:border-0 text-xs" style={{ borderColor: 'var(--border)' }}>
-              <span style={{ color: 'var(--text-2)' }}>{fmtDateTime(entry.at)}</span>
-              <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'var(--success-soft)', color: 'var(--success)' }}>
-                {t('userDetail.login.success', '成功')}
-              </span>
+        <>
+          <div className="mx-auto max-w-2xl overflow-hidden rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+            <div
+              className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b px-3 py-2 text-[11px] font-medium"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-3)', background: 'var(--bg-surface-2)' }}
+            >
+              <span>{t('userDetail.login.col.time', '时间')}</span>
+              <span>{t('userDetail.login.col.ip', 'IP')}</span>
+              <span>{t('userDetail.login.col.status', '状态')}</span>
             </div>
-          ))}
-        </div>
+            {items.map((entry) => (
+              <div
+                key={entry.id}
+                className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b px-3 py-2 last:border-0 text-xs"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <span style={{ color: 'var(--text-2)' }}>{entry.logged_at ? fmtDateTime(entry.logged_at) : '—'}</span>
+                <span className="font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {entry.ip || '—'}
+                </span>
+                {entry.status === 'success' ? (
+                  <span
+                    className="rounded px-1.5 py-0.5 text-[10px]"
+                    style={{ background: 'var(--success-soft)', color: 'var(--success)' }}
+                  >
+                    {t('userDetail.login.success', '成功')}
+                  </span>
+                ) : (
+                  <span
+                    className="rounded px-1.5 py-0.5 text-[10px]"
+                    title={entry.error_reason || undefined}
+                    style={{ background: 'var(--danger-soft)', color: 'var(--danger)' }}
+                  >
+                    {t('userDetail.login.failed', '失败')}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          {totalPages > 1 ? (
+            <div className="mx-auto mt-3 flex max-w-2xl items-center justify-between text-xs" style={{ color: 'var(--text-3)' }}>
+              <span>
+                {t('userDetail.login.total', '共 {n} 条', { n: String(total) })}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  className="rounded border px-2 py-0.5 disabled:opacity-40"
+                  style={{ borderColor: 'var(--border)' }}
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  {t('pagination.prev', '上一页')}
+                </button>
+                <span>
+                  {page} / {totalPages}
+                </span>
+                <button
+                  className="rounded border px-2 py-0.5 disabled:opacity-40"
+                  style={{ borderColor: 'var(--border)' }}
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  {t('pagination.next', '下一页')}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   )

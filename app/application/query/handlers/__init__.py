@@ -17,6 +17,7 @@ from .query_list_handlers import (
     CreateFolderHandler,
     DeleteQueryHandler,
     ListHistoriesHandler,
+    GetHistoryDetailHandler,
     GetStatisticsHandler,
 )
 
@@ -39,5 +40,6 @@ __all__ = [
     'CreateFolderHandler',
     'DeleteQueryHandler',
     'ListHistoriesHandler',
+    'GetHistoryDetailHandler',
     'GetStatisticsHandler',
 ]

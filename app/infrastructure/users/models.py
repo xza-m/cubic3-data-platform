@@ -126,3 +126,40 @@ class UserPasswordORM(db.Model):
     )
     password_hash = Column(String(255), nullable=False)
     updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class UserLoginEventORM(db.Model):
+    """用户登录事件流（B-8）。
+
+    每次 ``/auth/login`` 成功或失败时追加一条。用于 UserDetail > 登录历史 tab。
+    """
+
+    __tablename__ = "user_login_events"
+    __table_args__ = (
+        Index("idx_user_login_events_user_id", "user_id"),
+        Index("idx_user_login_events_logged_at", "logged_at"),
+        {"extend_existing": True},
+    )
+
+    id = Column(_BIG_PK, primary_key=True, autoincrement=True)
+    user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status = Column(String(16), nullable=False, default="success")
+    ip_address = Column(String(64), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+    error_reason = Column(String(255), nullable=True)
+    logged_at = Column(DateTime, nullable=False, default=utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "status": self.status,
+            "ip_address": self.ip_address,
+            "user_agent": self.user_agent,
+            "error_reason": self.error_reason,
+            "logged_at": self.logged_at.isoformat() if self.logged_at else None,
+        }

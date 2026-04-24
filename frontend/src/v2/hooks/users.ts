@@ -2,7 +2,6 @@
 //
 // 用户域 react-query hooks。
 // query key 规范：qk('users', action, ...args)
-// TODO: 后端 /api/v1/users 待联调确认，当前 API 层有 mock fallback
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from './query-client'
@@ -13,7 +12,9 @@ import {
   updateUser,
   deleteUser,
   assignUserRoles,
+  listUserLoginHistory,
   type ListUsersParams,
+  type ListLoginHistoryParams,
   type CreateUserPayload,
   type UpdateUserPayload,
   type AssignRolesPayload,
@@ -72,6 +73,20 @@ export function useDeleteUser() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['users'] })
     },
+  })
+}
+
+// ── 登录历史（B-8）────────────────────────────────────────────────────────────
+
+export function useUserLoginHistory(
+  id: number | undefined,
+  params: ListLoginHistoryParams = {},
+) {
+  return useQuery({
+    queryKey: qk('users', 'login-history', id, params),
+    queryFn: () => listUserLoginHistory(id as number, params),
+    enabled: Number.isFinite(id) && (id ?? 0) > 0,
+    staleTime: 15_000,
   })
 }
 

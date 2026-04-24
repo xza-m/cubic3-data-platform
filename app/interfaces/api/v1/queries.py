@@ -265,6 +265,22 @@ def list_histories():
         return server_error(message=f'获取查询历史失败: {str(e)}')
 
 
+@bp.route('/histories/<int:history_id>', methods=['GET'])
+@require_auth
+def get_history_detail(history_id: int):
+    """查询历史详情（C-1）"""
+    try:
+        container = get_app_container()
+        handler = container.get_history_detail_handler()
+        result = handler.handle(history_id=history_id)
+        return success(data=result)
+    except EntityNotFoundError as e:
+        return not_found(message=str(e))
+    except Exception as e:
+        logger.error(f"Get history detail failed: {str(e)}", exc_info=True)
+        return server_error(message=f'获取查询历史详情失败: {str(e)}')
+
+
 # ============================================================================
 # 统计
 # ============================================================================

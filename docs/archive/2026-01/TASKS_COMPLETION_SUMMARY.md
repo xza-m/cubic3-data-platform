@@ -20,7 +20,7 @@
 ### 完成内容
 
 ✅ **创建完整的测试计划文档**
-- 文件: `frontend/tests/CONFIG_CENTER_TEST_PLAN.md`
+- 文件: `./CONFIG_CENTER_TEST_PLAN.md`（v1 归档，2026-04 迁入本目录）
 - 内容: 23 个详细的手工测试用例
 - 覆盖: 渠道管理 + 订阅管理的完整 CRUD 流程
 
@@ -66,7 +66,7 @@
 ### 交付物
 
 ```
-frontend/tests/CONFIG_CENTER_TEST_PLAN.md
+./CONFIG_CENTER_TEST_PLAN.md
 ├── 手工测试清单（23项）
 ├── 测试结果记录表
 ├── 自动化测试方案（未来）

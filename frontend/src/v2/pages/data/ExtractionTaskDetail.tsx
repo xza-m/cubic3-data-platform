@@ -381,10 +381,6 @@ function ScheduleTab({
           <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
             {t('extractionTaskDetail.schedule.title', '调度配置')}
           </span>
-          {/* TODO: PATCH /extraction/tasks/:id 后端需补 schedule_cron / schedule_enabled / schedule_timezone 字段 */}
-          <span className="rounded px-1.5 py-0.5 text-[10px]" style={{ background: 'var(--warning-soft)', color: 'var(--warning)' }}>
-            {t('extractionTaskDetail.schedule.todoBackend', 'TODO: 后端字段待补')}
-          </span>
         </div>
 
         {/* 启用开关 */}

@@ -5,8 +5,6 @@
 
 import { apiClient } from './client'
 import type { PaginatedResponse } from './types'
-import { t } from '@v2/i18n'
-
 // ============================================================================
 // 类型定义（按后端 wire 格式保持 snake_case）
 // ============================================================================
@@ -164,12 +162,10 @@ export async function listQueryHistories(
 }
 
 export async function getQueryHistoryItem(id: number): Promise<QueryHistoryItem> {
-  // 后端暂无单条 history GET，从 list 中筛。
-  // TODO(B-back-8): 等 histories/:id 上线后改为直接调接口
-  const res = await listQueryHistories({ page: 1, page_size: 200 })
-  const item = res.items.find((r) => r.id === id)
-  if (!item) throw new Error(t('queries.history.notFound', '查询历史 #{id} 未找到', { id }))
-  return item
+  // 后端契约：GET /api/v1/queries/histories/:id
+  //          （app/interfaces/api/v1/queries.py :: get_history_detail）
+  const res = await apiClient.get<{ data: QueryHistoryItem }>(`/queries/histories/${id}`)
+  return res.data.data
 }
 
 // ============================================================================
@@ -248,9 +244,10 @@ export interface DatasourceSimple {
 }
 
 export async function listDatasourcesForConsole(): Promise<DatasourceSimple[]> {
-  const res = await apiClient.get<{ data: { items: DatasourceSimple[] } }>('/datasources', {
-    params: { page: 1, page_size: 100 },
-  })
+  const res = await apiClient.get<{ data: { items: DatasourceSimple[] } }>(
+    '/data-center/datasources',
+    { params: { page: 1, page_size: 100 } },
+  )
   return res.data.data.items
 }
 

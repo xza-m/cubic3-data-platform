@@ -175,8 +175,6 @@ export function useViewMaterializeStatus(name: string | undefined) {
     queryFn: () => getMaterializeStatus(name!),
     enabled: !!name,
     staleTime: 0,
-    // B-back-3: materialize status polling — upstream not yet available
-    // TODO(B-back-3): enable polling once backend delivers materialized_at
   })
 }
 
@@ -303,7 +301,6 @@ export function useSemanticFile(type: FileType, name: string | undefined) {
 }
 
 // ─── P4 · Cube 字段校验 ──────────────────────────────────────────────────────
-// TODO(B-back-P4): POST /semantic/cubes/:name/validate-fields — 后端上线后更新 mutationFn
 
 export function useValidateCubeFields() {
   return useMutation({
@@ -313,7 +310,6 @@ export function useValidateCubeFields() {
 }
 
 // ─── P5 · 指标公式 dry-run ──────────────────────────────────────────────────
-// TODO(B-back-P5): POST /semantic/metrics/dry-run — 后端上线后更新 mutationFn
 
 export function useDryRunMetric() {
   return useMutation({
@@ -344,7 +340,6 @@ export function useSemanticGraph() {
 }
 
 // ─── P7 · Domain 发布历史 ────────────────────────────────────────────────────
-// TODO(B-back-P7): GET /semantic/domains/:id/publish/history — 后端上线后更新 queryFn
 
 export function useDomainPublishHistory(id: string | undefined) {
   return useQuery({

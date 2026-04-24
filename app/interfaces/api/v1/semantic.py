@@ -1,7 +1,8 @@
 """语义层管理 REST API"""
 import os
 from datetime import datetime, timezone
-from flask import Blueprint, request
+from typing import Any, Dict, Optional
+from flask import Blueprint, g, request
 from app.interfaces.api.middleware.auth import require_admin, require_auth
 from app.shared.response import success, error, not_found, created
 from app.shared.utils.logger import get_logger
@@ -198,6 +199,25 @@ def create_semantic_blueprint(
             )
         return _cube_listing_svc
 
+    # ── B-6: lazy-init domain_publish_history_service ────────────────────────
+
+    _domain_publish_history_svc = None
+
+    def _resolve_domain_publish_history_service():
+        nonlocal _domain_publish_history_svc
+        if _domain_publish_history_svc is not None:
+            return _domain_publish_history_svc
+        try:
+            from app.application.services.config.domain_publish_history_service import (
+                DomainPublishHistoryService,
+            )
+            from app.extensions import db
+            _domain_publish_history_svc = DomainPublishHistoryService(session=db.session)
+            return _domain_publish_history_svc
+        except Exception as exc:
+            logger.warning("init_domain_publish_history_service_failed", error=str(exc))
+            return None
+
     # ── Cubes ──
 
     @bp.route('/cubes', methods=['GET'])
@@ -300,6 +320,111 @@ def create_semantic_blueprint(
                 return not_found(str(exc))
             return error(f"弃用 Cube 失败: {str(exc)}")
         return success(data=cube.model_dump(mode="json"))
+
+    @bp.route('/cubes/<cube_name>/validate-fields', methods=['POST'])
+    @require_auth
+    def validate_cube_fields(cube_name):
+        """
+        字段级校验（B-4）
+
+        返回: ``{ ok: bool, issues: [{ field, code, message, severity }] }``
+        """
+        cube = semantic_service._cube_repo.get(cube_name)
+        if cube is None:
+            return not_found(f"未找到 Cube: {cube_name}")
+
+        diagnostics = semantic_service.validate_cube(cube) or []
+
+        level_to_severity = {
+            "error": "error",
+            "warn": "warning",
+            "warning": "warning",
+            "info": "info",
+            "ok": "info",
+        }
+
+        issues = []
+        for item in diagnostics:
+            level = (item.get("level") or "info").lower()
+            if level == "ok":
+                continue
+            issues.append({
+                "field": item.get("field") or cube_name,
+                "code": item.get("kind") or "VALIDATION",
+                "message": item.get("message") or "",
+                "severity": level_to_severity.get(level, "info"),
+            })
+
+        has_error = any(issue["severity"] == "error" for issue in issues)
+        return success(data={"ok": not has_error, "issues": issues})
+
+    @bp.route('/metrics/dry-run', methods=['POST'])
+    @require_auth
+    def dry_run_metric():
+        """
+        指标公式 dry-run（B-5）
+
+        请求体: ``{ name: str, formula: str }``
+        响应: ``{ sql_preview: str, sample_rows: [], errors: [] }``
+
+        实现说明：
+        - 当前不执行真实查询，只做最小可用的 SQL 预览合成。
+        - 如传入 measures 可识别，则用 ``semantic_service.compile_query`` 编译；
+          否则基于 formula 生成轻量包装 SQL，并附上 diagnostics。
+        """
+        body = request.get_json(silent=True) or {}
+        name = (body.get("name") or "").strip()
+        formula = (body.get("formula") or "").strip()
+
+        errors = []
+        if not formula:
+            errors.append({"code": "EMPTY_FORMULA", "message": "公式不能为空"})
+            return success(data={"sql_preview": "", "sample_rows": [], "errors": errors})
+
+        sql_preview: str = ""
+        sample_rows: list = []
+
+        # 1) 若 name 存在且能解析为某个 cube.measure —— 用编译器生成 SQL
+        compiled = False
+        try:
+            all_cubes = semantic_service._cube_repo.list_all()
+            matched_cube = None
+            measure_name = name
+            for cube in all_cubes:
+                if name in (cube.measures or {}):
+                    matched_cube = cube
+                    break
+
+            if matched_cube is not None:
+                dsl = {
+                    "cube": matched_cube.name,
+                    "measures": [measure_name],
+                    "limit": 10,
+                }
+                compile_result = semantic_service.compile_query(dsl)
+                sql_preview = compile_result.sql
+                compiled = True
+        except Exception as exc:
+            errors.append({
+                "code": "COMPILE_FAILED",
+                "message": f"编译指标失败: {exc}",
+            })
+
+        # 2) 兜底：如果无法编译，合成一个"把 formula 包装为 SELECT" 的预览
+        if not compiled:
+            safe_formula = formula.replace("\n", " ").strip()
+            sql_preview = (
+                f"-- dry-run preview for metric: {name or '(anonymous)'}\n"
+                f"SELECT ({safe_formula}) AS metric_value\n"
+                f"FROM <cube>\n"
+                f"LIMIT 10;"
+            )
+
+        return success(data={
+            "sql_preview": sql_preview,
+            "sample_rows": sample_rows,
+            "errors": errors,
+        })
 
     # ── Domains ──
 
@@ -426,6 +551,20 @@ def create_semantic_blueprint(
     @require_admin
     def publish_domain(domain_id):
         body = request.get_json(silent=True) or {}
+
+        history_service = _resolve_domain_publish_history_service()
+        prev_snapshot: Optional[Dict[str, Any]] = None
+        if history_service is not None:
+            try:
+                prev = domain_modeling_service.get_domain_detail(domain_id)
+                if isinstance(prev, dict):
+                    prev_snapshot = {
+                        "cubes": prev.get("cubes") or [],
+                        "joins": prev.get("joins") or [],
+                    }
+            except Exception:
+                prev_snapshot = None
+
         try:
             domain = domain_modeling_service.publish_domain(
                 domain_id,
@@ -433,8 +572,68 @@ def create_semantic_blueprint(
                 joins=body.get("joins"),
             )
         except Exception as exc:
+            if history_service is not None:
+                try:
+                    history_service.record_publish(
+                        domain_id=domain_id,
+                        domain_code=None,
+                        snapshot={"error": str(exc)},
+                        published_by=g.get("user_id"),
+                        note=body.get("note"),
+                        status="failed",
+                        diff_summary=str(exc)[:200],
+                    )
+                except Exception:
+                    pass
             return error(f"发布领域失败: {str(exc)}")
-        return success(data=domain_modeling_service.get_domain_detail(domain.id or domain.code))
+
+        detail = domain_modeling_service.get_domain_detail(domain.id or domain.code)
+
+        if history_service is not None:
+            try:
+                next_snapshot = {
+                    "cubes": detail.get("cubes") or [] if isinstance(detail, dict) else [],
+                    "joins": detail.get("joins") or [] if isinstance(detail, dict) else [],
+                }
+                history_service.record_publish(
+                    domain_id=str(domain.id or domain.code),
+                    domain_code=domain.code,
+                    snapshot=next_snapshot,
+                    published_by=g.get("user_id"),
+                    note=body.get("note"),
+                    diff_summary=history_service.compute_diff_summary(
+                        prev_snapshot, next_snapshot,
+                    ),
+                    status="success",
+                )
+            except Exception:
+                pass
+
+        return success(data=detail)
+
+    @bp.route('/domains/<domain_id>/publish/history', methods=['GET'])
+    @require_auth
+    def get_domain_publish_history(domain_id):
+        """
+        领域发布历史（B-6）
+
+        响应: ``{ records: [{ version, published_at, published_by, status, ... }], total }``
+        """
+        page = request.args.get('page', 1, type=int)
+        page_size = request.args.get('page_size', 20, type=int)
+
+        history_service = _resolve_domain_publish_history_service()
+        if history_service is None:
+            return success(data={"records": [], "total": 0})
+
+        try:
+            result = history_service.list_publish_records(
+                domain_id=domain_id, page=page, page_size=page_size,
+            )
+        except Exception as exc:
+            logger.warning("list_domain_publish_history_failed", error=str(exc))
+            return success(data={"records": [], "total": 0})
+        return success(data=result)
 
     # ── Views ──
 

@@ -97,6 +97,10 @@ class QueryRepository(QueryRepositoryInterface):
         self.session.commit()
         self.session.refresh(history)
         return history
+
+    def get_history_by_id(self, history_id: int) -> Optional[QueryHistory]:
+        """按主键获取查询历史（C-1：支持前端 /queries/histories/:id）"""
+        return self.session.query(QueryHistory).filter_by(id=history_id).first()
     
     def list_histories(self, page: int, page_size: int, filters: Dict[str, Any]) -> Dict[str, Any]:
         """历史列表"""

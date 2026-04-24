@@ -16,6 +16,7 @@ vi.mock('@v2/api/users', () => ({
   updateUser: vi.fn(),
   deleteUser: vi.fn(),
   assignUserRoles: vi.fn(),
+  listUserLoginHistory: vi.fn(),
 }))
 
 import { listUsers, createUser } from '@v2/api/users'
@@ -31,10 +32,14 @@ const MOCK_USERS: User[] = [
     username: 'admin',
     email: 'admin@test.com',
     display_name: '管理员',
-    role_ids: [1],
+    status: 'active',
     is_active: true,
+    is_system: true,
+    role_ids: [1],
+    role_codes: ['admin'],
     last_login_at: null,
     created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
   },
 ]
 

@@ -63,8 +63,8 @@ export default function DomainCanvas() {
 
   const domain = domainQuery.data
   const canvas = canvasQuery.data
-  const nodes: DomainCanvasNode[] = canvas?.nodes ?? []
-  const edges = canvas?.edges ?? []
+  const nodes = useMemo<DomainCanvasNode[]>(() => canvas?.nodes ?? [], [canvas])
+  const edges = useMemo(() => canvas?.edges ?? [], [canvas])
 
   // ---- 面包屑 & TopBar ----
   useEffect(() => {
@@ -486,7 +486,6 @@ function NodeRelations({
 }
 
 // ─── P7: 发布历史列表 ─────────────────────────────────────────────────────────
-// TODO(B-back-P7): GET /semantic/domains/:id/publish/history — 使用 mock 数据
 
 function PublishHistoryList({
   records,

@@ -86,11 +86,11 @@ export const NAV_MODULES: NavModule[] = [
     label: t('nav.extraction.label', '提取任务'),
     description: t('nav.extraction.desc', '调度 + 订阅'),
     icon: Workflow,
-    basePath: '/extraction-tasks',
+    basePath: '/extraction/tasks',
     group: '数据',
     implemented: true,
     subnav: [
-      { label: t('nav.extraction.sub.tasks', '任务列表'), path: '/extraction-tasks', implemented: true },
+      { label: t('nav.extraction.sub.tasks', '任务列表'), path: '/extraction/tasks', implemented: true },
       { label: t('nav.extraction.sub.runs', '执行记录'), path: '/extraction/runs', implemented: true },
       { label: t('nav.extraction.sub.config', '任务配置'), path: '/extraction/config', implemented: true },
     ],

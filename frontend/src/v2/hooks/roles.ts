@@ -2,7 +2,6 @@
 //
 // 角色域 react-query hooks。
 // query key 规范：qk('roles', action, ...args)
-// TODO: 后端 /api/v1/roles 待联调确认，当前 API 层有 mock fallback
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from './query-client'
@@ -12,6 +11,7 @@ import {
   createRole,
   updateRole,
   deleteRole,
+  listPermissions,
   type ListRolesParams,
   type CreateRolePayload,
   type UpdateRolePayload,
@@ -70,5 +70,15 @@ export function useDeleteRole() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['roles'] })
     },
+  })
+}
+
+// ── 权限列表 ──────────────────────────────────────────────────────────────────
+
+export function useListPermissions() {
+  return useQuery({
+    queryKey: qk('permissions', 'list'),
+    queryFn: () => listPermissions(),
+    staleTime: 10 * 60_000,
   })
 }

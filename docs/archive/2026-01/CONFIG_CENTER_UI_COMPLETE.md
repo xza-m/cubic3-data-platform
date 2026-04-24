@@ -107,7 +107,7 @@
 ### 4. 集成测试 (4 个任务)
 
 #### 测试计划文档
-- ✅ `frontend/tests/CONFIG_CENTER_TEST_PLAN.md` (400+ 行)
+- ✅ `./CONFIG_CENTER_TEST_PLAN.md` (400+ 行，v1 归档)
 - ✅ 渠道 CRUD 端到端测试（7 个测试用例）
 - ✅ 订阅 CRUD 端到端测试（6 个测试用例）
 - ✅ 表单验证测试（2 个测试用例）
@@ -450,7 +450,7 @@ frontend/src/
 
 - 提案文档: `openspec/changes/config-center-ui/proposal.md`
 - 任务清单: `openspec/changes/config-center-ui/tasks.md`
-- 测试计划: `frontend/tests/CONFIG_CENTER_TEST_PLAN.md`
+- 测试计划: `./CONFIG_CENTER_TEST_PLAN.md`（v1 归档，v2 自动化由 e2e-v2 承接）
 - API 文档: 访问 `/api/docs` 查看完整 API 文档
 
 ---

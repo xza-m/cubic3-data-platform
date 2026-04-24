@@ -134,6 +134,19 @@ def get_user(user_id: int):
     return success(data=data)
 
 
+@bp.route("/<int:user_id>/login-history", methods=["GET"])
+@require_auth
+def get_user_login_history(user_id: int):
+    """GET /api/v1/users/:id/login-history — 分页返回最近的登录事件。"""
+    page = request.args.get("page", 1, type=int)
+    size = request.args.get("size", request.args.get("page_size", 20, type=int), type=int)
+    try:
+        result = _service().list_login_history(user_id=user_id, page=page, size=size)
+    except Exception as exc:  # noqa: BLE001
+        return _handle_business_error(exc)
+    return success(data=result)
+
+
 @bp.route("", methods=["POST"])
 @require_admin
 def create_user():

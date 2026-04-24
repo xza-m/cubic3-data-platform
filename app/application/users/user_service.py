@@ -11,6 +11,7 @@ from dataclasses import asdict
 from typing import Any, Optional, Protocol
 
 from app.domain.users.repositories import (
+    LoginEventRecord,
     RoleRepository,
     UserListFilters,
     UserRepository,
@@ -256,6 +257,59 @@ class UserService:
 
     def has_any_user(self) -> bool:
         return self.user_repo.count() > 0
+
+    # ------------------------------------------------------------------
+    # 登录历史（B-8）
+    # ------------------------------------------------------------------
+
+    def record_login_event(
+        self,
+        *,
+        user_id: int,
+        status: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        error_reason: Optional[str] = None,
+    ) -> None:
+        """追加一条登录事件；失败写入不影响主流程。"""
+        try:
+            self.user_repo.add_login_event(
+                LoginEventRecord(
+                    user_id=int(user_id),
+                    status=status or "success",
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    error_reason=error_reason,
+                )
+            )
+        except Exception:
+            pass
+
+    def list_login_history(
+        self, user_id: int, page: int = 1, size: int = 20
+    ) -> dict[str, Any]:
+        user = self.user_repo.get(user_id)
+        if not user:
+            raise UserNotFoundError(user_id)
+        events, total = self.user_repo.list_login_events(
+            user_id=user_id, page=page, size=size
+        )
+        return {
+            "items": [
+                {
+                    "id": ev.id,
+                    "logged_at": ev.logged_at.isoformat() if ev.logged_at else None,
+                    "status": ev.status,
+                    "ip": ev.ip_address,
+                    "user_agent": ev.user_agent,
+                    "error_reason": ev.error_reason,
+                }
+                for ev in events
+            ],
+            "total": total,
+            "page": page,
+            "size": size,
+        }
 
     # ------------------------------------------------------------------
     # 内部辅助

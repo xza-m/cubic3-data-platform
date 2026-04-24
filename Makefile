@@ -39,9 +39,12 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	static-imports \
 	static-patterns \
 	static-schema \
+	check-tokens-frontend \
+	check-i18n-frontend \
 	typecheck-frontend \
 	typecheck-backend \
 	typecheck-contracts \
+	build-frontend \
 	test-unit \
 	test-unit-backend \
 	test-unit-frontend \
@@ -53,7 +56,10 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	smoke-observability \
 	coverage \
 	coverage-backend \
-	coverage-frontend
+	coverage-frontend \
+	coverage-report \
+	local-ci \
+	local-smoke
 
 help:
 	@printf '%s\n' '可用目标:'
@@ -64,7 +70,7 @@ help:
 	@printf '  %-26s %s\n' 'make smoke' '层 4：运行验证总入口（backend API / frontend shell / observability）'
 	@printf '  %-26s %s\n' 'make verify' '顺序执行 lint -> typecheck -> test -> smoke'
 	@printf '  %-26s %s\n' 'make verify-backend' '后端交付入口（backend lint/typecheck/test/smoke）'
-	@printf '  %-26s %s\n' 'make verify-frontend' '前端交付入口（frontend lint/typecheck/test/smoke）'
+	@printf '  %-26s %s\n' 'make verify-frontend' '前端交付入口（lint + tokens + i18n + tsc + build + test + smoke；是 local-ci 的严格超集）'
 	@printf '  %-26s %s\n' 'make verify-cutover' 'Round 3 Day 0 cutover 专用闸门（v2-only · scripts/cutover/deploy.sh 调用）'
 	@printf '  %-26s %s\n' 'make verify-docs' '文档交付入口（docs-health）'
 	@printf '  %-26s %s\n' 'make verify-detect' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 检测命中的验证规则'
@@ -73,22 +79,30 @@ help:
 	@printf '  %-26s %s\n' 'make verify-semantic' '语义中心专项总入口（共享层 + 语义 smoke）'
 	@printf '  %-26s %s\n' 'make smoke-semantic' '语义中心关键路径运行验证'
 	@printf '  %-26s %s\n' 'make coverage' 'coverage 聚合入口（backend + frontend，可选，不并入默认四层）'
-	@printf '  %-26s %s\n' 'make coverage-backend' '后端完整 pytest 覆盖率基线 + 模块守护检查（可选，不并入默认四层）'
-	@printf '  %-26s %s\n' 'make coverage-frontend' '前端单元测试 coverage 基线 + 核心页守护检查（可选，不并入默认四层）'
+	@printf '  %-26s %s\n' 'make coverage-backend' '后端完整 pytest 覆盖率 + ratchet 防倒退校验（scripts/backend_coverage_rules.json）'
+	@printf '  %-26s %s\n' 'make coverage-frontend' '已退役 skip；前端守护由 vitest.config.ts 子树阈值承接'
+	@printf '  %-26s %s\n' 'make coverage-report' 'opt-in：生成前后端覆盖率数字报告，不设阈值，仅供查看（~2-3 min）'
 	@printf '  %-26s %s\n' 'make docs-impact' '检查当前改动是否遗漏关键知识库文档更新'
 	@printf '%s\n' ''
 	@printf '%s\n' '分层子目标:'
-	@printf '  %-26s %s\n' 'make lint-frontend' '前端静态检查'
+	@printf '  %-26s %s\n' 'make lint-frontend' '前端 ESLint'
 	@printf '  %-26s %s\n' 'make lint-backend' '后端静态检查（当前未配置时显式 skip）'
-	@printf '  %-26s %s\n' 'make static-eslint' '前端 ESLint'
+	@printf '  %-26s %s\n' 'make static-eslint' '前端 ESLint（lint-frontend 别名）'
+	@printf '  %-26s %s\n' 'make check-tokens-frontend' '前端 v2 CSS token 引用校验（scripts/check-v2-tokens.mjs）'
+	@printf '  %-26s %s\n' 'make check-i18n-frontend' '前端 v2 i18n 覆盖率校验'
 	@printf '  %-26s %s\n' 'make typecheck-frontend' '前端 TypeScript 类型检查'
+	@printf '  %-26s %s\n' 'make build-frontend' '前端 v2 生产构建（vite build，作为类型/语法的最终把关）'
 	@printf '  %-26s %s\n' 'make test-unit' '单元测试聚合'
 	@printf '  %-26s %s\n' 'make test-integration' '集成测试聚合'
 	@printf '  %-26s %s\n' 'make test-backend' '后端自动化测试聚合'
 	@printf '  %-26s %s\n' 'make test-frontend' '前端自动化测试聚合'
 	@printf '  %-26s %s\n' 'make smoke-backend' '后端关键 API smoke'
-	@printf '  %-26s %s\n' 'make smoke-frontend' '前端平台壳层 smoke'
+	@printf '  %-26s %s\n' 'make smoke-frontend' '前端平台壳层 smoke（== local-smoke）'
 	@printf '  %-26s %s\n' 'make docs-health' '文档健康检查'
+	@printf '%s\n' ''
+	@printf '%s\n' '本地闸门（GitLab CI 未就位时的替代入口）:'
+	@printf '  %-26s %s\n' 'make local-ci' '本地等价 CI（verify-frontend 去掉 smoke/integration 的严格子集，~2 min，无需 docker）'
+	@printf '  %-26s %s\n' 'make local-smoke' '本地 E2E 冒烟：smoke-frontend 别名（Playwright e2e:smoke；需前端在 :3000 可达）'
 
 setup:
 	@if [ ! -f .env ]; then cp env.sample .env; echo '已根据 env.sample 创建 .env'; else echo '.env 已存在，跳过复制'; fi
@@ -98,7 +112,7 @@ setup:
 
 lint: static
 
-static: lint-frontend lint-backend static-format static-imports static-patterns static-schema
+static: lint-frontend lint-backend check-tokens-frontend check-i18n-frontend static-format static-imports static-patterns static-schema
 
 lint-frontend:
 	@printf '%s\n' '[layer1][eslint] 运行前端 ESLint'
@@ -121,6 +135,14 @@ static-patterns:
 static-schema:
 	@printf '%s\n' '[layer1][schema] skip: 当前仓库未配置独立基础 schema 校验入口'
 
+check-tokens-frontend:
+	@printf '%s\n' '[layer1][tokens] 校验 v2 CSS 设计 token 引用'
+	cd $(FRONTEND_DIR) && $(NPM) run check:v2-tokens
+
+check-i18n-frontend:
+	@printf '%s\n' '[layer1][i18n] 校验 v2 i18n 覆盖率'
+	cd $(FRONTEND_DIR) && $(NPM) run i18n:coverage
+
 typecheck: typecheck-frontend typecheck-backend typecheck-contracts
 
 typecheck-frontend:
@@ -132,6 +154,10 @@ typecheck-backend:
 
 typecheck-contracts:
 	@printf '%s\n' '[layer2][contracts] skip: 当前仓库未配置 OpenAPI / protobuf / GraphQL 一致性检查'
+
+build-frontend:
+	@printf '%s\n' '[layer2][build][frontend] 运行 v2 生产构建（vite build --config v2.vite.config.ts）'
+	cd $(FRONTEND_DIR) && $(NPM) run build:v2
 
 test: test-unit test-integration
 
@@ -187,7 +213,13 @@ verify: lint typecheck test smoke
 
 verify-backend: lint-backend typecheck-backend test-backend smoke-backend
 
-verify-frontend: lint-frontend typecheck-frontend test-frontend smoke-frontend
+# Round 4 · D+28 consolidation：
+#   verify-frontend 现在是 local-ci 的严格超集：
+#     layer1 静态：lint-frontend + check-tokens-frontend + check-i18n-frontend
+#     layer2 类型：typecheck-frontend + build-frontend（v2 生产构建）
+#     layer3 测试：test-frontend（unit + integration）
+#     layer4 冒烟：smoke-frontend（== local-smoke，v2 e2e:smoke）
+verify-frontend: lint-frontend check-tokens-frontend check-i18n-frontend typecheck-frontend build-frontend test-frontend smoke-frontend
 
 # Round 3 W6 · cutover Day 0 专用闸门：只跑 v2 相关检查。
 # 与 verify-frontend 的差异：
@@ -233,10 +265,18 @@ coverage-backend:
 	$(PYTHON) scripts/checks/backend_coverage_guard.py
 
 coverage-frontend:
-	@printf '%s\n' '[coverage][frontend] 运行前端单元测试 coverage 基线'
-	cd $(FRONTEND_DIR) && $(NPM) run test:unit:coverage
-	@printf '%s\n' '[coverage][frontend] 校验总门槛和核心功能页守护约束'
-	$(PYTHON) scripts/checks/frontend_coverage_guard.py
+	@printf '%s\n' '[coverage][frontend] Round 4 · D+28 退役：前端覆盖率守护已由 vitest.config.ts 的子树阈值（src/v2/components|hooks|lib 各 80%）接管'
+	@printf '%s\n' '[coverage][frontend] 需要数字报告请运行 `make coverage-report`'
+
+coverage-report:
+	@printf '%s\n' '[coverage-report] 运行前端/后端 coverage 基线（不设阈值，仅供查看；耗时 ~2-3 min）'
+	@printf '%s\n' '[coverage-report][backend] pytest tests（含 coverage）'
+	-PYTHONPATH=. $(PYTHON) -m pytest tests >/dev/null || true
+	@printf '%s\n' '[coverage-report][backend] 输出模块覆盖率（按覆盖率倒序）'
+	@$(PYTHON) scripts/checks/backend_coverage_guard.py --json | $(PYTHON) -c "import sys,json; r=json.load(sys.stdin); print(f'  total = {r[\"total_rate\"]:.2f}% (threshold {r[\"total_threshold\"]:.2f}%)'); [print(f'  {m:45s} {v:6.2f}%') for m,v in sorted(r['module_rates'].items(), key=lambda x: -x[1])]"
+	@printf '%s\n' '[coverage-report][frontend] vitest --coverage'
+	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- --coverage --coverage.reporter=text --coverage.reporter=json-summary
+	@printf '%s\n' '[coverage-report][frontend] HTML 报告见 frontend/coverage/index.html'
 
 docs-health:
 	@printf '%s\n' '[docs] 运行文档健康检查'
@@ -245,5 +285,19 @@ docs-health:
 docs-impact:
 	@printf '%s\n' '[docs] 运行文档影响检查'
 	$(PYTHON) scripts/checks/doc_impact.py $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),) $(VERIFY_FILES)
+
+# -----------------------------------------------------------------------------
+# 本地闸门（GitLab CI 基建未就位时，替代 pipeline 的手动入口）
+# -----------------------------------------------------------------------------
+# local-ci:     提 MR / push 前手动跑一次，等价于 verify-frontend 去掉 smoke/integration 的子集。
+#               复用 lint/typecheck/tokens/i18n/unit-test/build 原子 target，避免与
+#               verify-frontend 发生定义漂移；不含 E2E（不需要 docker / 后端），耗时约 1-2 min。
+# local-smoke:  smoke-frontend 的用户向别名；需要 docker compose 已起、前端在 :3000 可达。
+# -----------------------------------------------------------------------------
+local-ci: lint-frontend check-tokens-frontend check-i18n-frontend typecheck-frontend test-unit-frontend build-frontend
+	@printf '%s\n' '[local-ci] PASS（lint + tokens + i18n + tsc + vitest + v2 build）'
+
+local-smoke: smoke-frontend
+	@printf '%s\n' '[local-smoke] PASS（== smoke-frontend，Playwright v2 e2e:smoke）'
 
 review: verify verify-docs docs-impact

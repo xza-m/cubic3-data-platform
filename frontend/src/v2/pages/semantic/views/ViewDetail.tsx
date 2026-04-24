@@ -4,7 +4,7 @@
 // 接口：GET /api/v1/semantic/views/:name
 //       GET /api/v1/semantic/views/:id/materialize/runs （P8 物化历史）
 //
-// B-back-3: View 物化触发按钮依赖 materialized_at 字段，详见 api/semantic.ts 注释。
+// View 物化触发按钮依赖后端返回的 materialized_at/materialize_status 字段。
 
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -38,7 +38,7 @@ export default function ViewDetail() {
   const view = viewQuery.data
   const toast = useToast()
 
-  // P8: 物化历史 — 使用 view.id（后端返回，来自 B-back-3 的 materialized_at 扩展）
+  // P8: 物化历史 — 使用 view.id（后端在 describe_view 响应中附带 materialized_at/materialize_status）
   const viewId = (view as Record<string, unknown>)?.id as number | undefined
   const [historyPage, setHistoryPage] = useState(1)
   const runsQuery = useViewMaterializeRuns(
@@ -58,7 +58,7 @@ export default function ViewDetail() {
         <Button size="sm" variant="ghost" onClick={() => navigate('/semantic/views')}>
           <ArrowLeft size={12} /> {t('action.back', '返回列表')}
         </Button>
-        {/* B-back-3: 物化触发按钮 */}
+        {/* 物化触发按钮 */}
         <Button
           size="sm"
           variant="primary"

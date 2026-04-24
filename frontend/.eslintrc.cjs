@@ -28,8 +28,6 @@ module.exports = {
     'playwright-report-v2',
     'tests/artifacts',
     'tests/e2e',
-    'tests/e2e-node/**/*.png',
-    'QueryBuilder.tsx',
   ],
   rules: {
     'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],

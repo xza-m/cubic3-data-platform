@@ -52,11 +52,13 @@ const SettingsPage = lazy(() => import('@v2/pages/settings/Settings'))
 // ── Data 域（data-center / extraction） ────────────────────────────────────────
 const Datasources = lazy(() => import('@v2/pages/data/Datasources'))
 const DatasourceDetail = lazy(() => import('@v2/pages/data/DatasourceDetail'))
+const DatasourceCreate = lazy(() => import('@v2/pages/data/DatasourceCreate'))
 const Datasets = lazy(() => import('@v2/pages/data/Datasets'))
 const DatasetDetail = lazy(() => import('@v2/pages/data/DatasetDetail'))
 const DatasetCreate = lazy(() => import('@v2/pages/data/DatasetCreate'))
 const ExtractionTasks = lazy(() => import('@v2/pages/data/ExtractionTasks'))
 const ExtractionTaskDetail = lazy(() => import('@v2/pages/data/ExtractionTaskDetail'))
+const ExtractionTaskCreate = lazy(() => import('@v2/pages/data/ExtractionTaskCreate'))
 const ExtractionRuns = lazy(() => import('@v2/pages/data/ExtractionRuns'))
 const ExtractionRunDetail = lazy(() => import('@v2/pages/data/ExtractionRunDetail'))
 // TODO[R2-W2]: no ExtractionConfig page on disk — /extraction/config remains Placeholder
@@ -71,6 +73,7 @@ const QueryHistoryDetail = lazy(() => import('@v2/pages/queries/QueryHistoryDeta
 const QueriesScheduled = lazy(() => import('@v2/pages/queries/QueriesScheduled'))
 const QueriesScheduledDetail = lazy(() => import('@v2/pages/queries/QueriesScheduledDetail'))
 const QueriesScheduledCreate = lazy(() => import('@v2/pages/queries/QueriesScheduledCreate'))
+const QueriesSavedCreate = lazy(() => import('@v2/pages/queries/QueriesSavedCreate'))
 // TODO[R2-W3]: no QueriesVisual page on disk — /queries/visual remains Placeholder
 
 // ── Apps 域 ───────────────────────────────────────────────────────────────────
@@ -144,15 +147,17 @@ export default function AppRoutes() {
           <Route path="data-center">
             <Route index element={<Navigate to="/data-center/datasources" replace />} />
 
-            {/* 数据源 */}
+            {/* 数据源；静态 new 必须在动态 :id 之前 */}
             <Route path="datasources">
               <Route index element={wrap(<Datasources />)} />
+              <Route path="new" element={wrap(<DatasourceCreate />)} />
               <Route path=":id" element={wrap(<DatasourceDetail />)} />
             </Route>
 
-            {/* 数据集；静态 register 必须在动态 :id 之前 */}
+            {/* 数据集；静态 new / register 必须在动态 :id 之前 */}
             <Route path="datasets">
               <Route index element={wrap(<Datasets />)} />
+              <Route path="new" element={<Navigate to="/data-center/datasets/register" replace />} />
               <Route path="register">
                 <Route index element={wrap(<DatasetCreate />)} />
                 <Route path="table" element={wrap(<DatasetCreate />)} />
@@ -162,14 +167,9 @@ export default function AppRoutes() {
             </Route>
           </Route>
 
-          {/* ── 提取任务 ── */}
-          <Route path="extraction-tasks">
-            <Route index element={wrap(<ExtractionTasks />)} />
-            <Route path=":id" element={wrap(<ExtractionTaskDetail />)} />
-          </Route>
-
-          {/* 提取配置 & 执行记录（路径前缀 extraction/，与提取任务列表路径区分） */}
+          {/* ── 提取（任务 + 执行记录 + 配置，统一在 /extraction 下） ── */}
           <Route path="extraction">
+            <Route index element={<Navigate to="/extraction/tasks" replace />} />
             <Route
               path="config" // TODO[R2-W2]: no ExtractionConfig page on disk yet
               element={wrap(
@@ -179,10 +179,21 @@ export default function AppRoutes() {
                 />,
               )}
             />
+            <Route path="tasks">
+              <Route index element={wrap(<ExtractionTasks />)} />
+              <Route path="new" element={wrap(<ExtractionTaskCreate />)} />
+              <Route path=":id" element={wrap(<ExtractionTaskDetail />)} />
+            </Route>
             <Route path="runs">
               <Route index element={wrap(<ExtractionRuns />)} />
               <Route path=":id" element={wrap(<ExtractionRunDetail />)} />
             </Route>
+          </Route>
+
+          {/* Legacy 重定向：/extraction-tasks → /extraction/tasks（2026-04 前的旧 URL） */}
+          <Route path="extraction-tasks">
+            <Route index element={<Navigate to="/extraction/tasks" replace />} />
+            <Route path=":id" element={<LegacyRedirect to="/extraction/tasks/:id" />} />
           </Route>
 
           {/* ── 数据对话 ── TODO[R2-W2]: no DataChat page on disk yet ── */}
@@ -210,7 +221,14 @@ export default function AppRoutes() {
             />
             <Route path="my">
               <Route index element={wrap(<QueriesSaved />)} />
+              <Route path="new" element={wrap(<QueriesSavedCreate />)} />
               <Route path=":id" element={wrap(<QueriesSavedDetail />)} />
+            </Route>
+            {/* Legacy: /queries/my/* → /queries/my/* */}
+            <Route path="saved">
+              <Route index element={<Navigate to="/queries/my" replace />} />
+              <Route path="new" element={<Navigate to="/queries/my/new" replace />} />
+              <Route path=":id" element={<LegacyRedirect to="/queries/my/:id" />} />
             </Route>
             <Route path="history">
               <Route index element={wrap(<QueryHistory />)} />

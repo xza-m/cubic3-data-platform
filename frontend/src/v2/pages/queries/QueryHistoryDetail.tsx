@@ -1,16 +1,14 @@
 // frontend/src/v2/pages/queries/QueryHistoryDetail.tsx
 //
 // 查询历史 L3 详情页。
-// 接 GET /api/v1/queries/histories （通过 list + filter 方式，待 histories/:id 接口上线）
-// TODO(B-back-8): histories/:id 上线后改为 useQueryHistoryDetail(id)
+// 主体数据走 GET /api/v1/queries/histories/:id；邻接导航仍借助 list 拉取。
 
 import { useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Play } from 'lucide-react'
-import { useQueryHistories } from '@v2/hooks/queries'
+import { useQueryHistories, useQueryHistoryDetail } from '@v2/hooks/queries'
 import { t } from '@v2/i18n'
 import { fmtNum, fmtRelative } from '@v2/lib/format'
-import type { QueryHistoryItem } from '@v2/api/queries'
 import {
   QueryHistoryDetailContent,
   statusChip,
@@ -21,22 +19,18 @@ export default function QueryHistoryDetail() {
   const numericId = Number(id)
   const navigate = useNavigate()
 
-  // load list and extract single item
-  const { data, isLoading, isError } = useQueryHistories({ page: 1, page_size: 200 })
-
-  const row: QueryHistoryItem | null = useMemo(
-    () => data?.items.find((r) => r.id === numericId) ?? null,
-    [data?.items, numericId],
-  )
+  const { data: row, isLoading, isError } = useQueryHistoryDetail(numericId)
+  // 邻接导航使用 list（同一 page_size 内相邻的 id）。
+  const { data: listData } = useQueryHistories({ page: 1, page_size: 200 })
 
   const neighbors = useMemo(() => {
-    const items = data?.items ?? []
+    const items = listData?.items ?? []
     const idx = items.findIndex((r) => r.id === numericId)
     return {
       prev: idx > 0 ? items[idx - 1] : null,
       next: idx >= 0 && idx < items.length - 1 ? items[idx + 1] : null,
     }
-  }, [data?.items, numericId])
+  }, [listData?.items, numericId])
 
   if (!Number.isFinite(numericId) || numericId <= 0) {
     return (

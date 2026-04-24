@@ -117,6 +117,22 @@ def disable_subscription(subscription_id: int):
     return success(data=subscription)
 
 
+@bp.route('/<int:subscription_id>/history', methods=['GET'])
+@require_auth
+def get_subscription_history(subscription_id: int):
+    """获取订阅分发历史（分页）"""
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 20, type=int)
+
+    service = _get_service()
+    result = service.list_delivery_history(
+        subscription_id=subscription_id,
+        page=page,
+        page_size=page_size,
+    )
+    return success(data=result)
+
+
 # ============================================================================
 # 快捷查询（挂载到 app-instances 下的子路由）
 # ============================================================================

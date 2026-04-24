@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# 本地闸门 · pre-push（目标: < 90s）
+#
+# 跑什么：frontend 的 tsc + eslint(v2) + vitest + v2 build
+# 跳过方法（仅限紧急修复）：git push --no-verify
+# 对应 npm 脚本：frontend/package.json 的 "ci:pre-push"
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root/frontend"
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[husky][pre-push] skip: 找不到 npm（未安装 Node），放行本次推送"
+  exit 0
+fi
+
+echo "[husky][pre-push] 运行 npm run ci:pre-push（typecheck + lint + vitest + v2 build）"
+npm run --silent ci:pre-push

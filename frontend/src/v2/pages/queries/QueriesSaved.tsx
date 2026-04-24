@@ -92,7 +92,7 @@ export default function QueriesSaved() {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/queries/saved/new')}
+              onClick={() => navigate('/queries/my/new')}
               className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
             >
               <Plus size={12} /> {t('queries.saved.action.create', '新建查询')}
@@ -126,7 +126,7 @@ export default function QueriesSaved() {
               {!search && !isFavorite && (
                 <button
                   type="button"
-                  onClick={() => navigate('/queries/saved/new')}
+                  onClick={() => navigate('/queries/my/new')}
                   className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
                 >
                   {t('queries.saved.action.createFirst', '新建第一个查询')}
@@ -159,7 +159,7 @@ export default function QueriesSaved() {
                       background: peekRow?.id === row.id ? 'var(--accent-soft)' : undefined,
                     }}
                     onClick={() => setPeekRow(row)}
-                    onDoubleClick={() => navigate(`/queries/saved/${row.id}`)}
+                    onDoubleClick={() => navigate(`/queries/my/${row.id}`)}
                   >
                     <Td>
                       <div className="min-w-0">
@@ -223,7 +223,7 @@ export default function QueriesSaved() {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
-                            navigate(`/queries/saved/${row.id}`)
+                            navigate(`/queries/my/${row.id}`)
                           }}
                           className="rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
                           style={{ color: 'var(--accent)' }}
@@ -307,7 +307,7 @@ export default function QueriesSaved() {
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => navigate(`/queries/saved/${peekRow.id}`)}
+                onClick={() => navigate(`/queries/my/${peekRow.id}`)}
                 className="rounded px-2 py-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
                 style={{ color: 'var(--accent)' }}
               >
@@ -327,7 +327,7 @@ export default function QueriesSaved() {
             row={peekRow}
             actions={{
               onOpen: () => navigate('/queries/console'),
-              onEdit: () => navigate(`/queries/saved/${peekRow.id}`),
+              onEdit: () => navigate(`/queries/my/${peekRow.id}`),
               onDelete: () => void handleDelete(peekRow),
               onToggleFavorite: () => void favMut.mutateAsync(peekRow.id),
             }}

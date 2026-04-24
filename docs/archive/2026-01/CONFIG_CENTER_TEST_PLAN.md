@@ -1,8 +1,21 @@
-# 配置中心 UI 集成测试计划
+# 配置中心 UI 集成测试计划（v1 历史归档）
 
 **创建时间**: 2026-01-25  
 **测试范围**: 渠道管理 + 订阅管理  
-**状态**: ✅ 已完成
+**状态**: ✅ 已完成（v1 版本归档）
+
+> ⚠️ **历史归档说明（2026-04 v2 cutover 后补注）**
+>
+> 本文件是 v1 配置中心时代的**手工测试清单**，为保持归档完整性，于 2026-04 从
+> `frontend/tests/` 移入本目录。当前 v2 对应的**自动化覆盖**已由以下 e2e-v2 spec 承接：
+>
+> - `frontend/tests/e2e-v2/p12-channel-test-send.spec.ts` — 渠道测试发送
+> - `frontend/tests/e2e-v2/p13-subscription-history.spec.ts` — 订阅历史
+> - `frontend/src/v2/pages/config/channels/*.test.tsx` — 渠道单元/集成
+> - `frontend/src/v2/pages/config/subscriptions/*.test.tsx` — 订阅单元/集成
+>
+> 文末"自动化测试方案"段落中的 `@/pages/ConfigCenter/Channels` 示例路径在 v2 中应读作
+> `@v2/pages/config/channels/Channels`。本文件不再作为活跃测试计划使用。
 
 ---
 

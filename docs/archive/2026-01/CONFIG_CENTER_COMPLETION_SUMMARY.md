@@ -203,7 +203,7 @@ openspec archive config-center-ui
 ## 📚 相关文档
 
 - **完整总结**: `CONFIG_CENTER_UI_COMPLETE.md` (600+ 行详细文档)
-- **测试计划**: `frontend/tests/CONFIG_CENTER_TEST_PLAN.md` (23 个测试用例)
+- **测试计划**: `./CONFIG_CENTER_TEST_PLAN.md` (23 个测试用例，v1 归档)
 - **提案文档**: `openspec/changes/config-center-ui/proposal.md`
 - **任务清单**: `openspec/changes/config-center-ui/tasks.md`
 

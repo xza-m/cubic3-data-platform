@@ -9,7 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle, Send, XCircle } from 'lucide-react'
 import { Chip, Dialog, Input, Skeleton, Switch, useToast } from '@v2/components/ui'
 import { t } from '@v2/i18n'
-import { fmtDateTime, fmtRelative } from '@v2/lib/format'
+import { fmtRelative } from '@v2/lib/format'
 import {
   useChannel,
   useChannels,
@@ -37,7 +37,7 @@ export default function ChannelDetail() {
 
   const { data: channel, isLoading } = useChannel(numericId)
   const { data: listData } = useChannels()
-  const rows = listData?.items ?? []
+  const rows = useMemo(() => listData?.items ?? [], [listData])
 
   const updateMutation = useUpdateChannel()
   const deleteMutation = useDeleteChannel()
@@ -86,7 +86,7 @@ export default function ChannelDetail() {
     if (result.ok) {
       toast.show({ tone: 'success', title: t('channel.toast.testOk', '测试发送成功'), description: channel.name })
     } else {
-      toast.show({ tone: 'danger', title: t('channel.toast.testFailed', '测试发送失败'), description: result.message })
+      toast.show({ tone: 'danger', title: t('channel.toast.testFailed', '测试发送失败'), description: result.detail })
     }
   }
 
@@ -258,22 +258,28 @@ function TestResultBanner({
       )}
       <div className="flex-1 text-xs">
         <div className="font-semibold" style={{ color: result.ok ? 'var(--success)' : 'var(--danger)' }}>
-          {result.ok ? t('channel.test.success', '发送成功') : t('channel.test.failed', '发送失败')}
+          {result.ok
+            ? result.dry_run
+              ? t('channel.test.configValidated', '配置校验通过')
+              : t('channel.test.success', '发送成功')
+            : t('channel.test.failed', '发送失败')}
           {result.latency_ms > 0 && (
             <span className="ml-2 font-normal" style={{ color: 'var(--text-3)' }}>
               {t('channel.test.latency', '耗时 {n} ms', { n: result.latency_ms })}
             </span>
           )}
+          {result.status_code != null && (
+            <span className="ml-2 font-normal" style={{ color: 'var(--text-3)' }}>
+              HTTP {result.status_code}
+            </span>
+          )}
         </div>
-        <div className="mt-0.5" style={{ color: 'var(--text-2)' }}>{result.message}</div>
-        {result.error_code && (
-          <div className="mt-1" style={{ color: 'var(--text-3)' }}>
-            {t('channel.test.errorCode', '错误码')}：<code>{result.error_code}</code>
+        <div className="mt-0.5" style={{ color: 'var(--text-2)' }}>{result.detail}</div>
+        {result.error && (
+          <div className="mt-1 break-all" style={{ color: 'var(--text-3)' }}>
+            {t('channel.test.errorCode', '错误')}：<code>{result.error}</code>
           </div>
         )}
-        <div className="mt-0.5" style={{ color: 'var(--text-3)' }}>
-          {fmtDateTime(result.sent_at)}
-        </div>
       </div>
       <button
         type="button"

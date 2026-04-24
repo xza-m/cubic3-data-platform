@@ -6,7 +6,6 @@
 // 后端契约：app/interfaces/api/v1/semantic.py
 
 import { apiClient } from '@v2/api/client'
-import { t } from '@v2/i18n'
 
 // ─── 通用 ──────────────────────────────────────────────────────────────────
 
@@ -254,8 +253,8 @@ export interface ViewListResponse {
 export interface MaterializeStatus {
   name: string
   status?: string | null
-  // B-back-3: materialized_at 字段上线后补充
-  // TODO(B-back-3): add materialized_at?: string | null
+  materialize_status?: string | null
+  materialized_at?: string | null
 }
 
 // ─── View API ───────────────────────────────────────────────────────────────
@@ -314,8 +313,8 @@ export const schemaSyncCube = (cubeName: string) =>
   post<Record<string, unknown>>('/semantic/schema-sync', { cube_name: cubeName })
 
 // ─── P4 · Cube 字段类型校验 ────────────────────────────────────────────────────
-// TODO(B-back-P4): POST /api/v1/semantic/cubes/:name/validate-fields 尚未实现，
-//   前端使用 mock 结果。上线后删除 simulateNetworkDelay 和 _mockValidateFields。
+// 后端契约：POST /api/v1/semantic/cubes/:name/validate-fields
+//          （app/interfaces/api/v1/semantic.py :: validate_cube_fields）
 
 export interface CubeFieldIssue {
   field: string          // 维度/度量名称
@@ -329,30 +328,12 @@ export interface CubeFieldValidationResult {
   issues: CubeFieldIssue[]
 }
 
-function _mockValidateFields(cubeName: string): Promise<CubeFieldValidationResult> {
-  // TODO(B-back-P4): replace with real API call
-  return new Promise((resolve) =>
-    setTimeout(() => {
-      // 演示数据：后端上线前展示典型问题示例
-      const sampleIssues: CubeFieldIssue[] = cubeName
-        ? [
-            { field: 'order_date', code: 'TYPE_MISMATCH', message: t('semantic.validate.typeMismatch', '字段类型 string 与期望 time 不一致'), severity: 'error' },
-            { field: 'amount', code: 'MISSING_AGG', message: t('semantic.validate.missingAgg', '度量字段建议设置聚合函数'), severity: 'warning' },
-            { field: 'status', code: 'LOW_CARDINALITY', message: t('semantic.validate.lowCardinality', '枚举字段建议设置 distinct values'), severity: 'info' },
-          ]
-        : []
-      resolve({ ok: sampleIssues.filter((i) => i.severity === 'error').length === 0, issues: sampleIssues })
-    }, 600),
-  )
-}
-
 export const validateCubeFields = (name: string): Promise<CubeFieldValidationResult> =>
-  // TODO(B-back-P4): 后端接口上线后替换为：
-  //   post<CubeFieldValidationResult>(`/semantic/cubes/${name}/validate-fields`)
-  _mockValidateFields(name)
+  post<CubeFieldValidationResult>(`/semantic/cubes/${name}/validate-fields`)
 
 // ─── P5 · 指标公式 dry-run ──────────────────────────────────────────────────
-// TODO(B-back-P5): POST /api/v1/semantic/metrics/dry-run 尚未实现，前端使用 mock。
+// 后端契约：POST /api/v1/semantic/metrics/dry-run
+//          （app/interfaces/api/v1/semantic.py :: dry_run_metric）
 
 export interface MetricDryRunResult {
   sql_preview: string
@@ -360,31 +341,8 @@ export interface MetricDryRunResult {
   errors?: Array<{ code: string; message: string }>
 }
 
-function _mockDryRunMetric(formula: string): Promise<MetricDryRunResult> {
-  // TODO(B-back-P5): replace with real API call
-  return new Promise((resolve) =>
-    setTimeout(() => {
-      if (!formula || formula.trim() === '') {
-        resolve({ sql_preview: '', errors: [{ code: 'EMPTY_FORMULA', message: t('semantic.metric.emptyFormula', '公式不能为空') }] })
-        return
-      }
-      resolve({
-        sql_preview: `SELECT SUM(${formula.replace(/[^a-zA-Z0-9_.]/g, '_')}) AS metric_value\nFROM orders\nWHERE created_at >= CURRENT_DATE - INTERVAL '30' DAY`,
-        sample_rows: [
-          { metric_value: 128450.5 },
-          { metric_value: 97320.0 },
-          { metric_value: 134200.75 },
-        ],
-        errors: [],
-      })
-    }, 800),
-  )
-}
-
 export const dryRunMetric = (name: string, formula: string): Promise<MetricDryRunResult> =>
-  // TODO(B-back-P5): 后端接口上线后替换为：
-  //   post<MetricDryRunResult>(`/semantic/metrics/${name}/dry-run`, { formula })
-  _mockDryRunMetric(formula)
+  post<MetricDryRunResult>('/semantic/metrics/dry-run', { name, formula })
 
 // ─── P6 · 语义关系图 ─────────────────────────────────────────────────────────
 // 后端契约：GET /api/v1/semantic/graph （真实接口，已存在）
@@ -419,60 +377,22 @@ export const getSemanticGraph = () =>
   get<SemanticGraphData>('/semantic/graph')
 
 // ─── P7 · Domain 发布历史 ────────────────────────────────────────────────────
-// TODO(B-back-P7): GET /api/v1/semantic/domains/:id/publish/history 尚未实现，
-//   前端使用 mock 数据。
+// 后端契约：GET /api/v1/semantic/domains/:id/publish/history
+//          （app/interfaces/api/v1/semantic.py :: get_domain_publish_history）
 
 export interface DomainPublishRecord {
   version: string
   published_at: string
   published_by: string
   status: 'success' | 'failed' | 'pending'
-  diff_summary?: string
-  note?: string
-}
-
-function _mockDomainPublishHistory(domainId: string): Promise<{ records: DomainPublishRecord[]; total: number }> {
-  // TODO(B-back-P7): replace with real API call
-  return new Promise((resolve) =>
-    setTimeout(() => {
-      if (!domainId) {
-        resolve({ records: [], total: 0 })
-        return
-      }
-      resolve({
-        records: [
-          {
-            version: 'v3',
-            published_at: new Date(Date.now() - 3600_000).toISOString(),
-            published_by: 'admin',
-            status: 'success',
-            diff_summary: '+2 cubes, -1 join',
-          },
-          {
-            version: 'v2',
-            published_at: new Date(Date.now() - 86400_000).toISOString(),
-            published_by: 'user1',
-            status: 'success',
-            diff_summary: '+1 cube',
-          },
-          {
-            version: 'v1',
-            published_at: new Date(Date.now() - 7 * 86400_000).toISOString(),
-            published_by: 'admin',
-            status: 'success',
-            diff_summary: t('semantic.publish.initial', '初始发布'),
-          },
-        ],
-        total: 3,
-      })
-    }, 400),
-  )
+  diff_summary?: string | null
+  note?: string | null
 }
 
 export const getDomainPublishHistory = (id: string) =>
-  // TODO(B-back-P7): 后端接口上线后替换为：
-  //   get<{ records: DomainPublishRecord[]; total: number }>(`/semantic/domains/${id}/publish/history`)
-  _mockDomainPublishHistory(id)
+  get<{ records: DomainPublishRecord[]; total: number }>(
+    `/semantic/domains/${id}/publish/history`,
+  )
 
 // ─── P8 · View 物化运行历史 ──────────────────────────────────────────────────
 // 后端契约：GET /api/v1/semantic/views/:id/materialize/runs （真实接口，已存在）

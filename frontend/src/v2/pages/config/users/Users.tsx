@@ -2,7 +2,6 @@
 //
 // 用户管理列表页（L0 + EntityFormDialog，P14）。
 // 接口：GET /api/v1/users  POST /api/v1/users
-// TODO: 后端 /api/v1/users 待联调，当前 API 层有 mock fallback
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'

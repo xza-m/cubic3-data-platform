@@ -1,6 +1,6 @@
 // frontend/src/v2/pages/queries/QueriesSavedCreate.tsx
 //
-// 新建已保存查询页面（路由 /queries/saved/new）。
+// 新建已保存查询页面（路由 /queries/my/new）。
 // 接 POST /api/v1/queries  GET /api/v1/datasources（选择数据源）
 
 import { useNavigate } from 'react-router-dom'
@@ -23,7 +23,7 @@ export default function QueriesSavedCreate() {
       >
         <button
           type="button"
-          onClick={() => navigate('/queries/saved')}
+          onClick={() => navigate('/queries/my')}
           className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
@@ -70,9 +70,9 @@ export default function QueriesSavedCreate() {
                 datasources={datasources}
                 onSubmit={async (payload) => {
                   const result = await createMut.mutateAsync(payload)
-                  navigate(`/queries/saved/${result.id}`)
+                  navigate(`/queries/my/${result.id}`)
                 }}
-                onCancel={() => navigate('/queries/saved')}
+                onCancel={() => navigate('/queries/my')}
                 loading={createMut.isPending}
               />
             )}

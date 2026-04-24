@@ -1,14 +1,37 @@
 ---
 doc_type: baseline
-status: current
+status: deprecated
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-03-26
+last_reviewed: 2026-04-22
 ---
 
 # 前端覆盖率看板
 
-本文档用于跟踪前端 coverage 的当前基线、质量门槛与核心页面守护约束。
+> **⚠️ 退役说明（Round 4 · D+28）**  
+> 本文档描述的"总覆盖率 ≥ 90% + 21 个核心页 100%"守护策略已**退役**。原因：
+> - v2 cutover 中 `frontend/src/pages/` 已全部 `git rm`，规则清单里引用的 21 个核心页路径全部不存在，`make coverage-frontend` 长期处于"必红"状态，已失去守护价值。
+> - 纸面 90% 总门槛距实际 v2 覆盖率（~14%）差距过大，追赶成本远高于其边际收益。
+>
+> **当前真正生效的前端覆盖率守护**（替代本文档中 2/3/4 节所述机制）：
+> - 入口：`frontend/vitest.config.ts` 中的 `coverage.thresholds` 子树阈值。
+> - 范围：`src/v2/components/**`、`src/v2/hooks/**`、`src/v2/lib/**` 三个子树。
+> - 门槛：每个子树 `statements / branches / functions / lines` 均 ≥ `80%`。
+> - 触发：`make test-frontend` / `npm run test:unit` / pre-push hook 每次运行都会校验。
+> - 看数字：`make coverage-report` 生成含前端 HTML 报告的全量覆盖率基线。
+>
+> **已删除的文件**：
+> - `scripts/frontend_coverage_rules.json`
+> - `scripts/checks/frontend_coverage_guard.py`
+> - `tests/unit/scripts/test_frontend_coverage_guard.py`
+>
+> **Makefile 目标**：`make coverage-frontend` 保留签名但改为显式 skip，只打印退役说明。
+>
+> 以下内容作为历史档案保留，不再作为当前交付标准。
+
+---
+
+本文档（历史版本）用于跟踪前端 coverage 的当前基线、质量门槛与核心页面守护约束。
 统一入口固定为仓库根目录 `make coverage-frontend`；机器规则由 `scripts/frontend_coverage_rules.json` 定义，执行检查由 `scripts/checks/frontend_coverage_guard.py` 负责。
 
 ## 1. 当前快照

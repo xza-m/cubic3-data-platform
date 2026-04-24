@@ -55,7 +55,7 @@ export default function QueriesSavedDetail() {
     )
       return
     await deleteMut.mutateAsync(row.id)
-    navigate('/queries/saved')
+    navigate('/queries/my')
   }
 
   if (!Number.isFinite(numericId) || numericId <= 0) {
@@ -93,7 +93,7 @@ export default function QueriesSavedDetail() {
         >
           <button
             type="button"
-            onClick={() => navigate('/queries/saved')}
+            onClick={() => navigate('/queries/my')}
             className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
           >
@@ -265,7 +265,7 @@ export default function QueriesSavedDetail() {
                 disabled={!neighbors.prev}
                 onClick={
                   neighbors.prev
-                    ? () => navigate(`/queries/saved/${neighbors.prev!.id}`)
+                    ? () => navigate(`/queries/my/${neighbors.prev!.id}`)
                     : undefined
                 }
               />
@@ -274,7 +274,7 @@ export default function QueriesSavedDetail() {
                 disabled={!neighbors.next}
                 onClick={
                   neighbors.next
-                    ? () => navigate(`/queries/saved/${neighbors.next!.id}`)
+                    ? () => navigate(`/queries/my/${neighbors.next!.id}`)
                     : undefined
                 }
               />

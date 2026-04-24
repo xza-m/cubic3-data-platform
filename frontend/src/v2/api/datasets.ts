@@ -122,19 +122,20 @@ export async function previewDataset(payload: PreviewDatasetPayload): Promise<Pr
   return resp.data.data
 }
 
-// ── 字段画像（P3）──────────────────────────────────────────────────────────────
-// TODO: 后端 GET /api/v1/data-center/datasets/:id/profile 需在 W1 交付
-// 若后端未就绪，此函数返回 mock 数据（见 getDatasetProfile）
+// ── 字段画像 ──────────────────────────────────────────────────────────────────
+// 对接后端：GET /api/v1/data-center/datasets/:id/profile
+//          POST /api/v1/data-center/datasets/:id/profile/refresh
+// 响应契约：app/application/dataset/handlers/profile_dataset_handler.py
 
 export interface DatasetProfileColumn {
   name: string
   type: string
-  null_count: number
-  distinct_count: number
+  null_count: number | null
+  distinct_count: number | null
   min: string | null
   max: string | null
   /** 前端占位 sparkline 数据（百分比序列，后端暂不提供） */
-  sample?: number[]
+  sample?: number[] | null
 }
 
 export interface DatasetProfile {
@@ -144,29 +145,11 @@ export interface DatasetProfile {
 }
 
 export async function getDatasetProfile(id: number): Promise<DatasetProfile> {
-  try {
-    const resp = await apiClient.get(`${BASE}/${id}/profile`)
-    return resp.data.data
-  } catch {
-    // TODO: 后端 profile 接口未就绪 — mock 数据占位
-    return {
-      row_count: 0,
-      generated_at: new Date().toISOString(),
-      columns: [],
-    }
-  }
+  const resp = await apiClient.get(`${BASE}/${id}/profile`)
+  return resp.data.data
 }
 
 export async function refreshDatasetProfile(id: number): Promise<DatasetProfile> {
-  try {
-    const resp = await apiClient.post(`${BASE}/${id}/profile/refresh`)
-    return resp.data.data
-  } catch {
-    // TODO: 后端 profile refresh 接口未就绪 — mock 数据占位
-    return {
-      row_count: 0,
-      generated_at: new Date().toISOString(),
-      columns: [],
-    }
-  }
+  const resp = await apiClient.post(`${BASE}/${id}/profile/refresh`)
+  return resp.data.data
 }

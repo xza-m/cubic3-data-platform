@@ -191,8 +191,10 @@ export async function listRunLogs(
 }
 
 // ── 调度配置（P10）────────────────────────────────────────────────────────────
-// TODO: 后端 PATCH /api/v1/extraction/tasks/:id 需接受 schedule_cron / schedule_enabled / schedule_timezone
-// 目前暂存在 schedule_config JSONB 字段，等后端补字段后迁移
+// 后端契约：PATCH /api/v1/extraction/tasks/:id  body: { schedule_config: { cron, enabled, timezone } }
+// （app/application/extraction/handlers/update_task_handler.py）
+// 领域实体 ExtractionTask.schedule_config 以 JSON 字段承载调度定义；
+// 前端 UI 暴露 cron/enabled/timezone 三个扁平字段，仅在 API 层打包成 schedule_config。
 
 export interface TaskSchedulePayload {
   schedule_cron?: string
@@ -204,7 +206,6 @@ export async function updateTaskSchedule(
   id: number,
   payload: TaskSchedulePayload,
 ): Promise<ExtractionTaskDetail> {
-  // TODO: 后端待补 PATCH 独立调度字段；暂用 schedule_config 桥接
   const scheduleConfig: Record<string, unknown> = {
     cron: payload.schedule_cron,
     enabled: payload.schedule_enabled,

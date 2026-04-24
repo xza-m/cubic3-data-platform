@@ -6,7 +6,6 @@
 
 import { apiClient } from './client'
 import type { PaginatedResponse } from './types'
-import { t } from '@v2/i18n'
 
 // ============================================================================
 // 类型定义（snake_case 与后端 wire 格式一致）
@@ -99,29 +98,36 @@ export async function disableChannel(id: number): Promise<Channel> {
 }
 
 // ── 测试发送（P12）────────────────────────────────────────────────────────────
+// 后端契约：POST /api/v1/channels/:id/test
+//   body  : { message?: string }
+//   data  : ChannelTestResult（字段与 channel_service.test_channel 返回值对齐）
 
 export interface ChannelTestResult {
   ok: boolean
-  message: string
+  channel_type: ChannelType
   latency_ms: number
-  sent_at: string
-  error_code?: string
+  /** HTTP 状态码（feishu / webhook 类型可用，email / oss 为 null） */
+  status_code: number | null
+  /** 人类可读的诊断信息 */
+  detail: string
+  /** 失败原因（成功时为 null） */
+  error: string | null
+  /** true 表示仅做配置校验，未实际发送消息 */
+  dry_run: boolean
 }
 
-export async function testChannel(id: number): Promise<ChannelTestResult> {
-  try {
-    const res = await apiClient.post<{ data: ChannelTestResult }>(`/channels/${id}/test`)
-    return res.data.data
-  } catch (err) {
-    // TODO: 后端 POST /api/v1/channels/:id/test 接口待 W1 验证是否存在
-    // 若后端返回错误，透传 error_code 给 UI
-    const appErr = err as { code?: string; message?: string }
-    return {
-      ok: false,
-      message: appErr.message ?? t('channels.test.failed', '测试发送失败'),
-      latency_ms: 0,
-      sent_at: new Date().toISOString(),
-      error_code: appErr.code ?? 'UNKNOWN_ERROR',
-    }
-  }
+export interface TestChannelPayload {
+  /** 可选：自定义测试消息文本（飞书 / Webhook 使用） */
+  message?: string
+}
+
+export async function testChannel(
+  id: number,
+  payload: TestChannelPayload = {},
+): Promise<ChannelTestResult> {
+  const res = await apiClient.post<{ data: ChannelTestResult }>(
+    `/channels/${id}/test`,
+    payload,
+  )
+  return res.data.data
 }

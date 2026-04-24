@@ -108,3 +108,20 @@ def disable_channel(channel_id: int):
     service = _get_service()
     channel = service.disable_channel(channel_id)
     return success(data=channel)
+
+
+@bp.route('/<int:channel_id>/test', methods=['POST'])
+@require_auth
+def test_channel(channel_id: int):
+    """测试渠道连通性
+
+    可选 body: ``{ "message": "自定义测试消息" }``
+
+    响应: ``{ ok, channel_type, latency_ms, status_code, detail, error, dry_run }``
+    """
+    data = request.get_json(silent=True) or {}
+    message = data.get('message')
+
+    service = _get_service()
+    result = service.test_channel(channel_id, message=message)
+    return success(data=result)

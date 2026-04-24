@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# 本地闸门 · pre-commit（目标: < 5s，仅改动文件）
+#
+# 跑什么：仅对 staged 的 *.ts / *.tsx / *.css 跑 lint-staged（eslint --fix / stylelint --fix）
+# 跳过方法（仅限紧急修复）：git commit --no-verify
+# 对应 npm 脚本：frontend/package.json 的 "lint-staged" 配置
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root/frontend"
+
+if ! command -v npx >/dev/null 2>&1; then
+  echo "[husky][pre-commit] skip: 找不到 npx（未安装 Node），放行本次提交"
+  exit 0
+fi
+
+npx --no-install lint-staged

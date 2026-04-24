@@ -317,3 +317,45 @@ class SubscriptionService:
         self.subscription_repository.commit()
         
         return subscription.to_dict(include_relations=True)
+
+    # ========================================================================
+    # 分发日志（触发历史）
+    # ========================================================================
+
+    def list_delivery_history(
+        self,
+        subscription_id: int,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        分页获取订阅分发历史
+
+        Args:
+            subscription_id: 订阅ID
+            page: 页码
+            page_size: 每页数量
+
+        Returns:
+            分页结果
+
+        Raises:
+            NotFoundError: 订阅不存在
+        """
+        subscription = self.subscription_repository.find_by_id(subscription_id)
+        if not subscription:
+            raise NotFoundError(f"订阅 {subscription_id} 不存在")
+
+        logs, total = self.subscription_repository.list_delivery_logs(
+            subscription_id=subscription_id,
+            page=page,
+            page_size=page_size,
+        )
+
+        return {
+            'items': [log.to_dict() for log in logs],
+            'total': total,
+            'page': page,
+            'page_size': page_size,
+            'pages': (total + page_size - 1) // page_size if page_size else 0,
+        }

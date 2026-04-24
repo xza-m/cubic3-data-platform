@@ -3,7 +3,7 @@
 // Dataset Peek (L2) 与 DatasetDetail (L3) 共用的详情内容。
 // 字段对齐：DatasetResponse / DatasetFieldSchema (dataset_schemas.py)
 // drop-frontend: 无（后端字段均已对齐）
-// TODO(B-back-3): 字段 profile（distinct/null 比）待 P3 批次对接 GET /datasets/:id/profile
+// 字段 profile（distinct/null 比）由 GET /api/v1/data-center/datasets/:id/profile 提供。
 
 import type { ReactNode } from 'react'
 import type { Dataset, DatasetField } from '@v2/api/datasets'
@@ -11,6 +11,11 @@ import { fmtDateTime } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 
 // ── 徽章渲染助手 ──────────────────────────────────────────────────────────────
+//
+// 本文件同时导出 Chip helpers（返回 ReactNode）与 DatasetDetailContent 组件，
+// 是历史形成的共享约定（Peek/L3 两个入口共用同一套渲染逻辑）。
+// Fast Refresh 对此会告警，但这些 helper 不是 React 组件，忽略 warning 即可。
+/* eslint-disable react-refresh/only-export-components */
 
 export function datasetTypeChip(type: string): ReactNode {
   const map: Record<string, { label: string; tone: string }> = {

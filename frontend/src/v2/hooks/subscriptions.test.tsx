@@ -66,7 +66,12 @@ describe('subscriptions', () => {
   })
 
   it('useSubscriptionHistory fetches', async () => {
-    (api.listSubscriptionHistory as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    (api.listSubscriptionHistory as ReturnType<typeof vi.fn>).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    })
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useSubscriptionHistory(1), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))

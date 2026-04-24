@@ -2,7 +2,6 @@
 //
 // 角色管理列表页（L0 + EntityFormDialog，P14）。
 // 接口：GET /api/v1/roles  POST /api/v1/roles
-// TODO: 后端 /api/v1/roles 待联调，当前 API 层有 mock fallback
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'

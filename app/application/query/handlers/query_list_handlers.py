@@ -252,6 +252,31 @@ class ListHistoriesHandler:
         }
 
 
+class GetHistoryDetailHandler:
+    """单条查询历史详情（C-1：GET /queries/histories/:id）"""
+
+    def __init__(self, query_repository: QueryRepository):
+        self.query_repository = query_repository
+
+    def handle(self, history_id: int) -> Dict[str, Any]:
+        history = self.query_repository.get_history_by_id(history_id)
+        if not history:
+            raise EntityNotFoundError(f'查询历史不存在: {history_id}')
+
+        return {
+            'id': history.id,
+            'query_id': history.query_id,
+            'source_id': history.source_id,
+            'sql_query': history.sql_query,
+            'status': history.status,
+            'result_rows': history.result_rows,
+            'execution_time_ms': history.execution_time_ms,
+            'error_message': history.error_message,
+            'executed_by': history.executed_by,
+            'executed_at': history.executed_at.isoformat() if history.executed_at else None,
+        }
+
+
 # ============================================================================
 # 统计数据
 # ============================================================================

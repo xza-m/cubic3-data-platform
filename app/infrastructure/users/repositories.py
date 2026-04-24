@@ -12,6 +12,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.domain.users.repositories import (
+    LoginEventRecord,
     RoleRepository,
     UserListFilters,
     UserListResult,
@@ -21,6 +22,7 @@ from app.domain.users.role import Role
 from app.domain.users.user import User
 from app.infrastructure.users.models import (
     RoleORM,
+    UserLoginEventORM,
     UserORM,
     UserPasswordORM,
     UserRoleORM,
@@ -44,6 +46,18 @@ def _user_from_orm(orm: UserORM, role_codes: Optional[list[str]] = None) -> User
         created_at=orm.created_at,
         updated_at=orm.updated_at,
         role_codes=role_codes if role_codes is not None else [],
+    )
+
+
+def _login_event_from_orm(orm: UserLoginEventORM) -> LoginEventRecord:
+    return LoginEventRecord(
+        id=orm.id,
+        user_id=orm.user_id,
+        status=orm.status,
+        ip_address=orm.ip_address,
+        user_agent=orm.user_agent,
+        error_reason=orm.error_reason,
+        logged_at=orm.logged_at,
     )
 
 
@@ -230,6 +244,39 @@ class SqlUserRepository(UserRepository):
             return [_role_from_orm(r) for r in roles]
         self.session.commit()
         return []
+
+    # ---- 登录事件（B-8）----
+
+    def add_login_event(self, event: LoginEventRecord) -> LoginEventRecord:
+        orm = UserLoginEventORM(
+            user_id=event.user_id,
+            status=event.status or "success",
+            ip_address=event.ip_address,
+            user_agent=(event.user_agent or "")[:512] or None,
+            error_reason=(event.error_reason or "")[:255] or None,
+            logged_at=event.logged_at or utcnow(),
+        )
+        self.session.add(orm)
+        self.session.commit()
+        self.session.refresh(orm)
+        return _login_event_from_orm(orm)
+
+    def list_login_events(
+        self, user_id: int, page: int = 1, size: int = 20
+    ) -> tuple[list[LoginEventRecord], int]:
+        page = max(1, int(page or 1))
+        size = max(1, min(200, int(size or 20)))
+        query = self.session.query(UserLoginEventORM).filter(
+            UserLoginEventORM.user_id == user_id
+        )
+        total = query.count()
+        rows = (
+            query.order_by(UserLoginEventORM.logged_at.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+            .all()
+        )
+        return [_login_event_from_orm(r) for r in rows], total
 
 
 # ============================================================================

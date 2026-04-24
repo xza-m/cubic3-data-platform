@@ -55,7 +55,15 @@ class QueryRepository(ABC):
     def list_histories(self, page: int, page_size: int, filters: Dict[str, Any]) -> Dict[str, Any]:
         """历史列表"""
         pass
-    
+
+    def get_history_by_id(self, history_id: int) -> Optional[QueryHistory]:
+        """按主键获取一条查询历史（C-1）
+
+        默认实现为 ``None``，仅用于让旧的 mock/测试仓储在未实现时不会抛错。
+        生产实现应覆盖该方法。
+        """
+        return None
+
     @abstractmethod
     def get_statistics(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         """获取统计数据"""

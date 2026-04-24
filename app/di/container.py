@@ -70,6 +70,7 @@ from app.application.dataset.handlers.get_dataset_handler import GetDatasetHandl
 from app.application.dataset.handlers.preview_dataset_handler import PreviewDatasetHandler
 from app.application.dataset.handlers.sync_schema_handler import SyncSchemaHandler
 from app.application.dataset.handlers.get_statistics_handler import GetStatisticsHandler as GetDatasetStatisticsHandler
+from app.application.dataset.handlers.profile_dataset_handler import ProfileDatasetHandler
 
 # Application - Extraction Handlers
 from app.application.extraction.handlers.create_task_handler import CreateTaskHandler
@@ -150,6 +151,7 @@ from app.application.query.handlers.query_list_handlers import (
     CreateFolderHandler,
     DeleteQueryHandler,
     ListHistoriesHandler,
+    GetHistoryDetailHandler,
     GetStatisticsHandler,
 )
 from app.application.feishu.handlers.chat_handlers import (
@@ -497,6 +499,15 @@ class Container(containers.DeclarativeContainer):
         registry_repo=semantic_registry_repository,
     )
 
+    from app.application.services.config.domain_publish_history_service import (
+        DomainPublishHistoryService,
+    )
+
+    domain_publish_history_service = providers.Factory(
+        DomainPublishHistoryService,
+        session=db_session,
+    )
+
     semantic_service = providers.Singleton(
         SemanticLayerService,
         definition_service=semantic_definition_service,
@@ -642,7 +653,12 @@ class Container(containers.DeclarativeContainer):
         ListHistoriesHandler,
         query_repository=query_repository
     )
-    
+
+    get_history_detail_handler = providers.Factory(
+        GetHistoryDetailHandler,
+        query_repository=query_repository
+    )
+
     get_statistics_handler = providers.Factory(
         GetStatisticsHandler,
         query_repository=query_repository
@@ -849,6 +865,12 @@ class Container(containers.DeclarativeContainer):
         engine=db_engine
     )
 
+    profile_dataset_handler = providers.Factory(
+        ProfileDatasetHandler,
+        dataset_repository=dataset_repository,
+        datasource_repository=datasource_repository,
+    )
+
     dashboard_overview_service = providers.Factory(
         DashboardOverviewService,
         session=db_session,
@@ -1001,7 +1023,8 @@ class Container(containers.DeclarativeContainer):
     
     delivery_service = providers.Factory(
         DeliveryService,
-        subscription_service=subscription_service
+        subscription_service=subscription_service,
+        subscription_repository=subscription_repository,
     )
 
     # ========================================================================

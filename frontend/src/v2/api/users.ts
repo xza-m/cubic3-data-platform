@@ -1,147 +1,169 @@
 // frontend/src/v2/api/users.ts
 //
 // 用户域 API 层。
-// 后端契约：GET /api/v1/users  POST  PUT /users/:id  PUT /users/:id/roles
-// TODO: 后端 W1 RBAC 基线已落地，若 /api/v1/users 未就绪请联调确认
-// 当前：先接 real API，失败时 fallback mock 数据，便于前端自测
+// 后端契约：
+//   GET    /api/v1/users           列表（?page=&size=&q=&status=active|disabled|all&is_active=）
+//   POST   /api/v1/users           创建（admin）
+//   GET    /api/v1/users/:id       详情
+//   PUT    /api/v1/users/:id       更新（admin）
+//   PUT    /api/v1/users/:id/roles 角色分配（admin，body: { role_codes? | role_ids? }）
+//   DELETE /api/v1/users/:id       删除（admin）
 
 import { apiClient } from './client'
 import type { PaginatedResponse } from './types'
-import { t } from '@v2/i18n'
 
 // ── 类型 ──────────────────────────────────────────────────────────────────────
+
+/** 用户状态（与后端 `UserStatus` 枚举对齐）。 */
+export type UserStatus = 'active' | 'disabled'
 
 export interface User {
   id: number
   username: string
   email: string | null
   display_name: string | null
-  role_ids: number[]
+  /** 后端返回的状态枚举（权威字段） */
+  status: UserStatus
+  /** 便捷字段，等价于 `status === 'active'`（后端同时提供） */
   is_active: boolean
+  is_system: boolean
+  role_ids: number[]
+  role_codes: string[]
   last_login_at: string | null
   created_at: string | null
+  updated_at: string | null
 }
 
 export interface ListUsersParams {
   page?: number
   page_size?: number
   q?: string
+  /** 推荐使用 status；is_active 保留向后兼容，后端会自动映射 */
+  status?: UserStatus | 'all'
   is_active?: boolean
 }
 
 export interface CreateUserPayload {
   username: string
+  password: string
   email?: string
   display_name?: string
-  password: string
   role_ids?: number[]
+  role_codes?: string[]
 }
 
 export interface UpdateUserPayload {
   email?: string
   display_name?: string
   is_active?: boolean
+  status?: UserStatus
 }
 
 export interface AssignRolesPayload {
-  role_ids: number[]
+  role_ids?: number[]
+  role_codes?: string[]
 }
 
-// ── mock 数据（后端未就绪时使用）────────────────────────────────────────────
+// ── 响应信封 ──────────────────────────────────────────────────────────────────
 
-const MOCK_USERS: User[] = [
-  { id: 1, username: 'admin', email: 'admin@example.com', display_name: t('users.mock.admin', '管理员'), role_ids: [1], is_active: true, last_login_at: new Date(Date.now() - 3600_000).toISOString(), created_at: '2024-01-01T00:00:00Z' },
-  { id: 2, username: 'analyst', email: 'analyst@example.com', display_name: t('users.mock.analyst', '数据分析师'), role_ids: [2], is_active: true, last_login_at: new Date(Date.now() - 86400_000).toISOString(), created_at: '2024-02-01T00:00:00Z' },
-  { id: 3, username: 'viewer', email: 'viewer@example.com', display_name: t('users.mock.viewer', '只读用户'), role_ids: [3], is_active: false, last_login_at: null, created_at: '2024-03-01T00:00:00Z' },
-]
+interface Envelope<T> {
+  code: number
+  message: string
+  data: T
+  trace_id?: string | null
+}
+
+interface RawListPayload<T> {
+  items: T[]
+  total: number
+  page: number
+  size: number
+}
+
+function normalizeList<T>(raw: RawListPayload<T>): PaginatedResponse<T> {
+  return {
+    items: raw.items,
+    total: raw.total,
+    page: raw.page,
+    page_size: raw.size,
+  }
+}
 
 // ── API 函数 ──────────────────────────────────────────────────────────────────
 
 export async function listUsers(
   params: ListUsersParams = {},
 ): Promise<PaginatedResponse<User>> {
-  try {
-    const res = await apiClient.get<{ data: PaginatedResponse<User> }>('/users', { params })
-    return res.data.data
-  } catch {
-    // TODO: 后端 /api/v1/users 未就绪 — mock 数据占位
-    const items = MOCK_USERS.filter((u) => {
-      if (params.is_active !== undefined && u.is_active !== params.is_active) return false
-      if (params.q) {
-        const q = params.q.toLowerCase()
-        if (!u.username.toLowerCase().includes(q) && !(u.display_name ?? '').toLowerCase().includes(q)) return false
-      }
-      return true
-    })
-    return { items, total: items.length, page: 1, page_size: 20 }
-  }
+  // 后端 list_users 使用 `size` 作为每页数量入参。我们把 page_size 透传过去，
+  // 后端已兼容 page_size → size 的别名。
+  const res = await apiClient.get<Envelope<RawListPayload<User>>>('/users', {
+    params: {
+      page: params.page,
+      size: params.page_size,
+      page_size: params.page_size,
+      q: params.q,
+      status: params.status,
+      is_active: params.is_active,
+    },
+  })
+  return normalizeList(res.data.data)
 }
 
 export async function getUser(id: number): Promise<User> {
-  try {
-    const res = await apiClient.get<{ data: User }>(`/users/${id}`)
-    return res.data.data
-  } catch {
-    // TODO: 后端 /api/v1/users/:id 未就绪 — mock
-    const u = MOCK_USERS.find((u) => u.id === id)
-    if (!u) throw new Error(t("users.error.notFound", "用户 #{id} 不存在", { id }))
-    return u
-  }
+  const res = await apiClient.get<Envelope<User>>(`/users/${id}`)
+  return res.data.data
 }
 
 export async function createUser(payload: CreateUserPayload): Promise<User> {
-  try {
-    const res = await apiClient.post<{ data: User }>('/users', payload)
-    return res.data.data
-  } catch {
-    // TODO: 后端 /api/v1/users 未就绪 — mock
-    const newUser: User = {
-      id: Date.now(),
-      username: payload.username,
-      email: payload.email ?? null,
-      display_name: payload.display_name ?? null,
-      role_ids: payload.role_ids ?? [],
-      is_active: true,
-      last_login_at: null,
-      created_at: new Date().toISOString(),
-    }
-    MOCK_USERS.push(newUser)
-    return newUser
-  }
+  const res = await apiClient.post<Envelope<User>>('/users', payload)
+  return res.data.data
 }
 
 export async function updateUser(id: number, payload: UpdateUserPayload): Promise<User> {
-  try {
-    const res = await apiClient.put<{ data: User }>(`/users/${id}`, payload)
-    return res.data.data
-  } catch {
-    // TODO: mock
-    const idx = MOCK_USERS.findIndex((u) => u.id === id)
-    if (idx < 0) throw new Error(t("users.error.notFound", "用户 #{id} 不存在", { id }))
-    MOCK_USERS[idx] = { ...MOCK_USERS[idx], ...payload }
-    return MOCK_USERS[idx]
-  }
+  const res = await apiClient.put<Envelope<User>>(`/users/${id}`, payload)
+  return res.data.data
 }
 
 export async function assignUserRoles(id: number, payload: AssignRolesPayload): Promise<User> {
-  try {
-    const res = await apiClient.put<{ data: User }>(`/users/${id}/roles`, payload)
-    return res.data.data
-  } catch {
-    // TODO: mock
-    const idx = MOCK_USERS.findIndex((u) => u.id === id)
-    if (idx < 0) throw new Error(t("users.error.notFound", "用户 #{id} 不存在", { id }))
-    MOCK_USERS[idx] = { ...MOCK_USERS[idx], role_ids: payload.role_ids }
-    return MOCK_USERS[idx]
-  }
+  const res = await apiClient.put<Envelope<User>>(`/users/${id}/roles`, payload)
+  return res.data.data
 }
 
 export async function deleteUser(id: number): Promise<void> {
-  try {
-    await apiClient.delete(`/users/${id}`)
-  } catch {
-    // TODO: mock
-    const idx = MOCK_USERS.findIndex((u) => u.id === id)
-    if (idx >= 0) MOCK_USERS.splice(idx, 1)
-  }
+  await apiClient.delete(`/users/${id}`)
+}
+
+// ── 登录历史（B-8）────────────────────────────────────────────────────────────
+// 后端契约：GET /api/v1/users/:id/login-history?page=&size=
+//          （app/interfaces/api/v1/users.py :: get_user_login_history）
+
+export interface LoginHistoryItem {
+  id: number
+  logged_at: string | null
+  status: 'success' | 'failed'
+  ip: string | null
+  user_agent: string | null
+  error_reason: string | null
+}
+
+export interface ListLoginHistoryParams {
+  page?: number
+  page_size?: number
+}
+
+export async function listUserLoginHistory(
+  id: number,
+  params: ListLoginHistoryParams = {},
+): Promise<PaginatedResponse<LoginHistoryItem>> {
+  const res = await apiClient.get<Envelope<RawListPayload<LoginHistoryItem>>>(
+    `/users/${id}/login-history`,
+    {
+      params: {
+        page: params.page,
+        size: params.page_size,
+        page_size: params.page_size,
+      },
+    },
+  )
+  return normalizeList(res.data.data)
 }

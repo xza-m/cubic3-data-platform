@@ -57,8 +57,8 @@ interface DashboardOverviewResponse {
 }
 
 async function getDashboardOverview(): Promise<DashboardOverviewResponse> {
-  const res = await apiClient.get<DashboardOverviewResponse>('/dashboard/overview')
-  return res.data
+  const res = await apiClient.get<{ data: DashboardOverviewResponse }>('/dashboard/overview')
+  return res.data.data
 }
 
 const formatNumber = (n: number | null | undefined): string => {
@@ -69,7 +69,7 @@ const formatNumber = (n: number | null | undefined): string => {
 
 const formatPercent = (v: number | null | undefined): string => {
   if (v == null) return '—'
-  return `${Math.round(v * 100)}%`
+  return `${Math.round(v)}%`
 }
 
 const statusChip = (status: RecentQuery['status']) => {
@@ -151,7 +151,7 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Link to="/queries/console" className="btn btn-primary">
+              <Link to="/queries" className="btn btn-primary">
                 <Search size={12} /> {t('dashboard.cta.query', '打开查询工作台')}
               </Link>
               <Link to="/semantic/ontology" className="btn btn-ghost">
@@ -263,9 +263,9 @@ export default function Dashboard() {
                   {t('dashboard.quicklinks', '快捷入口')}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  <QuickLink to="/datasources/new" icon={Database} label={t('quick.datasource', '新建数据源')} />
-                  <QuickLink to="/datasets/new" icon={Plus} label={t('quick.dataset', '登记数据集')} />
-                  <QuickLink to="/queries/console" icon={Search} label={t('quick.query', '编写查询')} />
+                  <QuickLink to="/data-center/datasources/new" icon={Database} label={t('quick.datasource', '新建数据源')} />
+                  <QuickLink to="/data-center/datasets/register" icon={Plus} label={t('quick.dataset', '登记数据集')} />
+                  <QuickLink to="/queries" icon={Search} label={t('quick.query', '编写查询')} />
                   <QuickLink to="/semantic/ontology" icon={Brain} label={t('quick.semantic', '维护本体')} />
                 </div>
               </div>
@@ -318,7 +318,7 @@ interface HealthBarProps {
 }
 
 function HealthBar({ label, value, loading }: HealthBarProps) {
-  const pct = value == null ? 0 : Math.max(0, Math.min(100, value * 100))
+  const pct = value == null ? 0 : Math.max(0, Math.min(100, value))
   const tone =
     pct >= 95 ? 'var(--success)' : pct >= 80 ? 'var(--warning)' : 'var(--danger)'
   return (

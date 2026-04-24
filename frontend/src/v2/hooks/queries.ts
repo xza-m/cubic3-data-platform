@@ -7,7 +7,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from './query-client'
 import { ev, obs } from '@v2/observability'
-import { t } from '@v2/i18n'
 import {
   createFolder,
   createSavedQuery,
@@ -17,6 +16,7 @@ import {
   disableScheduledQuery,
   enableScheduledQuery,
   executeQuery,
+  getQueryHistoryItem,
   getSavedQuery,
   getScheduledQuery,
   listDatasourcesForConsole,
@@ -44,8 +44,10 @@ import {
 // ============================================================================
 
 export function useDatasourcesForConsole() {
+  // NOTE: 独立的 cache key（'console-options'），避免和 useDatasources 共享导致
+  // 返回形状不一致（分页对象 vs 数组），否则会触发 `t.find is not a function`。
   return useQuery({
-    queryKey: qk('datasources', 'list', { page: 1, page_size: 100 }),
+    queryKey: qk('datasources', 'console-options'),
     queryFn: listDatasourcesForConsole,
     staleTime: 60_000,
   })
@@ -80,14 +82,7 @@ export function useQueryHistories(params: HistoryListParams = {}) {
 export function useQueryHistoryDetail(id: number) {
   return useQuery({
     queryKey: qk('queries', 'history', 'detail', id),
-    queryFn: async () => {
-      // 从 list 拉取——后端暂无 histories/:id 接口
-      // TODO(B-back-8): histories/:id 上线后改为直接调接口
-      const page = await listQueryHistories({ page: 1, page_size: 200 })
-      const item = page.items.find((r) => r.id === id)
-      if (!item) throw new Error(t('queries.history.notFound', '查询历史 #{id} 未找到', { id }))
-      return item
-    },
+    queryFn: () => getQueryHistoryItem(id),
     enabled: Number.isFinite(id) && id > 0,
   })
 }

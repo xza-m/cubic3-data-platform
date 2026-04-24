@@ -8,6 +8,7 @@ vi.mock('@v2/api/roles', () => ({
   createRole: vi.fn(),
   updateRole: vi.fn(),
   deleteRole: vi.fn(),
+  listPermissions: vi.fn(),
 }))
 
 import * as api from '@v2/api/roles'

@@ -1,27 +1,34 @@
 // frontend/src/v2/api/roles.ts
 //
 // 角色域 API 层。
-// 后端契约：GET /api/v1/roles  POST  PUT /roles/:id  DELETE /roles/:id
-// TODO: 后端 W1 RBAC 基线已落地，若 /api/v1/roles 未就绪请联调确认
+// 后端契约：
+//   GET    /api/v1/roles          列表（支持 ?q=）
+//   POST   /api/v1/roles          创建（admin）
+//   GET    /api/v1/roles/:id      详情
+//   PUT    /api/v1/roles/:id      更新（admin）
+//   DELETE /api/v1/roles/:id      删除（admin）
+//   GET    /api/v1/permissions    列出可分配权限码
 
 import { apiClient } from './client'
 import type { PaginatedResponse } from './types'
-import { t } from '@v2/i18n'
 
 // ── 类型 ──────────────────────────────────────────────────────────────────────
 
-/** 资源 × 动作权限项 */
+/** 单条权限（后端 SEED_PERMISSIONS）：`{ id, code, description }` */
 export interface Permission {
-  resource: string
-  action: string
+  id: number
+  code: string
+  description: string | null
 }
 
 export interface Role {
   id: number
+  code: string
   name: string
   description: string | null
-  /** 权限字符串列表，格式 "resource:action"，如 "datasource:read" */
+  /** 权限 code 列表，格式 "resource:action"，如 "datasource:read" */
   permissions: string[]
+  is_system: boolean
   created_at: string | null
   updated_at: string | null
 }
@@ -34,12 +41,15 @@ export interface ListRolesParams {
 
 export interface CreateRolePayload {
   name: string
+  /** 可选：未提供时后端由 name slugify 生成 */
+  code?: string
   description?: string
   permissions?: string[]
 }
 
 export interface UpdateRolePayload {
   name?: string
+  code?: string
   description?: string
   permissions?: string[]
 }
@@ -70,106 +80,65 @@ export function permKey(resource: PermissionResource, action: PermissionAction):
   return `${resource}:${action}`
 }
 
-// ── mock 数据（后端未就绪时使用）────────────────────────────────────────────
+// ── 响应信封 ──────────────────────────────────────────────────────────────────
 
-const MOCK_ROLES: Role[] = [
-  {
-    id: 1,
-    name: t('roles.mock.superAdmin.name', '超级管理员'),
-    description: t('roles.mock.superAdmin.desc', '拥有所有权限'),
-    permissions: PERMISSION_RESOURCES.flatMap((r) => PERMISSION_ACTIONS.map((a) => `${r}:${a}`)),
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  },
-  {
-    id: 2,
-    name: t('roles.mock.analyst.name', '数据分析师'),
-    description: t('roles.mock.analyst.desc', '可读取数据、执行查询'),
-    permissions: ['datasource:read', 'dataset:read', 'query:read', 'query:write', 'semantic:read'],
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  },
-  {
-    id: 3,
-    name: t('roles.mock.viewer.name', '只读访客'),
-    description: t('roles.mock.viewer.desc', '只能查看基础数据'),
-    permissions: ['datasource:read', 'dataset:read'],
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  },
-]
+interface Envelope<T> {
+  code: number
+  message: string
+  data: T
+  trace_id?: string | null
+}
+
+/** 后端分页列表原始响应（注意字段名是 `size` 不是 `page_size`）。*/
+interface RawListPayload<T> {
+  items: T[]
+  total: number
+  page: number
+  size: number
+}
+
+function normalizeList<T>(raw: RawListPayload<T>): PaginatedResponse<T> {
+  return {
+    items: raw.items,
+    total: raw.total,
+    page: raw.page,
+    page_size: raw.size,
+  }
+}
 
 // ── API 函数 ──────────────────────────────────────────────────────────────────
 
 export async function listRoles(
   params: ListRolesParams = {},
 ): Promise<PaginatedResponse<Role>> {
-  try {
-    const res = await apiClient.get<{ data: PaginatedResponse<Role> }>('/roles', { params })
-    return res.data.data
-  } catch {
-    // TODO: 后端 /api/v1/roles 未就绪 — mock 数据占位
-    const items = MOCK_ROLES.filter((r) => {
-      if (params.q) {
-        const q = params.q.toLowerCase()
-        if (!r.name.toLowerCase().includes(q)) return false
-      }
-      return true
-    })
-    return { items, total: items.length, page: 1, page_size: 20 }
-  }
+  // 后端 list_roles 目前不分页（一次性返回全部），仍提供 total / page / size 信封
+  const res = await apiClient.get<Envelope<RawListPayload<Role>>>('/roles', {
+    params: { q: params.q },
+  })
+  return normalizeList(res.data.data)
 }
 
 export async function getRole(id: number): Promise<Role> {
-  try {
-    const res = await apiClient.get<{ data: Role }>(`/roles/${id}`)
-    return res.data.data
-  } catch {
-    // TODO: mock
-    const r = MOCK_ROLES.find((r) => r.id === id)
-    if (!r) throw new Error(t('roles.error.notFound', '角色 #{id} 不存在', { id }))
-    return r
-  }
+  const res = await apiClient.get<Envelope<Role>>(`/roles/${id}`)
+  return res.data.data
 }
 
 export async function createRole(payload: CreateRolePayload): Promise<Role> {
-  try {
-    const res = await apiClient.post<{ data: Role }>('/roles', payload)
-    return res.data.data
-  } catch {
-    // TODO: mock
-    const newRole: Role = {
-      id: Date.now(),
-      name: payload.name,
-      description: payload.description ?? null,
-      permissions: payload.permissions ?? [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-    MOCK_ROLES.push(newRole)
-    return newRole
-  }
+  const res = await apiClient.post<Envelope<Role>>('/roles', payload)
+  return res.data.data
 }
 
 export async function updateRole(id: number, payload: UpdateRolePayload): Promise<Role> {
-  try {
-    const res = await apiClient.put<{ data: Role }>(`/roles/${id}`, payload)
-    return res.data.data
-  } catch {
-    // TODO: mock
-    const idx = MOCK_ROLES.findIndex((r) => r.id === id)
-    if (idx < 0) throw new Error(t('roles.error.notFound', '角色 #{id} 不存在', { id }))
-    MOCK_ROLES[idx] = { ...MOCK_ROLES[idx], ...payload, updated_at: new Date().toISOString() }
-    return MOCK_ROLES[idx]
-  }
+  const res = await apiClient.put<Envelope<Role>>(`/roles/${id}`, payload)
+  return res.data.data
 }
 
 export async function deleteRole(id: number): Promise<void> {
-  try {
-    await apiClient.delete(`/roles/${id}`)
-  } catch {
-    // TODO: mock
-    const idx = MOCK_ROLES.findIndex((r) => r.id === id)
-    if (idx >= 0) MOCK_ROLES.splice(idx, 1)
-  }
+  await apiClient.delete(`/roles/${id}`)
+}
+
+/** GET /api/v1/permissions — 列出所有可分配权限码 */
+export async function listPermissions(): Promise<Permission[]> {
+  const res = await apiClient.get<Envelope<{ items: Permission[] }>>('/permissions')
+  return res.data.data.items
 }

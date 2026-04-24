@@ -16,6 +16,12 @@ const SOURCE_ROOT = join(FRONTEND_ROOT, 'src/v2')
 const SOURCE_EXTS = new Set(['.ts', '.tsx'])
 const VAR_REFERENCE_RE = /var\(\s*(--[a-zA-Z0-9_-]+)/g
 const TOKEN_DECL_RE = /^\s*(--[a-zA-Z0-9_-]+)\s*:/gm
+// 识别在同一 TS/TSX 文件里局部声明的 CSS 自定义属性（仅用于该文件内 var() 解析），
+// 匹配以下两种模式：
+//   { '--brand-sem': '#abc' }                  —— 直接字面 key
+//   { ['--brand-sem' as string]: '#abc' }     —— computed key + as 断言
+// 不把这些加进全局 declared 集合，避免污染其它文件的校验。
+const LOCAL_DECL_RE = /\[\s*['"](--[a-zA-Z0-9_-]+)['"](?:\s+as\s+\w+)?\s*\]\s*:|['"](--[a-zA-Z0-9_-]+)['"]\s*:/g
 
 async function walk(dir) {
   const entries = await readdir(dir, { withFileTypes: true })
@@ -57,9 +63,13 @@ async function main() {
   const violations = []
   for (const file of files) {
     const text = await readFile(file, 'utf8')
+    const localDeclared = new Set()
+    for (const match of text.matchAll(LOCAL_DECL_RE)) {
+      localDeclared.add(match[1] || match[2])
+    }
     for (const match of text.matchAll(VAR_REFERENCE_RE)) {
       const name = match[1]
-      if (!declared.has(name)) {
+      if (!declared.has(name) && !localDeclared.has(name)) {
         const before = text.slice(0, match.index)
         const line = before.split('\n').length
         violations.push({

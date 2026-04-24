@@ -20,10 +20,12 @@ import { t } from '@v2/i18n'
 
 import { PeekPanel } from '@v2/components/PeekPanel'
 import { useAppShell } from '@v2/layout/AppShell'
+import { useToast } from '@v2/components/ui/Toast'
 
 export default function Datasources() {
   const navigate = useNavigate()
   const { setBreadcrumbs, setTopBarActions, setContextPanel, openTab } = useAppShell()
+  const toast = useToast()
   const [keyword, setKeyword] = useState('')
   const [peekId, setPeekId] = useState<number | null>(null)
 
@@ -31,6 +33,21 @@ export default function Datasources() {
     page: 1,
     page_size: 100,
   })
+
+  const handleRefresh = useCallback(async () => {
+    const result = await refetch()
+    if (result.status === 'success') {
+      toast.show({
+        title: t('datasources.toast.refreshed', '已刷新数据源列表'),
+        tone: 'success',
+      })
+    } else if (result.status === 'error') {
+      toast.show({
+        title: t('datasources.toast.refreshFailed', '刷新失败'),
+        tone: 'danger',
+      })
+    }
+  }, [refetch, toast])
 
   // 面包屑
   useEffect(() => {
@@ -46,8 +63,9 @@ export default function Datasources() {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => refetch()}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
+          onClick={() => void handleRefresh()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs disabled:opacity-60"
           style={{ color: 'var(--text-2)' }}
         >
           <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
@@ -65,7 +83,7 @@ export default function Datasources() {
       </div>,
     )
     return () => setTopBarActions(null)
-  }, [setTopBarActions, refetch, isFetching, navigate])
+  }, [setTopBarActions, handleRefresh, isFetching, navigate])
 
   const allRows = useMemo<Datasource[]>(() => data?.items ?? [], [data?.items])
 
@@ -182,6 +200,40 @@ export default function Datasources() {
     },
     [navigate, openTab],
   )
+
+  // 键盘快捷键：↑/↓ 切换 peek 行、⌘↵ 升级为 Tab、Esc 关闭 peek
+  useEffect(() => {
+    if (rows.length === 0) return
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
+      if (e.key === 'Escape') {
+        if (peekId != null) {
+          e.preventDefault()
+          setPeekId(null)
+        }
+        return
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        const idx = peekId == null ? -1 : rows.findIndex((r) => r.id === peekId)
+        const nextIdx =
+          e.key === 'ArrowDown'
+            ? Math.min(rows.length - 1, idx + 1)
+            : Math.max(0, idx === -1 ? 0 : idx - 1)
+        setPeekId(rows[nextIdx]?.id ?? null)
+        return
+      }
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && peekRow) {
+        e.preventDefault()
+        openInTab(peekRow)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [rows, peekId, peekRow, openInTab])
 
   const columns = useMemo<
     Array<{ key: string; title: React.ReactNode; width?: number; render?: (r: Datasource) => React.ReactNode }>

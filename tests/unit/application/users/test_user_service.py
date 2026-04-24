@@ -126,6 +126,25 @@ class FakeUserRepo(UserRepository):
         self.roles_by_user[user_id] = list(role_codes)
         return self.get_roles(user_id)
 
+    # ---- 登录事件（B-8）----
+    def add_login_event(self, event):
+        event.id = getattr(self, "_next_login_id", 1)
+        self._next_login_id = event.id + 1
+        if not hasattr(self, "_login_events"):
+            self._login_events = {}
+        self._login_events.setdefault(event.user_id, []).append(event)
+        return event
+
+    def list_login_events(self, user_id: int, page: int = 1, size: int = 20):
+        events = list(getattr(self, "_login_events", {}).get(user_id, []))
+        events.sort(
+            key=lambda e: e.logged_at or 0,
+            reverse=True,
+        )
+        total = len(events)
+        start = (page - 1) * size
+        return events[start : start + size], total
+
 
 class FakeRoleRepo(RoleRepository):
     def __init__(self) -> None:

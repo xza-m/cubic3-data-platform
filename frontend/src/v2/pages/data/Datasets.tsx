@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, Plus, RefreshCcw, Search } from 'lucide-react'
+import { Copy, Database, FileCode2, Plus, RefreshCcw, Search, X } from 'lucide-react'
 import { useDatasets, useDataset } from '@v2/hooks/datasets'
 import type { Dataset } from '@v2/api/datasets'
 import {
@@ -25,6 +25,7 @@ export default function Datasets() {
   const { setBreadcrumbs, setTopBarActions, setContextPanel, openTab } = useAppShell()
   const [keyword, setKeyword] = useState('')
   const [peekId, setPeekId] = useState<number | null>(null)
+  const [sqlDialog, setSqlDialog] = useState<Dataset | null>(null)
 
   const { data, isLoading, isError, error, refetch, isFetching } = useDatasets({
     page: 1,
@@ -74,7 +75,7 @@ export default function Datasets() {
         </button>
         <button
           type="button"
-          onClick={() => navigate('/data-center/datasets/new')}
+          onClick={() => navigate('/data-center/datasets/register')}
           className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
           style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
         >
@@ -111,7 +112,7 @@ export default function Datasets() {
             <div className="space-y-1.5 text-xs">
               <button
                 type="button"
-                onClick={() => navigate('/data-center/datasets/new')}
+                onClick={() => navigate('/data-center/datasets/register')}
                 className="flex w-full rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
@@ -184,19 +185,37 @@ export default function Datasets() {
         {
           key: 'physical_table',
           title: t('datasets.col.physicalSql', '物理表 / SQL'),
-          render: (r: Dataset) =>
-            r.physical_table ? (
-              <code className="text-[11px]" style={{ color: 'var(--text-2)' }}>{r.physical_table}</code>
-            ) : r.sql_query ? (
-              <code
-                className="line-clamp-1 text-[11px]"
-                style={{ color: 'var(--text-2)' }}
-              >
-                {r.sql_query}
-              </code>
-            ) : (
-              <span style={{ color: 'var(--text-3)' }}>—</span>
-            ),
+          width: 220,
+          render: (r: Dataset) => {
+            if (r.physical_table) {
+              return (
+                <code
+                  className="truncate text-[11px]"
+                  style={{ color: 'var(--text-2)', maxWidth: 200, display: 'inline-block' }}
+                  title={r.physical_table}
+                >
+                  {r.physical_table}
+                </code>
+              )
+            }
+            if (r.sql_query) {
+              return (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSqlDialog(r)
+                  }}
+                  className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+                >
+                  <FileCode2 size={10} />
+                  {t('datasets.col.viewSql', '查看 SQL')}
+                </button>
+              )
+            }
+            return <span style={{ color: 'var(--text-3)' }}>—</span>
+          },
         },
         base[1],
         {
@@ -287,7 +306,88 @@ export default function Datasets() {
         </PeekPanel>
       </div>
 
+      {sqlDialog && <SqlViewerDialog dataset={sqlDialog} onClose={() => setSqlDialog(null)} />}
+
       {/* import 保留待 Phase 3 */}
+    </div>
+  )
+}
+
+function SqlViewerDialog({ dataset, onClose }: { dataset: Dataset; onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(dataset.sql_query ?? '')
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[80vh] w-[760px] max-w-[calc(100vw-48px)] flex-col rounded-lg border shadow-lg"
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between border-b px-4 py-3"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+              {dataset.dataset_name}
+            </div>
+            <div className="truncate text-[11px]" style={{ color: 'var(--text-3)' }}>
+              {dataset.dataset_code} · {t('datasets.sql.title', '虚拟数据集 SQL')}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void handleCopy()}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px]"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+            >
+              <Copy size={11} />
+              {copied ? t('common.copied', '已复制') : t('common.copy', '复制')}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md"
+              style={{ color: 'var(--text-3)' }}
+              aria-label={t('common.close', '关闭')}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+        <pre
+          className="flex-1 overflow-auto px-4 py-3 text-[12px] leading-5"
+          style={{
+            background: 'var(--bg-surface-2)',
+            color: 'var(--text-1)',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+          }}
+        >
+          <code>{dataset.sql_query}</code>
+        </pre>
+      </div>
     </div>
   )
 }

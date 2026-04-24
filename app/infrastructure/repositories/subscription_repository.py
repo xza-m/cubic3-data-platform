@@ -1,10 +1,11 @@
 """
 订阅仓储实现（SQLAlchemy ORM）
 """
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session, joinedload
 
 from app.domain.entities.config.subscription import Subscription
+from app.domain.entities.config.subscription_delivery_log import SubscriptionDeliveryLog
 from app.domain.entities import AppInstance, AppDefinition
 from app.domain.ports.repositories.subscription_repository_port import ISubscriptionRepository
 
@@ -158,3 +159,33 @@ class SubscriptionRepository(ISubscriptionRepository):
     def commit(self) -> None:
         """提交当前事务"""
         self.session.commit()
+
+    # ------------------------------------------------------------------
+    # 分发日志
+    # ------------------------------------------------------------------
+
+    def add_delivery_log(self, log: SubscriptionDeliveryLog) -> SubscriptionDeliveryLog:
+        """追加一条订阅分发日志"""
+        self.session.add(log)
+        self.session.commit()
+        self.session.refresh(log)
+        return log
+
+    def list_delivery_logs(
+        self,
+        subscription_id: int,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Tuple[List[SubscriptionDeliveryLog], int]:
+        """按订阅分页查询分发日志，按 trigger_at 倒序"""
+        query = self.session.query(SubscriptionDeliveryLog) \
+            .filter(SubscriptionDeliveryLog.subscription_id == subscription_id)
+
+        total = query.count()
+
+        logs = query.order_by(SubscriptionDeliveryLog.trigger_at.desc()) \
+            .offset((page - 1) * page_size) \
+            .limit(page_size) \
+            .all()
+
+        return logs, total

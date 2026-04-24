@@ -11,6 +11,7 @@ vi.mock('@v2/api/queries', () => ({
   disableScheduledQuery: vi.fn(),
   enableScheduledQuery: vi.fn(),
   executeQuery: vi.fn(),
+  getQueryHistoryItem: vi.fn(),
   getSavedQuery: vi.fn(),
   getScheduledQuery: vi.fn(),
   listDatasourcesForConsole: vi.fn(),
@@ -68,18 +69,17 @@ describe('queries hooks - lists', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 
-  it('useQueryHistoryDetail finds item from list', async () => {
-    (api.listQueryHistories as ReturnType<typeof vi.fn>).mockResolvedValue({
-      items: [{ id: 5, name: 'a' }],
-    })
+  it('useQueryHistoryDetail fetches via histories/:id endpoint', async () => {
+    (api.getQueryHistoryItem as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 5, name: 'a' })
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useQueryHistoryDetail(5), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data).toEqual({ id: 5, name: 'a' })
+    expect(api.getQueryHistoryItem).toHaveBeenCalledWith(5)
   })
 
-  it('useQueryHistoryDetail throws when not found', async () => {
-    (api.listQueryHistories as ReturnType<typeof vi.fn>).mockResolvedValue({ items: [] })
+  it('useQueryHistoryDetail reports error when backend 404', async () => {
+    (api.getQueryHistoryItem as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('not found'))
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useQueryHistoryDetail(99), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true))

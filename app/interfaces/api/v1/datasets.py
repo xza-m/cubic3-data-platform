@@ -209,4 +209,20 @@ def create_datasets_blueprint(container):
 
         return success(data=stats)
 
+    @bp.route('/<int:dataset_id>/profile', methods=['GET'])
+    @require_auth
+    def get_dataset_profile(dataset_id):
+        """获取数据集画像（best-effort）"""
+        handler = container.profile_dataset_handler()
+        result = handler.handle(dataset_id, force_refresh=False)
+        return success(data=result)
+
+    @bp.route('/<int:dataset_id>/profile/refresh', methods=['POST'])
+    @require_auth
+    def refresh_dataset_profile(dataset_id):
+        """强制刷新数据集画像"""
+        handler = container.profile_dataset_handler()
+        result = handler.handle(dataset_id, force_refresh=True)
+        return success(data=result, message='画像已刷新')
+
     return bp

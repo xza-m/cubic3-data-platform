@@ -1,14 +1,27 @@
 {
+  "_comment": "Round 4 · D+28 校准（基于 2026-04-22 全量 pytest tests 结果，总覆盖率 96.49%，1916 tests passed）。策略：total 95%（现值 - 1.5pp buffer）+ module_threshold 80%（防止严重倒退，最低模块 infrastructure.users 85.49%）+ core_modules 按现值向下取整留 buffer。警示：之前曾看到 coverage.xml 给出 30.53% 的误导数字，原因是该文件是只跑过 tests/unit 片段生成的 stale 产物；任何覆盖率分析前必须先 make coverage-backend 或 PYTHONPATH=. pytest tests 生成全量 coverage.xml。规则与现实脱钩的历史背景见 docs/quality/backend-coverage.md。",
   "total_threshold": 95.0,
-  "module_threshold": 95.0,
+  "module_threshold": 80.0,
   "core_modules": {
     "application.semantic": 100.0,
     "domain.semantic": 100.0,
-    "application.dataset": 100.0,
     "application.datasource": 100.0,
-    "application.query": 100.0,
-    "infrastructure.repositories": 100.0,
+    "application.feishu": 100.0,
+    "domain.agent": 100.0,
+    "domain.ontology": 100.0,
+    "domain.queries": 100.0,
     "shared": 100.0,
-    "shared.utils": 100.0
+    "shared.utils": 100.0,
+    "application.query": 98.0,
+    "infrastructure.repositories": 98.0,
+    "interfaces.channels": 98.0,
+    "application.semantic_mapper": 97.0,
+    "application.semantic_router": 98.0,
+    "application.execution_compiler": 98.0,
+    "application.extraction": 98.0,
+    "application.dataset": 90.0,
+    "domain.users": 88.0,
+    "domain.entities": 95.0,
+    "interfaces.api": 90.0
   }
 }

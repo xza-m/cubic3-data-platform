@@ -22,7 +22,6 @@ from .interfaces.api.v1.queries import bp as queries_v1_bp
 from .interfaces.api.v1.auth import bp as auth_v1_bp
 from .interfaces.api.v1.feishu import bp as feishu_v1_bp
 from .interfaces.api.v1.dashboard import create_dashboard_blueprint
-# 注意: superset_v1_bp 已废弃，改用「应用中心 + 配置中心」
 
 # 用户偏好 API v1（B-back-1）
 from .interfaces.api.v1.user_preferences import bp as user_preferences_v1_bp

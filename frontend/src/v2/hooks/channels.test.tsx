@@ -43,9 +43,12 @@ describe('useTestChannel (P12)', () => {
   it('returns success result on ok=true', async () => {
     const successResult: ChannelTestResult = {
       ok: true,
-      message: '发送成功',
+      channel_type: 'feishu',
       latency_ms: 120,
-      sent_at: '2026-04-21T00:00:00Z',
+      status_code: 200,
+      detail: '飞书 Webhook 发送成功',
+      error: null,
+      dry_run: false,
     }
     mockTestChannel.mockResolvedValue(successResult)
 
@@ -66,10 +69,12 @@ describe('useTestChannel (P12)', () => {
   it('returns failure result on ok=false', async () => {
     const failResult: ChannelTestResult = {
       ok: false,
-      message: '连接超时',
+      channel_type: 'webhook',
       latency_ms: 7000,
-      sent_at: '2026-04-21T00:00:00Z',
-      error_code: 'CONNECTION_TIMEOUT',
+      status_code: null,
+      detail: '请求超时',
+      error: 'timeout',
+      dry_run: false,
     }
     mockTestChannel.mockResolvedValue(failResult)
 
@@ -81,7 +86,7 @@ describe('useTestChannel (P12)', () => {
     })
 
     await waitFor(() => expect(result.current.data?.ok).toBe(false))
-    expect(result.current.data?.error_code).toBe('CONNECTION_TIMEOUT')
+    expect(result.current.data?.error).toBe('timeout')
     qc.clear()
   })
 })

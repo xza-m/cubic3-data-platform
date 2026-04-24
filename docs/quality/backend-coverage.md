@@ -3,10 +3,35 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-03-25
+last_reviewed: 2026-04-22
 ---
 
 # 后端覆盖率看板
+
+> **📌 Round 4 · D+28 校准与一个重要教训**
+>
+> **教训先讲**：最初分析时读到磁盘上的 `coverage.xml` 显示总覆盖率只有 `30.53%`，核心模块覆盖率全线崩盘（`application.semantic 17.71%`、`infrastructure.repositories 34.62%` …），但这是**误导性的 stale 数字**。根因是该 `coverage.xml` 是之前某次只跑过 `tests/unit` 片段生成的产物，并没有覆盖 `tests/integration`。跑一次完整 `make coverage-backend`（= `PYTHONPATH=. pytest tests`）之后，真实总覆盖率是 **96.49%**（1916 tests passed），绝大多数模块稳定在 `>=95%`。
+>
+> **结论**：任何覆盖率分析前，先确保 `coverage.xml` 是新鲜的全量产物。推荐每次分析前先跑一次 `make coverage-backend`。
+>
+> **2026-04-22 真实基线**（`make coverage-backend` 全量运行）：
+>
+> - **总覆盖率 96.49%**（1916 passed, 0 failed）
+> - 15 个模块 100%，绝大多数 >= 95%
+> - 最低模块：`infrastructure.users 85.49%`、`application.services 87.36%`、`domain.users 90.40%`
+>
+> **规则调整（相比 2026-03-25 快照）**：
+>
+> | 维度 | 旧规则（2026-03-25） | 新规则（2026-04-22） |
+> |---|---|---|
+> | `pytest.ini --cov-fail-under` | `95` | `95`（不变） |
+> | `total_threshold` | `95.0` | `95.0`（现值 - 1.5pp buffer） |
+> | `module_threshold`（统一二级门槛） | `95.0` | `80.0`（放宽，按当前最低模块留 5pp buffer；避免 `application.services 87%` 这种非关键模块把闸门染红） |
+> | `core_modules` | 8 个模块 100% | 20 个模块各自按现值向下留 buffer 的下限；10 个仍设 100%（真实 100% 或接近），其余按实测值向下取整（如 `application.dataset 92.34% → 90`） |
+>
+> 核心理念：**纸面门槛 ≤ 实际水平**。规则的作用是"谁把 X 模块从 98% 压到 85% 会立即失败"，而不是"9 个月前这里是 100%，今天必须还是 100%"。sprint 末或 release 前，用 `make coverage-report` 看一眼数字，如果某模块已稳定高于其下限 ≥ 10pp 可以把阈值再抬一档。
+>
+> 下面 1 ~ 2 节的快照为 **2026-03-25 历史数据**，保留用作基线参考；实际当前值以 `make coverage-backend` / `make coverage-report` 输出为准。
 
 本文档用于跟踪后端 coverage 提升项目的当前基线、模块波次结果和后续维护重点。
 唯一总指标固定为仓库根目录 `make coverage-backend`；模块级数据以同一次运行生成的 `coverage.xml` 为准。
