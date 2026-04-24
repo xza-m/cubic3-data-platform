@@ -79,11 +79,14 @@ npm run lint
 # 单元测试
 npm run test:unit
 
-# E2E
-npm run test:e2e
+# E2E（v2 redesign 套件；Round 3 清理后 test:e2e 已移除）
+npm run test:e2e:v2
+# 只跑 smoke 子集（P1/P2/P3/P7/P21）
+npm run test:e2e:v2:smoke
 
-# UI 综合校验
-npm run verify:ui
+# 设计令牌 + i18n 覆盖等综合校验（根目录 Make 入口也可：`make verify-frontend`）
+npm run lint:all
+npm run i18n:coverage
 ```
 
 ## 开发地址与代理

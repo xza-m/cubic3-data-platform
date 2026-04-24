@@ -322,15 +322,40 @@ make verify-semantic
 make semantic-layout
 make smoke-semantic
 
-# 可选：coverage 专项验证
-make coverage
-make coverage-backend
-make coverage-frontend
+# 可选：coverage 专项验证（不在默认闸门里）
+make coverage            # 聚合：== coverage-backend（frontend 已退役 skip）
+make coverage-backend    # 跑完整 pytest + ratchet 防倒退校验
+make coverage-report     # 生成前后端数字报告，不设阈值，仅供查看
+
+# 本地闸门（GitLab CI 基建未就位时的替代入口）
+# local-ci 是 verify-frontend 去掉 smoke/integration 的严格子集，
+# local-smoke 是 smoke-frontend 的别名 —— 两者复用同一套原子 target，
+# 避免与 verify-frontend 出现定义漂移。
+make local-ci        # lint + tokens + i18n + tsc + vitest + v2 build，~1-2 min，无需 docker
+make local-smoke     # == smoke-frontend（Playwright v2 e2e:smoke），前端需已运行在 http://127.0.0.1:3000
 ```
 
-后端 coverage 当前门槛按 docs/quality/backend-coverage.md 维护；当前 `pytest.ini` 基线为 `--cov-fail-under=95`。  
-`make coverage-backend` 除了跑完整 pytest coverage 外，还会自动校验二级模块 `>=95%` 和核心模块 `100%` 守护。
-前端 coverage 当前目标按 docs/quality/frontend-coverage.md 维护；`make coverage-frontend` 会自动校验总 coverage `>=90%` 和核心功能与实体页 `100%` 守护。
+### 本地 Git Hooks（pre-commit / pre-push）
+
+仓库根目录放了一套基于 `husky` 的本地闸门，用来在 GitLab CI 上线前兜底：
+
+- `pre-commit`: 只对 staged 的 `*.{ts,tsx,css}` 跑 `lint-staged`（eslint/stylelint `--fix`），目标 `< 5s`。
+- `pre-push`: 跑 `cd frontend && npm run ci:pre-push`，等价于 `lint + vitest + v2 build`，目标 `< 90s`。
+- 紧急逃生门：`git commit --no-verify` / `git push --no-verify`。
+
+首次签出仓库后执行 `cd frontend && npm install` 会自动执行 `prepare` 脚本将
+`core.hooksPath` 指向 `.husky/`，hooks 随之生效；如需手动开启：
+
+```bash
+git config core.hooksPath .husky
+```
+
+### 覆盖率门槛（Round 4 · D+28 校准）
+
+- **后端**：真实水位 `96.49%`（2026-04-22 全量 `pytest tests` 基线，1916 tests passed）。`pytest.ini` 基线 `--cov-fail-under=95`；`scripts/backend_coverage_rules.json` 采用「已达高位 + 防倒退」策略 —— 总阈值 `95%`（现值 - 1.5pp buffer）、`module_threshold = 80%`（防止任何模块严重倒退，当前最低 `infrastructure.users 85.49%`），`core_modules` 列出 20 个核心模块各自按现值向下留 buffer 的下限。谁把这些覆盖率压下去 `make coverage-backend` 就报错。详见 [docs/quality/backend-coverage.md](docs/quality/backend-coverage.md)。
+  - **注意**：`coverage.xml` 是 stale artifact；如果没跑过 `make coverage-backend` 或 `PYTHONPATH=. pytest tests`，磁盘上的 `coverage.xml` 可能是只跑部分 suite 的旧快照，会给出误导性的低数字。任何覆盖率分析前请先生成新鲜的全量 `coverage.xml`。
+- **前端**：原先的 90% 总门槛 + 21 个核心页 100% 规则在 v2 cutover 中已随 `src/pages/*` 一起作废（规则里 21 个核心页路径全部不存在）。前端覆盖率守护现在由 `frontend/vitest.config.ts` 的**子树阈值**接管：`src/v2/components/**`、`src/v2/hooks/**`、`src/v2/lib/**` 三个子树各要求 `statements/branches/functions/lines` 均 ≥ `80%`，每次 `make test-frontend` / `npm run test:unit` / pre-push hook 都会卡这个门槛。`make coverage-frontend` 现在只打印退役说明并 skip，`scripts/checks/frontend_coverage_guard.py` 和 `scripts/frontend_coverage_rules.json` 已删除。详见 [docs/quality/frontend-coverage.md](docs/quality/frontend-coverage.md)。
+- **看数字不卡阈值**：`make coverage-report` 会跑一次前后端完整 coverage 并打印数值，用于 sprint 末决定是否把某个模块下限再抬一档。
 
 # 查看 Docker 日志
 docker compose logs -f

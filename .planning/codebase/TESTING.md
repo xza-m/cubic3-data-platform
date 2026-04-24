@@ -47,12 +47,10 @@
 
 - `cd frontend && npm run test:unit`
 - `cd frontend && npm run test:unit:coverage`
-- `cd frontend && npm run test:e2e`
-- `cd frontend && npm run test:visual`
-- `cd frontend && npm run test:visual:platform`
-- `cd frontend && npm run verify:ui`
-- `cd frontend && npm run verify:platform-layout`
-- `cd frontend && npm run verify:platform-data-inventory`
+- `cd frontend && npm run test:e2e:v2`（v2 redesign Playwright 全量；Round 3 清理后 `test:e2e` 已移除）
+- `cd frontend && npm run test:e2e:v2:smoke`（Day-0 最小 smoke 集：P1/P2/P3/P7/P21）
+- `cd frontend && npm run lint:all`（lint + CSS + v2 design tokens）
+- `cd frontend && npm run i18n:coverage`
 - `cd frontend && npm run verify:platform-query-workbench`
 - `cd frontend && npm run verify:semantic-layout`
 - `cd frontend && npm run verify:semantic`
