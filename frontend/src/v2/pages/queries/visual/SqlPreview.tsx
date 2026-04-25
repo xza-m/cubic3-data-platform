@@ -5,13 +5,15 @@
 // "在 QueryConsole 打开" 会把 SQL + source_id 写入 sessionStorage，然后上层路由跳转。
 
 import { useMemo, useState } from 'react'
-import { Copy, ExternalLink, AlertTriangle, Check } from 'lucide-react'
+import { Copy, ExternalLink, AlertTriangle, Check, Download, Loader2 } from 'lucide-react'
 import { t } from '@v2/i18n'
 
 interface SqlPreviewProps {
   sql: string
   issues?: string[]
   onOpenInConsole?: () => void
+  onExport?: () => void
+  exportPending?: boolean
   disabled?: boolean
 }
 
@@ -59,7 +61,14 @@ function highlight(sql: string): Array<{ text: string; kind: 'kw' | 'str' | 'cmt
   return parts
 }
 
-export function SqlPreview({ sql, issues = [], onOpenInConsole, disabled = false }: SqlPreviewProps) {
+export function SqlPreview({
+  sql,
+  issues = [],
+  onOpenInConsole,
+  onExport,
+  exportPending = false,
+  disabled = false,
+}: SqlPreviewProps) {
   const [copied, setCopied] = useState(false)
 
   const tokens = useMemo(() => highlight(sql), [sql])
@@ -115,6 +124,23 @@ export function SqlPreview({ sql, issues = [], onOpenInConsole, disabled = false
             >
               <ExternalLink className="h-3 w-3" />
               {t('queryVisual.sqlPreview.openInConsole', '在查询控制台打开')}
+            </button>
+          )}
+          {onExport && (
+            <button
+              type="button"
+              onClick={onExport}
+              disabled={disabled || exportPending}
+              className="flex items-center gap-1 rounded border px-2 py-1 text-[11px] hover:bg-[color:var(--bg-hover)] disabled:opacity-40"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
+              data-testid="v2-sql-preview-export"
+            >
+              {exportPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Download className="h-3 w-3" />
+              )}
+              {t('queryExport.action.export', '导出为文件')}
             </button>
           )}
         </div>

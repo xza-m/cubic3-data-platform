@@ -176,3 +176,54 @@ class DataSourceConnectionError(ExternalServiceError):
 class FileDeliveryError(InfrastructureException):
     """文件交付失败"""
     pass
+
+
+# ============================================================================
+# 异步数据导出相关异常
+# ============================================================================
+
+class QueryExportNotFoundError(EntityNotFoundError):
+    """导出任务未找到（或不归属当前用户，统一 404 避免枚举攻击）"""
+
+    def __init__(self, export_id: int):
+        super().__init__(
+            message=f"Query export {export_id} not found",
+            code="EXPORT_NOT_FOUND",
+            details={'export_id': export_id}
+        )
+
+
+class QuotaExceededError(BusinessRuleViolationError):
+    """配额超限（每日任务数 / 并发任务数）"""
+
+    def __init__(self, retry_after_seconds: int, reason: str = 'daily'):
+        super().__init__(
+            message=f"Query export quota exceeded ({reason}), retry after {retry_after_seconds}s",
+            code="EXPORT_QUOTA_EXCEEDED",
+            details={
+                'retry_after_seconds': retry_after_seconds,
+                'reason': reason,
+            }
+        )
+
+
+class InvalidSQLError(ValidationError):
+    """SQL 非法（空 / 非 SELECT / 含 DML 关键字等）"""
+
+    def __init__(self, message: str):
+        super().__init__(
+            message=message,
+            code="INVALID_SQL",
+            details={}
+        )
+
+
+class ExportNotCancellableError(BusinessRuleViolationError):
+    """当前状态不允许取消"""
+
+    def __init__(self, export_id: int, status: str):
+        super().__init__(
+            message=f"Query export {export_id} not cancellable at status {status}",
+            code="EXPORT_NOT_CANCELLABLE",
+            details={'export_id': export_id, 'status': status}
+        )

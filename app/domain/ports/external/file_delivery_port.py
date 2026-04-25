@@ -123,6 +123,26 @@ class IFileDeliveryPort(ABC):
         """
         pass
     
+    def upload_local_file(
+        self,
+        file_path: str,
+        object_name: str,
+        expiry_hours: int = 168,
+    ) -> Dict[str, Any]:
+        """
+        上传已落盘的本地文件（流式 / 大文件友好），不把内容加载进内存。
+
+        优先走 OSS（配置齐全时）；OSS 不可用时回落为本地下载并返回
+        ``method='local'`` 与 ``file_path``，由上层自行生成代理 URL。
+
+        返回结构与 ``deliver_via_oss`` 对齐：
+        ``{method, download_url?, file_path?, object_name, expires_at?, file_size_bytes}``
+
+        默认实现直接复用 ``deliver_via_oss`` / ``save_query_result`` 的 fallback 行为，
+        具体适配器可以覆写提供更高效的分片上传。
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def send_notification(
         self,

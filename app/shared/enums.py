@@ -160,3 +160,18 @@ class NotificationStatus(str, Enum):
     PENDING = "pending"
     SENT = "sent"
     FAILED = "failed"
+
+
+# ============================================================================
+# 异步数据导出相关枚举
+# ============================================================================
+
+class QueryExportStatus(str, Enum):
+    """异步查询导出任务状态"""
+    PENDING = "pending"          # 已入库，等待 worker 消费
+    RUNNING = "running"          # worker 执行中
+    SUCCESS = "success"          # 执行成功，文件可下载
+    FAILED = "failed"            # 执行失败
+    CANCELLING = "cancelling"    # 用户请求取消，worker 下一 chunk 响应
+    CANCELLED = "cancelled"      # 已取消
+    EXPIRED = "expired"          # 文件过期已清理，但记录保留

@@ -19,6 +19,7 @@ vi.mock('@v2/hooks/datasets', () => ({
 
 vi.mock('@v2/hooks/queries', () => ({
   useExecuteQuery: vi.fn(),
+  useSubmitExport: vi.fn(),
 }))
 
 const navigateSpy = vi.fn()
@@ -31,12 +32,13 @@ vi.mock('react-router-dom', async () => {
 })
 
 import { useDatasets, useDataset } from '@v2/hooks/datasets'
-import { useExecuteQuery } from '@v2/hooks/queries'
+import { useExecuteQuery, useSubmitExport } from '@v2/hooks/queries'
 import QueryVisual, { V2_QUERY_VISUAL_PREFILL_KEY } from './QueryVisual'
 
 const mockUseDatasets = useDatasets as ReturnType<typeof vi.fn>
 const mockUseDataset = useDataset as ReturnType<typeof vi.fn>
 const mockUseExec = useExecuteQuery as ReturnType<typeof vi.fn>
+const mockUseSubmitExport = useSubmitExport as ReturnType<typeof vi.fn>
 
 // ── 固定 fixture ─────────────────────────────────────────────────────────────
 
@@ -115,6 +117,10 @@ describe('QueryVisual page', () => {
         row_count: 1,
         execution_time_ms: 12,
       }),
+      isPending: false,
+    })
+    mockUseSubmitExport.mockReturnValue({
+      mutateAsync: vi.fn().mockResolvedValue({ id: 42, status: 'pending' }),
       isPending: false,
     })
   })

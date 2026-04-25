@@ -376,3 +376,88 @@ export async function listScheduledQueryRuns(
   )
   return res.data.data
 }
+
+// ============================================================================
+// 异步数据导出（add-query-export）
+// 后端契约：app/interfaces/api/v1/queries.py :: submit_export / list_exports /
+//           get_export / cancel_export / download_export
+// ============================================================================
+
+export type QueryExportStatus =
+  | 'pending'
+  | 'running'
+  | 'success'
+  | 'failed'
+  | 'cancelling'
+  | 'cancelled'
+  | 'expired'
+
+export interface QueryExport {
+  id: number
+  export_id: number
+  user_id: string
+  source_id: number | null
+  sql_query: string
+  status: QueryExportStatus
+  row_count: number | null
+  file_size_bytes: number | null
+  file_url: string | null
+  file_storage: 'oss' | 'local' | null
+  error_message: string | null
+  error_code: string | null
+  job_id: string | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  cancelled_at: string | null
+  expires_at: string | null
+}
+
+export interface SubmitExportPayload {
+  source_id: number
+  sql_query: string
+  visual_spec?: Record<string, unknown>
+}
+
+export interface ExportListParams {
+  page?: number
+  page_size?: number
+  status?: QueryExportStatus
+}
+
+export async function submitExport(payload: SubmitExportPayload): Promise<QueryExport> {
+  const res = await apiClient.post<{ data: QueryExport }>('/queries/export', payload)
+  return res.data.data
+}
+
+export async function listExports(
+  params: ExportListParams = {},
+): Promise<PaginatedResponse<QueryExport>> {
+  const res = await apiClient.get<{ data: PaginatedResponse<QueryExport> }>('/queries/exports', {
+    params,
+  })
+  return res.data.data
+}
+
+export async function getExport(exportId: number): Promise<QueryExport> {
+  const res = await apiClient.get<{ data: QueryExport }>(`/queries/exports/${exportId}`)
+  return res.data.data
+}
+
+export async function cancelExport(exportId: number): Promise<QueryExport> {
+  const res = await apiClient.post<{ data: QueryExport }>(
+    `/queries/exports/${exportId}/cancel`,
+  )
+  return res.data.data
+}
+
+export function buildExportDownloadUrl(exportItem: QueryExport): string | null {
+  // OSS 场景：直接用后端返回的预签名 URL
+  if (exportItem.file_storage === 'oss') {
+    return exportItem.file_url
+  }
+  if (exportItem.file_storage === 'local') {
+    return `/api/v1/queries/exports/${exportItem.id}/download`
+  }
+  return null
+}

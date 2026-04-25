@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from './query-client'
 import { ev, obs } from '@v2/observability'
 import {
+  cancelExport,
   createFolder,
   createSavedQuery,
   createScheduledQuery,
@@ -16,24 +17,30 @@ import {
   disableScheduledQuery,
   enableScheduledQuery,
   executeQuery,
+  getExport,
   getQueryHistoryItem,
   getSavedQuery,
   getScheduledQuery,
   listDatasourcesForConsole,
+  listExports,
   listFolders,
   listQueryHistories,
   listSavedQueries,
   listScheduledQueries,
   listScheduledQueryRuns,
+  submitExport,
   toggleFavorite,
   triggerScheduledQuery,
   updateSavedQuery,
   updateScheduledQuery,
   type CreateSavedQueryPayload,
   type CreateScheduledQueryPayload,
+  type ExportListParams,
   type HistoryListParams,
+  type QueryExport,
   type SavedQueryListParams,
   type ScheduledQueryListParams,
+  type SubmitExportPayload,
   type UpdateSavedQueryPayload,
   type UpdateScheduledQueryPayload,
   type ExecuteQueryRequest,
@@ -269,6 +276,65 @@ export function useTriggerScheduledQuery() {
       obs.track(ev.scheduledQueryTriggered(id))
       qc.invalidateQueries({ queryKey: qk('queries', 'scheduled', 'detail', id) })
       qc.invalidateQueries({ queryKey: qk('queries', 'scheduled', 'runs', id) })
+    },
+  })
+}
+
+// ============================================================================
+// 异步数据导出（add-query-export）
+// ============================================================================
+
+const EXPORT_ACTIVE_STATUSES: QueryExport['status'][] = ['pending', 'running', 'cancelling']
+
+export function useExports(params: ExportListParams = {}) {
+  return useQuery({
+    queryKey: qk('queries', 'exports', 'list', params),
+    queryFn: () => listExports(params),
+    staleTime: 5_000,
+    // 列表轮询：只要列表里有进行中的任务就每 5s 拉一次
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (!data?.items) return false
+      const hasActive = data.items.some((item) => EXPORT_ACTIVE_STATUSES.includes(item.status))
+      return hasActive ? 5_000 : false
+    },
+    refetchOnWindowFocus: true,
+  })
+}
+
+export function useExport(exportId: number | null | undefined) {
+  const enabled = typeof exportId === 'number' && Number.isFinite(exportId) && exportId > 0
+  return useQuery({
+    queryKey: qk('queries', 'exports', 'detail', exportId ?? 0),
+    queryFn: () => getExport(exportId as number),
+    enabled,
+    staleTime: 2_000,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (!data) return 3_000
+      if (EXPORT_ACTIVE_STATUSES.includes(data.status)) return 3_000
+      return false
+    },
+  })
+}
+
+export function useSubmitExport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: SubmitExportPayload) => submitExport(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['queries', 'exports'] })
+    },
+  })
+}
+
+export function useCancelExport() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (exportId: number) => cancelExport(exportId),
+    onSuccess: (_data, exportId) => {
+      qc.invalidateQueries({ queryKey: ['queries', 'exports'] })
+      qc.invalidateQueries({ queryKey: qk('queries', 'exports', 'detail', exportId) })
     },
   })
 }

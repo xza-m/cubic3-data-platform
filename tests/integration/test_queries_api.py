@@ -125,3 +125,31 @@ class TestQueriesTemplates:
     def test_template_use_post(self, client):
         r = client.post(f'{BASE}/templates/1/use', json={}, headers=AUTH_HEADERS)
         assert r.status_code != 404
+
+
+class TestQueryExports:
+    """异步数据导出（add-query-export）"""
+
+    def test_submit_export_post(self, client):
+        r = client.post(
+            f'{BASE}/export',
+            json={'source_id': 1, 'sql_query': 'SELECT 1'},
+            headers=AUTH_HEADERS,
+        )
+        assert r.status_code != 404
+
+    def test_list_exports_get(self, client):
+        r = client.get(f'{BASE}/exports', headers=AUTH_HEADERS)
+        assert r.status_code != 404
+
+    def test_get_export_get(self, client):
+        r = client.get(f'{BASE}/exports/1', headers=AUTH_HEADERS)
+        assert r.status_code != 404
+
+    def test_cancel_export_post(self, client):
+        r = client.post(f'{BASE}/exports/1/cancel', headers=AUTH_HEADERS)
+        assert r.status_code != 404
+
+    def test_download_export_get(self, client):
+        r = client.get(f'{BASE}/exports/1/download', headers=AUTH_HEADERS)
+        assert r.status_code != 404

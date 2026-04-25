@@ -109,6 +109,7 @@ export const NAV_MODULES: NavModule[] = [
       { label: t('nav.queries.sub.history', '查询历史'), path: '/queries/history', implemented: true },
       { label: t('nav.queries.sub.visual', '可视化构建'), path: '/queries/visual', implemented: true },
       { label: t('nav.queries.sub.scheduled', '调度查询'), path: '/queries/scheduled', implemented: true },
+      { label: t('nav.queries.sub.exports', '我的导出'), path: '/queries/exports', implemented: true },
     ],
   },
   {

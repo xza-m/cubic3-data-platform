@@ -98,6 +98,34 @@ class TaskQueueManager:
         
         return job.id
     
+    def enqueue_query_export(self, export_id: int) -> str:
+        """
+        将异步数据导出任务加入队列
+
+        Args:
+            export_id: QueryExport 记录 ID
+
+        Returns:
+            job_id: RQ 任务 ID
+        """
+        from app.infrastructure.tasks.jobs.query_export_job import execute_query_export_job
+
+        job = self.queue.enqueue(
+            execute_query_export_job,
+            export_id,
+            job_timeout=7200,   # 大数据导出 2 小时超时
+            result_ttl=86400,
+            failure_ttl=604800
+        )
+
+        logger.info(
+            f"Enqueued query export task",
+            export_id=export_id,
+            job_id=job.id
+        )
+
+        return job.id
+
     def enqueue(self, func, *args, **kwargs):
         """
         通用任务入队方法（用于事件处理等场景）

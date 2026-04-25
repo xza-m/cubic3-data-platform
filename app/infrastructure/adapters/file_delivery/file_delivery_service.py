@@ -280,6 +280,34 @@ class FileDeliveryService(IFileDeliveryPort):
                 'message': f'OSS上传失败，请使用本地下载: {str(e)}'
             }
     
+    def upload_local_file(
+        self,
+        file_path: str,
+        object_name: str,
+        expiry_hours: int = 168,
+    ) -> Dict[str, Any]:
+        """
+        上传一个已落盘的本地文件到 OSS，如 OSS 不可用回落为本地下载。
+        专为异步数据导出等大文件场景设计，避免把内容先加载到内存。
+        """
+        file_size_bytes = os.path.getsize(file_path)
+
+        # 优先走 OSS
+        oss_result = self.deliver_via_oss(
+            file_path=file_path,
+            object_name=object_name,
+            expiry_hours=expiry_hours,
+        )
+        oss_result['file_size_bytes'] = file_size_bytes
+        oss_result['file_path'] = file_path
+
+        if oss_result.get('method') != DeliveryMethod.OSS.value:
+            # deliver_via_oss 已在 OSS 未配置时返回 local 回落
+            oss_result.setdefault('method', DeliveryMethod.LOCAL.value)
+            oss_result['object_name'] = object_name
+
+        return oss_result
+
     def send_notification(
         self,
         chat_id: str,

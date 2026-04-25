@@ -13,8 +13,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Play } from 'lucide-react'
 import { useDatasets, useDataset } from '@v2/hooks/datasets'
-import { useExecuteQuery } from '@v2/hooks/queries'
+import { useExecuteQuery, useSubmitExport } from '@v2/hooks/queries'
 import type { QueryRunResult } from '@v2/api/queries'
+import { useToast } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 import { FieldTree } from './FieldTree'
 import { FilterPanel } from './FilterPanel'
@@ -27,6 +28,7 @@ export const V2_QUERY_VISUAL_PREFILL_KEY = 'v2:queryVisual:pendingPrefill'
 
 export default function QueryVisual() {
   const navigate = useNavigate()
+  const toast = useToast()
 
   // Dataset list — 选择器用
   const datasetsQ = useDatasets({ page: 1, page_size: 200 })
@@ -63,6 +65,7 @@ export default function QueryVisual() {
 
   // 执行
   const executeMut = useExecuteQuery()
+  const submitExportMut = useSubmitExport()
   const [result, setResult] = useState<QueryRunResult | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
@@ -112,6 +115,38 @@ export default function QueryVisual() {
       // sessionStorage 不可用则放弃，直接跳转（用户可在 console 手动粘贴）
     }
     navigate('/queries')
+  }
+
+  const handleExport = async () => {
+    if (!dataset || dataset.source_id == null) {
+      toast.show({
+        tone: 'danger',
+        title: t('queryExport.toast.noSource', '数据集未绑定数据源，无法导出'),
+      })
+      return
+    }
+    try {
+      const exportRecord = await submitExportMut.mutateAsync({
+        source_id: dataset.source_id,
+        sql_query: sqlResult.sql,
+      })
+      toast.show({
+        tone: 'success',
+        title: t('queryExport.toast.submitted', '导出任务已提交'),
+        description: t(
+          'queryExport.toast.submittedDesc',
+          '任务 #{id} 正在后台执行，前往"我的导出"查看进度',
+          { id: String(exportRecord.id) },
+        ),
+      })
+      navigate('/queries/exports')
+    } catch (err) {
+      toast.show({
+        tone: 'danger',
+        title: t('queryExport.toast.submitFailed', '提交导出任务失败'),
+        description: err instanceof Error ? err.message : String(err),
+      })
+    }
   }
 
   return (
@@ -244,6 +279,8 @@ export default function QueryVisual() {
               sql={sqlResult.sql}
               issues={sqlResult.issues}
               onOpenInConsole={handleOpenInConsole}
+              onExport={handleExport}
+              exportPending={submitExportMut.isPending}
               disabled={!dataset}
             />
           </div>

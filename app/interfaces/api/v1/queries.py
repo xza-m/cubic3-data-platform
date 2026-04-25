@@ -1,22 +1,35 @@
 """
 查询中心 REST API
 """
-from flask import Blueprint, request, g
+import os
+
+from flask import Blueprint, request, g, send_file, abort
 from pydantic import ValidationError
 from app.di.utils import get_app_container
 from app.interfaces.api.middleware.auth import require_auth
 from app.application.query.commands.execute_query import ExecuteQueryCommand
 from app.application.query.commands.create_query import CreateQueryCommand
 from app.application.query.commands.update_query import UpdateQueryCommand
+from app.application.query.commands.submit_export import SubmitExportCommand
+from app.application.query.commands.cancel_export import CancelExportCommand
 from app.application.query.schemas.query_schemas import (
     ExecuteQueryRequest,
     CreateQueryRequest,
     UpdateQueryRequest,
     CreateFolderRequest
 )
+from app.application.query.schemas.query_export_schemas import (
+    SubmitExportRequest,
+    ListExportsRequest,
+)
 from app.shared.exceptions import (
     ApplicationException,
+    AuthorizationError,
     EntityNotFoundError,
+    ExportNotCancellableError,
+    InvalidSQLError,
+    QueryExportNotFoundError,
+    QuotaExceededError,
     ValidationError as AppValidationError,
 )
 from app.shared.response import success, created, error, not_found, server_error
@@ -416,3 +429,167 @@ def use_template(id):
     except Exception as e:
         logger.error(f"Use template failed: {str(e)}", exc_info=True)
         return server_error(message=f'使用模板失败: {str(e)}')
+
+
+# ============================================================================
+# 异步数据导出（add-query-export）
+# ============================================================================
+
+
+def _export_error(exc: Exception):
+    """把 service 层异常映射到 HTTP 响应。"""
+    if isinstance(exc, QueryExportNotFoundError):
+        return not_found(message=str(exc))
+    if isinstance(exc, QuotaExceededError):
+        return error(
+            message=str(exc),
+            status=429,
+            details=exc.details,
+        )
+    if isinstance(exc, InvalidSQLError):
+        return error(message=str(exc), status=400, details=exc.details)
+    if isinstance(exc, ExportNotCancellableError):
+        return error(message=str(exc), status=409, details=exc.details)
+    if isinstance(exc, AuthorizationError):
+        return error(message=str(exc), status=403)
+    logger.error(f"Query export error: {exc}", exc_info=True)
+    return server_error(message=str(exc))
+
+
+@bp.route('/export', methods=['POST'])
+@require_auth
+def submit_export():
+    """提交异步数据导出任务"""
+    try:
+        schema = SubmitExportRequest(**(request.json or {}))
+    except ValidationError as e:
+        return error(message=f'请求参数错误: {e.errors()}', status=400)
+
+    command = SubmitExportCommand(
+        source_id=schema.source_id,
+        sql_query=schema.sql_query,
+        user_id=get_current_user(),
+        visual_spec=schema.visual_spec,
+    )
+
+    try:
+        container = get_app_container()
+        handler = container.submit_export_handler()
+        result = handler.handle(command)
+        return success(data=result, message='accepted', status=202)
+    except (
+        QueryExportNotFoundError,
+        QuotaExceededError,
+        InvalidSQLError,
+        ExportNotCancellableError,
+        AuthorizationError,
+    ) as exc:
+        return _export_error(exc)
+    except Exception as exc:  # pragma: no cover - fallback
+        return _export_error(exc)
+
+
+@bp.route('/exports', methods=['GET'])
+@require_auth
+def list_exports():
+    """分页查询当前用户的导出任务"""
+    try:
+        params = ListExportsRequest(
+            page=request.args.get('page', 1, type=int),
+            page_size=request.args.get('page_size', 20, type=int),
+            status=request.args.get('status'),
+        )
+    except ValidationError as e:
+        return error(message=f'请求参数错误: {e.errors()}', status=400)
+
+    try:
+        container = get_app_container()
+        handler = container.list_exports_handler()
+        result = handler.handle(
+            user_id=get_current_user(),
+            page=params.page,
+            page_size=params.page_size,
+            status=params.status,
+        )
+        return success(data=result)
+    except Exception as exc:  # pragma: no cover - fallback
+        return _export_error(exc)
+
+
+@bp.route('/exports/<int:export_id>', methods=['GET'])
+@require_auth
+def get_export(export_id: int):
+    """查询单个导出任务（含 file_url）"""
+    try:
+        container = get_app_container()
+        handler = container.get_export_handler()
+        result = handler.handle(
+            user_id=get_current_user(),
+            export_id=export_id,
+        )
+        return success(data=result)
+    except (QueryExportNotFoundError, AuthorizationError) as exc:
+        return _export_error(exc)
+    except Exception as exc:  # pragma: no cover
+        return _export_error(exc)
+
+
+@bp.route('/exports/<int:export_id>/cancel', methods=['POST'])
+@require_auth
+def cancel_export(export_id: int):
+    """取消导出任务"""
+    command = CancelExportCommand(
+        export_id=export_id,
+        user_id=get_current_user(),
+    )
+    try:
+        container = get_app_container()
+        handler = container.cancel_export_handler()
+        result = handler.handle(command)
+        return success(data=result, status=202)
+    except (
+        QueryExportNotFoundError,
+        ExportNotCancellableError,
+        AuthorizationError,
+    ) as exc:
+        return _export_error(exc)
+    except Exception as exc:  # pragma: no cover
+        return _export_error(exc)
+
+
+@bp.route('/exports/<int:export_id>/download', methods=['GET'])
+@require_auth
+def download_export(export_id: int):
+    """本地回落：流式下载导出文件（仅创建人可访问）"""
+    container = get_app_container()
+    repository = container.query_export_repository()
+    export = repository.find_for_user(export_id, get_current_user())
+    if not export:
+        return _export_error(QueryExportNotFoundError(export_id))
+
+    if export.status != 'success':
+        return error(
+            message=f"export not ready, current status={export.status}",
+            status=409,
+        )
+    if export.file_storage != 'local':
+        return error(
+            message='file is served by object storage, use file_url instead',
+            status=400,
+        )
+    if not export.file_object_key or not os.path.exists(export.file_object_key):
+        return not_found(message='export file missing or expired')
+
+    logger.info(
+        "query export downloaded",
+        export_id=export_id,
+        user_id=get_current_user(),
+    )
+
+    filename = f"export_{export_id}.csv"
+    return send_file(
+        export.file_object_key,
+        mimetype='text/csv; charset=utf-8',
+        as_attachment=True,
+        download_name=filename,
+    )

@@ -75,6 +75,7 @@ const QueriesScheduledDetail = lazy(() => import('@v2/pages/queries/QueriesSched
 const QueriesScheduledCreate = lazy(() => import('@v2/pages/queries/QueriesScheduledCreate'))
 const QueriesSavedCreate = lazy(() => import('@v2/pages/queries/QueriesSavedCreate'))
 const QueryVisual = lazy(() => import('@v2/pages/queries/visual/QueryVisual'))
+const QueryExports = lazy(() => import('@v2/pages/queries/QueryExports'))
 
 // ── Apps 域 ───────────────────────────────────────────────────────────────────
 const Marketplace = lazy(() => import('@v2/pages/apps/Marketplace'))
@@ -231,6 +232,7 @@ export default function AppRoutes() {
               <Route path="new" element={wrap(<QueriesScheduledCreate />)} />
               <Route path=":id" element={wrap(<QueriesScheduledDetail />)} />
             </Route>
+            <Route path="exports" element={wrap(<QueryExports />)} />
           </Route>
 
           {/* ── 应用市场 ── 静态 instances 段必须在动态 :code 之前 */}

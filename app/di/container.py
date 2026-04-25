@@ -163,6 +163,14 @@ from app.application.query.handlers.sql_query_async_handlers import (
     GetQueryStatusHandler,
     GetQueryResultHandler,
 )
+from app.application.query.handlers.query_export_handlers import (
+    SubmitExportHandler,
+    GetExportHandler,
+    ListExportsHandler,
+    CancelExportHandler,
+)
+from app.application.query.services.query_export_service import QueryExportService
+from app.infrastructure.repositories.query_export_repository import QueryExportRepository
 from app.application.query.handlers.template_handlers import (
     ListTemplatesHandler,
     CreateTemplateHandler,
@@ -722,6 +730,42 @@ class Container(containers.DeclarativeContainer):
     get_query_result_handler = providers.Factory(
         GetQueryResultHandler,
         sql_query_repository=sql_query_repository
+    )
+
+    # ========================================================================
+    # Query Export（异步数据导出）
+    # ========================================================================
+
+    query_export_repository = providers.Factory(
+        QueryExportRepository,
+        session=db_session,
+    )
+
+    query_export_service = providers.Factory(
+        QueryExportService,
+        export_repository=query_export_repository,
+        datasource_repository=datasource_repository,
+        task_queue=task_queue,
+    )
+
+    submit_export_handler = providers.Factory(
+        SubmitExportHandler,
+        export_service=query_export_service,
+    )
+
+    get_export_handler = providers.Factory(
+        GetExportHandler,
+        export_service=query_export_service,
+    )
+
+    list_exports_handler = providers.Factory(
+        ListExportsHandler,
+        export_service=query_export_service,
+    )
+
+    cancel_export_handler = providers.Factory(
+        CancelExportHandler,
+        export_service=query_export_service,
     )
     
     # ========================================================================
