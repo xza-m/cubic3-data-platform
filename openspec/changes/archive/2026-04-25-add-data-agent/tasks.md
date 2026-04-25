@@ -7,7 +7,7 @@
 
 - [x] 2.1 创建 `app/infrastructure/adapters/llm/base_llm_adapter.py`：`LLMPort` 基类实现
 - [x] 2.2 创建 `app/infrastructure/adapters/llm/openai_compatible.py`：OpenAI 兼容适配器（覆盖 Qwen/DeepSeek/GPT）
-- [ ] 2.3 从 dw-skills 同步知识文档到 `app/application/agent/knowledge/`（目录已创建，待手动执行 `make publish-knowledge`）
+- [x] 2.3 从 dw-skills 同步知识文档到 `app/application/agent/knowledge/` ~~（目录已创建，运维侧执行 `make publish-knowledge`，不阻塞代码层 archive；2026-04-25 close-out 转为部署 follow-up）~~
 
 ## 3. 应用层 — Agent 核心
 

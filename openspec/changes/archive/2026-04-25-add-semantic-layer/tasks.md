@@ -47,7 +47,7 @@
 - [x] 1.4.6 DI 容器配置：cube_repository → view_repository → recipe_repository → semantic_service → tool_registry
 - [x] 1.4.7 System Prompt 更新：注入语义层工具说明（list_cubes/describe_cube/query 优先策略 + DSL 构造指引）
 - [x] 1.4.8 安抚话术：compile_and_execute 返回 hint 字段（编译/执行失败时的友好提示与修复建议）
-- [ ] ~~1.4.9 Redis 缓存~~ — 已取消
+- [x] ~~1.4.9 Redis 缓存~~ — 已取消（2026-04-25 close-out）
 
 ## Phase 1.5 — 物理层同步（1天）
 
@@ -145,4 +145,4 @@
 - [x] 2.9.5 前端 PlaygroundTab 增加可选 JOIN 路径输入（逗号分隔 Cube 名称）
 
 ### 后续排期
-- [ ] ~~2.8 Pre-aggregation 支持 + 加速层路由（Hologres/StarRocks）~~ — 暂缓
+- [x] ~~2.8 Pre-aggregation 支持 + 加速层路由（Hologres/StarRocks）~~ — 暂缓（2026-04-25 close-out，未来若启用单开新 change）

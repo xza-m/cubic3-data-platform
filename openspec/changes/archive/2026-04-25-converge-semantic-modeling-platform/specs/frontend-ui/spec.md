@@ -1,4 +1,4 @@
-## MODIFIED Requirements
+## ADDED Requirements
 ### Requirement: Semantic Frontend Verification Workflow
 The semantic frontend SHALL provide a repeatable verification workflow for critical semantic center changes.
 

@@ -2,7 +2,6 @@
 
 ## Purpose
 Defines the UI component library and design system for the frontend application, migrated from Ant Design to shadcn/ui for better performance and customization.
-
 ## Requirements
 ### Requirement: shadcn/ui Integration
 
@@ -24,8 +23,7 @@ The frontend SHALL use shadcn/ui as the primary UI component library, providing 
 - **AND** the bundle SHALL include only the components actually used in the application
 
 ### Requirement: Business Component Library
-
-The frontend SHALL provide a business component library in `src/components/business/` that wraps shadcn/ui components with platform-specific styling and behavior.
+The frontend SHALL provide a business component library in `src/components/business/` and domain-focused workbench modules in `src/components/Semantic/` that wrap shadcn/ui components with platform-specific styling and behavior.
 
 #### Scenario: Consistent form components
 - **WHEN** a developer builds a form
@@ -41,6 +39,11 @@ The frontend SHALL provide a business component library in `src/components/busin
 - **WHEN** a page needs common UI patterns (cards, modals, drawers)
 - **THEN** they can use `PageCard`, `PageModal`, and `PageDrawer` from `@/components/business`
 - **AND** these components provide consistent spacing, shadows, and animations
+
+#### Scenario: Semantic workbench modules
+- **WHEN** a developer implements pages inside the semantic center
+- **THEN** they SHALL prioritize shared semantic workbench modules such as page shell, page header, status banner, action bar, inspector panel, and empty state
+- **AND** they SHALL extend those modules before inventing a conflicting page-level composition
 
 ### Requirement: Form Management with React Hook Form
 
@@ -64,7 +67,6 @@ The frontend SHALL use React Hook Form for all form state management and validat
 - **AND** they maintain consistent validation and error handling
 
 ### Requirement: Responsive Design
-
 The frontend SHALL provide a fully responsive user interface that adapts to different screen sizes.
 
 #### Scenario: Mobile view (< 768px)
@@ -86,8 +88,12 @@ The frontend SHALL provide a fully responsive user interface that adapts to diff
 - **AND** sidebar navigation is always visible
 - **AND** tables show all columns without scrolling (where feasible)
 
-### Requirement: Accessibility
+#### Scenario: Semantic workbench responsive priority
+- **WHEN** semantic center pages render on narrower viewports
+- **THEN** filters, preview panels, resource rails, and inspectors SHALL collapse or reorder without hiding critical actions
+- **AND** the current object, current state, and next action SHALL remain visible without requiring hover-only interaction
 
+### Requirement: Accessibility
 The frontend SHALL meet WCAG 2.1 Level AA accessibility standards.
 
 #### Scenario: Keyboard navigation
@@ -106,6 +112,11 @@ The frontend SHALL meet WCAG 2.1 Level AA accessibility standards.
 - **WHEN** UI elements are displayed
 - **THEN** all text has a contrast ratio of at least 4.5:1 (7:1 for large text)
 - **AND** interactive elements have sufficient contrast in all states (default, hover, focus, disabled)
+
+#### Scenario: Semantic center action discoverability
+- **WHEN** semantic center pages expose row actions, object actions, or modeling actions
+- **THEN** those actions SHALL remain discoverable on keyboard and touch interfaces
+- **AND** the UI SHALL NOT rely on hover-only affordances for core operations
 
 ### Requirement: Component Theming
 
@@ -182,3 +193,150 @@ The frontend SHALL completely remove Ant Design and migrate all components to sh
 - **THEN** the UI maintains consistent spacing, sizing, and styling
 - **AND** all components follow the same design language
 - **AND** the overall aesthetic is modern and cohesive
+
+### Requirement: Platform Workbench Design Baseline
+The frontend SHALL use a single platform workbench design baseline derived from the semantic center workbench language.
+
+#### Scenario: Shell and page consistency
+- **WHEN** a user navigates between login, platform overview, semantic center, data inventory, and analysis pages
+- **THEN** the pages SHALL feel like the same product
+- **AND** they SHALL share the same typography, spacing, surface hierarchy, and status language
+
+#### Scenario: Canonical page models
+- **WHEN** a new platform page is added or an existing page is refactored
+- **THEN** it SHALL map to one of the five canonical page models
+- **AND** it SHALL NOT invent a separate layout language
+
+### Requirement: Platform Shell Contract
+The frontend SHALL provide a low-noise global shell that supports navigation without competing with page content.
+
+#### Scenario: Header behavior
+- **WHEN** the authenticated shell renders
+- **THEN** the top navigation SHALL show the current first-level module, a global search entry, notifications, and the current user
+- **AND** it SHALL NOT render decorative background treatments or unrelated status summaries
+
+#### Scenario: Sidebar behavior
+- **WHEN** the sidebar renders
+- **THEN** it SHALL focus on navigation groups and current location
+- **AND** it SHALL NOT render promotional cards, health banners, or secondary dashboards
+
+### Requirement: Platform Overview Page Model
+The frontend SHALL implement the dashboard as an `Overview` page model rather than a generic admin welcome page.
+
+#### Scenario: Platform overview content
+- **WHEN** a user opens the dashboard
+- **THEN** the page SHALL prioritize current platform asset counts, current work domains, and active blockers
+- **AND** it SHALL NOT render a welcome hero, generic KPI card matrix, or activity feed as the primary content
+
+### Requirement: Platform Layout Verification
+The frontend SHALL provide targeted verification for the platform shell and overview pages.
+
+#### Scenario: Platform layout verification script
+- **WHEN** a developer changes `AppLayout`, `Login`, or `Dashboard`
+- **THEN** they SHALL be able to run a single verification command
+- **AND** that command SHALL include type checks, unit tests, targeted visual regression, and a shell navigation E2E
+
+### Requirement: Semantic Workbench Pages SHALL Share Frontend View Models
+Semantic center pages SHALL use shared frontend view models and state abstractions instead of page-local ad hoc data shaping.
+
+#### Scenario: Reuse object summary model
+- **WHEN** a semantic center page renders an object list, preview, or inspector
+- **THEN** it SHALL consume a shared summary model such as `SemanticObjectSummary`
+- **AND** it SHALL NOT redefine the same object identity fields independently on each page
+
+#### Scenario: Reuse governance and structure summaries
+- **WHEN** a semantic center page needs lifecycle, binding, drift, or structure information
+- **THEN** it SHALL consume shared abstractions such as governance state, structure summary, and workbench context items
+- **AND** those abstractions SHALL support reuse across inventory, studio, canvas, and developer pages
+
+### Requirement: Semantic Workbench Pages SHALL Use Functional Copy
+Semantic center page copy SHALL describe function, current state, or available action, and SHALL NOT use step-by-step process narration as default descriptive text.
+
+#### Scenario: Render page header description
+- **WHEN** a semantic page renders its header description
+- **THEN** the description SHALL summarize what the module is for
+- **AND** it SHALL NOT default to “先…再…” or other workflow narration
+
+#### Scenario: Render panel description
+- **WHEN** a semantic page renders panel descriptions, empty states, or inspector summaries
+- **THEN** the copy SHALL explain what the panel shows or maintains
+- **AND** it SHALL avoid redundant process instructions unless the panel is explicitly an onboarding surface
+
+### Requirement: Semantic Center Management Pages SHALL Focus On Search And Overview
+语义中心中的管理页 SHALL 只承担对象检索、筛选和概况查看职责，且 SHALL NOT 在首屏混入设计能力。
+
+#### Scenario: Browse cubes from Cube 管理
+- **WHEN** 用户打开 `Cube 管理`
+- **THEN** 页面 SHALL 提供搜索、筛选、列表和当前 Cube 预览
+- **AND** 页面 SHALL NOT 在首屏展示 DSL 编辑、快速查询构建器或无上下文的跨工作区跳转
+
+#### Scenario: Browse domains from 领域管理
+- **WHEN** 用户打开 `领域管理`
+- **THEN** 页面 SHALL 提供 Catalog 树、领域列表和当前领域概况
+- **AND** 页面 SHALL NOT 在首屏同时展示当前领域编辑大表单和新建另一个领域的大表单
+
+### Requirement: Semantic Center Design Pages SHALL Focus On Editing And Publishing
+语义中心中的设计页 SHALL 只承担对象定义、关系编排和发布职责，且 SHALL NOT 在首屏混入目录台账、对象浏览台账或消费验证能力。
+
+#### Scenario: Edit a cube in Cube 设计
+- **WHEN** 用户进入 `Cube 设计`
+- **THEN** 页面 SHALL 围绕基础信息、维度、指标和校验反馈组织
+- **AND** 页面 SHALL NOT 将领域关系、查询验证或目录浏览作为主流程
+
+#### Scenario: Model a domain in 领域设计
+- **WHEN** 用户进入 `领域设计`
+- **THEN** 页面 SHALL 围绕 Cube 库、画布、Inspector 和发布动作组织
+- **AND** 页面 SHALL NOT 混入目录长列表、查询器或 YAML 编辑器
+
+### Requirement: Semantic Center Pages SHALL Keep A Single Primary Task On First Screen
+语义中心四个核心页面 SHALL 在首屏只呈现单一主任务，并 SHALL 使用唯一主按钮和受控次按钮表达当前动作。
+
+#### Scenario: First screen shows one primary task
+- **WHEN** 用户首次进入任一核心页面
+- **THEN** 其首屏 SHALL 只围绕当前任务展示上下文与主操作
+- **AND** 页面 SHALL NOT 通过大段说明文案解释页面职责
+
+#### Scenario: Primary actions stay bounded
+- **WHEN** 页面渲染主操作区域
+- **THEN** 页面 SHALL 只有一个主按钮
+- **AND** 页面 MAY 额外提供一个次按钮
+- **AND** 页面 SHALL NOT 将多个跨工作区跳转同时作为主操作
+
+### Requirement: Semantic Center Navigation SHALL Preserve Only Valid Workflow Jumps
+语义中心页面之间 SHALL 只保留顺主流程跳转，并 SHALL 移除会破坏页面边界理解的无效跳转。
+
+#### Scenario: Management pages jump only into design pages
+- **WHEN** 用户在 `Cube 管理` 或 `领域管理` 中执行主操作
+- **THEN** 目标页面 SHALL 分别进入 `Cube 设计` 或 `领域设计`
+- **AND** 页面 SHALL NOT 将技术工作区或其他对象工作区作为业务主 CTA
+
+#### Scenario: Design pages return to their management context
+- **WHEN** 用户在 `Cube 设计` 或 `领域设计` 中执行返回动作
+- **THEN** 页面 SHALL 返回对应的管理页上下文
+- **AND** 页面 SHALL NOT 要求用户通过无关工作区回流
+
+### Requirement: Semantic Center SHALL Maintain Layout And Workflow Regression Coverage
+语义中心 SHALL 为四个核心页面提供布局职责、主操作和关键流程的自动化回归覆盖。
+
+#### Scenario: Unit and interaction coverage
+- **WHEN** 前端执行页面与组件测试
+- **THEN** 测试 SHALL 验证管理页不混入设计能力
+- **AND** 测试 SHALL 验证设计页不混入管理能力
+- **AND** 测试 SHALL 验证主按钮唯一、关键摘要不重复
+
+#### Scenario: End-to-end and visual coverage
+- **WHEN** 前端执行语义中心 E2E 与视觉回归
+- **THEN** 自动化 SHALL 覆盖 `Cube 管理` 浏览、`Cube 设计` 保存、`领域管理` 浏览、`领域设计` 发布四条主链路
+- **AND** 视觉基线 SHALL 覆盖四个核心页面的首屏布局
+
+### Requirement: Semantic Frontend Verification Workflow
+The semantic frontend SHALL provide a repeatable verification workflow for critical semantic center changes.
+
+#### Scenario: Run semantic frontend verification
+- **WHEN** semantic center pages, semantic API integration, or semantic route behavior are changed
+- **THEN** developers MUST be able to run documented verification steps including type check, production build, and critical browser smoke tests
+
+#### Scenario: Validate semantic critical paths in browser
+- **WHEN** semantic frontend critical paths are validated
+- **THEN** the workflow MUST include browser smoke checks for domain creation, domain publish, and cube draft generation
+
