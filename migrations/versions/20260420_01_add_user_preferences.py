@@ -49,9 +49,11 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.now(),
         ),
-        sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], ondelete="CASCADE", name="fk_user_preferences_user"
-        ),
+        # NOTE: 历史上这里有一条 FK `fk_user_preferences_user → users(id)`，
+        # 但 users 表要到 20260420_05 才被创建，迁移链会在这里 UndefinedTable。
+        # 领域实体 `UserPreferences` 本身并未声明该 FK，与迁移原本就不一致；
+        # 2026-04-25 修复：删除该 FK 约束让迁移链能一次性跑通；如需引入外键，
+        # 请在 users 表创建后的新 revision 中用 op.create_foreign_key 补。
     )
 
 

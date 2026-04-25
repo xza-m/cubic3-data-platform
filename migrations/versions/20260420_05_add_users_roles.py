@@ -81,7 +81,7 @@ def upgrade() -> None:
                 "is_system",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
             ),
             sa.Column("last_login_at", sa.DateTime(), nullable=True),
             sa.Column(
@@ -117,7 +117,7 @@ def upgrade() -> None:
                 "is_system",
                 sa.Boolean(),
                 nullable=False,
-                server_default=sa.text("0"),
+                server_default=sa.text("false"),
             ),
             sa.Column(
                 "created_at",

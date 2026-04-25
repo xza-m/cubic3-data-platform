@@ -18,7 +18,9 @@ if [ ! -d "migrations" ]; then
 fi
 
 echo "Upgrading database..."
-flask db upgrade || echo "Database upgrade failed or already up to date"
+# 不再用 `|| echo`，一旦 flask db upgrade 失败就让容器退出，避免后续
+# 在未迁移的 schema 上启动 Flask，导致运行时 404/500 类"幽灵故障"。
+flask db upgrade
 
 echo "Starting application..."
 # --timeout 300: 单个请求最大执行时间 5 分钟（适应 MaxCompute 等长时间查询）
