@@ -1,42 +1,59 @@
 // frontend/src/v2/pages/semantic/ontology/Relations.tsx
 //
-// 对象关系列表页。
+// 对象关系页 · 左 SVG 关系图 + 右关系列表（双面板）。
 // 接口：GET /api/v1/ontology/relations
 //       POST /api/v1/ontology/relations
+//       GET /api/v1/ontology/objects（提供节点显示名）
 //
 // B-back-6: 全局搜索上线前，本地 filter
 
 import { useMemo, useState } from 'react'
-import { Plus, Search } from 'lucide-react'
-// 等待 X-Crosscut：@v2/components/ui
+import { Plus, Search, X } from 'lucide-react'
 import { Button, Chip, Input } from '@v2/components/ui'
-// 等待 X-Crosscut：@v2/components/ResourceListPage
-import { ResourceListPage } from '@v2/components/ResourceListPage'
-// 等待 X-Crosscut：@v2/components/EntityFormDialog
 import { EntityFormDialog } from '@v2/components/EntityFormDialog'
-// 等待 X-Crosscut：@v2/i18n
 import { t } from '@v2/i18n'
-import { useRelationList, useCreateRelation } from '@v2/hooks/ontology'
+import { useObjectList, useRelationList, useCreateRelation } from '@v2/hooks/ontology'
+import {
+  OntologyRelationGraph,
+  type OntologyGraphSelection,
+} from './_shared/OntologyRelationGraph'
 
 export default function OntologyRelations() {
-  // TODO(B-back-6): 后端搜索上线后改为 API 参数 filter
   const [keyword, setKeyword] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [selected, setSelected] = useState<OntologyGraphSelection>(null)
 
+  const objectsQuery = useObjectList()
   const relationsQuery = useRelationList()
-  const items = useMemo(() => relationsQuery.data?.items ?? [], [relationsQuery.data])
   const create = useCreateRelation()
 
-  const filtered = useMemo(() => {
-    const q = keyword.trim().toLowerCase()
-    if (!q) return items
-    return items.filter((r) =>
-      `${r.name} ${r.source_object_name} ${r.target_object_name} ${r.relation_type ?? ''}`.toLowerCase().includes(q),
+  const objects = useMemo(() => objectsQuery.data?.items ?? [], [objectsQuery.data])
+  const relations = useMemo(() => relationsQuery.data?.items ?? [], [relationsQuery.data])
+
+  // 选中态过滤：选中对象 → 过滤为该对象相关的关系；选中关系 → 仅留该关系
+  const filteredBySelection = useMemo(() => {
+    if (!selected) return relations
+    if (selected.kind === 'relation') {
+      return relations.filter((r) => r.name === selected.name)
+    }
+    return relations.filter(
+      (r) =>
+        r.source_object_name === selected.name || r.target_object_name === selected.name,
     )
-  }, [items, keyword])
+  }, [relations, selected])
+
+  // 关键字进一步过滤
+  const visible = useMemo(() => {
+    const q = keyword.trim().toLowerCase()
+    if (!q) return filteredBySelection
+    return filteredBySelection.filter((r) =>
+      `${r.name} ${r.title ?? ''} ${r.source_object_name} ${r.target_object_name} ${r.relation_type ?? ''}`
+        .toLowerCase()
+        .includes(q),
+    )
+  }, [filteredBySelection, keyword])
 
   const handleCreate = async (data: Record<string, string>) => {
-    // drop-frontend: BusinessRelation 没有 cardinality 字段
     await create.mutateAsync({
       name: data.name,
       title: data.title || data.name,
@@ -48,70 +65,170 @@ export default function OntologyRelations() {
     setShowCreate(false)
   }
 
+  const isLoading = relationsQuery.isLoading || objectsQuery.isLoading
+  const isError = relationsQuery.isError || objectsQuery.isError
+  const selectedObjectTitle = useMemo(() => {
+    if (!selected || selected.kind !== 'object') return null
+    return objects.find((o) => o.name === selected.name)?.title ?? selected.name
+  }, [selected, objects])
+  const selectedRelationTitle = useMemo(() => {
+    if (!selected || selected.kind !== 'relation') return null
+    return relations.find((r) => r.name === selected.name)?.title ?? selected.name
+  }, [selected, relations])
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <ResourceListPage
-        title={t('ontology.relations.title', '关系')}
-        total={filtered.length}
-        loading={relationsQuery.isLoading}
-        error={relationsQuery.isError}
-        actions={
-          <div className="flex items-center gap-2">
-            {/* TODO(B-back-6): 改为 API 全文搜索 */}
-            <div className="relative">
-              <Search
-                size={12}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-3"
-                aria-hidden
-              />
-              <Input
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder={t('ontology.relations.search', '搜索关系…')}
-                className="w-48 pl-7"
-                aria-label={t('ontology.relations.searchLabel', '搜索关系')}
-              />
-            </div>
-            <Button size="sm" variant="primary" onClick={() => setShowCreate(true)}>
-              <Plus size={12} /> {t('ontology.relations.create', '新建关系')}
-            </Button>
-          </div>
-        }
-        emptyText={t('ontology.relations.empty', '尚无关系定义')}
+      {/* 顶部统计 + 操作 */}
+      <div
+        className="flex shrink-0 items-center gap-3 border-b px-4 py-2 text-xs text-3"
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)' }}>
-              <Th>{t('col.name', '名称')}</Th>
-              <Th>{t('col.from', '来源对象')}</Th>
-              <Th>{t('col.to', '目标对象')}</Th>
-              <Th>{t('col.type', '关系类型')}</Th>
-              <Th>{t('col.status', '状态')}</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((r) => (
-              <tr key={r.name} className="transition hover:bg-hover">
-                <Td>
-                  <div className="font-medium text-1">{r.name}</div>
-                </Td>
-                <Td>
-                  <span className="font-mono text-xs">{r.source_object_name}</span>
-                </Td>
-                <Td>
-                  <span className="font-mono text-xs">{r.target_object_name}</span>
-                </Td>
-                <Td>
-                  <Chip tone="neutral">{r.relation_type}</Chip>
-                </Td>
-                <Td>
-                  <StatusChip status={r.status} />
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </ResourceListPage>
+        <span className="font-medium text-1">
+          {t('ontology.relations.title', '关系')} · {relations.length}
+        </span>
+        {selected ? (
+          <Chip tone="accent">
+            {selected.kind === 'object'
+              ? t('ontology.relations.relatedToObject', '已选择对象：{name}', {
+                  name: selectedObjectTitle ?? '',
+                })
+              : t('ontology.relations.relatedToRelation', '已选择关系：{name}', {
+                  name: selectedRelationTitle ?? '',
+                })}
+            <button
+              type="button"
+              className="ml-1.5 rounded p-0.5 hover:bg-hover"
+              aria-label={t('ontology.relations.clearSelection', '清除筛选')}
+              onClick={() => setSelected(null)}
+            >
+              <X size={10} />
+            </button>
+          </Chip>
+        ) : null}
+        <div className="ml-auto flex items-center gap-2">
+          <div className="relative">
+            <Search
+              size={12}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-3"
+              aria-hidden
+            />
+            <Input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder={t('ontology.relations.search', '搜索关系…')}
+              className="w-48 pl-7"
+              aria-label={t('ontology.relations.searchLabel', '搜索关系')}
+            />
+          </div>
+          <Button size="sm" variant="primary" onClick={() => setShowCreate(true)}>
+            <Plus size={12} /> {t('ontology.relations.create', '新建关系')}
+          </Button>
+        </div>
+      </div>
+
+      {/* 双面板主区 */}
+      <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
+        {/* 左：SVG 图 */}
+        <div
+          className="flex min-h-[280px] flex-[3] xl:basis-3/5 xl:border-r"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          {isLoading ? (
+            <div className="flex flex-1 items-center justify-center text-sm text-3">
+              {t('loading', '加载中…')}
+            </div>
+          ) : isError ? (
+            <div className="flex flex-1 items-center justify-center text-sm text-danger">
+              {t('error.loadFailed', '加载失败')}
+            </div>
+          ) : (
+            <OntologyRelationGraph
+              objects={objects}
+              relations={relations}
+              selected={selected}
+              onSelectObject={(name) =>
+                setSelected(name ? { kind: 'object', name } : null)
+              }
+              onSelectRelation={(name) =>
+                setSelected(name ? { kind: 'relation', name } : null)
+              }
+            />
+          )}
+        </div>
+
+        {/* 右：关系列表 */}
+        <div
+          className="flex min-h-0 flex-[2] flex-col overflow-hidden border-t xl:basis-2/5 xl:border-t-0"
+          style={{ borderColor: 'var(--border)' }}
+        >
+          <div
+            className="flex shrink-0 items-center gap-3 border-b px-4 py-2 text-xs text-3"
+            style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+          >
+            <span className="font-medium text-2">
+              {t('ontology.relations.listTitle', '关系列表')} · {visible.length}
+            </span>
+          </div>
+          <div className="flex-1 overflow-auto">
+            {visible.length === 0 ? (
+              <div className="flex h-full items-center justify-center px-6 py-12 text-sm text-3">
+                {selected
+                  ? t('ontology.relations.emptyForSelection', '所选对象暂无关系')
+                  : t('ontology.relations.empty', '尚无关系定义')}
+              </div>
+            ) : (
+              <table className="w-full text-sm" data-testid="ontology-relations-table">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    <Th>{t('col.name', '名称')}</Th>
+                    <Th>{t('col.from', '来源对象')}</Th>
+                    <Th>{t('col.to', '目标对象')}</Th>
+                    <Th>{t('col.type', '关系类型')}</Th>
+                    <Th>{t('col.status', '状态')}</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((r) => {
+                    const active =
+                      selected?.kind === 'relation' && selected.name === r.name
+                    return (
+                      <tr
+                        key={r.name}
+                        className="cursor-pointer transition hover:bg-hover"
+                        style={{
+                          background: active ? 'var(--bg-hover)' : undefined,
+                          borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
+                        }}
+                        onClick={() => setSelected({ kind: 'relation', name: r.name })}
+                        data-testid={`ontology-relations-row-${r.name}`}
+                      >
+                        <Td>
+                          <div className="font-medium text-1">{r.name}</div>
+                          {r.title && r.title !== r.name ? (
+                            <div className="text-xs text-3">{r.title}</div>
+                          ) : null}
+                        </Td>
+                        <Td>
+                          <span className="font-mono text-xs">{r.source_object_name}</span>
+                        </Td>
+                        <Td>
+                          <span className="font-mono text-xs">{r.target_object_name}</span>
+                        </Td>
+                        <Td>
+                          <Chip tone="neutral">{r.relation_type ?? '—'}</Chip>
+                        </Td>
+                        <Td>
+                          <StatusChip status={r.status ?? 'draft'} />
+                        </Td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
 
       <EntityFormDialog
         open={showCreate}
