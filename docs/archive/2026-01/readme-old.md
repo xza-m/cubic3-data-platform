@@ -587,7 +587,7 @@ const tasks = (data?.data as any)?.items || []
 - API 返回：`is_active` (true/false)
 - 前端使用：`is_enabled` (错误)
 
-**修复位置**：[`frontend/src/pages/ExtractionTasks.tsx`](../../../frontend/src/pages/ExtractionTasks.tsx)
+**修复位置**：`frontend/src/pages/ExtractionTasks.tsx`
 - 第 121 行：统计启用任务数 - `t.is_enabled` → `t.is_active`
 - 第 242 行：显示任务状态 - `task.is_enabled` → `task.is_active`
 
@@ -619,7 +619,7 @@ previewResult.columns → undefined  // 实际是 previewResult.data.columns
 previewResult.data → {sql, columns, data}  // 这是对象不是数组
 ```
 
-**修复方案**：[`frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx`](../../../frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx)
+**修复方案**：`frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx`
 
 ```typescript
 // 第 42 行修改
@@ -696,7 +696,7 @@ previewResult.data → [...] ✓（数组）
 
 ### 修复方案
 
-**修改文件**：[`frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx`](../../../frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx)
+**修改文件**：`frontend/src/pages/ExtractionTaskConfig/StepPreview.tsx`
 
 **方案**：使用 `InputNumber` 组件替代 `Input type="number"`
 
@@ -809,8 +809,8 @@ DELETE /api/v1/extraction/tasks/<task_id>
 #### 2. 前端实现
 
 **修改文件**：
-- [`frontend/src/api/extraction.ts`](../../../frontend/src/api/extraction.ts) - 添加 `updateTask` API 函数
-- [`frontend/src/pages/ExtractionTasks.tsx`](../../../frontend/src/pages/ExtractionTasks.tsx) - 实现编辑和删除功能
+- `frontend/src/api/extraction.ts` - 添加 `updateTask` API 函数
+- `frontend/src/pages/ExtractionTasks.tsx` - 实现编辑和删除功能
 
 **编辑功能**：
 - 添加编辑模态框，支持修改任务名称、行数限制、任务状态（启用/禁用）
@@ -1052,7 +1052,7 @@ OSS_BUCKET_NAME=your-bucket-name
 
 #### 4. 前端执行历史页面
 
-**新增页面**：[`frontend/src/pages/ExtractionRuns.tsx`](../../../frontend/src/pages/ExtractionRuns.tsx)
+**新增页面**：`frontend/src/pages/ExtractionRuns.tsx`
 
 **功能特性**：
 - 显示所有执行记录（分页）
@@ -1064,7 +1064,7 @@ OSS_BUCKET_NAME=your-bucket-name
 **路由**：`http://localhost:81/extraction/runs`
 
 **任务列表集成**：
-- 在 [`frontend/src/pages/ExtractionTasks.tsx`](../../../frontend/src/pages/ExtractionTasks.tsx) 中添加"执行历史"按钮（时钟图标）
+- 在 `frontend/src/pages/ExtractionTasks.tsx` 中添加"执行历史"按钮（时钟图标）
 - 点击跳转到该任务的执行历史
 
 #### 5. Superset订阅功能（保留原有实现）

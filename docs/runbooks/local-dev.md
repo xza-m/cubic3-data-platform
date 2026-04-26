@@ -3,7 +3,7 @@ doc_type: runbook
 status: current
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-03-25
+last_reviewed: 2026-04-25
 ---
 
 # 本地开发运行手册
@@ -34,7 +34,8 @@ last_reviewed: 2026-03-25
 
 说明：
 
-- 首次通过 Nginx 访问前端前，需要先构建 `frontend/dist`
+- 首次通过 Nginx 访问前端前，使用 `docker compose up --build -d` 或至少重建 `nginx` 镜像，确保镜像内置的是最新 `frontend/dist`
+- Nginx 对 `/assets/*` 使用 hash 文件名长期缓存，对业务路由的 SPA fallback 使用 `no-store`，避免部署后旧 HTML 继续引用已删除的动态 chunk
 - `backend` 容器启动的是 Web 角色，会同时初始化 `APScheduler`
 - `rq_worker` 容器负责执行目录同步、数据集同步等长耗时任务
 

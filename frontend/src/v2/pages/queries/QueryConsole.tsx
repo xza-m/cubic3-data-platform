@@ -5,8 +5,9 @@
 // Monaco editor 必须 lazy import（不进入 main chunk）。
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, Play, Save, Search } from 'lucide-react'
+import { Database, Loader2, Play, Save, Table2 } from 'lucide-react'
 import { useDatasourcesForConsole, useExecuteQuery, useCreateSavedQuery } from '@v2/hooks/queries'
+import { useDatasourceSchema, useDatasourceSchemaTables } from '@v2/hooks/datasources'
 import { fmtNum } from '@v2/lib/format'
 import type { QueryRunResult } from '@v2/api/queries'
 import { t } from '@v2/i18n'
@@ -62,9 +63,12 @@ function consumeVisualPrefill(): QueryVisualPrefill | null {
 // Constants
 // ──────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_SQL = `-- 选择左侧数据源后编辑 SQL，按 ⌘↵ 或点击「执行」运行查询
-SELECT 1 AS hello, NOW() AS run_at;
-`
+const DEFAULT_SQL = 'SELECT 1 AS hello'
+
+function sqlIdentifier(value: string): string {
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) return value
+  return `"${value.replace(/"/g, '""')}"`
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Component
@@ -77,6 +81,7 @@ export default function QueryConsole() {
 
   const [sql, setSql] = useState<string>(() => initialPrefill?.sql ?? DEFAULT_SQL)
   const [sourceId, setSourceId] = useState<number | null>(initialPrefill?.source_id ?? null)
+  const [database, setDatabase] = useState<string | null>(null)
   const [result, setResult] = useState<QueryRunResult | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [isDark, setIsDark] = useState(
@@ -90,6 +95,16 @@ export default function QueryConsole() {
     () => (Array.isArray(sources.data) ? sources.data : []),
     [sources.data],
   )
+  const schema = useDatasourceSchema(sourceId ?? 0, sourceId != null)
+  const databaseList = useMemo(() => {
+    if (schema.data?.datasource_id !== sourceId) return []
+    return Array.isArray(schema.data?.databases) ? schema.data.databases : []
+  }, [schema.data, sourceId])
+  const tables = useDatasourceSchemaTables(sourceId ?? 0, database, sourceId != null && !!database)
+  const tableList = useMemo(() => {
+    if (tables.data?.datasource_id !== sourceId || tables.data?.database !== database) return []
+    return Array.isArray(tables.data?.tables) ? tables.data.tables : []
+  }, [tables.data, sourceId, database])
   const executeMut = useExecuteQuery()
   const createMut = useCreateSavedQuery()
 
@@ -99,6 +114,17 @@ export default function QueryConsole() {
       setSourceId(sourceList[0].id)
     }
   }, [sourceList, sourceId])
+
+  useEffect(() => {
+    setDatabase(null)
+  }, [sourceId])
+
+  useEffect(() => {
+    if (!databaseList.length) return
+    if (!database || !databaseList.includes(database)) {
+      setDatabase(databaseList[0])
+    }
+  }, [databaseList, database])
 
   // track theme changes
   useEffect(() => {
@@ -113,6 +139,10 @@ export default function QueryConsole() {
     () => sourceList.find((s) => s.id === sourceId) ?? null,
     [sourceList, sourceId],
   )
+
+  const fillTableQuery = useCallback((tableName: string) => {
+    setSql(`SELECT *\nFROM ${sqlIdentifier(tableName)}\nLIMIT 100`)
+  }, [])
 
   const handleRun = useCallback(async () => {
     if (sourceId == null) {
@@ -150,72 +180,175 @@ export default function QueryConsole() {
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* Left sidebar — datasource picker */}
+      {/* Left resource panel — datasources and physical tables */}
       <aside
-        className="flex w-48 flex-shrink-0 flex-col border-r"
+        className="flex w-64 flex-shrink-0 flex-col border-r"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
         <div
           className="border-b px-3 py-2 text-xs font-medium uppercase tracking-wide"
           style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
         >
-          {t('queryConsole.sidebar.datasources', '数据源')}
+          {t('queryConsole.sidebar.catalog', '数据目录')}
         </div>
-        <div className="flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div
+            className="border-b px-3 py-2 text-xs font-medium"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+          >
+            {t('queryConsole.sidebar.datasources', '数据源')}
+          </div>
           {sources.isLoading ? (
             <div className="flex items-center justify-center py-6">
               <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-3)' }} />
             </div>
+          ) : sources.isError ? (
+            <div className="px-3 py-4 text-xs text-red-500 dark:text-red-400">
+              {sources.error instanceof Error
+                ? sources.error.message
+                : t('queryConsole.sidebar.sourceLoadFailed', '数据源加载失败')}
+            </div>
+          ) : sourceList.length === 0 ? (
+            <div className="px-3 py-4 text-xs" style={{ color: 'var(--text-3)' }}>
+              {t('queryConsole.sidebar.noSource', '暂无可用数据源')}
+            </div>
           ) : (
-            sourceList.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSourceId(s.id)}
-                className="flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors hover:bg-[color:var(--bg-hover)]"
-                style={{
-                  background: s.id === sourceId ? 'var(--accent-soft)' : undefined,
-                  color: s.id === sourceId ? 'var(--accent)' : 'var(--text-1)',
-                }}
-              >
-                <span className="truncate text-xs font-medium">{s.name}</span>
-                <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-                  {s.source_type}
-                </span>
-              </button>
-            ))
+            <div aria-label={t('queryConsole.sidebar.sourceList', '数据源列表')}>
+              {sourceList.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSourceId(s.id)}
+                  className="flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors hover:bg-[color:var(--bg-hover)]"
+                  style={{
+                    background: s.id === sourceId ? 'var(--accent-soft)' : undefined,
+                    color: s.id === sourceId ? 'var(--accent)' : 'var(--text-1)',
+                  }}
+                >
+                  <span className="truncate text-xs font-medium">{s.name}</span>
+                  <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+                    {s.source_type}
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
+
+          <div
+            className="border-y px-3 py-2 text-xs font-medium"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+          >
+            {t('queryConsole.sidebar.database', '数据库')}
+          </div>
+          <div className="px-3 py-2">
+            {schema.isLoading ? (
+              <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
+                <Loader2 size={12} className="animate-spin" />
+                {t('queryConsole.sidebar.loadingSchema', '加载结构中…')}
+              </div>
+            ) : schema.isError ? (
+              <div className="text-xs text-red-500 dark:text-red-400">
+                {schema.error instanceof Error
+                  ? schema.error.message
+                  : t('queryConsole.sidebar.schemaLoadFailed', '结构加载失败')}
+              </div>
+            ) : databaseList.length > 0 ? (
+              <select
+                value={database ?? ''}
+                onChange={(e) => setDatabase(e.target.value || null)}
+                aria-label={t('queryConsole.sidebar.databaseAria', '选择数据库')}
+                className="w-full rounded border bg-transparent px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
+              >
+                {databaseList.map((db) => (
+                  <option key={db} value={db}>
+                    {db}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="text-xs" style={{ color: 'var(--text-3)' }}>
+                {activeSource
+                  ? t('queryConsole.sidebar.noDatabase', '暂无数据库信息')
+                  : t('queryConsole.sidebar.pickSource', '请先选择数据源')}
+              </div>
+            )}
+          </div>
+
+          <div
+            className="flex items-center gap-1 border-y px-3 py-2 text-xs font-medium"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+          >
+            <Table2 size={12} />
+            {database
+              ? t('queryConsole.sidebar.tablesIn', '数据表（{db}）', { db: database })
+              : t('queryConsole.sidebar.tables', '数据表')}
+          </div>
+          <div className="pb-3">
+            {tables.isLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 size={14} className="animate-spin" style={{ color: 'var(--text-3)' }} />
+              </div>
+            ) : tables.isError ? (
+              <div className="px-3 py-4 text-xs text-red-500 dark:text-red-400">
+                {tables.error instanceof Error
+                  ? tables.error.message
+                  : t('queryConsole.sidebar.tableLoadFailed', '数据表加载失败')}
+              </div>
+            ) : !database ? (
+              <div className="px-3 py-4 text-xs" style={{ color: 'var(--text-3)' }}>
+                {t('queryConsole.sidebar.pickDatabase', '请先选择数据库')}
+              </div>
+            ) : tableList.length === 0 ? (
+              <div className="px-3 py-4 text-xs" style={{ color: 'var(--text-3)' }}>
+                {t('queryConsole.sidebar.noTable', '暂无数据表')}
+              </div>
+            ) : (
+              tableList.map((table) => (
+                <button
+                  key={table.table_name}
+                  type="button"
+                  onClick={() => fillTableQuery(table.table_name)}
+                  className="flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors hover:bg-[color:var(--bg-hover)]"
+                >
+                  <span className="truncate font-mono text-xs" style={{ color: 'var(--text-1)' }}>
+                    {table.table_name}
+                  </span>
+                  <span className="truncate text-xs" style={{ color: 'var(--text-3)' }}>
+                    {table.comment ||
+                      (table.row_count != null
+                        ? t('queryConsole.sidebar.tableRows', '{n} 行', {
+                            n: fmtNum(table.row_count),
+                          })
+                        : t('queryConsole.sidebar.fillSql', '点击填入查询'))}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
         </div>
       </aside>
 
       {/* Main area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Toolbar */}
         <div
-          className="flex items-center gap-2 border-b px-4 py-2"
+          className="flex items-center gap-3 border-b px-4 py-2"
           style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
         >
-          <Search size={12} style={{ color: 'var(--text-3)' }} />
-          <select
-            value={sourceId ?? ''}
-            onChange={(e) => setSourceId(Number(e.target.value))}
-            aria-label={t('queryConsole.toolbar.sourceAria', '选择数据源')}
-            className="w-56 rounded border bg-transparent px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
-          >
-            {sourceList.length > 0 ? (
-              sourceList.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} · {s.source_type}
-                </option>
-              ))
-            ) : (
-              <option value="">{t('queryConsole.toolbar.loading', '加载中…')}</option>
-            )}
-          </select>
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-xs">
+            <Database size={12} style={{ color: 'var(--text-3)' }} />
+            <span className="truncate font-medium" style={{ color: 'var(--text-1)' }}>
+              {activeSource?.name ?? t('queryConsole.toolbar.noSource', '未选择数据源')}
+            </span>
+            {database ? (
+              <span className="truncate" style={{ color: 'var(--text-3)' }}>
+                / {database}
+              </span>
+            ) : null}
+          </div>
 
-          <span className="ml-auto flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
-            POST <code>/api/v1/queries/execute</code>
+          <span className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
             {result && (
               <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800 dark:bg-green-900/40 dark:text-green-300">
                 {t('queryConsole.toolbar.rows', '{n} 行', { n: fmtNum(result.row_count) })}
@@ -316,70 +449,6 @@ export default function QueryConsole() {
             )}
           </div>
         </div>
-
-        {/* Right context panel */}
-        {activeSource && (
-          <aside
-            className="absolute right-0 top-0 hidden w-64 border-l xl:block"
-            style={{
-              background: 'var(--bg-surface)',
-              borderColor: 'var(--border)',
-              height: '100%',
-            }}
-          >
-            <div
-              className="border-b px-4 py-3 text-xs font-medium"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-            >
-              {t('queryConsole.ctx.title', '执行上下文')}
-            </div>
-            <div className="space-y-4 px-4 py-4 text-xs">
-              <section>
-                <div
-                  className="text-xs uppercase tracking-wide"
-                  style={{ color: 'var(--text-3)' }}
-                >
-                  {t('queryConsole.ctx.source', '数据源')}
-                </div>
-                <dl className="mt-2 space-y-1.5">
-                  <Pair label={t('queryConsole.ctx.sourceName', '名称')} value={activeSource.name} />
-                  <Pair label={t('queryConsole.ctx.sourceType', '类型')} value={activeSource.source_type} />
-                  <Pair label={t('queryConsole.ctx.sourceStatus', '连通')} value={activeSource.connection_status} />
-                  <Pair
-                    label={t('queryConsole.ctx.sourceActive', '启用')}
-                    value={activeSource.is_active ? t('common.yes', '是') : t('common.no', '否')}
-                  />
-                </dl>
-              </section>
-              {result && (
-                <section>
-                  <div
-                    className="text-xs uppercase tracking-wide"
-                    style={{ color: 'var(--text-3)' }}
-                  >
-                    {t('queryConsole.ctx.lastExec', '最近一次执行')}
-                  </div>
-                  <dl className="mt-2 space-y-1.5">
-                    <Pair label={t('queryConsole.ctx.rows', '行数')} value={fmtNum(result.row_count)} />
-                    <Pair label={t('queryConsole.ctx.cols', '列数')} value={fmtNum(result.columns.length)} />
-                    <Pair label={t('queryConsole.ctx.duration', '耗时')} value={`${result.execution_time_ms} ms`} />
-                  </dl>
-                </section>
-              )}
-              {errorMsg && (
-                <section>
-                  <div
-                    className="text-xs uppercase tracking-wide"
-                    style={{ color: 'var(--text-3)' }}
-                  >
-                    {t('queryConsole.ctx.error', '错误')}
-                  </div>
-                  <div className="mt-2 text-xs text-red-500 dark:text-red-400">{errorMsg}</div>
-                </section>
-              )}
-            </div>
-          </aside>
-        )}
       </div>
 
       {/* Save dialog */}
@@ -501,21 +570,6 @@ function ResultTable({
           )}
         </tbody>
       </table>
-    </div>
-  )
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// Internal primitive
-// ──────────────────────────────────────────────────────────────────────────
-
-function Pair({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <dt style={{ color: 'var(--text-3)' }}>{label}</dt>
-      <dd className="truncate" style={{ color: 'var(--text-1)' }}>
-        {value ?? '—'}
-      </dd>
     </div>
   )
 }

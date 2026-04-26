@@ -146,8 +146,7 @@ export default function Dashboard() {
                 {t('dashboard.heading', '语义优先的数据工作台')}
               </h1>
               <p className="mt-1 text-[12px] leading-5 text-2">
-                {t('dashboard.desc', '统一管理数据源、数据集、语义模型与对话式分析。下方实时聚合自后端')}{' '}
-                <code className="px-1 text-[11px] text-2">/api/v1/dashboard/overview</code>。
+                {t('dashboard.desc', '统一管理数据源、数据集、语义模型与对话式分析，实时掌握平台健康度与近期活动。')}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

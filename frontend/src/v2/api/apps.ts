@@ -49,6 +49,37 @@ export interface AppConfigValidateResult {
   errors: string[]
 }
 
+export interface AppCategoryOption {
+  value: string
+  label: string
+  app_count: number | null
+}
+
+type AppCategoryWire =
+  | string
+  | {
+      category?: unknown
+      display_name?: unknown
+      app_count?: unknown
+    }
+
+function normalizeCategoryOption(item: AppCategoryWire): AppCategoryOption | null {
+  if (typeof item === 'string') {
+    const value = item.trim()
+    return value ? { value, label: value, app_count: null } : null
+  }
+
+  if (!item || typeof item !== 'object') return null
+  const value = typeof item.category === 'string' ? item.category.trim() : ''
+  if (!value) return null
+  const label =
+    typeof item.display_name === 'string' && item.display_name.trim()
+      ? item.display_name.trim()
+      : value
+  const appCount = typeof item.app_count === 'number' ? item.app_count : null
+  return { value, label, app_count: appCount }
+}
+
 // ============================================================================
 // 应用市场接口
 // ============================================================================
@@ -72,9 +103,11 @@ export async function getAppConfigSchema(
   return res.data.data
 }
 
-export async function listAppCategories(): Promise<string[]> {
-  const res = await apiClient.get<{ data: string[] }>('/apps/categories')
-  return res.data.data
+export async function listAppCategories(): Promise<AppCategoryOption[]> {
+  const res = await apiClient.get<{ data: AppCategoryWire[] }>('/apps/categories')
+  return (res.data.data ?? [])
+    .map(normalizeCategoryOption)
+    .filter((item): item is AppCategoryOption => item != null)
 }
 
 export async function validateAppConfig(

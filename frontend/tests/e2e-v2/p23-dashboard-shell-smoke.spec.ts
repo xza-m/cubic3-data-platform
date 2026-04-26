@@ -71,6 +71,17 @@ test('P23 Dashboard 首屏 KPI + 侧卡片可见 @p23', async ({ page }) => {
 
   // 来自 fixture 的最近查询内容
   await expect(page.getByText('SELECT count(*) FROM lessons').first()).toBeVisible()
+
+  // Dashboard 不展示仅对深层模块有价值的空壳区域，也不暴露后端接口路径。
+  await expect(page.getByText('/api/v1/dashboard/overview')).toHaveCount(0)
+  await expect(page.getByText('当前模块未提供上下文')).toHaveCount(0)
+  await expect(page.getByText('上下文面板')).toHaveCount(0)
+  await expect(page.getByText('平台健康度与最近活动')).toHaveCount(0)
+
+  // 用户确认 topbar 暂时保留现状。
+  await expect(page.getByRole('button', { name: '历史' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '变更' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '通知' })).toBeVisible()
 })
 
 test('P23 Dashboard 根路径按偏好重定向到 /dashboard @p23', async ({ page }) => {

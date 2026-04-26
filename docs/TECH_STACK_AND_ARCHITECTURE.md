@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-13
+last_reviewed: 2026-04-25
 ---
 
 # 技术栈与架构说明
@@ -17,7 +17,7 @@ last_reviewed: 2026-04-13
 - 前端是 `React SPA`
 - 后端是 `Flask REST API`
 - 前端开发期通过 `Vite` 提供页面
-- Docker 部署时由 `Nginx` 直接托管 `frontend/dist`
+- Docker 部署时由 `Nginx` 镜像托管构建阶段内置的 `frontend/dist`
 - 后端不再承担页面模板渲染职责
 
 这意味着仓库中任何“Jinja 页面主导”或“混合 SSR/CSR 是现状”的说法，都不再是当前实现基线。
@@ -48,7 +48,7 @@ graph LR
 
 - 开发模式通常走 `Browser -> Vite -> /api 代理 -> Nginx/Flask`
 - Docker 模式通常走 `Browser -> Nginx -> Flask`
-- `frontend/dist` 是 Nginx 托管前端的静态产物，需先执行 `npm run build`
+- `frontend/dist` 是 Nginx 托管前端的静态产物，由 `docker/nginx.Dockerfile` 在镜像构建阶段生成
 - `APScheduler` 注册在 Web 进程中，RQ Worker 只消费长耗时任务
 
 ## 3. 技术栈
@@ -198,7 +198,7 @@ app/
 - `业务语义工作台` 的“发布 / 影响 / 历史”面板已补入最近一次发布失败的内联反馈，发布阻断不再只通过 toast 呈现
 - `业务语义工作台` 已补入订单域模板预览与一键应用入口，可直接消费 `/api/v1/ontology/templates/order-domain` 与 `/apply`，快速生成订单域对象、属性、业务指标、关系、动作、术语与权限基线
 - 智能问数后端消息主链已优先尝试走语义路由与统一执行运行时，仅在未命中或执行失败时回退 Agent / 传统 LLM
-- `DataChat` 已开始消费对话上下文中的 `semantic_plan`，在聊天头部展示当前回答的语义执行来源、命中业务指标/对象与分析实体
+- 智能问数后端消息主链已开始生成并返回 `semantic_plan` 相关上下文；当前 v2 前端 `/data-chat` 仍是 Placeholder，完整聊天界面尚未恢复。
 - `Cube` 激活时已补入最小业务语义优先准入校验：对 `certified=true` 的 Measure，必须存在至少一个 `BusinessMetric.measure_refs` 反向引用
 - 业务语义资产发布链已收紧：业务指标、关系、动作、权限在发布前会额外校验依赖对象是否已激活、是否具备最小投影依据，校验失败会直接阻断发布
 
@@ -214,41 +214,45 @@ app/
 
 ```text
 frontend/src/
-├── api/                  # 按业务域划分的接口封装
-├── components/
-│   ├── ui/               # 通用 UI primitives
-│   ├── business/         # 表格、弹窗、表单等业务组件
-│   ├── Layout/           # 应用级布局
-│   ├── Semantic/         # 语义建模组件
-│   └── Chat/             # 智能问数组件
-├── pages/                # 页面级路由
-├── hooks/                # 自定义 Hook
-├── lib/                  # 前端领域工具
-├── types/                # 类型定义
-└── App.tsx               # 总路由
+├── main.tsx              # v2-only 挂载入口
+└── v2/
+    ├── App.tsx           # Provider 装配
+    ├── routes.tsx        # v2 路由总表
+    ├── api/              # 按业务域划分的接口封装
+    ├── hooks/            # TanStack Query hooks
+    ├── layout/           # AppShell / TopBar / Sidebar / Inspector
+    ├── components/       # 通用组件与 ui primitives
+    ├── pages/            # 页面级路由
+    ├── styles/           # tokens.css + Tailwind 入口
+    ├── i18n/             # zh/en 文案
+    └── observability/    # 前端观测事件与 sink
 ```
 
 当前页面主干：
 
 - `/dashboard`
 - `/data-center/*`
+- `/extraction/*`
 - `/queries`
-- `/data-chat`
+- `/queries/*`
+- `/data-chat`（当前 v2 占位）
 - `/apps` / `/executions`
 - `/config/*`
-- `/semantic/workbench`
+- `/settings`
+- `/semantic/ontology`
+- `/semantic/workbench`（语义诊断）
 - `/semantic/cubes`
 - `/semantic/domains`
-- `/semantic/modeling`
 - `/login`
 
 说明：
 
 - 首页工作台不再由前端拼装多组统计请求，统一消费 `/api/v1/dashboard/overview`
-- 查询分析旧子页和语义中心旧别名路由只保留兼容重定向，不再作为主 IA
-- 语义中心当前以 `/semantic/workbench` 作为唯一开发主场：无对象时展示资源浏览 + AI 建模起始页；有对象时进入 Databricks 风格三栏工作台，UI 主分区为 `Preview / Measures / Dimensions / Filters / Joins`，并继续保留 `YAML / PY` 高级视图
-- `/semantic/cubes` 当前回归为语义资产管理页，默认聚焦已发布与已废弃对象，通过详情抽屉承接“发起修订”和“去工作台查看”
-- `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 与 `/semantic/tools` 只保留兼容重定向，实际都会回流到 `/semantic/workbench`
+- 查询中心旧入口 `/queries/editor`、`/queries/templates` 只保留兼容重定向；`/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是当前有效子路由
+- 语义中心当前以 `/semantic/ontology` 作为业务语义主入口，覆盖对象、指标、关系、治理和工作台总览；`/semantic/workbench` 当前承接语义诊断 / DevTools
+- `/semantic/cubes`、`/semantic/domains`、`/semantic/views/:name` 继续作为物理语义资产与领域画布入口
+- `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 当前保留为真实 v2 页面；`/semantic/tools`、`/semantic/overview` 等旧别名会重定向到当前入口
+- v2 路由/API 详细审计见 [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 
 其中数据中心当前基线为：
 
@@ -355,7 +359,7 @@ frontend/src/
 当前语义对象边界同时固定为：
 
 - `Cube` 与 `Domain` 是正式建模对象，领域编排和对象治理围绕这两类对象展开。
-- `Semantic Workbench` 负责 `选数据源 -> 选物理表/数据集 -> 生成草稿 -> 微调 -> 调试 -> 发布` 的开发流；`Cube 管理` 负责正式资产浏览与修订入口。
+- v2 当前由 `Cube 创建 / 编辑` 页面与语义诊断工作台共同承接 `选数据源 -> 生成草稿 -> 微调 -> 调试 -> 发布` 的开发流；`Cube 管理` 负责正式资产浏览与修订入口。
 - `Domain.cubes[]` 与领域画布是 `Cube <-> Domain` 关系的唯一真相；同一个 Cube 可以被多个领域引用。
 - `Cube.domain_id` 仅保留为兼容投影字段，用于列表和详情摘要，不反向驱动领域关系持久化。
 - 已发布 Cube 不直接在资产页裸改；前端通过 `POST /api/v1/semantic/cubes/<cube_name>/revisions` 创建修订草稿，再回流工作台继续开发。
@@ -369,11 +373,13 @@ frontend/src/
 
 ### 8.1 Docker
 
-`docker-compose.yml` 当前只构建后端镜像，前端由宿主机上的 `frontend/dist` 提供给 Nginx。
+`docker-compose.yml` 当前同时构建后端镜像和 Nginx 镜像；`docker/nginx.Dockerfile` 会在镜像构建阶段执行前端打包，并把 `frontend/dist` 内置到 Nginx 镜像中。
 
 这意味着：
 
-- `docker compose up --build -d` 之前，若 `frontend/dist` 不存在或过期，需要先在本地执行 `cd frontend && npm run build`
+- `docker compose up --build -d` 会刷新后端与前端静态资源
+- 若只复用旧 Nginx 镜像，可能继续拿到过期前端，需要单独执行 `docker compose build nginx`
+- Nginx 仅对 `/assets/*` 这类带 hash 的静态资源使用长期缓存；业务路由 fallback 到 `index.html` 时必须 `no-store`，避免浏览器用旧 HTML 加载不存在的动态 chunk
 - `deploy.sh` 已包含前端构建步骤，适合部署场景
 
 ### 8.2 本地开发

@@ -7,9 +7,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Filter, Plus, RefreshCcw, Search, Workflow } from 'lucide-react'
+import { ExternalLink, Plus, RefreshCcw, Workflow } from 'lucide-react'
 import { useExtractionTasks, useExecuteTask } from '@v2/hooks/extraction'
 import type { ExtractionTask } from '@v2/api/extraction'
+import { useToast } from '@v2/components/ui/Toast'
 import {
   ExtractionTaskDetailContent,
   taskStatusChip,
@@ -19,8 +20,6 @@ import {
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 
-// X-Crosscut 提供（编译错误留待 Phase 3 修复）
-import { PeekPanel } from '@v2/components/PeekPanel'
 import { useAppShell } from '@v2/layout/AppShell'
 
 function statusOptions() {
@@ -44,11 +43,12 @@ function typeOptions() {
 
 export default function ExtractionTasks() {
   const navigate = useNavigate()
+  const toast = useToast()
   const { setBreadcrumbs, setTopBarActions, setContextPanel, openTab } = useAppShell()
   const [keyword, setKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
-  const [peekId, setPeekId] = useState<number | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const { data, isLoading, isError, error, refetch, isFetching } = useExtractionTasks({
     page: 1,
@@ -136,7 +136,90 @@ export default function ExtractionTasks() {
     return () => setTopBarActions(null)
   }, [setTopBarActions, refetch, isFetching, navigate, keyword, statusFilter, typeFilter])
 
+  const selectedRow = useMemo(
+    () => (selectedId == null ? null : rows.find((r) => r.id === selectedId) ?? null),
+    [selectedId, rows],
+  )
+
+  const openInTab = useCallback(
+    (row: ExtractionTask) => {
+      openTab({
+        id: `extraction-task:${row.id}`,
+        label: taskTabLabel(row),
+        to: `/extraction/tasks/${row.id}`,
+        closeable: true,
+      })
+      navigate(`/extraction/tasks/${row.id}`)
+    },
+    [navigate, openTab],
+  )
+
+  const executePendingId = executeTask.isPending ? executeTask.variables?.id ?? null : null
+
+  const handleExecute = useCallback(
+    async (row: ExtractionTask) => {
+      try {
+        const result = await executeTask.mutateAsync({ id: row.id })
+        toast.show({
+          tone: 'success',
+          title: t('extractionTasks.toast.executeSubmitted', '已提交执行 · Run #{id}', {
+            id: result.run_id,
+          }),
+          description: result.job_id
+            ? t('extractionTasks.toast.executeJob', '后台任务 {jobId} 已入队', {
+                jobId: result.job_id,
+              })
+            : undefined,
+        })
+        await refetch()
+      } catch (err) {
+        toast.show({
+          tone: 'danger',
+          title: t('extractionTasks.toast.executeFailed', '执行提交失败'),
+          description: err instanceof Error ? err.message : undefined,
+        })
+      }
+    },
+    [executeTask, refetch, toast],
+  )
+
   useEffect(() => {
+    if (selectedRow) {
+      setContextPanel({
+        title: (
+          <div className="flex items-center gap-1.5">
+            <Workflow size={12} style={{ color: 'var(--text-3)' }} />
+            {selectedRow.task_name}
+          </div>
+        ),
+        subtitle: t('extractionTasks.context.selected', '选中任务'),
+        body: (
+          <div className="space-y-3">
+            <div className="border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+              <button
+                type="button"
+                onClick={() => openInTab(selectedRow)}
+                className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+              >
+                <ExternalLink size={12} /> {t('extractionTasks.action.openDetail', '打开详情')}
+              </button>
+            </div>
+            <ExtractionTaskDetailContent
+              task={selectedRow}
+              actions={{
+                onExecute: () => {
+                  void handleExecute(selectedRow)
+                },
+                executePending: executePendingId === selectedRow.id,
+              }}
+            />
+          </div>
+        ),
+      })
+      return () => setContextPanel(null)
+    }
+
     setContextPanel({
       title: (
         <div className="flex items-center gap-1.5">
@@ -144,7 +227,7 @@ export default function ExtractionTasks() {
           {t('extractionTasks.context.title', '提取任务')}
         </div>
       ),
-      subtitle: 'GET /api/v1/extraction/tasks',
+      subtitle: t('extractionTasks.context.overview', '任务列表概览'),
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
@@ -171,25 +254,7 @@ export default function ExtractionTasks() {
       ),
     })
     return () => setContextPanel(null)
-  }, [setContextPanel, stats, navigate])
-
-  const peekRow = useMemo(
-    () => (peekId == null ? null : rows.find((r) => r.id === peekId) ?? null),
-    [peekId, rows],
-  )
-
-  const openInTab = useCallback(
-    (row: ExtractionTask) => {
-      openTab({
-        id: `extraction-task:${row.id}`,
-        label: taskTabLabel(row),
-        to: `/extraction/tasks/${row.id}`,
-        closeable: true,
-      })
-      navigate(`/extraction/tasks/${row.id}`)
-    },
-    [navigate, openTab],
-  )
+  }, [executePendingId, handleExecute, navigate, openInTab, selectedRow, setContextPanel, stats])
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -210,36 +275,11 @@ export default function ExtractionTasks() {
         ) : (
           <TaskTable
             rows={rows}
-            activeId={peekId}
-            onRowClick={(r) => setPeekId(r.id === peekId ? null : r.id)}
+            activeId={selectedId}
+            onRowClick={(r) => setSelectedId(r.id === selectedId ? null : r.id)}
           />
         )}
 
-        <PeekPanel
-          open={!!peekRow}
-          onClose={() => setPeekId(null)}
-          onOpenFull={peekRow ? () => openInTab(peekRow) : undefined}
-          title={peekRow?.task_name ?? ''}
-          subtitle={peekRow ? `${peekRow.task_type} · #${peekRow.id}` : undefined}
-          badges={
-            peekRow ? (
-              <span className="flex items-center gap-1">
-                {taskStatusChip(peekRow.last_run_status)}
-              </span>
-            ) : null
-          }
-        >
-          {peekRow ? (
-            <ExtractionTaskDetailContent
-              task={peekRow}
-              actions={{
-                onExecute: () => {
-                  executeTask.mutate({ id: peekRow.id })
-                },
-              }}
-            />
-          ) : null}
-        </PeekPanel>
       </div>
     </div>
   )
@@ -359,7 +399,3 @@ function EmptyState() {
     </div>
   )
 }
-
-// suppress unused
-void Search
-void Filter

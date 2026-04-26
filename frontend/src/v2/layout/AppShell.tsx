@@ -232,6 +232,8 @@ export function AppShell() {
 
   const effectiveContextPanel: ContextPanelPayload | null =
     contextPanel ?? (legacyEmptyState ? { body: legacyEmptyState } : null)
+  const showSecondarySidebar = module.layout?.secondarySidebar !== false
+  const showInspector = module.layout?.inspector !== false
 
   const tabsWithActive = useMemo(
     () => tabs.map((t) => ({ ...t, active: activeTab ? t.id === activeTab : t.active })),
@@ -257,7 +259,9 @@ export function AppShell() {
     <AppShellContext.Provider value={ctxValue}>
       <div className="app-bg flex h-screen w-screen overflow-hidden">
         <LeftRail pathname={location.pathname} onOpenCommandPalette={openPalette} />
-        <SecondarySidebar module={module} extraSections={sidebarSections ?? undefined} />
+        {showSecondarySidebar ? (
+          <SecondarySidebar module={module} extraSections={sidebarSections ?? undefined} />
+        ) : null}
         <main className="flex min-w-0 flex-1 flex-col">
           <TopBar
             breadcrumbs={breadcrumbs}
@@ -275,7 +279,7 @@ export function AppShell() {
             <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <Outlet />
             </section>
-            {peekActive ? null : (
+            {peekActive || !showInspector ? null : (
               <Inspector
                 title={effectiveContextPanel?.title}
                 subtitle={effectiveContextPanel?.subtitle}

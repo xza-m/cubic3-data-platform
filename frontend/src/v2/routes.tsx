@@ -1,7 +1,6 @@
 // frontend/src/v2/routes.tsx
 // 完整路由表。静态路由写在动态路由之前（plan §00 §5 要求）。
 //
-// 未实现的页面使用 <Placeholder> 占位；域 agent 后续将 lazy import 注释替换为真实实现。
 // 注释格式：// const Xxx = lazy(() => import('@v2/pages/<domain>/Xxx'))
 //
 // 路由路径对齐 demo（tmp/platform-redesign/src/routes.tsx）路径约定。
@@ -11,7 +10,6 @@ import { useMyPreferences } from '@v2/hooks/userPreferences'
 import { AppShell } from '@v2/layout/AppShell'
 import ProtectedRoute from '@v2/pages/ProtectedRoute'
 import { RouteErrorBoundary } from '@v2/components/RouteErrorBoundary'
-import Placeholder from '@v2/pages/_Placeholder'
 import { t } from '@v2/i18n'
 
 // ── Legacy URL redirects（Round 3 cutover · 2026-04-20） ───────────────────────
@@ -61,8 +59,10 @@ const ExtractionTaskDetail = lazy(() => import('@v2/pages/data/ExtractionTaskDet
 const ExtractionTaskCreate = lazy(() => import('@v2/pages/data/ExtractionTaskCreate'))
 const ExtractionRuns = lazy(() => import('@v2/pages/data/ExtractionRuns'))
 const ExtractionRunDetail = lazy(() => import('@v2/pages/data/ExtractionRunDetail'))
-// TODO[R2-W2]: no ExtractionConfig page on disk — /extraction/config remains Placeholder
-// TODO[R2-W2]: no DataChat page on disk — /data-chat remains Placeholder
+const ExtractionConfig = lazy(() => import('@v2/pages/data/ExtractionConfig'))
+
+// ── Data Chat 域 ───────────────────────────────────────────────────────────────
+const DataChat = lazy(() => import('@v2/pages/chat/DataChat'))
 
 // ── Queries 域 ────────────────────────────────────────────────────────────────
 const QueryConsole = lazy(() => import('@v2/pages/queries/QueryConsole'))
@@ -172,13 +172,8 @@ export default function AppRoutes() {
           <Route path="extraction">
             <Route index element={<Navigate to="/extraction/tasks" replace />} />
             <Route
-              path="config" // TODO[R2-W2]: no ExtractionConfig page on disk yet
-              element={wrap(
-                <Placeholder
-                  title={t('routes.placeholder.extractionConfig.title', '提取配置')}
-                  description={t('routes.placeholder.extractionConfig.desc', '待提取配置页面实现')}
-                />,
-              )}
+              path="config"
+              element={wrap(<ExtractionConfig />)}
             />
             <Route path="tasks">
               <Route index element={wrap(<ExtractionTasks />)} />
@@ -197,16 +192,8 @@ export default function AppRoutes() {
             <Route path=":id" element={<LegacyRedirect to="/extraction/tasks/:id" />} />
           </Route>
 
-          {/* ── 数据对话 ── TODO[R2-W2]: no DataChat page on disk yet ── */}
-          <Route
-            path="data-chat"
-            element={wrap(
-              <Placeholder
-                title={t('routes.placeholder.dataChat.title', '数据对话')}
-                description={t('routes.placeholder.dataChat.desc', '待数据对话页面实现')}
-              />,
-            )}
-          />
+          {/* ── 数据对话 ── */}
+          <Route path="data-chat" element={wrap(<DataChat />)} />
 
           {/* ── 查询中心 ── */}
           <Route path="queries">

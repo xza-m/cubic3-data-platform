@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-03-28
+last_reviewed: 2026-04-25
 ---
 
 # 项目启动指南
@@ -52,7 +52,8 @@ Phase 1 当前验证通过的主链路基线为：
 
 - `/dashboard`：首页工作台，读取 `/api/v1/dashboard/overview`
 - `/queries`：查询分析中心主工作台
-- `/semantic/workbench`：语义工作台主入口
+- `/semantic/ontology`：业务语义工作台主入口
+- `/semantic/workbench`：语义诊断工作台
 
 说明：
 
@@ -230,7 +231,6 @@ make verify-docs
 
 ```bash
 make typecheck-frontend
-make test-regression-platform-data
 PYTHONPATH=. python -m pytest --no-cov tests/integration/test_api_routes_smoke.py
 ```
 
@@ -239,14 +239,12 @@ PYTHONPATH=. python -m pytest --no-cov tests/integration/test_api_routes_smoke.p
 ```bash
 make test-unit
 make test-integration
-make test-regression
 ```
 
 ### 语义中心
 
 ```bash
 make verify-semantic
-make semantic-layout
 make smoke-semantic
 ```
 
@@ -256,11 +254,12 @@ make smoke-semantic
 make coverage
 make coverage-backend
 make coverage-frontend
+make coverage-report
 ```
 
 后端 coverage 当前门槛按 [后端覆盖率看板](quality/backend-coverage.md) 维护；当前 `pytest.ini` 基线为 `--cov-fail-under=95`。  
 `make coverage-backend` 还会自动校验二级模块 `>=95%` 和核心模块 `100%` 守护。
-前端 coverage 当前目标按 [前端覆盖率看板](quality/frontend-coverage.md) 维护；`make coverage-frontend` 会自动校验总 coverage `>=90%` 和核心功能与实体页 `100%` 守护。
+前端 coverage 当前目标按 [前端覆盖率看板](quality/frontend-coverage.md) 维护；`make coverage-frontend` 已退役为显式 skip，实际守护由 `frontend/vitest.config.ts` 的 v2 子树 80% 阈值承接，数字报告使用 `make coverage-report`。
 
 ## 7. 常用日志命令
 

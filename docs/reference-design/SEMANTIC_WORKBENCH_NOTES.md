@@ -7,7 +7,7 @@
 
 使用规则：
 
-- 查看当前实现与路由，以 `../TECH_STACK_AND_ARCHITECTURE.md`、`../../frontend/src/App.tsx` 和当前代码为准
+- 查看当前实现与路由，以 `../TECH_STACK_AND_ARCHITECTURE.md`、`../../frontend/src/v2/routes.tsx` 和当前代码为准
 - 查看当前文档可信度，以 `../DOC_ALIGNMENT_REPORT.md` 为准
 - 当草案结论已经落地，应回写到基线文档，而不是只留在本文件
 
@@ -163,7 +163,7 @@
 - **产出位置**：`tmp/platform-redesign/`（单页站点；`index.html` + `assets/*` + `assets/modules/*`；依赖仅 Google Fonts 与 lucide CDN）
 - **预览方式**：`cd tmp/platform-redesign && python3 -m http.server 4173`，浏览器打开 `http://127.0.0.1:4173/index.html`
 - **替代关系**：本 Demo 承载 `tmp/ontology-workbench-redesign` 的所有能力，后者作为单功能验证保留，后续以本 Demo 为准
-- **对标路由**：`frontend/src/App.tsx` 的全部顶层 Lazy 路由（Dashboard / QueryCenter / DataCenter / AppCenter / Semantic / DataChat / ConfigCenter）
+- **对标路由**：`frontend/src/v2/routes.tsx` 的全部顶层 Lazy 路由（Dashboard / Query / Data / Apps / Semantic / Config / Settings）
 
 ### 壳层结构
 

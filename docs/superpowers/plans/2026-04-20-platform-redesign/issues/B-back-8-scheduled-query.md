@@ -6,7 +6,7 @@
 **周**: W3 ~ W4
 **关联前端**: Q-sched
 **migration**: `migrations/versions/20260420_03_add_scheduled_queries.py`
-**ADR**: [ADR-001 调度器选型](../../../adr/001-scheduled-query-runner.md)
+**ADR**: [ADR-001 调度器选型](../../../../adr/001-scheduled-query-runner.md)
 
 ## 接口
 

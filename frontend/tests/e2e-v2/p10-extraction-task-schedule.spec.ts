@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
 
 test('P10 抽取任务 详情页渲染 @p10', async ({ page }) => {
   await gotoV2(page, '/extraction-tasks/201')
-  await expect(page).toHaveURL(/\/extraction-tasks\/201/)
+  await expect(page).toHaveURL(/\/extraction\/tasks\/201/)
   await expect(page.locator('body')).toBeVisible()
   await expect(page.getByText('学习行为抽取').first()).toBeVisible()
 })

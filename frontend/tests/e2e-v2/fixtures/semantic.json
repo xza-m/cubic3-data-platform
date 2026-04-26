@@ -1,6 +1,6 @@
 {
   "domains": {
-    "items": [
+    "domains": [
       {
         "id": "domain_teaching",
         "code": "teaching",
@@ -52,7 +52,7 @@
     "total": 1
   },
   "cubes": {
-    "items": [
+    "cubes": [
       { "name": "fct_lesson", "title": "课程事实", "datasource_name": "教学 PostgreSQL", "status": "active" }
     ],
     "total": 1

@@ -76,6 +76,14 @@ export function useExtractionRuns(params?: api.ListRunsParams) {
   })
 }
 
+export function useExtractionHealth() {
+  return useQuery({
+    queryKey: qk('extraction', 'health'),
+    queryFn: () => api.getExtractionHealth(),
+    staleTime: 10_000,
+  })
+}
+
 // ── 调度配置（P10）────────────────────────────────────────────────────────────
 
 export function useUpdateTaskSchedule() {

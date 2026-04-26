@@ -55,7 +55,7 @@ Round 1 关闭，可进入 **Round 2 切换准备** (Cutover, [04-cutover-and-mi
   | Sub-agent | 主要成果 |
   | --- | --- |
   | BE-extend-A | 扩展现有蓝图，对齐前端字段（`app/interfaces/api/v1/datasources.py`、`semantic.py`、`ontology.py`、`app_instances.py`）|
-  | BE-extend-B | 业务读模型补齐（[`app/application/ontology/object_search_service.py`](../../../app/application/ontology/object_search_service.py)、[`workbench_read_service.py`](../../../app/application/ontology/workbench_read_service.py)、[`cube_listing_service.py`](../../../app/application/semantic/cube_listing_service.py)）|
+  | BE-extend-B | 业务读模型补齐（[`app/application/ontology/object_search_service.py`](../../../../app/application/ontology/object_search_service.py)、[`workbench_read_service.py`](../../../../app/application/ontology/workbench_read_service.py)、[`cube_listing_service.py`](../../../../app/application/semantic/cube_listing_service.py)）|
   | BE-new | 4 个新能力：用户偏好、视图物化、计划查询、诊断运行；含 domain/repo/service/api 全栈 |
 
 ### 1.4 跨切关注点（Phase 2 · X-Crosscut sub-agent）
@@ -88,13 +88,13 @@ Round 1 关闭，可进入 **Round 2 切换准备** (Cutover, [04-cutover-and-mi
 修复路径（按时间序）：
 
 1. 基础组件 API 对齐
-   - [`Button.tsx`](../../../frontend/src/v2/components/ui/Button.tsx) 新增 `loading`
-   - [`Table.tsx`](../../../frontend/src/v2/components/ui/Table.tsx) 新增 `emptyText`
-   - [`PeekPanel.tsx`](../../../frontend/src/v2/components/PeekPanel.tsx) 新增 `actions`
-   - 新建 [`Tabs.tsx`](../../../frontend/src/v2/components/ui/Tabs.tsx)
-   - [`Card.tsx`](../../../frontend/src/v2/components/ui/Card.tsx) `CardHead` 加 `subtitle / actions`
-   - [`EntityFormDialog.tsx`](../../../frontend/src/v2/components/EntityFormDialog.tsx) 新增 `loading`，并把 `fields/key` 归一为 `schema/name`
-   - [`ResourceListPage.tsx`](../../../frontend/src/v2/components/ResourceListPage.tsx) 增加 "shell" 模式以承接 children；`SkeletonRows` props 修正 `count→rows`
+   - [`Button.tsx`](../../../../frontend/src/v2/components/ui/Button.tsx) 新增 `loading`
+   - [`Table.tsx`](../../../../frontend/src/v2/components/ui/Table.tsx) 新增 `emptyText`
+   - [`PeekPanel.tsx`](../../../../frontend/src/v2/components/PeekPanel.tsx) 新增 `actions`
+   - 新建 [`Tabs.tsx`](../../../../frontend/src/v2/components/ui/Tabs.tsx)
+   - [`Card.tsx`](../../../../frontend/src/v2/components/ui/Card.tsx) `CardHead` 加 `subtitle / actions`
+   - [`EntityFormDialog.tsx`](../../../../frontend/src/v2/components/EntityFormDialog.tsx) 新增 `loading`，并把 `fields/key` 归一为 `schema/name`
+   - [`ResourceListPage.tsx`](../../../../frontend/src/v2/components/ResourceListPage.tsx) 增加 "shell" 模式以承接 children；`SkeletonRows` props 修正 `count→rows`
 2. 配置对齐
    - `frontend/tsconfig.json`：`target/lib → ES2021`，`types += vite/client`，`paths += @v2/*`
    - `frontend/src/v2/api/client.ts`：`AxiosHeaders` 显式类型

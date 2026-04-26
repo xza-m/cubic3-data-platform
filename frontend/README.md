@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-04-08
+last_reviewed: 2026-04-25
 ---
 
 # CUBIC3 前端
@@ -21,7 +21,6 @@ make typecheck
 make test
 make test-unit
 make test-integration
-make test-regression
 make smoke
 make verify
 make verify-detect
@@ -30,13 +29,13 @@ make docs-impact
 make review
 make verify-frontend
 make verify-semantic
-make semantic-layout
 make smoke-semantic
 make coverage
 make coverage-frontend
+make coverage-report
 ```
 
-这些命令是仓库对 agent 和协作者暴露的固定接口；其中 `make lint / typecheck / test / smoke` 明确对应四层验证，`make verify-detect / make verify-changed` 负责把当前变更映射到最低必跑入口，`make docs-impact` 负责检查高风险改动是否遗漏关键文档更新，`make verify-frontend` 对应前端进入可交付状态的默认收口，`make coverage / make coverage-frontend` 则属于 coverage 专项验证，不并入默认 `make verify`。当前 `make coverage-frontend` 会额外校验前端总 coverage `>=90%` 和核心功能与实体页 `100%` 守护，详见 `docs/quality/frontend-coverage.md`。本目录的 `npm` 脚本仍保留，主要用于前端局部调试和专项验证。
+这些命令是仓库对 agent 和协作者暴露的固定接口；其中 `make lint / typecheck / test / smoke` 明确对应四层验证，`make verify-detect / make verify-changed` 负责把当前变更映射到最低必跑入口，`make docs-impact` 负责检查高风险改动是否遗漏关键文档更新，`make verify-frontend` 对应前端进入可交付状态的默认收口。`make coverage-frontend` 已退役为显式 skip；当前前端覆盖率守护由 `frontend/vitest.config.ts` 的 v2 子树 80% 阈值承接，数字报告用 `make coverage-report`。本目录的 `npm` 脚本仍保留，主要用于前端局部调试和专项验证。
 
 ## 当前技术栈
 
@@ -104,19 +103,18 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 
 ```text
 src/
-├── api/                  # 前端 API 封装
-├── components/
-│   ├── ui/               # 通用 UI primitives
-│   ├── business/         # 业务组件
-│   ├── Layout/           # 应用布局
-│   ├── Semantic/         # 语义建模组件
-│   └── Chat/             # 智能问数组件
-├── hooks/                # 自定义 Hook
-├── lib/                  # 工具与领域辅助
-├── pages/                # 页面路由
-├── types/                # 类型定义
-├── App.tsx               # 路由总入口
-└── main.tsx              # 应用入口
+├── main.tsx              # v2-only 挂载入口
+└── v2/
+    ├── App.tsx           # Provider 装配
+    ├── routes.tsx        # v2 路由总入口
+    ├── api/              # 前端 API 封装
+    ├── hooks/            # TanStack Query hooks
+    ├── layout/           # AppShell / TopBar / Sidebar / Inspector
+    ├── components/       # 通用组件与 UI primitives
+    ├── pages/            # 页面路由
+    ├── styles/           # 设计 token 与全局样式
+    ├── i18n/             # 文案
+    └── observability/    # 前端观测
 ```
 
 ## 主要页面
@@ -125,27 +123,39 @@ src/
 - `/dashboard`
 - `/data-center/datasources`
 - `/data-center/datasets`
+- `/extraction/tasks`
+- `/extraction/runs`
 - `/queries`
-- `/data-chat`
+- `/queries/my`
+- `/queries/history`
+- `/queries/visual`
+- `/queries/scheduled`
+- `/queries/exports`
+- `/data-chat`（当前占位）
 - `/apps`
+- `/apps/instances`
+- `/executions`
 - `/config/*`
+- `/settings`
+- `/semantic/ontology`
 - `/semantic/workbench`
 - `/semantic/cubes`
 - `/semantic/domains`
-- `/semantic/modeling`
 
 兼容层说明：
 
-- `/queries/editor`、`/queries/history`、`/queries/templates`、`/queries/visual`、`/queries/my`、`/queries/scheduled` 会统一重定向到 `/queries`
+- `/queries/editor`、`/queries/templates` 会统一重定向到 `/queries`
 - `/semantic/overview`、`/semantic/tools`、`/semantic/playground`、`/semantic/visual-model`、`/semantic/canvas`、`/semantic/ide`、`/semantic/devtools` 会统一重定向到新的语义中心主入口
-- `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 会统一回流到 `/semantic/workbench`，不再作为独立创建/编辑页保留
+- `/semantic/modeling` 会重定向到 `/semantic/domains`
 
 语义中心当前页面职责：
 
-- `/semantic/workbench`：唯一开发主场。无对象时展示资源浏览与 AI 建模起始页；有对象时进入三栏工作台：
-  左栏为资源与字段索引，中栏承载 `Preview / Measures / Dimensions / Filters / Joins`，右栏作为属性检查器；高级视图继续保留 `YAML / PY`。
-- `/semantic/cubes`：资产管理页。默认聚焦已发布与已废弃 Cube，通过详情抽屉承接“发起修订”和“去工作台查看”。
-- `/semantic/modeling`、`/semantic/domains/:id`：领域画布与建模画布，继续承接领域编排能力。
+- `/semantic/ontology`：业务语义工作台主入口，覆盖对象、指标、关系、治理和工作台总览。
+- `/semantic/workbench`：语义诊断工作台，对接 diagnose 与历史诊断运行。
+- `/semantic/cubes`：Cube 资产管理页，`/semantic/cubes/new` 与 `/semantic/cubes/:name/edit` 是当前真实 v2 页面。
+- `/semantic/domains`、`/semantic/domains/:id`：领域列表与领域画布。
+
+路由/API 当前审计见 `docs/quality/frontend-v2-route-api-audit.md`。
 
 当前数据中心 Phase 1 已落地的前端基线：
 

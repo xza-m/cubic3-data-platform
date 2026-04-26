@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Play, RefreshCcw } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Play, RefreshCcw, Trash2 } from 'lucide-react'
 import { Chip, Dialog, Input, Skeleton, Switch, useToast } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
@@ -85,6 +85,22 @@ export default function SubscriptionDetail() {
   const handleToggle = async () => {
     if (!subscription) return
     await updateMutation.mutateAsync({ id: subscription.id, payload: { enabled: !subscription.enabled } })
+    toast.show({
+      tone: subscription.enabled ? 'warning' : 'success',
+      title: subscription.enabled
+        ? t('subscription.toast.disabled', '已停用')
+        : t('subscription.toast.enabled', '已启用'),
+      description: subscription.name,
+    })
+  }
+
+  const handleTrigger = () => {
+    if (!subscription) return
+    toast.show({
+      tone: 'success',
+      title: t('subscription.toast.triggered', '已触发'),
+      description: subscription.name,
+    })
   }
 
   // ── 守门 ──
@@ -160,22 +176,49 @@ export default function SubscriptionDetail() {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
+                onClick={handleTrigger}
+                className="inline-flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
+                aria-label={t('subscription.action.triggerShort', '触发')}
+              >
+                <Play size={11} aria-hidden />
+                {t('subscription.action.triggerShort', '触发')}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleToggle()}
+                disabled={updateMutation.isPending}
+                className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                {subscription.enabled
+                  ? t('subscription.action.pause', '停用')
+                  : t('subscription.action.enable', '启用')}
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/config/channels/${subscription.channel_id}`)}
+                className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <ExternalLink size={11} aria-hidden />
+                {t('subscription.action.channelShort', '渠道')}
+              </button>
+              <button
+                type="button"
                 onClick={() => setEditing(true)}
-                className="rounded-md border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
+                className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
                 style={{ borderColor: 'var(--border)' }}
               >
                 {t('common.edit', '编辑')}
               </button>
-              {/* P13: 立即触发 */}
               <button
                 type="button"
-                onClick={() =>
-                  toast.show({ tone: 'success', title: t('subscription.toast.triggered', '已立即触发'), description: subscription.name })
-                }
-                className="inline-flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
+                onClick={() => void handleDelete()}
+                disabled={deleteMutation.isPending}
+                className="inline-flex items-center gap-1 rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/20"
               >
-                <Play size={11} aria-hidden />
-                {t('subscription.action.trigger', '立即触发')}
+                <Trash2 size={11} aria-hidden />
+                {t('common.delete', '删除')}
               </button>
             </div>
           </div>
@@ -204,14 +247,6 @@ export default function SubscriptionDetail() {
           {subTab === 'overview' && (
             <SubscriptionDetailContent
               row={subscription}
-              actions={{
-                onTrigger: () =>
-                  toast.show({ tone: 'success', title: t('subscription.toast.triggered', '已立即触发'), description: subscription.name }),
-                onToggle: () => void handleToggle(),
-                onJumpChannel: () => navigate(`/config/channels/${subscription.channel_id}`),
-                onEdit: () => setEditing(true),
-                onDelete: () => void handleDelete(),
-              }}
             />
           )}
           {subTab === 'history' && (

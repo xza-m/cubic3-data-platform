@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-04-03
+last_reviewed: 2026-04-25
 ---
 
 # 语义中心固定验证流程
@@ -48,27 +48,27 @@ make smoke-semantic
 
 1. `make verify-backend`
 2. `make verify-frontend`
-3. `make test-regression-semantic`
-4. `make smoke-semantic`
+3. `make smoke-semantic`
 
-## Phase 2 浏览器回归重点
+## v2 浏览器回归重点
 
-`make test-regression-semantic` 当前除了单元测试外，还固定覆盖以下浏览器回归重点：
+Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-layout` 目标已经移除。当前 v2 浏览器覆盖分为两类：
 
-- `domain-catalog.spec.ts`：校验目录治理摘要、`domain-list-search` 过滤、`domain-create-trigger` 跳转，以及选中领域后 `domain-summary-panel` 的更新。
-- `cube-browse.spec.ts`：校验 `Cube 管理 -> 详情抽屉 -> 工作台对象态` 这条资产浏览链路，不再依赖旧的编辑画布入口。
-- `semantic.visual.spec.ts`：固定截图 `Cube 管理`、`语义工作台`、`DomainList`、`DomainCanvas` 与 `ViewDetail` 的当前主界面。
-- `domain-publish.spec.ts`：继续以 `publish-domain-button` 为入口校验领域发布流程不被回归破坏。
+- 默认前端 smoke：`make smoke-frontend`，底层为 `npm run e2e:smoke`，覆盖 v2 cutover 的低副作用关键路径。
+- 语义专项 smoke：`make smoke-semantic`，覆盖领域创建、领域发布与 Cube 草稿三条真实链路。
 
-这些回归用于保证 Phase 2 的对象治理摘要和跨页导航已经进入固定门槛，而不是只停留在局部组件测试绿色。
+补充的 mock 型 v2 E2E 用例位于 `frontend/tests/e2e-v2/`，包括：
+
+- `p24-cube-browse-smoke.spec.ts`：Cube 管理首屏。
+- `p25-domain-catalog-smoke.spec.ts`：Domain 目录首屏。
+- `p26-ontology-workbench-smoke.spec.ts`：`/semantic/ontology` 工作台结构。
+- `p29-legacy-redirect-smoke.spec.ts`：语义旧入口重定向。
 
 底层 `make smoke-semantic` 会继续执行：
 
 1. `npm run e2e:domain-smoke`
 2. `npm run e2e:domain-publish-smoke`
 3. `npm run e2e:cube-draft-smoke`
-
-`make semantic-layout` 是 `make test-regression-semantic` 的别名，用于语义中心布局与交互回归。
 
 ## 状态契约
 
@@ -95,14 +95,16 @@ make smoke-semantic
 - 校验状态变为 `active`
 
 ### 3. `cube-draft-smoke`
-- 打开 `语义工作台`
+- 打开业务语义 / Cube 草稿链路
 - 从物理表结构中选择表
 - 生成 Cube 草稿
-- 保存为 Draft Cube，并跳到 `/semantic/workbench?cube=<name>&tab=modeling`
+- 保存为 Draft Cube，并按当前 v2 路由进入对应语义开发上下文
+
+注意：`frontend/tests/e2e/cube_draft_smoke.py` 当前仍以 `/semantic/workbench?cube=...` 作为草稿后续上下文；该路径在 v2 中是诊断工作台。后续应把该 smoke 对齐到 Cube 创建/编辑真实页面，或明确把它降级为诊断链路验证。
 
 ## 说明
 - 浏览器烟测使用 `playwright-cli`
 - 烟测失败时会在 `frontend/tests/artifacts/` 下输出截图
 - `make verify-semantic` 是语义中心的交付入口；默认仓库交付入口仍是 `make verify`
-- `tsc`、单测、视觉回归和页面回归已经归入 `make typecheck` 与 `make test-regression-semantic`，不再混入 smoke
+- `tsc` 与单测已经归入 `make verify-frontend`；浏览器级验证由 `make smoke-frontend` 与 `make smoke-semantic` 承接
 - 当前固定验证流程只覆盖语义中心主路径，不替代完整回归测试体系

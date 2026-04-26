@@ -90,9 +90,19 @@ export interface UpdateTaskPayload {
 
 export interface ExecuteTaskResult {
   run_id: number
-  status: string
-  message: string
+  status?: string
+  message?: string
   job_id: string | null
+}
+
+export interface ExtractionHealth {
+  status: string
+  components: {
+    database: string
+    redis: string
+    task_queue: string
+    queue_info?: Record<string, unknown> | null
+  }
 }
 
 // ── API 函数 ──────────────────────────────────────────────────────────────────
@@ -126,6 +136,11 @@ export async function deleteTask(id: number): Promise<void> {
 
 export async function executeTask(id: number, triggered_by?: string): Promise<ExecuteTaskResult> {
   const resp = await apiClient.post(`${TASKS_BASE}/${id}/execute`, { triggered_by })
+  return resp.data.data
+}
+
+export async function getExtractionHealth(): Promise<ExtractionHealth> {
+  const resp = await apiClient.get('/extraction/health')
   return resp.data.data
 }
 

@@ -70,7 +70,7 @@ last_reviewed: 2026-04-23
 | `POST` | `/api/v1/queries/exports/:export_id/cancel` | 请求取消 |
 | `GET` | `/api/v1/queries/exports/:export_id/download` | 本地回落下载代理（仅创建人） |
 
-详细 schema 见 [openspec/changes/add-query-export/specs/query-export/spec.md](../../openspec/changes/add-query-export/specs/query-export/spec.md)。
+详细 schema 见 [openspec/changes/archive/2026-04-24-add-query-export/specs/query-export/spec.md](../../openspec/changes/archive/2026-04-24-add-query-export/specs/query-export/spec.md)。
 
 ## 运维
 
@@ -81,7 +81,7 @@ last_reviewed: 2026-04-23
 ## FAQ
 
 **Q. 为什么 QueryConsole 没有「导出」按钮？**
-A. MVP 先在 QueryVisual 接入，QueryConsole 的导出入口是 follow-up，参见 `openspec/changes/add-query-export/tasks.md § 6.4`（留作下一个 sprint）。
+A. MVP 先在 QueryVisual 接入，QueryConsole 的导出入口是 follow-up，参见 `openspec/changes/archive/2026-04-24-add-query-export/tasks.md § 6.4`（留作下一个 sprint）。
 
 **Q. 导出任务失败后会自动重试吗？**
 A. 不会。SQL 失败通常是业务错误（权限/语法/数据源连接），自动重试反而掩盖问题。用户需手动重新提交。

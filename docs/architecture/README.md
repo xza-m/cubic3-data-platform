@@ -3,7 +3,7 @@ doc_type: architecture-index
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-04-13
+last_reviewed: 2026-04-25
 ---
 
 # 架构设计目录
@@ -81,7 +81,7 @@ last_reviewed: 2026-04-13
     - 当前主编辑区已补入最近一次发布失败的内联展示，用于直接回看阻断原因，而不再只依赖 toast
     - 当前治理查询已补入 `/api/v1/governance/audit-traces` 列表接口，`Cube` 激活也已接入最小业务语义优先准入校验：认证 Measure 若缺少 `BusinessMetric` 反向引用，将阻止发布
     - 当前业务语义发布链已进一步收紧：业务指标、关系、动作、权限在发布前会校验依赖对象是否已激活、是否具备最小分析投影依据；校验失败会直接阻断发布
-    - `DataChat` 已开始消费对话上下文中的 `semantic_plan`，可在聊天界面直接查看当前回答命中的路由类型、业务指标、业务对象和分析实体
+    - 智能问数后端消息主链已开始返回 `semantic_plan` 相关上下文；当前 v2 `/data-chat` 仍是占位页，尚未恢复完整聊天界面
     - 当前已补入订单域模板预览与一键应用入口：`/api/v1/ontology/templates/order-domain` 与业务语义工作台顶部操作区可快速生成订单域对象、属性、关系、动作、指标、术语和权限初始样板，作为后续复制到第二域的基线模板
 
 ## 与其他文档的分工

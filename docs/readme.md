@@ -3,7 +3,7 @@ doc_type: knowledge-base-index
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-03-24
+last_reviewed: 2026-04-25
 ---
 
 # 文档中心
@@ -24,7 +24,8 @@ last_reviewed: 2026-03-24
 - [启动指南](STARTUP_GUIDE.md)：完整启动、端口、代理、排障说明
 - [测试与验证约束](quality/testing.md)：统一验证入口、分层矩阵与专项验证约束
 - [后端覆盖率看板](quality/backend-coverage.md)：后端 coverage 波次、模块目标与当前基线
-- [前端覆盖率看板](quality/frontend-coverage.md)：前端 coverage 基线、核心页面守护与当前缺口
+- [前端覆盖率看板](quality/frontend-coverage.md)：旧前端 coverage 门槛退役说明与当前 v2 子树阈值口径
+- [v2 路由与 API 契约审计](quality/frontend-v2-route-api-audit.md)：v2 cutover 后的路由、API 承接关系与已知缺口
 - [评审规则](quality/review.md)：测试通过后，哪些情况下仍不应合并
 - [本地开发运行手册](runbooks/local-dev.md)：本地联调、专项验证与环境就绪要求
 - [文档对齐报告](DOC_ALIGNMENT_REPORT.md)：哪些文档可信、哪些只是历史记录
@@ -45,7 +46,8 @@ last_reviewed: 2026-03-24
 - 排查启动、端口、构建、代理问题：[STARTUP_GUIDE.md](STARTUP_GUIDE.md)
 - 查看统一验证矩阵：[quality/testing.md](quality/testing.md)
 - 查看后端 coverage 波次与模块目标：[quality/backend-coverage.md](quality/backend-coverage.md)
-- 查看前端 coverage 基线与核心页面守护：[quality/frontend-coverage.md](quality/frontend-coverage.md)
+- 查看前端 coverage 退役说明与当前 v2 阈值：[quality/frontend-coverage.md](quality/frontend-coverage.md)
+- 查看前端 v2 路由/API 对齐情况：[quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 - 查看评审拒绝条件：[quality/review.md](quality/review.md)
 - 查看本地联调与专项运行前提：[runbooks/local-dev.md](runbooks/local-dev.md)
 - 执行日常知识库维护：[KNOWLEDGE_BASE_MAINTENANCE_SOP.md](KNOWLEDGE_BASE_MAINTENANCE_SOP.md)
@@ -72,6 +74,7 @@ last_reviewed: 2026-03-24
 - [quality/testing.md](quality/testing.md)
 - [quality/backend-coverage.md](quality/backend-coverage.md)
 - [quality/frontend-coverage.md](quality/frontend-coverage.md)
+- [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 - [quality/review.md](quality/review.md)
 - [runbooks/local-dev.md](runbooks/local-dev.md)
 - [DOC_ALIGNMENT_REPORT.md](DOC_ALIGNMENT_REPORT.md)
@@ -135,16 +138,17 @@ last_reviewed: 2026-03-24
 8. [quality/testing.md](quality/testing.md)
 9. [quality/backend-coverage.md](quality/backend-coverage.md)
 10. [quality/frontend-coverage.md](quality/frontend-coverage.md)
-11. [quality/review.md](quality/review.md)
-12. [runbooks/local-dev.md](runbooks/local-dev.md)
-13. [frontend/README.md](../frontend/README.md)
+11. [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
+12. [quality/review.md](quality/review.md)
+13. [runbooks/local-dev.md](runbooks/local-dev.md)
+14. [frontend/README.md](../frontend/README.md)
 
 ## 6. 维护规则
 
 - 修改启动方式、端口、代理、脚本时，同时更新 [README.md](../README.md)、[QUICK_START.md](QUICK_START.md)、[STARTUP_GUIDE.md](STARTUP_GUIDE.md)、[DOC_ALIGNMENT_REPORT.md](DOC_ALIGNMENT_REPORT.md)
 - 修改统一验证入口、验证分层、coverage 门槛或专项验证范围时，同时更新 [quality/testing.md](quality/testing.md)、[quality/backend-coverage.md](quality/backend-coverage.md)、[quality/frontend-coverage.md](quality/frontend-coverage.md)、[quality/review.md](quality/review.md)、[semantic_verification.md](semantic_verification.md)、[runbooks/local-dev.md](runbooks/local-dev.md)
 - 修改系统边界、分层、运行拓扑和关键架构决策时，同时检查 [architecture/README.md](architecture/README.md)
-- 修改前端结构或脚本时，同时检查 [frontend/README.md](../frontend/README.md)
+- 修改前端结构、路由、API 接入或脚本时，同时检查 [frontend/README.md](../frontend/README.md) 与 [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 - 修改语义中心关键流程时，同时检查 [semantic_verification.md](semantic_verification.md)
 - 新增文档时，先决定它属于当前基线、当前架构设计、专题资料还是历史记录
 - 一次性修复总结不要继续堆到本文件，统一归档到 `archive/`

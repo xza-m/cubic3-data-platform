@@ -3,7 +3,7 @@ doc_type: reference-index
 status: maintained
 source_of_truth: reference
 owner: design
-last_reviewed: 2026-03-24
+last_reviewed: 2026-04-25
 ---
 
 # 设计参考目录
@@ -14,7 +14,7 @@ last_reviewed: 2026-03-24
 ## 使用边界
 
 - 查看当前实现，请优先阅读 [../../README.md](../../README.md)、[../TECH_STACK_AND_ARCHITECTURE.md](../TECH_STACK_AND_ARCHITECTURE.md)、[../../frontend/README.md](../../frontend/README.md)
-- 查看当前路由与页面，以 `../../frontend/src/App.tsx` 和当前代码为准
+- 查看当前路由与页面，以 `../../frontend/src/v2/routes.tsx`、`../../frontend/src/v2/pages/` 和当前代码为准
 - 查看文档可信度，以 [../DOC_ALIGNMENT_REPORT.md](../DOC_ALIGNMENT_REPORT.md) 为准
 
 ## 目录内容

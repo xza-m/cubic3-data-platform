@@ -126,6 +126,25 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
       dsFx.list.items.map((d) => ({ id: d.id, name: d.name, source_type: d.source_type })),
     ),
   )
+  await mockJsonRoute(
+    page,
+    '**/api/v1/data-center/datasources/1/schema',
+    envelope({
+      datasource_id: 1,
+      databases: ['teaching'],
+      fetched_at: '2026-04-26T10:00:00+08:00',
+    }),
+  )
+  await mockJsonRoute(
+    page,
+    '**/api/v1/data-center/datasources/1/schema/teaching',
+    envelope({
+      datasource_id: 1,
+      database: 'teaching',
+      tables: [{ table_name: 'lesson_progress', comment: '课程进度', row_count: 120 }],
+      fetched_at: '2026-04-26T10:00:01+08:00',
+    }),
+  )
 
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(err.message))
@@ -137,10 +156,9 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
   // 再进 QueryConsole。若 cache key 冲突，这里会 t.find is not a function。
   await gotoV2(page, '/queries')
 
-  // 侧栏"数据源"标题可见 ⇒ 没有落到 RouteErrorBoundary 的"页面渲染出错"。
-  await expect(page.getByText('数据源').first()).toBeVisible()
-  // 工具栏的数据源下拉（aria-label）可达。
-  await expect(page.getByLabel('选择数据源')).toBeVisible()
+  // 数据目录可见且能加载底层表 ⇒ 没有落到 RouteErrorBoundary 的"页面渲染出错"。
+  await expect(page.getByText('数据目录').first()).toBeVisible()
+  await expect(page.getByText('lesson_progress').first()).toBeVisible()
 
   // 捕获到任何 t.find 或 "is not a function" 类型错误都视为回归。
   const fatal = errors.filter((m) => /is not a function|\bt\.find\b/.test(m))

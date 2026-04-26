@@ -37,6 +37,10 @@ export interface NavModule {
   group: '数据' | '语义' | '应用' | '系统'
   implemented: boolean
   subnav?: SubNavItem[]
+  layout?: {
+    secondarySidebar?: boolean
+    inspector?: boolean
+  }
 }
 
 // group 字段保留中文作为枚举键（代码逻辑用），展示时通过 groupLabel() 翻译。
@@ -62,6 +66,10 @@ export const NAV_MODULES: NavModule[] = [
     basePath: '/dashboard',
     group: '系统',
     implemented: true,
+    layout: {
+      secondarySidebar: false,
+      inspector: false,
+    },
   },
   {
     id: 'datasources',
@@ -86,9 +94,13 @@ export const NAV_MODULES: NavModule[] = [
     label: t('nav.extraction.label', '提取任务'),
     description: t('nav.extraction.desc', '调度 + 订阅'),
     icon: Workflow,
-    basePath: '/extraction/tasks',
+    basePath: '/extraction',
+    defaultPath: '/extraction/tasks',
     group: '数据',
     implemented: true,
+    layout: {
+      inspector: false,
+    },
     subnav: [
       { label: t('nav.extraction.sub.tasks', '任务列表'), path: '/extraction/tasks', implemented: true },
       { label: t('nav.extraction.sub.runs', '执行记录'), path: '/extraction/runs', implemented: true },
@@ -103,6 +115,9 @@ export const NAV_MODULES: NavModule[] = [
     basePath: '/queries',
     group: '数据',
     implemented: true,
+    layout: {
+      inspector: false,
+    },
     subnav: [
       { label: t('nav.queries.sub.console', '查询工作台'), path: '/queries', implemented: true },
       { label: t('nav.queries.sub.my', '我的查询'), path: '/queries/my', implemented: true },

@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-03-25
+last_reviewed: 2026-04-25
 ---
 
 # 快速开始
@@ -145,7 +145,6 @@ make typecheck
 make test
 make test-unit
 make test-integration
-make test-regression
 
 # 层 4：运行验证
 make smoke
@@ -167,30 +166,31 @@ make verify-docs
 
 # 语义中心专项校验
 make verify-semantic
-make semantic-layout
 make smoke-semantic
 
 # 可选：coverage 专项验证
 make coverage
 make coverage-backend
 make coverage-frontend
+make coverage-report
 ```
 
 后端 coverage 当前门槛按 [后端覆盖率看板](quality/backend-coverage.md) 维护；当前 `pytest.ini` 基线为 `--cov-fail-under=95`。  
 `make coverage-backend` 还会自动校验二级模块 `>=95%` 和核心模块 `100%` 守护。
-前端 coverage 当前目标按 [前端覆盖率看板](quality/frontend-coverage.md) 维护；`make coverage-frontend` 会自动校验总 coverage `>=90%` 和核心功能与实体页 `100%` 守护。
+前端 coverage 当前目标按 [前端覆盖率看板](quality/frontend-coverage.md) 维护；`make coverage-frontend` 已退役为显式 skip，实际守护由 `frontend/vitest.config.ts` 的 v2 子树 80% 阈值承接，数字报告使用 `make coverage-report`。
 
 ## 5. 常见问题
 
 ### 5.1 Docker 已启动但首页为空白
 
-优先检查是否已执行：
+优先确认 Nginx 镜像是否用最新前端重新构建：
 
 ```bash
-cd frontend && npm run build
+docker compose build nginx
+docker compose up -d nginx
 ```
 
-原因：Nginx 直接挂载 `frontend/dist`，不会替你构建前端。
+原因：当前 `docker/nginx.Dockerfile` 会在镜像构建阶段执行前端打包并内置 `dist`；如果只复用旧镜像，可能仍然拿到过期静态资源。
 
 ### 5.2 前端开发环境请求不到 API
 

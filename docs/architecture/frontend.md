@@ -3,7 +3,7 @@ doc_type: architecture-doc
 status: maintained
 source_of_truth: secondary
 owner: frontend
-last_reviewed: 2026-03-26
+last_reviewed: 2026-04-25
 ---
 
 # 前端架构
@@ -12,8 +12,9 @@ last_reviewed: 2026-03-26
 
 ## 1. 总体形态
 
-当前前端是独立 `React SPA`，入口位于 `frontend/src/main.tsx`，路由总入口位于 `frontend/src/App.tsx`。
-系统通过受保护路由进入统一 `AppLayout`，再按业务域挂载页面。
+当前前端是独立 `React SPA`，入口位于 `frontend/src/main.tsx`，该入口只挂载 v2 应用。
+v2 Provider 装配位于 `frontend/src/v2/App.tsx`，路由总入口位于 `frontend/src/v2/routes.tsx`。
+系统通过受保护路由进入统一 `AppShell`，再按业务域挂载页面。
 
 这意味着前端当前的首要职责是“工作台体验和任务流组织”，而不是服务端模板拼接。
 
@@ -23,7 +24,7 @@ last_reviewed: 2026-03-26
 
 - `/dashboard`
 - `/data-center/*`
-- `/extraction-*`
+- `/extraction/*`
 - `/data-chat`
 - `/queries/*`
 - `/apps/*`
@@ -35,44 +36,50 @@ last_reviewed: 2026-03-26
 
 ## 3. 页面组织
 
-页面代码主要位于 `frontend/src/pages/`，并进一步按域拆分：
+页面代码主要位于 `frontend/src/v2/pages/`，并进一步按域拆分：
 
-- `AppCenter/`
-- `ConfigCenter/`
-- `QueryCenter/`
-- `Semantic/`
-- 根层通用页面，如 `Dashboard.tsx`、`Datasources.tsx`、`Datasets.tsx`
+- `apps/`
+- `config/`
+- `data/`
+- `queries/`
+- `semantic/`
+- 根层通用页面，如 `Dashboard.tsx`、`Login.tsx`、`NotFound.tsx`
 
 当前最复杂的前端域是 `Semantic/`，它不是简单列表页集合，而是工作台式页面群：
 
-- `CubeList`
+- `OntologyWorkbench`
+- `Cubes`
 - `RelationCanvas`
-- `DomainList`
-- `ModelingRedirect`
+- `Domains`
 - `DomainCanvas`
 - `DevTools`
 - `ViewDetail`
 
-当前主路由中，`/semantic/workbench`、`/semantic/cubes`、`/semantic/domains`、`/semantic/modeling`、`/semantic/domains/:id`、`/semantic/views/:name` 构成在线主 IA；`/semantic/cubes/new`、`/semantic/cubes/:name/edit` 已统一回流到 `/semantic/workbench`，`/semantic/cubes/:name` 只保留到编辑页的兼容重定向，旧 `Overview`、`Playground`、`CubeDetail` 等页面不再作为在线主入口。
+当前主路由中，`/semantic/ontology`、`/semantic/cubes`、`/semantic/domains`、`/semantic/domains/:id`、`/semantic/views/:name`、`/semantic/relations` 与 `/semantic/workbench` 构成在线 IA。
+其中 `/semantic/ontology` 是业务语义工作台主入口，`/semantic/workbench` 当前是语义诊断 / DevTools 页面；`/semantic/cubes/new` 与 `/semantic/cubes/:name/edit` 是真实 v2 页面，不再统一回流到旧工作台。
+旧 `Overview`、`Playground`、`Canvas`、`VisualModel` 等路径只保留兼容重定向。
 
-这套页面模型已经稳定为“按任务类型组织”，而不是只按资源对象组织；其中 `/semantic/workbench` 当前采用三栏工作台：左栏负责资源与字段索引，中栏承载建模主任务，右栏承载属性检查与模型元信息。
+这套页面模型已经稳定为“按任务类型组织”，而不是只按资源对象组织；其中业务对象、指标、关系和治理都收口在 `/semantic/ontology` 的对象中心 IA。
 
 ## 4. 共享壳层与组件分层
 
 当前前端大致分为三层：
 
-- 页级路由：`src/pages/`
-- 业务组件：`src/components/business/`、`src/components/Semantic/`、`src/components/Chat/` 等
-- 基础 UI primitives：`src/components/ui/`
+- 页级路由：`src/v2/pages/`
+- 业务 hooks：`src/v2/hooks/`
+- API 封装：`src/v2/api/`
+- 壳层组件：`src/v2/layout/`
+- 基础 UI primitives：`src/v2/components/ui/`
 
-`AppLayout` 负责全局工作台壳层，受保护路由与 Toast 等通用能力在应用根部统一装配。
+`AppShell` 负责全局工作台壳层，受保护路由、Toast、QueryClient、主题、可访问性偏好和前端观测在 v2 应用根部统一装配。
 
 ## 5. 数据访问
 
 当前前端的数据访问原则是：
 
-- 通过 `src/api/client.ts` 统一配置 API 客户端
-- 通过页面和业务组件按域消费 API
+- 通过 `src/v2/api/client.ts` 统一配置 API 客户端
+- 通过 `src/v2/hooks/*` 封装 query key、缓存和 mutation invalidation
+- 页面只消费 hooks，不直接调用 axios
 - 以 `TanStack Query` 管理远端状态和查询缓存
 
 这意味着新增 API 接入时，优先复用既有客户端和查询模式，不要在页面里散写请求细节。
@@ -83,9 +90,9 @@ last_reviewed: 2026-03-26
 
 - 管理页、编辑页、画布页、调试页分工清楚
 - 历史路由通过重定向兼容到当前页面模型
-- 验证链路单独沉淀为专项脚本，而不是只依赖通用 UI 校验
+- 验证链路单独沉淀为 v2 E2E smoke 与语义专项 smoke，而不是只依赖通用 UI 校验
 
-这也是为什么语义中心相关改动通常需要额外运行 `verify:semantic-layout` 或 `verify:semantic`。
+这也是为什么语义中心相关改动通常需要额外运行 `make verify-semantic`。
 
 ## 7. 验证策略
 
@@ -111,8 +118,6 @@ last_reviewed: 2026-03-26
 
 - `make test-unit`
 - `make test-integration`
-- `make test-regression`
-- `make test-regression-semantic`
 - `make smoke-semantic`
 
 前端架构变更不应只验证单页能打开，而应至少覆盖受影响域的类型检查、单测、E2E 或专项 smoke。
@@ -127,3 +132,4 @@ last_reviewed: 2026-03-26
 - [../../frontend/README.md](../../frontend/README.md)
 
 如果变更改变了页面模型、共享壳层或语义中心任务流，优先更新本目录，而不是只在 PRD 或设计草案里描述。
+路由或 API 接入变化还应同步更新 [../quality/frontend-v2-route-api-audit.md](../quality/frontend-v2-route-api-audit.md)。

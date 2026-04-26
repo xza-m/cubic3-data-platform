@@ -10,6 +10,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, RefreshCcw, Workflow, Clock, Save } from 'lucide-react'
 import { useExtractionTasks, useExecuteTask, useUpdateExtractionTask, useUpdateTaskSchedule } from '@v2/hooks/extraction'
 import type { ExtractionTask } from '@v2/api/extraction'
+import { useToast } from '@v2/components/ui/Toast'
 import {
   ExtractionTaskDetailContent,
   taskStatusChip,
@@ -33,6 +34,7 @@ export default function ExtractionTaskDetail() {
   const { id } = useParams<{ id: string }>()
   const numericId = Number(id)
   const navigate = useNavigate()
+  const toast = useToast()
   const { setBreadcrumbs, setTopBarActions, setContextPanel, openTab } = useAppShell()
   const [detailTab, setDetailTab] = useState<DetailTabId>('overview')
 
@@ -53,6 +55,31 @@ export default function ExtractionTaskDetail() {
     if (idx < 0) return { prev: null, next: null }
     return { prev: allTasks[idx - 1] ?? null, next: allTasks[idx + 1] ?? null }
   }, [allTasks, task])
+
+  const handleExecute = useCallback(async () => {
+    if (!task) return
+    try {
+      const result = await executeTask.mutateAsync({ id: task.id })
+      toast.show({
+        tone: 'success',
+        title: t('extractionTasks.toast.executeSubmitted', '已提交执行 · Run #{id}', {
+          id: result.run_id,
+        }),
+        description: result.job_id
+          ? t('extractionTasks.toast.executeJob', '后台任务 {jobId} 已入队', {
+              jobId: result.job_id,
+            })
+          : undefined,
+      })
+      await refetch()
+    } catch (err) {
+      toast.show({
+        tone: 'danger',
+        title: t('extractionTasks.toast.executeFailed', '执行提交失败'),
+        description: err instanceof Error ? err.message : undefined,
+      })
+    }
+  }, [executeTask, refetch, task, toast])
 
   useEffect(() => {
     if (!task) return
@@ -253,7 +280,10 @@ export default function ExtractionTaskDetail() {
           <ExtractionTaskDetailContent
             task={task}
             actions={{
-              onExecute: () => executeTask.mutate({ id: task.id }),
+              onExecute: () => {
+                void handleExecute()
+              },
+              executePending: executeTask.isPending,
               onToggleActive: () =>
                 updateTask.mutate({ id: task.id, payload: { is_active: !task.is_active } }),
             }}

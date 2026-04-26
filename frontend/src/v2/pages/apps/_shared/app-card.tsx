@@ -29,6 +29,9 @@ const CATEGORY_META: Record<string, CategoryMeta> = {
   财务: { icon: Sigma, color: 'var(--warning)' },
   AI: { icon: Bot, color: 'var(--accent)' },
   管理: { icon: CalendarClock, color: 'var(--text-3)' },
+  data_report: { icon: LayoutGrid, color: 'var(--accent)' },
+  system_maintenance: { icon: ShieldCheck, color: 'var(--danger)' },
+  agent: { icon: Bot, color: 'var(--accent)' },
 }
 
 export function metaOf(cat: string): CategoryMeta {
@@ -59,13 +62,15 @@ export function AppStatusChip({ enabled }: { enabled: boolean }) {
 
 interface AppCardProps {
   app: App
+  categoryLabel?: string
   onOpen: () => void
   onCreateInstance?: () => void
 }
 
-export function AppCard({ app, onOpen, onCreateInstance }: AppCardProps) {
+export function AppCard({ app, categoryLabel, onOpen, onCreateInstance }: AppCardProps) {
   const meta = metaOf(app.category)
   const Icon = meta.icon
+  const displayCategory = categoryLabel ?? app.category
 
   return (
     <button
@@ -98,7 +103,7 @@ export function AppCard({ app, onOpen, onCreateInstance }: AppCardProps) {
           <div className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>
             {app.author && <span>{app.author}</span>}
             {app.author && app.category && <span className="mx-1.5">·</span>}
-            <span>{app.category}</span>
+            <span>{displayCategory}</span>
             {app.version && <span className="mx-1.5">v{app.version}</span>}
           </div>
         </div>
@@ -152,12 +157,14 @@ export function AppCard({ app, onOpen, onCreateInstance }: AppCardProps) {
 
 interface AppRowProps {
   app: App
+  categoryLabel?: string
   onOpen: () => void
 }
 
-export function AppRow({ app, onOpen }: AppRowProps) {
+export function AppRow({ app, categoryLabel, onOpen }: AppRowProps) {
   const meta = metaOf(app.category)
   const Icon = meta.icon
+  const displayCategory = categoryLabel ?? app.category
 
   return (
     <button
@@ -182,7 +189,7 @@ export function AppRow({ app, onOpen }: AppRowProps) {
           </span>
           <AppStatusChip enabled={app.enabled} />
           <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-            {app.author} · {app.category}
+            {app.author ? `${app.author} · ` : ''}{displayCategory}
           </span>
         </div>
         <div className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>

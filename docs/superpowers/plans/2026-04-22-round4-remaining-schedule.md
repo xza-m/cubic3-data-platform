@@ -150,14 +150,14 @@
 
 ## 8. 附：剩余任务行直链
 
-- [R-001-P04](2026-04-21-round4-cleanup-and-i18n.md#L53)
-- [R-001-P17a/b/d](2026-04-21-round4-cleanup-and-i18n.md#L54)
-- [R-002b / R-002c](2026-04-21-round4-cleanup-and-i18n.md#L60)
+- [R-001-P04](2026-04-21-round4-cleanup-and-i18n.md#2-任务总表唯一清单)
+- [R-001-P17a/b/d](2026-04-21-round4-cleanup-and-i18n.md#2-任务总表唯一清单)
+- [R-002b / R-002c](2026-04-21-round4-cleanup-and-i18n.md#2-任务总表唯一清单)
 - [D+21（预扫完成，待真删 MR）](2026-04-22-d21-legacy-references-prescan.md)
-- [T-001b / c / d / e](2026-04-21-round4-cleanup-and-i18n.md#L64)
-- [A-1 / A-2](2026-04-21-round4-cleanup-and-i18n.md#L68)
-- [D+28](2026-04-21-round4-cleanup-and-i18n.md#L70)
-- [T-DRILL](2026-04-21-round4-cleanup-and-i18n.md#L51)
+- [T-001b / c / d / e](2026-04-21-round4-cleanup-and-i18n.md#2-任务总表唯一清单)
+- [A-1 / A-2](2026-04-21-round4-cleanup-and-i18n.md#2-任务总表唯一清单)
+- [D+28](2026-04-21-round4-cleanup-and-i18n.md#2-任务总表唯一清单)
+- [T-DRILL](2026-04-21-round4-cleanup-and-i18n.md#2-任务总表唯一清单)
 
 ---
 

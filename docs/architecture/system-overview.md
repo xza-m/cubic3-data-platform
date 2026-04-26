@@ -3,7 +3,7 @@ doc_type: architecture-doc
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-03-24
+last_reviewed: 2026-04-25
 ---
 
 # 系统总览
@@ -64,11 +64,11 @@ graph LR
 - 数据中心：数据源、数据集、表结构、预览与统计
 - 查询中心：SQL 编辑、模板、历史、异步查询、可视化构建
 - 智能问数：交互型问答能力，会话、消息、LLM 适配与 Web / 飞书信道复用
-- 语义中心：Catalog、Cube、Domain、View、Recipe、编译与查询；其中 `/semantic/modeling` 作为领域建模正式入口，旧路径只保留兼容跳转
+- 语义中心：Ontology、Catalog、Cube、Domain、View、Recipe、编译与查询；其中 `/semantic/ontology` 是业务语义工作台主入口，`/semantic/workbench` 当前承接语义诊断，旧路径只保留兼容跳转
 - 应用中心：运行型应用定义、实例、执行记录
 - 配置中心：信道、订阅、投递规则
 
-这些能力域在后端映射为 `app/application/*` 和 `app/interfaces/api/v1/*` 的模块边界，在前端映射为 `frontend/src/pages/*` 下的路由域。
+这些能力域在后端映射为 `app/application/*` 和 `app/interfaces/api/v1/*` 的模块边界，在前端映射为 `frontend/src/v2/pages/*` 下的路由域。
 
 ## 4. 三条关键路径
 

@@ -4,8 +4,8 @@
 //
 // 覆盖：
 //   - /queries（QueryConsole）能打开
-//   - 左侧数据源 sidebar + 右上角「执行」按钮可见
-//   - fixture 数据源在 sidebar 可见
+//   - 单一数据目录 + 右上角「执行」按钮可见
+//   - 选中数据源后加载底层数据库表
 //
 // 参考文档：docs/quality/e2e-coverage-gaps.md §6。
 
@@ -22,17 +22,75 @@ test.beforeEach(async ({ page }) => {
     /\/api\/v1\/data-center\/datasources(\?.*)?$/,
     envelope(dsFx.list),
   )
+  await mockJsonRoute(
+    page,
+    '**/api/v1/data-center/datasources/1/schema',
+    envelope({
+      datasource_id: 1,
+      databases: ['teaching'],
+      fetched_at: '2026-04-26T10:00:00+08:00',
+    }),
+  )
+  await mockJsonRoute(
+    page,
+    '**/api/v1/data-center/datasources/1/schema/teaching',
+    envelope({
+      datasource_id: 1,
+      database: 'teaching',
+      tables: [
+        { table_name: 'lesson_progress', comment: '课程进度', row_count: 120 },
+        { table_name: 'students', comment: '学生', row_count: 36 },
+      ],
+      fetched_at: '2026-04-26T10:00:01+08:00',
+    }),
+  )
 })
 
 test('P28 查询控制台首屏能打开并渲染核心区域 @p28', async ({ page }) => {
   await gotoV2(page, '/queries')
   await expect(page).toHaveURL(/\/queries$/)
 
-  // 侧栏"数据源"标题 + fixture 数据源名称
-  await expect(page.getByText('数据源').first()).toBeVisible()
+  // 单一数据目录 + fixture 数据源名称
+  await expect(page.getByText('数据目录').first()).toBeVisible()
   await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
+  await expect(page.getByText('lesson_progress').first()).toBeVisible()
+  await expect(page.getByText('课程进度').first()).toBeVisible()
+
+  // 数据源选择收敛到左侧资源栏，避免工具栏重复筛选和右侧上下文挤压编辑器。
+  await expect(page.getByLabel('选择数据源')).toHaveCount(0)
+  await expect(page.getByText('执行上下文')).toHaveCount(0)
+  await expect(page.getByText('/api/v1/queries/execute')).toHaveCount(0)
 
   // 右上角「执行」按钮
   const runBtn = page.getByRole('button', { name: /执行/ }).first()
   await expect(runBtn).toBeVisible()
+})
+
+test('P28 查询控制台默认 SQL 可直接执行 @p28', async ({ page }) => {
+  let sentSql: string | null = null
+  await page.route('**/api/v1/queries/execute', async (route) => {
+    const req = route.request()
+    if (req.method() !== 'POST') return route.fallback()
+    const body = req.postDataJSON() as { sql_query?: string }
+    sentSql = body.sql_query ?? null
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        envelope({
+          columns: ['hello'],
+          data: [{ hello: 1 }],
+          row_count: 1,
+          execution_time_ms: 12,
+        }),
+      ),
+    })
+  })
+
+  await gotoV2(page, '/queries')
+  await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
+  await page.getByRole('button', { name: /执行/ }).first().click()
+
+  await expect(page.getByText('1 行').first()).toBeVisible()
+  expect(sentSql).toBe('SELECT 1 AS hello')
 })

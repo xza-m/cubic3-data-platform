@@ -53,58 +53,68 @@ export function SubscriptionDetailContent({
   row: Subscription
   actions?: SubscriptionActions
 }) {
+  const hasActions = Boolean(
+    actions?.onTrigger ||
+    actions?.onToggle ||
+    actions?.onJumpChannel ||
+    actions?.onEdit ||
+    actions?.onDelete,
+  )
+
   return (
     <div className="space-y-4 px-4 py-4 text-xs">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={actions?.onTrigger}
-          className="inline-flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
-          aria-label={t('subscription.action.trigger', '立即触发此订阅')}
-        >
-          <Play size={11} aria-hidden />
-          {t('subscription.action.trigger', '立即触发')}
-        </button>
-        <button
-          type="button"
-          onClick={actions?.onToggle}
-          className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-          style={{ borderColor: 'var(--border)' }}
-        >
-          {row.enabled
-            ? t('subscription.action.pause', '暂停')
-            : t('subscription.action.enable', '启用')}
-        </button>
-        {actions?.onJumpChannel ? (
+      {hasActions ? (
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={actions.onJumpChannel}
+            onClick={actions?.onTrigger}
+            className="inline-flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
+            aria-label={t('subscription.action.trigger', '立即触发此订阅')}
+          >
+            <Play size={11} aria-hidden />
+            {t('subscription.action.trigger', '立即触发')}
+          </button>
+          <button
+            type="button"
+            onClick={actions?.onToggle}
             className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
             style={{ borderColor: 'var(--border)' }}
           >
-            {t('subscription.action.viewChannel', '查看渠道')}
+            {row.enabled
+              ? t('subscription.action.pause', '暂停')
+              : t('subscription.action.enable', '启用')}
           </button>
-        ) : null}
-        {actions?.onEdit ? (
-          <button
-            type="button"
-            onClick={actions.onEdit}
-            className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            {t('common.edit', '编辑')}
-          </button>
-        ) : null}
-        {actions?.onDelete ? (
-          <button
-            type="button"
-            onClick={actions.onDelete}
-            className="rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:ring-2 dark:text-red-400 dark:hover:bg-red-900/20"
-          >
-            {t('common.delete', '删除')}
-          </button>
-        ) : null}
-      </div>
+          {actions?.onJumpChannel ? (
+            <button
+              type="button"
+              onClick={actions.onJumpChannel}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              {t('subscription.action.viewChannel', '查看渠道')}
+            </button>
+          ) : null}
+          {actions?.onEdit ? (
+            <button
+              type="button"
+              onClick={actions.onEdit}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              {t('common.edit', '编辑')}
+            </button>
+          ) : null}
+          {actions?.onDelete ? (
+            <button
+              type="button"
+              onClick={actions.onDelete}
+              className="rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:ring-2 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              {t('common.delete', '删除')}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <DetailSection title={t('subscription.section.basic', '基础信息')}>
         <DetailRow label={t('common.id', '编号')} value={<code>#{row.id}</code>} />

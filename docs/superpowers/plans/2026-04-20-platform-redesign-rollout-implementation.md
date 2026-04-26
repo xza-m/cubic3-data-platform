@@ -12,7 +12,7 @@
 > - 子工作流（5 份）：[01-frontend](2026-04-20-platform-redesign/01-frontend-workstream.md) · [02-backend](2026-04-20-platform-redesign/02-backend-workstream.md) · [03-cross-cutting](2026-04-20-platform-redesign/03-cross-cutting-concerns.md) · [04-cutover](2026-04-20-platform-redesign/04-cutover-and-migration.md) · [05-governance](2026-04-20-platform-redesign/05-governance-and-process.md)
 > - 周报：Round1 / Round2 W1-W3 / Round3 W4-W6（执行报告，全部 ✅）
 > - 封盘：[round3-cutover-final-report.md](2026-04-20-platform-redesign/round3-cutover-final-report.md)
-> - 历史路径计划已迁至 [archive/](archive/) — 部分能力被 Master Plan 覆盖或暂缓到 Round 4。
+> - 历史路径计划已迁至 [archive/README.md](archive/README.md) — 部分能力被 Master Plan 覆盖或暂缓到 Round 4。
 
 ---
 

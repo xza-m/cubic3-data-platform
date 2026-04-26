@@ -3,7 +3,7 @@
 # Branch Governance Cleanup · Execution Record (2026-04-20)
 
 > **状态：执行中（Round 3 cutover 收口）**
-> **关联 plan**：[`2026-03-30-branch-governance-cleanup.md`](./2026-03-30-branch-governance-cleanup.md)
+> **关联 plan**：[`2026-03-30-branch-governance-cleanup.md`](archive/2026-03-30-branch-governance-cleanup.md)
 > **触发原因**：Round 3 cutover 进入 D-1，working tree 累积 497 项变更（155 untracked + 282 R + 40 M），必须落 git history 才能 release。
 > **执行人**：xuanzhiang + AI 协作
 > **目标分支**：`release/round3-cutover`

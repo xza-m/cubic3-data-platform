@@ -16,12 +16,21 @@ import { t } from '@v2/i18n'
 import { useApps, useAppCategories, useEnableApp, useDisableApp } from '@v2/hooks/apps'
 import { useToast } from '@v2/components/ui'
 import { AppCard, AppRow } from './_shared/app-card'
-import type { App } from '@v2/api/apps'
+import type { App, AppCategoryOption } from '@v2/api/apps'
 
 type ViewMode = 'grid' | 'list'
 type StatusFilter = 'all' | 'enabled' | 'disabled'
 
-const ALL_CATEGORY = t('marketplace.all', '全部')
+const ALL_CATEGORY_VALUE = '__all__'
+
+function allCategoryOption(): AppCategoryOption {
+  return {
+    value: ALL_CATEGORY_VALUE,
+    label: t('marketplace.all', '全部'),
+    app_count: null,
+  }
+}
+
 function statusOptions(): { value: StatusFilter; label: string }[] {
   return [
     { value: 'all',      label: t('marketplace.status.all',      '全部状态') },
@@ -34,7 +43,7 @@ export default function Marketplace() {
   const navigate = useNavigate()
   const toast = useToast()
   const [keyword, setKeyword] = useState('')
-  const [category, setCategory] = useState(ALL_CATEGORY)
+  const [category, setCategory] = useState(ALL_CATEGORY_VALUE)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [view, setView] = useState<ViewMode>('grid')
 
@@ -45,14 +54,18 @@ export default function Marketplace() {
   const enableMutation = useEnableApp()
   const disableMutation = useDisableApp()
 
-  const categories = useMemo(
-    () => [ALL_CATEGORY, ...serverCategories],
-    [serverCategories],
-  )
+  const categories = useMemo(() => [allCategoryOption(), ...serverCategories], [serverCategories])
+  const categoryLabelByValue = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const c of serverCategories) {
+      map.set(c.value, c.label)
+    }
+    return map
+  }, [serverCategories])
 
   const filtered = useMemo(() => {
     return apps.filter((a) => {
-      if (category !== ALL_CATEGORY && a.category !== category) return false
+      if (category !== ALL_CATEGORY_VALUE && a.category !== category) return false
       if (statusFilter === 'enabled' && !a.enabled) return false
       if (statusFilter === 'disabled' && a.enabled) return false
       const q = keyword.trim().toLowerCase()
@@ -157,19 +170,22 @@ export default function Marketplace() {
           {/* Category facet */}
           <div className="flex flex-wrap items-center gap-1">
             {categories.map((c) => {
-              const active = category === c
+              const active = category === c.value
               return (
                 <button
-                  key={c}
+                  key={c.value}
                   type="button"
                   className="btn btn-sm"
                   style={{
                     background: active ? 'var(--accent)' : 'transparent',
                     color: active ? 'var(--on-accent)' : 'var(--text-2)',
                   }}
-                  onClick={() => setCategory(c)}
+                  onClick={() => setCategory(c.value)}
                 >
-                  {c}
+                  {c.label}
+                  {c.app_count != null && c.value !== ALL_CATEGORY_VALUE ? (
+                    <span aria-hidden className="ml-1 opacity-70">{c.app_count}</span>
+                  ) : null}
                 </button>
               )
             })}
@@ -249,6 +265,7 @@ export default function Marketplace() {
                 <AppCardWithMenu
                   key={app.code}
                   app={app}
+                  categoryLabel={categoryLabelByValue.get(app.category)}
                   onOpen={() => navigate(`/apps/${app.code}`)}
                   onCreateInstance={() =>
                     navigate('/apps/instances/new', {
@@ -264,6 +281,7 @@ export default function Marketplace() {
                 <AppRowWithMenu
                   key={app.code}
                   app={app}
+                  categoryLabel={categoryLabelByValue.get(app.category)}
                   onOpen={() => navigate(`/apps/${app.code}`)}
                   onToggle={() => void handleToggle(app)}
                   isToggling={
@@ -282,12 +300,14 @@ export default function Marketplace() {
 
 function AppCardWithMenu({
   app,
+  categoryLabel,
   onOpen,
   onCreateInstance,
   onToggle,
   isToggling,
 }: {
   app: App
+  categoryLabel?: string
   onOpen: () => void
   onCreateInstance: () => void
   onToggle: () => void
@@ -298,7 +318,12 @@ function AppCardWithMenu({
 
   return (
     <div className="relative">
-      <AppCard app={app} onOpen={onOpen} onCreateInstance={onCreateInstance} />
+      <AppCard
+        app={app}
+        categoryLabel={categoryLabel}
+        onOpen={onOpen}
+        onCreateInstance={onCreateInstance}
+      />
       {/* 右上角菜单按钮 */}
       <div className="absolute right-2 top-2">
         <button
@@ -366,11 +391,13 @@ function AppCardWithMenu({
 
 function AppRowWithMenu({
   app,
+  categoryLabel,
   onOpen,
   onToggle,
   isToggling,
 }: {
   app: App
+  categoryLabel?: string
   onOpen: () => void
   onToggle: () => void
   isToggling: boolean
@@ -379,7 +406,7 @@ function AppRowWithMenu({
 
   return (
     <div className="group relative">
-      <AppRow app={app} onOpen={onOpen} />
+      <AppRow app={app} categoryLabel={categoryLabel} onOpen={onOpen} />
       <div className="absolute right-2 top-1/2 -translate-y-1/2">
         <button
           type="button"

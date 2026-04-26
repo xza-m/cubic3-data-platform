@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-13
+last_reviewed: 2026-04-25
 ---
 
 # CUBIC3
@@ -24,6 +24,7 @@ CUBIC3（仓库名 `cubic3-data-platform`）是一个面向企业数据场景的
 - [docs/quality/testing.md](docs/quality/testing.md)
 - [docs/quality/backend-coverage.md](docs/quality/backend-coverage.md)
 - [docs/quality/frontend-coverage.md](docs/quality/frontend-coverage.md)
+- [docs/quality/frontend-v2-route-api-audit.md](docs/quality/frontend-v2-route-api-audit.md)
 - [docs/quality/review.md](docs/quality/review.md)
 - [docs/runbooks/local-dev.md](docs/runbooks/local-dev.md)
 - [frontend/README.md](frontend/README.md)
@@ -46,6 +47,7 @@ CUBIC3（仓库名 `cubic3-data-platform`）是一个面向企业数据场景的
 - [测试与验证约束](docs/quality/testing.md)
 - [后端覆盖率看板](docs/quality/backend-coverage.md)
 - [前端覆盖率看板](docs/quality/frontend-coverage.md)
+- [v2 路由与 API 契约审计](docs/quality/frontend-v2-route-api-audit.md)
 - [评审规则](docs/quality/review.md)
 - [本地开发运行手册](docs/runbooks/local-dev.md)
 - [知识库治理规范](docs/KNOWLEDGE_BASE_GOVERNANCE.md)
@@ -101,7 +103,7 @@ Phase 1 当前已验证的数据中心主链路基线为：
 - 治理审计列表：已补入 `/api/v1/governance/audit-traces`，支持按 `policy / target_type / target_name / decision / route_type` 查询最近治理命中记录
 - 业务语义工作台治理筛选：权限页的“最近审计记录”现已支持按 `决策` 与 `路由` 筛选，便于聚焦订单域的放行、阻断与直连执行链
 - 问数主链收口：`/api/v1/conversations/<id>/messages` 现优先尝试走语义路由与统一执行运行时，仅在未命中或执行失败时回退 Agent / 传统 LLM
-- 问数语义回溯可见：`DataChat` 当前会根据对话上下文展示“语义执行来源”卡片，直接回看当前回答命中的路由类型、业务指标、业务对象和分析实体
+- 问数语义回溯后端能力：`/api/v1/conversations/<id>/messages` 会在对话上下文中返回语义执行来源信息；当前 v2 前端 `/data-chat` 仍是占位页，尚未恢复完整智能问数 UI。
 - 业务语义优先发布校验：激活带 `certified=true` 的 Measure 时，若未关联任何 `BusinessMetric.measure_refs`，将阻止发布并返回明确错误
 - 业务语义资产发布校验：业务指标、关系、动作、权限在发布前会校验依赖对象是否已激活、是否具备最小分析投影依据；发布失败会直接阻断，而不是先激活再靠人工补救
 - 订单域模板基线：`/api/v1/ontology/templates/order-domain` 与 `业务语义工作台` 已支持预览并一键应用订单域模板，用于快速生成首个标准对象/属性/关系/动作/指标/术语/权限样板，并作为后续第二域复制基线
@@ -119,9 +121,10 @@ Phase 1 当前已验证的数据中心主链路基线为：
 
 - 工作台：`/dashboard`
 - 查询分析中心：`/queries`
-- 语义工作台：`/semantic/workbench`
+- 业务语义工作台：`/semantic/ontology`
+- 语义诊断工作台：`/semantic/workbench`
 
-旧的 `/queries/editor`、`/queries/history`、`/queries/templates`、`/queries/visual`、`/queries/my`、`/queries/scheduled` 以及语义中心旧别名路由只保留兼容重定向，不再作为主 IA。
+查询中心的 `/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是当前有效子路由；旧的 `/queries/editor`、`/queries/templates` 以及语义中心旧别名路由只保留兼容重定向，不再作为主 IA。
 
 当前后端新增了与双层语义架构对应的 API 前缀：
 
@@ -297,7 +300,6 @@ make typecheck
 make test
 make test-unit
 make test-integration
-make test-regression
 
 # 层 4：运行验证
 make smoke
@@ -319,7 +321,6 @@ make verify-docs
 
 # 语义中心专项校验
 make verify-semantic
-make semantic-layout
 make smoke-semantic
 
 # 可选：coverage 专项验证（不在默认闸门里）
@@ -370,8 +371,9 @@ docker compose logs -f rq_worker
 - DI 容器：`app/di/container.py`
 - 后端启动入口：`wsgi.py`
 - Worker 启动脚本：`run_worker.py`
-- 前端路由入口：`frontend/src/App.tsx`
-- API 客户端：`frontend/src/api/client.ts`
+- 前端挂载入口：`frontend/src/main.tsx`
+- v2 路由入口：`frontend/src/v2/routes.tsx`
+- v2 API 客户端：`frontend/src/v2/api/client.ts`
 
 ## 参考文档
 

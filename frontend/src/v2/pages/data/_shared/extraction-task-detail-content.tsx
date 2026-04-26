@@ -79,6 +79,7 @@ export function taskTabLabel(task: ExtractionTask): ReactNode {
 
 export interface TaskActions {
   onExecute?: () => void
+  executePending?: boolean
   onToggleActive?: () => void
 }
 
@@ -90,15 +91,17 @@ export function TaskActionButtons({ task, actions }: { task: ExtractionTask; act
         <button
           type="button"
           onClick={actions.onExecute}
-          disabled={task.last_run_status === 'running'}
+          disabled={task.last_run_status === 'running' || actions.executePending}
           className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
           style={{
             background: 'var(--accent)',
             color: 'var(--on-accent)',
-            opacity: task.last_run_status === 'running' ? 0.5 : 1,
+            opacity: task.last_run_status === 'running' || actions.executePending ? 0.5 : 1,
           }}
         >
-          {t('extractionTaskDetail.action.execute', '立即执行')}
+          {actions.executePending
+            ? t('extractionTaskDetail.action.executePending', '提交中…')
+            : t('extractionTaskDetail.action.execute', '立即执行')}
         </button>
       ) : null}
       {actions.onToggleActive ? (
