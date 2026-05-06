@@ -54,6 +54,7 @@ import { apiClient, getAccessToken, setAccessToken } from '@v2/api/client'
 import { useTheme } from '@v2/components/ThemeProvider'
 import { ev, obs } from '@v2/observability'
 import { t } from '@v2/i18n'
+import type { LoginResponse } from './login-utils'
 import { extractLoginToken } from './login-utils'
 
 async function loginRequest(username: string, password: string): Promise<string> {

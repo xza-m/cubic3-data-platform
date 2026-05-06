@@ -1,4 +1,4 @@
-type LoginResponse =
+export type LoginResponse =
   | { access_token?: string; token?: string; data?: { access_token?: string; token?: string } }
   | null
   | undefined
