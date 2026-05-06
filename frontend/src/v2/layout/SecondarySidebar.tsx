@@ -44,7 +44,7 @@ export function SecondarySidebar({ module, extraSections }: SecondarySidebarProp
   const groups = groupSubnav(module.subnav)
   return (
     <aside
-      className="surface flex h-full w-[248px] flex-col border-r"
+      className="surface hidden h-full w-[248px] shrink-0 flex-col border-r lg:flex"
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
       <div className="px-3 pt-3 pb-2">

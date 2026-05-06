@@ -24,6 +24,7 @@ import {
 import { Button, Card, CardBody, Chip, Input, Select } from '@v2/components/ui'
 // 等待 X-Crosscut：@v2/components/PeekPanel
 import { PeekPanel } from '@v2/components/PeekPanel'
+import { ListPagination } from '@v2/components/ListPagination'
 // 等待 X-Crosscut：@v2/layout/AppShell, @v2/layout/Inspector
 import { useAppShell } from '@v2/layout/AppShell'
 import { ContextActions, ContextRow, ContextSection } from '@v2/layout/Inspector'
@@ -41,6 +42,7 @@ const STATUS_OPTIONS = [
   { value: 'draft', label: t('status.draft', '草稿') },
   { value: 'deprecated', label: t('status.deprecated', '已弃用') },
 ]
+const LIST_PAGE_SIZE = 20
 
 export default function Cubes() {
   const navigate = useNavigate()
@@ -49,6 +51,7 @@ export default function Cubes() {
   const [status, setStatus] = useState('')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [peekName, setPeekName] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
 
   const cubeListQuery = useCubeList()
   const allCubes = useMemo<CubeSummary[]>(() => cubeListQuery.data?.cubes ?? [], [cubeListQuery.data])
@@ -61,6 +64,12 @@ export default function Cubes() {
       return true
     })
   }, [allCubes, keyword, status])
+  const pageCount = Math.max(1, Math.ceil(rows.length / LIST_PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const pagedRows = useMemo(() => {
+    const start = (safePage - 1) * LIST_PAGE_SIZE
+    return rows.slice(start, start + LIST_PAGE_SIZE)
+  }, [rows, safePage])
 
   const stats = useMemo(() => {
     const byStatus: Record<string, number> = {}
@@ -71,6 +80,14 @@ export default function Cubes() {
     }
     return { byStatus, byDomain }
   }, [allCubes])
+
+  useEffect(() => {
+    setPage(1)
+  }, [keyword, status])
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
 
   useEffect(() => {
     setBreadcrumbs([t('nav.semantic', '语义中心'), t('nav.cubes', 'Cube')])
@@ -103,7 +120,7 @@ export default function Cubes() {
             <ContextRow label={t('status.draft', '草稿')} value={stats.byStatus.draft ?? 0} />
           </ContextSection>
           {Object.keys(stats.byDomain).length > 0 ? (
-            <ContextSection title={t('cube.contextByDomain', '按业务域')}>
+            <ContextSection title={t('cube.contextByDomain', '按业务上下文')}>
               {Object.entries(stats.byDomain).map(([k, v]) => (
                 <ContextRow key={k} label={`${k}`} value={v} />
               ))}
@@ -231,7 +248,7 @@ export default function Cubes() {
           </Card>
         ) : view === 'grid' ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {rows.map((c) => (
+            {pagedRows.map((c) => (
               <CubeCard
                 key={c.name}
                 cube={c}
@@ -246,7 +263,7 @@ export default function Cubes() {
               <thead>
                 <tr>
                   <th>Cube</th>
-                  <th>{t('cube.domain', '业务域')}</th>
+                  <th>{t('cube.domain', '业务上下文')}</th>
                   <th>{t('cube.factTable', '事实表')}</th>
                   <th className="text-right">{t('cube.dimensionCountShort', '维度')}</th>
                   <th className="text-right">{t('cube.measureCountShort', '指标')}</th>
@@ -255,7 +272,7 @@ export default function Cubes() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((c) => (
+                {pagedRows.map((c) => (
                   <tr
                     key={c.name}
                     onClick={() => openPeek(c.name)}
@@ -296,6 +313,12 @@ export default function Cubes() {
             </table>
           </Card>
         )}
+        <ListPagination
+          page={safePage}
+          pageSize={LIST_PAGE_SIZE}
+          total={rows.length}
+          onPageChange={setPage}
+        />
       </div>
 
       {peekName ? (

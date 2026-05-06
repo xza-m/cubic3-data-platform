@@ -5,16 +5,28 @@
 // query key: ['userPreferences', 'me']
 // staleTime: 5 分钟（偏好很少变化，无需频繁刷新）
 
+import { useSyncExternalStore } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from '@v2/api/userPreferences'
+import { getAccessToken, subscribeAccessToken } from '@v2/api/client'
 import { ev, obs } from '@v2/observability'
 
 export const PREF_QUERY_KEY = ['userPreferences', 'me'] as const
 
+function useAccessTokenSnapshot() {
+  return useSyncExternalStore(
+    subscribeAccessToken,
+    getAccessToken,
+    () => null,
+  )
+}
+
 export function useMyPreferences() {
+  const token = useAccessTokenSnapshot()
   return useQuery({
     queryKey: PREF_QUERY_KEY,
     queryFn: api.getMyPreferences,
+    enabled: Boolean(token),
     staleTime: 5 * 60_000,
     refetchOnWindowFocus: false,
   })

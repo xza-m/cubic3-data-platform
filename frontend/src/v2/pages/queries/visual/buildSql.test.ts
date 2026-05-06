@@ -280,6 +280,42 @@ describe('buildSql', () => {
     expect(r.issues).toEqual([])
   })
 
+  it('条件组支持组内 AND + 组间 OR', () => {
+    const ds = mkDataset()
+    const r = buildSql({
+      dataset: ds,
+      draft: {
+        ...emptyDraft(),
+        datasetId: 1,
+        selectedFields: ['order_id'],
+        filterGroupLogic: 'OR',
+        filterGroups: [
+          {
+            id: 'g1',
+            logic: 'AND',
+            rules: [
+              { id: 'f1', field: 'order_id', op: 'EQ', value: '1' },
+              { id: 'f2', field: 'order_amount', op: 'EQ', value: '2' },
+            ],
+          },
+          {
+            id: 'g2',
+            logic: 'AND',
+            rules: [
+              { id: 'f3', field: 'ds', op: 'EQ', value: '2026-05-05' },
+              { id: 'f4', field: 'user_id', op: 'EQ', value: '4' },
+            ],
+          },
+        ],
+      },
+    })
+    expect(r.sql).toContain('WHERE (order_id = 1')
+    expect(r.sql).toContain('AND order_amount = 2)')
+    expect(r.sql).toContain('OR (ds = \'2026-05-05\'')
+    expect(r.sql).toContain('AND user_id = 4)')
+    expect(r.appliedFilters).toBe(4)
+  })
+
   it('敏感字段 mobile + mask_phone 自动脱敏', () => {
     const ds = mkDataset()
     const r = buildSql({

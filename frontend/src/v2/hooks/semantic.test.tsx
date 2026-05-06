@@ -40,7 +40,6 @@ vi.mock('@v2/api/semantic', () => ({
   createDomain: vi.fn(),
   updateDomain: vi.fn(),
   addCubeToDomain: vi.fn(),
-  addJoinToDomain: vi.fn(),
 }))
 
 import {

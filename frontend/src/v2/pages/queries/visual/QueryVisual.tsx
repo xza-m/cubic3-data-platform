@@ -50,6 +50,8 @@ export default function QueryVisual() {
       ...prev,
       selectedFields: [],
       filters: [],
+      filterGroups: [],
+      filterGroupLogic: 'AND',
     }))
   }, [draft.datasetId])
 
@@ -168,41 +170,6 @@ export default function QueryVisual() {
           </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <label
-            className="text-xs"
-            style={{ color: 'var(--text-3)' }}
-            htmlFor="v2-query-visual-dataset"
-          >
-            {t('queryVisual.dataset.label', '数据集')}
-          </label>
-          <select
-            id="v2-query-visual-dataset"
-            data-testid="v2-query-visual-dataset-select"
-            value={draft.datasetId ?? ''}
-            onChange={(e) =>
-              setDraft((prev) => ({
-                ...prev,
-                datasetId: e.target.value ? Number(e.target.value) : null,
-              }))
-            }
-            className="w-64 rounded border bg-transparent px-2 py-1 text-xs"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
-          >
-            {datasetsQ.isLoading ? (
-              <option value="">{t('queryVisual.dataset.loading', '加载中…')}</option>
-            ) : datasetList.length === 0 ? (
-              <option value="">{t('queryVisual.dataset.empty', '无可用数据集')}</option>
-            ) : (
-              <>
-                <option value="">{t('queryVisual.dataset.placeholder', '选择数据集…')}</option>
-                {datasetList.map((ds) => (
-                  <option key={ds.id} value={ds.id}>
-                    {ds.dataset_name} · {ds.physical_table ?? '—'}
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
           <label className="text-xs" style={{ color: 'var(--text-3)' }} htmlFor="v2-query-visual-limit">
             LIMIT
           </label>
@@ -241,36 +208,97 @@ export default function QueryVisual() {
 
       {/* Body grid */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Left: FieldTree */}
+        {/* Left: dataset and FieldTree */}
         <div
-          className="w-64 flex-shrink-0 border-r"
-          style={{ borderColor: 'var(--border)' }}
+          className="flex w-72 flex-shrink-0 flex-col border-r"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
         >
-          {datasetDetailQ.isFetching && fields.length === 0 ? (
-            <div
-              className="flex h-full items-center justify-center text-xs"
-              style={{ color: 'var(--text-3)' }}
+          <div className="border-b p-3" style={{ borderColor: 'var(--border)' }}>
+            <label
+              className="mb-1.5 block text-xs font-semibold"
+              style={{ color: 'var(--text-1)' }}
+              htmlFor="v2-query-visual-dataset"
             >
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              {t('queryVisual.state.loadingFields', '加载字段中…')}
-            </div>
-          ) : (
-            <FieldTree
-              fields={fields}
-              selected={draft.selectedFields}
-              onSelectedChange={(next) =>
-                setDraft((prev) => ({ ...prev, selectedFields: next }))
+              {t('queryVisual.dataset.label', '数据集')}
+            </label>
+            <select
+              id="v2-query-visual-dataset"
+              data-testid="v2-query-visual-dataset-select"
+              value={draft.datasetId ?? ''}
+              onChange={(e) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  datasetId: e.target.value ? Number(e.target.value) : null,
+                }))
               }
-            />
-          )}
+              className="w-full rounded border bg-transparent px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-[color:var(--accent)]"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-1)' }}
+            >
+              {datasetsQ.isLoading ? (
+                <option value="">{t('queryVisual.dataset.loading', '加载中…')}</option>
+              ) : datasetList.length === 0 ? (
+                <option value="">{t('queryVisual.dataset.empty', '无可用数据集')}</option>
+              ) : (
+                <>
+                  <option value="">{t('queryVisual.dataset.placeholder', '选择数据集…')}</option>
+                  {datasetList.map((ds) => (
+                    <option key={ds.id} value={ds.id}>
+                      {ds.dataset_name} · {ds.physical_table ?? '—'}
+                    </option>
+                  ))}
+                </>
+              )}
+            </select>
+            <div className="mt-2 min-h-8 text-[11px]" style={{ color: 'var(--text-3)' }}>
+              {dataset ? (
+                <>
+                  <div className="truncate font-medium" style={{ color: 'var(--text-2)' }}>
+                    {dataset.dataset_name}
+                  </div>
+                  <div className="truncate font-mono">
+                    {dataset.physical_table ??
+                      t('queryVisual.dataset.noPhysicalTable', '未绑定物理表')}
+                  </div>
+                </>
+              ) : (
+                t('queryVisual.dataset.pickFromTree', '先选数据集，再在下方勾选字段。')
+              )}
+            </div>
+          </div>
+          <div className="min-h-0 flex-1">
+            {datasetDetailQ.isFetching && fields.length === 0 ? (
+              <div
+                className="flex h-full items-center justify-center text-xs"
+                style={{ color: 'var(--text-3)' }}
+              >
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                {t('queryVisual.state.loadingFields', '加载字段中…')}
+              </div>
+            ) : (
+              <FieldTree
+                fields={fields}
+                selected={draft.selectedFields}
+                onSelectedChange={(next) =>
+                  setDraft((prev) => ({ ...prev, selectedFields: next }))
+                }
+                disabled={!dataset}
+              />
+            )}
+          </div>
         </div>
 
         {/* Right stack: filters (top) + SQL preview (middle) + result table (bottom) */}
         <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-auto p-4">
           <FilterPanel
             fields={fields}
-            rules={draft.filters}
-            onChange={(next) => setDraft((prev) => ({ ...prev, filters: next }))}
+            groups={draft.filterGroups ?? []}
+            groupLogic={draft.filterGroupLogic ?? 'AND'}
+            onGroupsChange={(next) =>
+              setDraft((prev) => ({ ...prev, filters: [], filterGroups: next }))
+            }
+            onGroupLogicChange={(next) =>
+              setDraft((prev) => ({ ...prev, filterGroupLogic: next }))
+            }
             disabled={!dataset}
           />
 
@@ -334,14 +362,19 @@ function MiniResultTable({
       <table className="w-full border-collapse text-xs" data-testid="v2-query-visual-result-table">
         <thead
           className="sticky top-0"
-          style={{ background: 'var(--bg-surface)', color: 'var(--text-2)' }}
+          style={{
+            background: 'color-mix(in srgb, var(--accent) 9%, var(--bg-surface))',
+            color: 'var(--text-1)',
+          }}
         >
           <tr>
             {columns.map((c) => (
               <th
                 key={c}
-                className="border-b px-3 py-2 text-left font-medium"
-                style={{ borderColor: 'var(--border)' }}
+                className="border-b px-3 py-2 text-left font-semibold"
+                style={{
+                  borderColor: 'color-mix(in srgb, var(--accent) 28%, var(--border))',
+                }}
               >
                 {c}
               </th>

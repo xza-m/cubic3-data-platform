@@ -16,7 +16,7 @@
 //   - CTE / 子查询：复杂查询同上。
 
 import type { Dataset, DatasetField } from '@v2/api/datasets'
-import type { FilterRule, QueryDraft } from './types'
+import type { FilterGroup, FilterLogic, FilterRule, QueryDraft } from './types'
 
 // ── 公共辅助 ─────────────────────────────────────────────────────────────────
 
@@ -137,6 +137,16 @@ export function filterExpr(rule: FilterRule, field: DatasetField | undefined): s
   }
 }
 
+function normalizeLogic(value: FilterLogic | undefined): FilterLogic {
+  return value === 'OR' ? 'OR' : 'AND'
+}
+
+function effectiveFilterGroups(draft: QueryDraft): FilterGroup[] {
+  if ((draft.filterGroups?.length ?? 0) > 0) return draft.filterGroups ?? []
+  if (draft.filters.length === 0) return []
+  return [{ id: 'legacy-filter-group', logic: 'AND', rules: draft.filters }]
+}
+
 // ── 主入口 ───────────────────────────────────────────────────────────────────
 
 export interface BuildSqlInput {
@@ -196,18 +206,30 @@ export function buildSql({ dataset, draft }: BuildSqlInput): BuildSqlResult {
   }
 
   // WHERE
-  const whereParts: string[] = []
-  for (const rule of draft.filters) {
-    const field = fieldsByName.get(rule.field)
-    const expr = filterExpr(rule, field)
-    if (expr) {
-      whereParts.push(expr)
-    } else if (rule.field) {
-      // 有选中字段但值不完整
-      issues.push(`筛选"${rule.field}"的值不完整，已跳过`)
+  const groups = effectiveFilterGroups(draft)
+  const whereGroups: string[] = []
+  let appliedFilters = 0
+  for (const group of groups) {
+    const groupParts: string[] = []
+    for (const rule of group.rules) {
+      const field = fieldsByName.get(rule.field)
+      const expr = filterExpr(rule, field)
+      if (expr) {
+        groupParts.push(expr)
+        appliedFilters += 1
+      } else if (rule.field) {
+        // 有选中字段但值不完整
+        issues.push(`筛选"${rule.field}"的值不完整，已跳过`)
+      }
+    }
+    if (groupParts.length > 0) {
+      const groupLogic = normalizeLogic(group.logic)
+      const joined = groupParts.join(`\n  ${groupLogic} `)
+      whereGroups.push(groups.length > 1 && groupParts.length > 1 ? `(${joined})` : joined)
     }
   }
-  const whereClause = whereParts.length ? `\nWHERE ${whereParts.join('\n  AND ')}` : ''
+  const groupLogic = normalizeLogic(draft.filterGroupLogic)
+  const whereClause = whereGroups.length ? `\nWHERE ${whereGroups.join(`\n  ${groupLogic} `)}` : ''
 
   // LIMIT
   const limit = Number.isFinite(draft.limit) && draft.limit > 0 ? Math.floor(draft.limit) : 1000
@@ -219,6 +241,6 @@ export function buildSql({ dataset, draft }: BuildSqlInput): BuildSqlResult {
     sql,
     issues,
     selectedCount: selectedList.length,
-    appliedFilters: whereParts.length,
+    appliedFilters,
   }
 }

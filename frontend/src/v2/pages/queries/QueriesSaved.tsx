@@ -6,7 +6,7 @@
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Star } from 'lucide-react'
+import { Star } from 'lucide-react'
 import {
   useSavedQueries,
   useDeleteSavedQuery,
@@ -90,13 +90,6 @@ export default function QueriesSaved() {
               <Star size={12} fill={isFavorite ? 'currentColor' : 'none'} />
               {t('queries.saved.filter.favorites', '收藏')}
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/queries/my/new')}
-              className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
-            >
-              <Plus size={12} /> {t('queries.saved.action.create', '新建查询')}
-            </button>
           </div>
         </div>
 
@@ -124,13 +117,12 @@ export default function QueriesSaved() {
                   : t('queries.saved.empty.all', '暂无已保存查询')}
               </p>
               {!search && !isFavorite && (
-                <button
-                  type="button"
-                  onClick={() => navigate('/queries/my/new')}
-                  className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
-                >
-                  {t('queries.saved.action.createFirst', '新建第一个查询')}
-                </button>
+                <p className="text-xs" style={{ color: 'var(--text-3)' }}>
+                  {t(
+                    'queries.saved.empty.workbenchHint',
+                    '在查询工作台编写 SQL 并保存后，会出现在这里。',
+                  )}
+                </p>
               )}
             </div>
           ) : (

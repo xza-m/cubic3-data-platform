@@ -334,7 +334,10 @@ export default function Subscriptions() {
         </div>
         <div className="flex items-center gap-2">
           <Chip tone="neutral">
-            {t('subscription.stats.enabled', `启用 ${enabledCount} / ${rows.length}`)}
+            {t('subscription.stats.enabled', '启用 {enabledCount} / {total}', {
+              enabledCount,
+              total: rows.length,
+            })}
           </Chip>
           <button
             type="button"

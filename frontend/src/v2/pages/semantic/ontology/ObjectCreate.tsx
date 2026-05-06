@@ -76,7 +76,7 @@ export default function ObjectCreate() {
                 />
               </FormField>
 
-              <FormField label={t('objectCreate.domain', '数据域')}>
+              <FormField label={t('objectCreate.domain', '业务上下文')}>
                 <Input
                   value={form.domain}
                   onChange={(e) => set('domain', e.target.value)}

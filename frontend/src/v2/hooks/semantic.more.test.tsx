@@ -7,16 +7,19 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 vi.mock('@v2/api/semantic', () => ({
   activateCube: vi.fn(),
   addCubeToDomain: vi.fn(),
-  addJoinToDomain: vi.fn(),
+  checkSemanticModelingAgentReady: vi.fn(),
   compileDsl: vi.fn(),
   createCube: vi.fn(),
   createDomain: vi.fn(),
+  createSemanticModelingAgentSpecDraft: vi.fn(),
   deprecateCube: vi.fn(),
   describeCube: vi.fn(),
   describeDomain: vi.fn(),
   describeView: vi.fn(),
+  draftSemanticModelingAgentFromSpec: vi.fn(),
   draftCubeFromSource: vi.fn(),
   getDomainCanvas: vi.fn(),
+  previewDomainContext: vi.fn(),
   getDomainPublishHistory: vi.fn(),
   getMaterializeStatus: vi.fn(),
   getSemanticGraph: vi.fn(),
@@ -27,10 +30,13 @@ vi.mock('@v2/api/semantic', () => ({
   listViews: vi.fn(),
   materializeView: vi.fn(),
   publishDomain: vi.fn(),
+  publishSemanticModelingAgent: vi.fn(),
   readSemanticFile: vi.fn(),
   schemaSyncCube: vi.fn(),
   updateCube: vi.fn(),
   updateDomain: vi.fn(),
+  applySemanticModelingAgent: vi.fn(),
+  validateSemanticModelingAgent: vi.fn(),
   validateCubeFields: vi.fn(),
   validateSemanticFile: vi.fn(),
   writeSemanticFile: vi.fn(),
@@ -57,14 +63,20 @@ import {
   useDomainList,
   useDomainDetail,
   useDomainCanvas,
+  useDomainContextPreview,
   useCatalogList,
   useCreateDomain,
   useUpdateDomain,
   usePublishDomain,
   useAddCubeToDomain,
-  useAddJoinToDomain,
   useCompileDsl,
   useSemanticFile,
+  useCreateSemanticModelingAgentSpecDraft,
+  useDraftSemanticModelingAgentFromSpec,
+  useValidateSemanticModelingAgent,
+  useCheckSemanticModelingAgentReady,
+  useApplySemanticModelingAgent,
+  usePublishSemanticModelingAgent,
   useValidateCubeFields,
   useDryRunMetric,
   useSemanticGraph,
@@ -257,6 +269,19 @@ describe('semantic - domains', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 
+  it('useDomainContextPreview calls api without treating joins as truth source', async () => {
+    ok(api.previewDomainContext as ReturnType<typeof vi.fn>, {
+      role: 'business_context',
+      candidate_scope: { cube_refs: ['student_comments'], ontology_refs: { objects: ['student_comment'] } },
+    })
+    const { wrapper } = makeWrapper()
+    const { result } = renderHook(() => useDomainContextPreview(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync('academic')
+    })
+    expect(api.previewDomainContext).toHaveBeenCalledWith('academic')
+  })
+
   it('useCatalogList', async () => {
     ok(api.listCatalogs as ReturnType<typeof vi.fn>, [])
     const { wrapper } = makeWrapper()
@@ -306,17 +331,6 @@ describe('semantic - domains', () => {
     const { result } = renderHook(() => useAddCubeToDomain(), { wrapper })
     await act(async () => {
       await result.current.mutateAsync({ domainId: 'd', cubeName: 'c' })
-    })
-    expect(spy).toHaveBeenCalled()
-  })
-
-  it('useAddJoinToDomain invalidates', async () => {
-    ok(api.addJoinToDomain as ReturnType<typeof vi.fn>, {})
-    const { qc, wrapper } = makeWrapper()
-    const spy = vi.spyOn(qc, 'invalidateQueries')
-    const { result } = renderHook(() => useAddJoinToDomain(), { wrapper })
-    await act(async () => {
-      await result.current.mutateAsync({ domainId: 'd', body: {} })
     })
     expect(spy).toHaveBeenCalled()
   })
@@ -396,5 +410,59 @@ describe('semantic - misc', () => {
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useSemanticGraph(), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
+})
+
+describe('semantic - modeling agent', () => {
+  it('modeling agent mutations call API and invalidate saved assets', async () => {
+    ok(api.createSemanticModelingAgentSpecDraft as ReturnType<typeof vi.fn>, { spec: { spec_version: 'v1' } })
+    ok(api.draftSemanticModelingAgentFromSpec as ReturnType<typeof vi.fn>, { cube: { name: 'student_comments' } })
+    ok(api.validateSemanticModelingAgent as ReturnType<typeof vi.fn>, { status: 'ready' })
+    ok(api.checkSemanticModelingAgentReady as ReturnType<typeof vi.fn>, { status: 'ready' })
+    ok(api.applySemanticModelingAgent as ReturnType<typeof vi.fn>, { published: false })
+    ok(api.publishSemanticModelingAgent as ReturnType<typeof vi.fn>, { publish_targets: { cube: true, ontology: false } })
+    const { qc, wrapper } = makeWrapper()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const specDraft = renderHook(() => useCreateSemanticModelingAgentSpecDraft(), { wrapper })
+    await act(async () => {
+      await specDraft.result.current.mutateAsync({ table: 'dwd_student_comment_events' } as never)
+    })
+
+    const draftFromSpec = renderHook(() => useDraftSemanticModelingAgentFromSpec(), { wrapper })
+    await act(async () => {
+      await draftFromSpec.result.current.mutateAsync({ spec_version: 'v1' } as never)
+    })
+
+    const validate = renderHook(() => useValidateSemanticModelingAgent(), { wrapper })
+    await act(async () => {
+      await validate.result.current.mutateAsync({ spec_version: 'v1' } as never)
+    })
+
+    const agentReady = renderHook(() => useCheckSemanticModelingAgentReady(), { wrapper })
+    await act(async () => {
+      await agentReady.result.current.mutateAsync({ spec_version: 'v1' } as never)
+    })
+
+    const apply = renderHook(() => useApplySemanticModelingAgent(), { wrapper })
+    await act(async () => {
+      await apply.result.current.mutateAsync({ spec_version: 'v1' } as never)
+    })
+
+    const publish = renderHook(() => usePublishSemanticModelingAgent(), { wrapper })
+    await act(async () => {
+      await publish.result.current.mutateAsync({
+        spec: { spec_version: 'v1' },
+        publish_targets: { cube: true },
+      } as never)
+    })
+
+    expect(api.createSemanticModelingAgentSpecDraft).toHaveBeenCalledWith({ table: 'dwd_student_comment_events' })
+    expect(api.draftSemanticModelingAgentFromSpec).toHaveBeenCalledWith({ spec_version: 'v1' })
+    expect(api.validateSemanticModelingAgent).toHaveBeenCalledWith({ spec_version: 'v1' })
+    expect(api.checkSemanticModelingAgentReady).toHaveBeenCalledWith({ spec_version: 'v1' })
+    expect(api.applySemanticModelingAgent).toHaveBeenCalledWith({ spec_version: 'v1' })
+    expect(api.publishSemanticModelingAgent).toHaveBeenCalledWith({ spec: { spec_version: 'v1' }, publish_targets: { cube: true } })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['semantic'] })
   })
 })

@@ -123,6 +123,19 @@ describe('OntologyRelations page', () => {
     expect(screen.getByText(/已选择关系：客户提交订单/)).toBeInTheDocument()
   })
 
+  it('按关系类型筛选，并为关系枚举渲染色彩标签', () => {
+    renderPage()
+    fireEvent.change(screen.getByLabelText('关系类型筛选'), { target: { value: 'has' } })
+    const table = screen.getByTestId('ontology-relations-table')
+    expect(within(table).getAllByRole('row').length - 1).toBe(1)
+    expect(within(table).queryByTestId('ontology-relations-row-order_has_payment')).toBeInTheDocument()
+    expect(within(table).queryByTestId('ontology-relations-row-customer_submits_order')).toBeNull()
+    expect(screen.getByTestId('ontology-relation-type-order_has_payment')).toHaveAttribute(
+      'data-relation-type',
+      'has',
+    )
+  })
+
   it('点击清除按钮 → 选中态复位、表格恢复全量', () => {
     renderPage()
     fireEvent.click(screen.getByTestId('ontology-relation-node-customer'))

@@ -116,6 +116,18 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  const tableSummaries = [
+    { table_name: 'lesson_progress', comment: '课程进度', row_count: 120 },
+    ...Array.from({ length: 24 }, (_, index) => ({
+      table_name: `lesson_progress_${index + 1}`,
+      comment: `课程进度明细 ${index + 1}`,
+      row_count: 100 + index,
+    })),
+  ]
+  const queryRows = Array.from({ length: 45 }, (_, index) => ({
+    id: index + 1,
+    subject_id: `subject_${index + 1}`,
+  }))
   // 列表分页形状（useDatasources 用）
   await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
   // QueryConsole 用同一路径但以 source_type 简表形式返回数组
@@ -141,8 +153,33 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
     envelope({
       datasource_id: 1,
       database: 'teaching',
-      tables: [{ table_name: 'lesson_progress', comment: '课程进度', row_count: 120 }],
+      tables: tableSummaries,
       fetched_at: '2026-04-26T10:00:01+08:00',
+    }),
+  )
+  await mockJsonRoute(
+    page,
+    '**/api/v1/data-center/datasources/1/schema/teaching/lesson_progress',
+    envelope({
+      datasource_id: 1,
+      database: 'teaching',
+      table: 'lesson_progress',
+      columns: [
+        { name: 'id', type: 'BIGINT', nullable: false, comment: '记录 ID' },
+        { name: 'subject_id', type: 'STRING', nullable: true, comment: '学科 ID' },
+      ],
+      row_count_estimate: 120,
+      fetched_at: '2026-04-26T10:00:02+08:00',
+    }),
+  )
+  await mockJsonRoute(
+    page,
+    '**/api/v1/queries/execute',
+    envelope({
+      columns: ['id', 'subject_id'],
+      data: queryRows,
+      row_count: queryRows.length,
+      execution_time_ms: 18,
     }),
   )
 
@@ -159,6 +196,16 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
   // 数据目录可见且能加载底层表 ⇒ 没有落到 RouteErrorBoundary 的"页面渲染出错"。
   await expect(page.getByText('数据目录').first()).toBeVisible()
   await expect(page.getByText('lesson_progress').first()).toBeVisible()
+  await expect(page.getByText('1-20 / 25').first()).toBeVisible()
+  await page.getByTestId('query-resource-table-lesson_progress').click()
+  await expect(page.getByTestId('query-table-detail')).toBeVisible()
+  await expect(page.getByText('subject_id').first()).toBeVisible()
+
+  await page.getByRole('button', { name: /^执行$/ }).click()
+  await expect(page.getByText('每页 20 条 · 1-20 / 45')).toBeVisible()
+  await page.getByRole('button', { name: '下一页' }).click()
+  await expect(page.getByText('每页 20 条 · 21-40 / 45')).toBeVisible()
+  await expect(page.getByText('subject_21').first()).toBeVisible()
 
   // 捕获到任何 t.find 或 "is not a function" 类型错误都视为回归。
   const fatal = errors.filter((m) => /is not a function|\bt\.find\b/.test(m))

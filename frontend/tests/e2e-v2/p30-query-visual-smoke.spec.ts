@@ -179,6 +179,35 @@ test('P30 回路A：勾字段 + 加 filter → SQL 预览含 WHERE @p30', async 
   await expect(preview).toContainText('123')
 })
 
+test('P30 条件组支持组间 OR @p30', async ({ page }) => {
+  await gotoV2(page, '/queries/visual')
+
+  const panel = page.getByTestId('v2-filter-panel')
+  await panel.getByTestId('v2-filter-panel-add').click()
+
+  let rows = panel.locator('li[data-testid^="v2-filter-row-"]')
+  const firstRow = rows.first()
+  let rowTestId = await firstRow.getAttribute('data-testid')
+  expect(rowTestId).toBeTruthy()
+  await firstRow.locator(`[data-testid="${rowTestId}-field"]`).selectOption('order_id')
+  await firstRow.locator(`[data-testid="${rowTestId}-value"]`).fill('1')
+
+  await panel.getByTestId('v2-filter-panel-add-group').click()
+  await panel.getByTestId('v2-filter-group-logic').selectOption('OR')
+
+  rows = panel.locator('li[data-testid^="v2-filter-row-"]')
+  const secondRow = rows.nth(1)
+  rowTestId = await secondRow.getAttribute('data-testid')
+  expect(rowTestId).toBeTruthy()
+  await secondRow.locator(`[data-testid="${rowTestId}-field"]`).selectOption('ds')
+  await secondRow.locator(`[data-testid="${rowTestId}-value"]`).fill('2026-05-05')
+
+  const preview = page.getByTestId('v2-sql-preview')
+  await expect(preview).toContainText('WHERE')
+  await expect(preview).toContainText('OR')
+  await expect(preview).toContainText("ds = '2026-05-05'")
+})
+
 test('P30 回路B：点"在查询控制台打开"跳 /queries 并消费 sessionStorage @p30', async ({ page }) => {
   // QueryConsole 侧栏依赖 datasources，先 mock 一份带 id=7 的数据源
   await mockJsonRoute(

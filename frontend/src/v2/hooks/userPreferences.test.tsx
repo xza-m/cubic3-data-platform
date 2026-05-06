@@ -16,6 +16,7 @@ vi.mock('@v2/api/userPreferences', () => ({
 }))
 
 import { getMyPreferences, putMyPreferences } from '@v2/api/userPreferences'
+import { setAccessToken } from '@v2/api/client'
 import { useMyPreferences, useUpdateMyPreferences, PREF_QUERY_KEY } from './userPreferences'
 import type { UserPreferences } from '@v2/api/userPreferences'
 
@@ -47,6 +48,7 @@ function makeWrapper() {
 describe('useMyPreferences', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setAccessToken('test-token')
   })
 
   it('fetches and returns server preferences', async () => {
@@ -59,6 +61,17 @@ describe('useMyPreferences', () => {
 
     expect(mockGet).toHaveBeenCalledTimes(1)
     expect(result.current.data).toEqual(DEFAULT_PREFS)
+    qc.clear()
+  })
+
+  it('does not fetch before authentication token exists', () => {
+    setAccessToken(null)
+    const { qc, wrapper } = makeWrapper()
+
+    const { result } = renderHook(() => useMyPreferences(), { wrapper })
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockGet).not.toHaveBeenCalled()
     qc.clear()
   })
 

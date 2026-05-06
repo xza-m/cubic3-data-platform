@@ -12,14 +12,17 @@ import { ev, obs } from '@v2/observability'
 import {
   activateCube,
   addCubeToDomain,
-  addJoinToDomain,
+  applySemanticModelingAgent,
+  checkSemanticModelingAgentReady,
   compileDsl,
   createCube,
   createDomain,
+  createSemanticModelingAgentSpecDraft,
   deprecateCube,
   describeCube,
   describeDomain,
   describeView,
+  draftSemanticModelingAgentFromSpec,
   draftCubeFromSource,
   getDomainCanvas,
   getDomainPublishHistory,
@@ -32,10 +35,13 @@ import {
   listViews,
   materializeView,
   publishDomain,
+  publishSemanticModelingAgent,
+  previewDomainContext,
   readSemanticFile,
   schemaSyncCube,
   updateCube,
   updateDomain,
+  validateSemanticModelingAgent,
   validateCubeFields,
   validateSemanticFile,
   writeSemanticFile,
@@ -44,6 +50,9 @@ import {
   type CubeDraftBody,
   type DomainSummary,
   type FileType,
+  type SemanticModelingAgentPublishRequest,
+  type SemanticModelingAgentSpec,
+  type SemanticModelingAgentSpecDraftBody,
 } from '@v2/api/semantic'
 
 // ─── Cubes ──────────────────────────────────────────────────────────────────
@@ -120,6 +129,52 @@ export function useDeprecateCube() {
 export function useDraftCubeFromSource() {
   return useMutation({
     mutationFn: (body: CubeDraftBody) => draftCubeFromSource(body),
+  })
+}
+
+// ─── 建模助手 Agent ─────────────────────────────────────────────────────────
+
+export function useCreateSemanticModelingAgentSpecDraft() {
+  return useMutation({
+    mutationFn: (body: SemanticModelingAgentSpecDraftBody) => createSemanticModelingAgentSpecDraft(body),
+  })
+}
+
+export function useDraftSemanticModelingAgentFromSpec() {
+  return useMutation({
+    mutationFn: (spec: SemanticModelingAgentSpec) => draftSemanticModelingAgentFromSpec(spec),
+  })
+}
+
+export function useValidateSemanticModelingAgent() {
+  return useMutation({
+    mutationFn: (spec: SemanticModelingAgentSpec) => validateSemanticModelingAgent(spec),
+  })
+}
+
+export function useCheckSemanticModelingAgentReady() {
+  return useMutation({
+    mutationFn: (spec: SemanticModelingAgentSpec) => checkSemanticModelingAgentReady(spec),
+  })
+}
+
+export function useApplySemanticModelingAgent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (spec: SemanticModelingAgentSpec) => applySemanticModelingAgent(spec),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function usePublishSemanticModelingAgent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: SemanticModelingAgentPublishRequest) => publishSemanticModelingAgent(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
   })
 }
 
@@ -219,6 +274,12 @@ export function useDomainCanvas(id: string | undefined) {
   })
 }
 
+export function useDomainContextPreview() {
+  return useMutation({
+    mutationFn: (id: string) => previewDomainContext(id),
+  })
+}
+
 export function useCatalogList() {
   return useQuery({
     queryKey: qk('semantic', 'catalog-list'),
@@ -250,7 +311,7 @@ export function useUpdateDomain(id: string) {
 export function usePublishDomain() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body?: { cubes?: string[]; joins?: unknown[] } }) =>
+    mutationFn: ({ id, body }: { id: string; body?: { cubes?: string[] } }) =>
       publishDomain(id, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['semantic'] })
@@ -263,17 +324,6 @@ export function useAddCubeToDomain() {
   return useMutation({
     mutationFn: ({ domainId, cubeName }: { domainId: string; cubeName: string }) =>
       addCubeToDomain(domainId, cubeName),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
-  })
-}
-
-export function useAddJoinToDomain() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ domainId, body }: { domainId: string; body: Record<string, unknown> }) =>
-      addJoinToDomain(domainId, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['semantic'] })
     },

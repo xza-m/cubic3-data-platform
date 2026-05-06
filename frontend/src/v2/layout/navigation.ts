@@ -98,9 +98,6 @@ export const NAV_MODULES: NavModule[] = [
     defaultPath: '/extraction/tasks',
     group: '数据',
     implemented: true,
-    layout: {
-      inspector: false,
-    },
     subnav: [
       { label: t('nav.extraction.sub.tasks', '任务列表'), path: '/extraction/tasks', implemented: true },
       { label: t('nav.extraction.sub.runs', '执行记录'), path: '/extraction/runs', implemented: true },
@@ -137,6 +134,12 @@ export const NAV_MODULES: NavModule[] = [
     group: '语义',
     implemented: true,
     subnav: [
+      {
+        section: t('nav.semantic.section.build', '语义构建'),
+        label: t('nav.semantic.sub.modelingAgent', '建模助手 Agent'),
+        path: '/semantic/modeling-agent/new',
+        implemented: true,
+      },
       { section: t('nav.semantic.section.ontology', '本体工作台'), label: t('nav.semantic.sub.overview', '总览'), path: '/semantic/ontology', implemented: true },
       {
         section: t('nav.semantic.section.ontology', '本体工作台'),
@@ -163,7 +166,7 @@ export const NAV_MODULES: NavModule[] = [
         implemented: true,
       },
       { section: t('nav.semantic.section.physical', '物理底座'), label: 'Cube', path: '/semantic/cubes', implemented: true },
-      { section: t('nav.semantic.section.physical', '物理底座'), label: t('nav.semantic.sub.domains', '业务域'), path: '/semantic/domains', implemented: true },
+      { section: t('nav.semantic.section.physical', '物理底座'), label: t('nav.semantic.sub.domains', '业务上下文'), path: '/semantic/domains', implemented: true },
       {
         section: t('nav.semantic.section.physical', '物理底座'),
         label: t('nav.semantic.sub.workbench', '语义诊断'),

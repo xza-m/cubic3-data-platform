@@ -1,14 +1,15 @@
 // frontend/src/v2/pages/semantic/domains/Domains.tsx
 //
-// 数据域列表页。
+// 业务上下文列表页。
 // 接口：GET /api/v1/semantic/domains
 //       POST /api/v1/semantic/domains
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Network, ArrowRight } from 'lucide-react'
 // 等待 X-Crosscut：@v2/components/ui
 import { Button, Chip } from '@v2/components/ui'
+import { ListPagination } from '@v2/components/ListPagination'
 // 等待 X-Crosscut：@v2/components/EntityFormDialog
 import { EntityFormDialog } from '@v2/components/EntityFormDialog'
 // 等待 X-Crosscut：@v2/layout/AppShell
@@ -17,20 +18,33 @@ import { useAppShell } from '@v2/layout/AppShell'
 import { t } from '@v2/i18n'
 import { useDomainList, useCreateDomain } from '@v2/hooks/semantic'
 
+const LIST_PAGE_SIZE = 20
+
 export default function Domains() {
   const navigate = useNavigate()
   const { setBreadcrumbs, setTopBarActions } = useAppShell()
   const [showCreate, setShowCreate] = useState(false)
+  const [page, setPage] = useState(1)
 
   const domainsQuery = useDomainList({})
-  const domains = domainsQuery.data?.domains ?? []
+  const domains = useMemo(() => domainsQuery.data?.domains ?? [], [domainsQuery.data?.domains])
+  const pageCount = Math.max(1, Math.ceil(domains.length / LIST_PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const pagedDomains = useMemo(() => {
+    const start = (safePage - 1) * LIST_PAGE_SIZE
+    return domains.slice(start, start + LIST_PAGE_SIZE)
+  }, [domains, safePage])
   const createDomain = useCreateDomain()
 
   useEffect(() => {
-    setBreadcrumbs([t('nav.semantic', '语义中心'), t('nav.domains', '数据域')])
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
+
+  useEffect(() => {
+    setBreadcrumbs([t('nav.semantic', '语义中心'), t('nav.domains', '业务上下文')])
     setTopBarActions(
       <Button size="sm" variant="primary" onClick={() => setShowCreate(true)}>
-        <Plus size={12} /> {t('domains.create', '新建数据域')}
+        <Plus size={12} /> {t('domains.create', '新建业务上下文')}
       </Button>,
     )
   }, [setBreadcrumbs, setTopBarActions])
@@ -54,21 +68,29 @@ export default function Domains() {
       ) : domains.length === 0 ? (
         <EmptyState onCreate={() => setShowCreate(true)} />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {domains.map((d) => (
-            <DomainCard
-              key={d.name}
-              domain={d}
-              onClick={() => navigate(`/semantic/domains/${d.name}/canvas`)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {pagedDomains.map((d) => (
+              <DomainCard
+                key={d.name}
+                domain={d}
+                onClick={() => navigate(`/semantic/domains/${d.name}/canvas`)}
+              />
+            ))}
+          </div>
+          <ListPagination
+            page={safePage}
+            pageSize={LIST_PAGE_SIZE}
+            total={domains.length}
+            onPageChange={setPage}
+          />
+        </>
       )}
 
       <EntityFormDialog
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        title={t('domains.createTitle', '新建数据域')}
+        title={t('domains.createTitle', '新建业务上下文')}
         loading={createDomain.isPending}
         onSubmit={handleCreate}
         fields={[
@@ -156,10 +178,10 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       >
         <Network size={20} />
       </div>
-      <div className="mt-3 font-semibold text-1">{t('domains.emptyTitle', '尚未创建数据域')}</div>
-      <div className="mt-1 text-sm text-3">{t('domains.emptyDesc', '数据域帮助你将 Cube 组织成可发布的业务语义包')}</div>
+      <div className="mt-3 font-semibold text-1">{t('domains.emptyTitle', '尚未创建业务上下文')}</div>
+      <div className="mt-1 text-sm text-3">{t('domains.emptyDesc', '业务上下文帮助你按主题组织 Cube 与本体引用，不承载具体语义定义')}</div>
       <Button size="sm" variant="primary" className="mt-4" onClick={onCreate}>
-        <Plus size={12} /> {t('domains.create', '新建数据域')}
+        <Plus size={12} /> {t('domains.create', '新建业务上下文')}
       </Button>
     </div>
   )

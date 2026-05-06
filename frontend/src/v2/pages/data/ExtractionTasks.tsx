@@ -1,6 +1,6 @@
 // frontend/src/v2/pages/data/ExtractionTasks.tsx
 //
-// 提取任务列表（L0）。行点击 → L2 Peek；Peek"打开详情" → L3 ExtractionTaskDetail。
+// 提取任务列表（L0）。行点击 → 右侧 ContextPanel；"打开详情" → L3 ExtractionTaskDetail。
 // 对接 GET /api/v1/extraction/tasks
 // drop-frontend: owner / source(string) / target(string) / schedule(string) / rows_synced
 //   / next_run_at — 后端无设计 see plan §3.4

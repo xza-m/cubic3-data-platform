@@ -102,15 +102,11 @@ test('S04 /semantic/ontology/objects 列表渲染 @smoke', async ({ page }) => {
   await expect(page.getByText('学生').first()).toBeVisible()
 })
 
-// ── S05  创建 saved query 入口可用 ───────────────────────────────────────────
+// ── S05  查询资产列表不提供重复新建入口 ───────────────────────────────────
 //
-// 注：runbook §3.2 描述的路径是 `/queries/my/new`，但 R3 路由表当前仅注册了
-//   /queries/my（QueriesSaved 列表）+ /queries/my/:id（QueriesSavedDetail），
-//   QueriesSavedCreate 组件挂在 /queries/saved/new（未注册）。
-// 烟雾的目标是确认"创建入口存在"，因此本 case 在 /queries/my 上断言
-//   "新建查询" 主按钮可见且可交互；W6.B 会修复路由后再扩展真实 POST → redirect。
+// 已保存查询只负责管理历史资产；调度查询保留顶部主创建入口，空状态不重复放 CTA。
 
-test('S05 /queries/my 创建查询入口 @smoke', async ({ page }) => {
+test('S05 /queries/my 与 /queries/scheduled 不提供重复空状态入口 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
@@ -122,9 +118,14 @@ test('S05 /queries/my 创建查询入口 @smoke', async ({ page }) => {
 
   await gotoV2(page, '/queries/my')
 
-  const createBtn = page.getByRole('button', { name: /新建查询|新建第一个查询/ }).first()
-  await expect(createBtn).toBeVisible()
-  await expect(createBtn).toBeEnabled()
+  await expect(page.getByRole('button', { name: /新建查询|新建第一个查询/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /查询工作台/ })).toHaveCount(0)
+  await expect(page.getByText('在查询工作台编写 SQL 并保存后，会出现在这里。')).toBeVisible()
+
+  await gotoV2(page, '/queries/scheduled')
+
+  await expect(page.getByRole('button', { name: /^新建调度$/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /新建第一个调度/ })).toHaveCount(0)
 })
 
 // ── S06  /semantic/ontology/metrics dry-run 入口可用 ─────────────────────────

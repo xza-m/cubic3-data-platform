@@ -4,7 +4,7 @@ import { getAccessToken } from '@v2/api/client'
 
 export default function ProtectedRoute() {
   const location = useLocation()
-  if (import.meta.env.VITE_AUTH_BYPASS) {
+  if (import.meta.env.VITE_AUTH_BYPASS || import.meta.env.VITE_BROWSER_E2E_FIXTURES) {
     return <Outlet />
   }
   if (!getAccessToken()) {

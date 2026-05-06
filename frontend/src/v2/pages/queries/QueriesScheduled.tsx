@@ -164,17 +164,10 @@ export default function QueriesScheduled() {
               </button>
             </div>
           ) : rows.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3">
+            <div className="flex h-full flex-col items-center justify-center">
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>
                 {t('queries.scheduled.state.empty', '暂无调度查询')}
               </p>
-              <button
-                type="button"
-                onClick={() => navigate('/queries/scheduled/new')}
-                className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
-              >
-                {t('queries.scheduled.action.newFirst', '新建第一个调度')}
-              </button>
             </div>
           ) : (
             <table className="w-full border-collapse text-xs">

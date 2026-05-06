@@ -12,11 +12,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '@v2/i18n'
 import type { BusinessObject, BusinessRelation } from '@v2/api/ontology'
+import {
+  getObjectBadgeLabel,
+  getObjectTone,
+  getRelationTone,
+} from './relation-style'
 
-const DEFAULT_STORAGE_KEY = 'cubic3.ontology-relation-graph.positions'
-const NODE_R = 18
-const CANVAS_W = 720
-const CANVAS_H = 480
+const DEFAULT_STORAGE_KEY = 'cubic3.ontology-relation-graph.positions.v2'
+const NODE_W = 118
+const NODE_H = 52
+const CANVAS_W = 760
+const CANVAS_H = 540
 
 export type OntologyGraphSelection =
   | { kind: 'object'; name: string }
@@ -52,13 +58,16 @@ function savePositions(key: string, positions: Positions): void {
 }
 
 function computeDefaultPositions(objectNames: string[]): Positions {
-  const cx = CANVAS_W / 2
-  const cy = CANVAS_H / 2
-  const radius = Math.min(cx, cy) * 0.72
+  const columns = Math.min(4, Math.max(2, Math.ceil(Math.sqrt(objectNames.length))))
+  const rows = Math.max(1, Math.ceil(objectNames.length / columns))
+  const xGap = (CANVAS_W - 180) / Math.max(1, columns - 1)
+  const yGap = (CANVAS_H - 180) / Math.max(1, rows - 1)
   return Object.fromEntries(
     objectNames.map((name, i) => {
-      const angle = (i / Math.max(1, objectNames.length)) * Math.PI * 2 - Math.PI / 2
-      return [name, { x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) }]
+      const col = i % columns
+      const row = Math.floor(i / columns)
+      const offsetY = col % 2 === 1 && rows > 1 ? yGap * 0.22 : 0
+      return [name, { x: 90 + col * xGap, y: 110 + row * yGap + offsetY }]
     }),
   )
 }
@@ -201,18 +210,18 @@ export function OntologyRelationGraph({
         data-testid="ontology-relation-graph"
       >
         <defs>
-          <marker id="orgr-arrow" markerWidth="8" markerHeight="8" refX="22" refY="4" orient="auto">
-            <path d="M0,0 L8,4 L0,8 Z" fill="var(--border-strong)" />
+          <marker id="orgr-arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#cbd5e1" />
           </marker>
           <marker
             id="orgr-arrow-active"
             markerWidth="8"
             markerHeight="8"
-            refX="22"
+            refX="8"
             refY="4"
             orient="auto"
           >
-            <path d="M0,0 L8,4 L0,8 Z" fill="var(--accent)" />
+            <path d="M0,0 L8,4 L0,8 Z" fill="#2563eb" />
           </marker>
         </defs>
 
@@ -223,6 +232,18 @@ export function OntologyRelationGraph({
           if (!a || !b) return null
           const active = isRelationActive(rel)
           const dimmed = selected !== null && !active
+          const tone = getRelationTone(rel.relation_type)
+          const dx = b.x - a.x
+          const dy = b.y - a.y
+          const horizontal = Math.abs(dx) >= Math.abs(dy)
+          const x1 = a.x + (horizontal ? Math.sign(dx || 1) * (NODE_W / 2) : 0)
+          const y1 = a.y + (horizontal ? 0 : Math.sign(dy || 1) * (NODE_H / 2))
+          const x2 = b.x - (horizontal ? Math.sign(dx || 1) * (NODE_W / 2 + 8) : 0)
+          const y2 = b.y - (horizontal ? 0 : Math.sign(dy || 1) * (NODE_H / 2 + 8))
+          const label = rel.relation_type || rel.name
+          const labelW = Math.min(106, Math.max(52, label.length * 7 + 18))
+          const labelX = (x1 + x2) / 2
+          const labelY = (y1 + y2) / 2
           return (
             <g
               key={rel.name}
@@ -238,33 +259,43 @@ export function OntologyRelationGraph({
               data-testid={`ontology-relation-edge-${rel.name}`}
             >
               <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke={active ? 'var(--accent)' : 'var(--border-strong)'}
-                strokeWidth={active ? 2 : 1}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke={active ? tone.strong : '#d7dce3'}
+                strokeWidth={active ? 2 : 1.25}
                 markerEnd={active ? 'url(#orgr-arrow-active)' : 'url(#orgr-arrow)'}
               />
               {/* 透明粗线扩大点击区 */}
               <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
                 stroke="transparent"
                 strokeWidth={12}
               />
+              <rect
+                x={labelX - labelW / 2}
+                y={labelY - 11}
+                width={labelW}
+                height={22}
+                rx={6}
+                fill={active ? tone.bg : '#ffffff'}
+                stroke={active ? tone.border : '#e5e7eb'}
+                style={{ pointerEvents: 'none' }}
+              />
               <text
-                x={(a.x + b.x) / 2}
-                y={(a.y + b.y) / 2 - 6}
+                x={labelX}
+                y={labelY + 4}
                 fontSize="10"
-                fill={active ? 'var(--accent)' : 'var(--text-3)'}
+                fill={active ? tone.text : '#8a94a6'}
                 textAnchor="middle"
                 fontFamily="ui-monospace, monospace"
                 style={{ pointerEvents: 'none' }}
               >
-                {rel.relation_type ? `${rel.name} · ${rel.relation_type}` : rel.name}
+                {label.length > 14 ? `${label.slice(0, 14)}…` : label}
               </text>
             </g>
           )
@@ -277,6 +308,8 @@ export function OntologyRelationGraph({
           const active = isObjectActive(name)
           const dimmed = selected !== null && !active
           const title = titleByName[name] ?? name
+          const tone = getObjectTone(name)
+          const badge = getObjectBadgeLabel(name, title)
           return (
             <g
               key={name}
@@ -292,42 +325,55 @@ export function OntologyRelationGraph({
               aria-pressed={active}
               data-testid={`ontology-relation-node-${name}`}
             >
-              <circle
-                cx={pos.x}
-                cy={pos.y}
-                r={active ? NODE_R + 6 : NODE_R + 2}
-                fill="var(--accent)"
-                opacity={0.12}
+              <rect
+                x={pos.x - NODE_W / 2}
+                y={pos.y - NODE_H / 2}
+                width={NODE_W}
+                height={NODE_H}
+                rx={10}
+                fill="#ffffff"
+                stroke={active ? tone.bg : '#d9dee7'}
+                strokeWidth={active ? 2 : 1.2}
+                filter={active ? 'drop-shadow(0px 6px 14px rgba(15, 23, 42, 0.12))' : undefined}
               />
-              <circle
-                cx={pos.x}
-                cy={pos.y}
-                r={active ? NODE_R : NODE_R - 2}
-                fill="var(--accent)"
-                stroke={active ? 'var(--bg-surface)' : 'transparent'}
-                strokeWidth={2}
+              <rect
+                x={pos.x - NODE_W / 2 + 12}
+                y={pos.y - 12}
+                width={24}
+                height={24}
+                rx={7}
+                fill={tone.bg}
               />
               <text
-                x={pos.x}
-                y={pos.y + NODE_R + 14}
-                fontSize="11"
-                fill="var(--text-1)"
+                x={pos.x - NODE_W / 2 + 24}
+                y={pos.y + 4}
+                fontSize="12"
+                fill={tone.text}
                 textAnchor="middle"
-                fontWeight={active ? 600 : 400}
+                fontWeight={700}
                 style={{ pointerEvents: 'none' }}
               >
-                {title.length > 12 ? `${title.slice(0, 12)}…` : title}
+                {badge}
               </text>
               <text
-                x={pos.x}
-                y={pos.y + 3}
-                fontSize="9"
-                fill="white"
-                textAnchor="middle"
-                fontWeight={600}
+                x={pos.x - NODE_W / 2 + 44}
+                y={pos.y - 4}
+                fontSize="12"
+                fill="#111827"
+                fontWeight={700}
                 style={{ pointerEvents: 'none' }}
               >
-                {name.length > 6 ? name.slice(0, 6) : name}
+                {title.length > 7 ? `${title.slice(0, 7)}…` : title}
+              </text>
+              <text
+                x={pos.x - NODE_W / 2 + 44}
+                y={pos.y + 14}
+                fontSize="10"
+                fill="#8a94a6"
+                fontFamily="ui-monospace, monospace"
+                style={{ pointerEvents: 'none' }}
+              >
+                {name.length > 14 ? `${name.slice(0, 14)}…` : name}
               </text>
             </g>
           )

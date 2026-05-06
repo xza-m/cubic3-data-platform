@@ -101,7 +101,7 @@ export default function CubeDetail() {
         <>
           <ContextSection title={t('cube.contextBasic', '基础')}>
             <ContextRow label="Cube" value={<code>{cube.name}</code>} />
-            {cube.domain_name ? <ContextRow label={t('cube.domain', '业务域')} value={cube.domain_name} /> : null}
+            {cube.domain_name ? <ContextRow label={t('cube.domain', '业务上下文')} value={cube.domain_name} /> : null}
             {cube.fact_table ? <ContextRow label={t('cube.factTable', '事实表')} value={<code className="font-mono text-xs">{cube.fact_table}</code>} /> : null}
             <ContextRow label={t('cube.dimensions', '维度')} value={dims.length} />
             <ContextRow label={t('cube.measures', '度量')} value={measures.length} />

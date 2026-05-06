@@ -134,6 +134,123 @@ export const createCubeRevision = (name: string) =>
 export const draftCubeFromSource = (body: CubeDraftBody) =>
   post<CubeDetail>('/semantic/cubes/draft-from-source', body)
 
+// ─── 建模助手 Agent 类型 / API ──────────────────────────────────────────────
+
+export interface SemanticModelingAgentSource {
+  source_kind: 'physical_table' | 'dataset' | 'datasource' | string
+  source_id?: string | number | null
+  dataset_id?: string | number | null
+  database?: string | null
+  schema?: string | null
+  table?: string | null
+  name?: string | null
+  title?: string | null
+  description?: string | null
+}
+
+export interface SemanticModelingAgentSpecDraftBody extends SemanticModelingAgentSource {
+  business_subject?: string
+  use_cases?: string[] | string
+  default_roles?: string[] | string
+  sensitivity_level?: 'public' | 'restricted' | 'private' | string
+}
+
+export interface SemanticModelingAgentSpec {
+  spec_version: string
+  source?: SemanticModelingAgentSource
+  business?: Record<string, unknown>
+  cube?: Record<string, unknown>
+  ontology?: Record<string, unknown>
+  governance?: Record<string, unknown>
+  audit?: Record<string, unknown>
+  sample_questions?: string[]
+  warnings?: Array<Record<string, unknown>>
+  [key: string]: unknown
+}
+
+export interface SemanticModelingAgentSpecDraftResult {
+  spec: SemanticModelingAgentSpec
+  next_actions?: Record<string, unknown>
+}
+
+export interface SemanticModelingAgentDraftResult {
+  cube: Record<string, unknown>
+  ontology: Record<string, unknown>
+  published: boolean
+  diff?: Record<string, unknown>
+  audit?: Record<string, unknown>
+}
+
+export interface SemanticModelingAgentValidationIssue {
+  severity: 'error' | 'warning' | 'info' | string
+  path: string
+  message: string
+}
+
+export interface SemanticModelingAgentValidationResult {
+  status: 'ready' | 'blocked' | string
+  issues: SemanticModelingAgentValidationIssue[]
+  checks?: Record<string, unknown>
+  agent_sandbox_preview?: Record<string, unknown>
+}
+
+export interface SemanticModelingAgentReadyResult {
+  status: 'ready' | 'pending_validation' | 'blocked' | string
+  cube_status?: string
+  ontology_status?: string
+  bindings?: Record<string, unknown>
+  issues?: SemanticModelingAgentValidationIssue[]
+  checks?: Record<string, unknown>
+  truth_sources?: {
+    business?: string
+    execution?: string
+    domain?: string
+    [key: string]: unknown
+  }
+}
+
+export interface SemanticModelingAgentApplyResult {
+  published: boolean
+  assets: Record<string, unknown>
+  spec?: SemanticModelingAgentSpec
+  audit?: Record<string, unknown>
+}
+
+export interface SemanticModelingAgentPublishRequest {
+  spec: SemanticModelingAgentSpec
+  publish_targets?: {
+    cube?: boolean
+    ontology?: boolean
+  }
+}
+
+export interface SemanticModelingAgentPublishResult {
+  publish_targets: {
+    cube: boolean
+    ontology: boolean
+  }
+  published?: Record<string, unknown>
+  audit?: Record<string, unknown>
+}
+
+export const createSemanticModelingAgentSpecDraft = (body: SemanticModelingAgentSpecDraftBody) =>
+  post<SemanticModelingAgentSpecDraftResult>('/semantic/modeling-agent/spec-draft', body)
+
+export const draftSemanticModelingAgentFromSpec = (spec: SemanticModelingAgentSpec) =>
+  post<SemanticModelingAgentDraftResult>('/semantic/modeling-agent/draft-from-spec', { spec })
+
+export const validateSemanticModelingAgent = (spec: SemanticModelingAgentSpec) =>
+  post<SemanticModelingAgentValidationResult>('/semantic/modeling-agent/validate', { spec })
+
+export const checkSemanticModelingAgentReady = (spec: SemanticModelingAgentSpec) =>
+  post<SemanticModelingAgentReadyResult>('/semantic/modeling-agent/agent-ready-check', { spec })
+
+export const applySemanticModelingAgent = (spec: SemanticModelingAgentSpec) =>
+  post<SemanticModelingAgentApplyResult>('/semantic/modeling-agent/apply', { spec })
+
+export const publishSemanticModelingAgent = (body: SemanticModelingAgentPublishRequest) =>
+  post<SemanticModelingAgentPublishResult>('/semantic/modeling-agent/publish', body)
+
 // ─── Domain 类型 ────────────────────────────────────────────────────────────
 
 export interface DomainSummary {
@@ -150,7 +267,6 @@ export interface DomainSummary {
 
 export interface DomainDetail extends DomainSummary {
   cubes?: string[]
-  joins?: unknown[]
 }
 
 export interface DomainListResponse {
@@ -187,6 +303,23 @@ export interface DomainCanvas {
   edges: DomainCanvasEdge[]
 }
 
+export interface DomainContextPreview {
+  domain?: DomainDetail
+  role: 'business_context' | string
+  candidate_scope: {
+    cube_refs?: string[]
+    cube_candidates?: unknown[]
+    ontology_refs?: Record<string, unknown>
+    [key: string]: unknown
+  }
+  default_context?: Record<string, unknown>
+  agent_hints?: Record<string, unknown>
+  execution_truth_source?: string
+  business_truth_source?: string
+  issues?: SemanticModelingAgentValidationIssue[]
+  [key: string]: unknown
+}
+
 export interface CatalogSummary {
   code: string
   name: string
@@ -210,13 +343,13 @@ export const updateDomain = (id: string, body: Partial<DomainSummary>) =>
 export const getDomainCanvas = (id: string) =>
   get<DomainCanvas>(`/semantic/domains/${id}/canvas`)
 
+export const previewDomainContext = (id: string) =>
+  post<DomainContextPreview>(`/semantic/domains/${id}/context-preview`)
+
 export const addCubeToDomain = (id: string, cubeName: string) =>
   post<DomainDetail>(`/semantic/domains/${id}/cubes`, { cube_name: cubeName })
 
-export const addJoinToDomain = (id: string, body: Record<string, unknown>) =>
-  post<DomainDetail>(`/semantic/domains/${id}/joins`, body)
-
-export const publishDomain = (id: string, body?: { cubes?: string[]; joins?: unknown[] }) =>
+export const publishDomain = (id: string, body?: { cubes?: string[] }) =>
   post<DomainDetail>(`/semantic/domains/${id}/publish`, body)
 
 export const listCatalogs = () =>

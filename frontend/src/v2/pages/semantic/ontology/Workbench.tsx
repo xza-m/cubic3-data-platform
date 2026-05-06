@@ -7,13 +7,15 @@
 
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Boxes, Plus, Search, TrendingUp, GitMerge, AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Bot, Boxes, FileCode2, GitMerge, Play, Plus, Search, ShieldCheck, TrendingUp } from 'lucide-react'
 // 等待 X-Crosscut：@v2/components/ui
-import { Button, Card, CardBody, Chip, Input } from '@v2/components/ui'
+import { Button, Card, CardBody, CardHead, Chip, Input, Textarea } from '@v2/components/ui'
 // 等待 X-Crosscut：@v2/i18n
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
+import { useAgentSemanticPlan } from '@v2/hooks/agent'
 import { useWorkbenchObjects } from '@v2/hooks/ontology'
+import type { AgentSemanticPlanResponse } from '@v2/api/agent'
 import type { OntologyWorkbenchObjectSummary } from '@v2/api/ontology'
 
 export default function OntologyWorkbench() {
@@ -23,6 +25,8 @@ export default function OntologyWorkbench() {
 
   // TODO(B-back-6): 全局搜索上线前用本地 filter
   const [keyword, setKeyword] = useState('')
+  const [agentQuestion, setAgentQuestion] = useState('解释GMV口径并查看趋势')
+  const agentPlan = useAgentSemanticPlan()
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase()
@@ -47,6 +51,12 @@ export default function OntologyWorkbench() {
     return { totalProps, totalMetrics, totalRelations, riskCount }
   }, [items])
 
+  const runAgentPreview = () => {
+    const question = agentQuestion.trim()
+    if (!question) return
+    agentPlan.mutate({ question })
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-auto scroll-thin p-5">
       {/* 顶部统计 */}
@@ -56,6 +66,15 @@ export default function OntologyWorkbench() {
         <StatCard icon={GitMerge} label={t('ontology.stat.relations', '关系')} value={stats.totalRelations} color="var(--success)" />
         <StatCard icon={AlertTriangle} label={t('ontology.stat.risk', '有风险')} value={stats.riskCount} color="var(--warning)" />
       </div>
+
+      <AgentPreviewPanel
+        question={agentQuestion}
+        onQuestionChange={setAgentQuestion}
+        onRun={runAgentPreview}
+        isPending={agentPlan.isPending}
+        result={agentPlan.data}
+        error={agentPlan.error}
+      />
 
       {/* 搜索栏 */}
       {/* TODO(B-back-6): 后端全局搜索上线后替换为 API 搜索，移除本地过滤 */}
@@ -97,6 +116,120 @@ export default function OntologyWorkbench() {
       )}
     </div>
   )
+}
+
+function AgentPreviewPanel({
+  question,
+  onQuestionChange,
+  onRun,
+  isPending,
+  result,
+  error,
+}: {
+  question: string
+  onQuestionChange: (value: string) => void
+  onRun: () => void
+  isPending: boolean
+  result?: AgentSemanticPlanResponse
+  error: unknown
+}) {
+  const firstCompiled = result?.compiled_targets?.[0]
+  const runtimeMode = textValue(result, 'runtime_mode')
+  const routeType = textValue(result?.route, 'route_type')
+  const bindingStatus = textValue(result?.projection_result, 'binding_status')
+  const decision = textValue(result?.policy_decision, 'decision')
+  const dataLevel = textValue(result?.policy_decision, 'effective_data_level')
+  const enforcement = textValue(result?.ticket_preview, 'enforcement')
+  const logicalSql = textValue(firstCompiled, 'logical_sql') || textValue(firstCompiled, 'pseudo_sql')
+  const errorMessage = error instanceof Error ? error.message : ''
+
+  return (
+    <Card className="mb-5">
+      <CardHead
+        title={
+          <span className="flex items-center gap-2">
+            <Bot size={16} /> {t('ontology.agentPreview.title', 'Runtime 诊断')}
+          </span>
+        }
+        actions={
+          <Button size="sm" variant="primary" onClick={onRun} disabled={isPending || !question.trim()}>
+            <Play size={12} /> {isPending ? t('loading', '加载中…') : t('ontology.agentPreview.run', '预演')}
+          </Button>
+        }
+      />
+      <CardBody>
+        <div className="grid gap-4 lg:grid-cols-[minmax(260px,360px)_1fr]">
+          <div className="space-y-2">
+            <Textarea
+              value={question}
+              onChange={(event) => onQuestionChange(event.target.value)}
+              rows={4}
+              aria-label={t('ontology.agentPreview.question', '业务问题')}
+              placeholder={t('ontology.agentPreview.placeholder', '输入业务问题')}
+            />
+            {errorMessage ? <div className="text-xs text-danger">{errorMessage}</div> : null}
+          </div>
+          <div className="min-w-0 space-y-3">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+              <PreviewMetric icon={Bot} label={t('ontology.agentPreview.mode', 'Mode')} value={runtimeMode || '-'} />
+              <PreviewMetric icon={Bot} label={t('ontology.agentPreview.route', 'Route')} value={routeType || '-'} />
+              <PreviewMetric icon={FileCode2} label={t('ontology.agentPreview.binding', 'Binding')} value={bindingStatus || '-'} />
+              <PreviewMetric icon={ShieldCheck} label={t('ontology.agentPreview.decision', 'Decision')} value={decision || '-'} />
+              <PreviewMetric icon={AlertTriangle} label={t('ontology.agentPreview.level', 'Level')} value={dataLevel || '-'} />
+              <PreviewMetric icon={FileCode2} label={t('ontology.agentPreview.ticket', 'Ticket')} value={enforcement || '-'} />
+            </div>
+            {logicalSql ? (
+              <pre
+                className="max-h-44 overflow-auto rounded-md border p-3 text-xs leading-5 text-2"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+              >
+                {logicalSql}
+              </pre>
+            ) : (
+              <div
+                className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-3"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                {t('ontology.agentPreview.empty', '暂无预演结果')}
+              </div>
+            )}
+          </div>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+function PreviewMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Bot
+  label: string
+  value: string
+}) {
+  return (
+    <div
+      className="flex min-w-0 items-center gap-2 rounded-md border px-3 py-2"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+    >
+      <Icon size={14} className="shrink-0 text-3" />
+      <div className="min-w-0">
+        <div className="text-[11px] text-3">{label}</div>
+        <div className="truncate text-xs font-medium text-1">{value}</div>
+      </div>
+    </div>
+  )
+}
+
+function textValue(source: unknown, key: string): string {
+  if (!source || typeof source !== 'object') return ''
+  const value = (source as Record<string, unknown>)[key]
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return JSON.stringify(value)
 }
 
 function StatCard({

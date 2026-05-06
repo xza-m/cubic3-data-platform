@@ -82,7 +82,7 @@ export function CubeDetailContent({
           <Row label={t('cube.title', '标题')} value={cube.title} />
           <Row label={t('cube.name', '名称')} value={<code className="font-mono text-xs">{cube.name}</code>} />
           {cube.domain_name ? (
-            <Row label={t('cube.domain', '业务域')} value={<Chip tone="violet">{cube.domain_name}</Chip>} />
+            <Row label={t('cube.domain', '业务上下文')} value={<Chip tone="violet">{cube.domain_name}</Chip>} />
           ) : null}
           {cube.fact_table ? (
             <Row

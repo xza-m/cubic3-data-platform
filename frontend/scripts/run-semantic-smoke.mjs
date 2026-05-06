@@ -20,15 +20,24 @@ if (smokeTargets.length === 0) {
   process.exit(1)
 }
 
-async function waitForServer(targetUrl, timeoutMs = 120_000) {
+async function waitForServer(
+  targetUrl,
+  timeoutMs = 120_000,
+  probePath = '/login',
+  requireOk = false,
+  serverProcess = null,
+) {
   const startedAt = Date.now()
-  const probeUrl = new URL('/login', targetUrl).toString()
+  const probeUrl = new URL(probePath, targetUrl).toString()
   let lastError = null
 
   while (Date.now() - startedAt < timeoutMs) {
+    if (serverProcess && serverProcess.exitCode !== null) {
+      throw new Error(`前端开发服务提前退出，退出码=${serverProcess.exitCode}`)
+    }
     try {
       const response = await fetch(probeUrl, { redirect: 'manual' })
-      if (response.status < 500) {
+      if (requireOk ? response.status === 200 : response.status < 500) {
         return
       }
       lastError = new Error(`服务返回异常状态码: ${response.status}`)
@@ -75,6 +84,8 @@ async function main() {
           stdio: 'inherit',
         },
       )
+      await waitForServer(baseUrl, 120_000, '/@vite/client', true, devServer)
+    } else {
       await waitForServer(baseUrl)
     }
 

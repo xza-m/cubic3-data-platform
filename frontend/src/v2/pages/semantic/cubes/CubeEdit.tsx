@@ -119,7 +119,7 @@ export default function CubeEdit() {
         <>
           <ContextSection title={t('cube.contextBasic', '基础')}>
             <ContextRow label="Cube" value={<code>{cube.name}</code>} />
-            {cube.domain_name ? <ContextRow label={t('cube.domain', '业务域')} value={cube.domain_name} /> : null}
+            {cube.domain_name ? <ContextRow label={t('cube.domain', '业务上下文')} value={cube.domain_name} /> : null}
             {cube.fact_table ? (
               <ContextRow
                 label={t('cube.factTable', '事实表')}
@@ -222,7 +222,7 @@ export default function CubeEdit() {
                     {[
                       [t('cube.name', '名称'), cube.name],
                       [t('cube.title', '标题'), cube.title],
-                      [t('cube.domain', '业务域'), cube.domain_name ?? '—'],
+                      [t('cube.domain', '业务上下文'), cube.domain_name ?? '—'],
                       [t('cube.factTable', '事实表'), cube.fact_table ?? '—'],
                       [t('cube.status', '状态'), cube.status ?? '—'],
                     ].map(([label, value]) => (

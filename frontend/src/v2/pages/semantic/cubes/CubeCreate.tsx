@@ -143,7 +143,7 @@ export default function CubeCreate() {
                 id="cube-title"
               />
             </FormRow>
-            <FormRow label={t('cube.domain', '业务域')}>
+            <FormRow label={t('cube.domain', '业务上下文')}>
               <Input
                 value={domainName}
                 onChange={(e) => setDomainName(e.target.value)}

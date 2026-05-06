@@ -225,11 +225,18 @@ export default function SubscriptionDetail() {
         </header>
 
         {/* Sub-tabs */}
-        <div className="flex items-center gap-1 border-b px-4 pb-0 pt-2" style={{ borderColor: 'var(--border)' }}>
+        <div
+          role="tablist"
+          aria-label={t('subscriptionDetail.tabsLabel', '订阅详情视图')}
+          className="flex items-center gap-1 border-b px-4 pb-0 pt-2"
+          style={{ borderColor: 'var(--border)' }}
+        >
           {buildSubTabs().map((tab) => (
             <button
               key={tab.id}
               type="button"
+              role="tab"
+              aria-selected={subTab === tab.id}
               onClick={() => setSubTab(tab.id)}
               className="rounded-t px-2.5 py-1 text-xs"
               style={{

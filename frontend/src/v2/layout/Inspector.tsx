@@ -29,7 +29,7 @@ export function Inspector({
   if (collapsed) {
     return (
       <aside
-        className="surface flex h-full w-8 shrink-0 flex-col items-center border-l py-2"
+        className="surface hidden h-full w-8 shrink-0 flex-col items-center border-l py-2 xl:flex"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
         <button
@@ -48,7 +48,7 @@ export function Inspector({
   const hasContent = !!children
   return (
     <aside
-      className="surface flex h-full w-[300px] shrink-0 flex-col border-l"
+      className="surface hidden h-full w-[300px] shrink-0 flex-col border-l xl:flex"
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
       <div

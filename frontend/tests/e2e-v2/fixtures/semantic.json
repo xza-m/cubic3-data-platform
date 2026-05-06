@@ -24,6 +24,35 @@
     "joins": [],
     "updated_at": "2026-04-15T08:00:00+08:00"
   },
+  "domain_canvas": {
+    "domain": {
+      "id": "domain_teaching",
+      "code": "teaching",
+      "name": "教学域",
+      "catalog_code": "default",
+      "status": "draft",
+      "governance_summary": {
+        "cube_count": 1,
+        "active_cube_count": 1,
+        "draft_cube_count": 0,
+        "deprecated_cube_count": 0,
+        "join_count": 0,
+        "dangling_cube_count": 0
+      }
+    },
+    "nodes": [
+      {
+        "id": "fct_lesson",
+        "title": "课程事实",
+        "type": "fact",
+        "dimensions": 3,
+        "measures": 4,
+        "status": "active"
+      }
+    ],
+    "edges": [],
+    "library_cubes": []
+  },
   "publish_history": {
     "items": [
       { "version": "v3", "published_at": "2026-04-21T10:00:00+08:00", "published_by": "admin", "note": "E2E publish" },

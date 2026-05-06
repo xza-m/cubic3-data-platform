@@ -23,9 +23,8 @@ def main() -> int:
         create_domain_via_ui(page, domain_name)
         page.wait_for_url("**/semantic/domains/**", timeout=15_000)
         page.get_by_test_id("domain-canvas-page").wait_for(timeout=10_000)
-        page.get_by_text("Cube 资源库", exact=True).wait_for(timeout=10_000)
-        page.get_by_text("Join 配置", exact=True).wait_for(timeout=10_000)
-        page.get_by_text(domain_name, exact=False).first.wait_for(timeout=10_000)
+        page.get_by_text("资产画布", exact=True).wait_for(timeout=10_000)
+        page.get_by_text("节点 · 0", exact=True).wait_for(timeout=10_000)
         assert_no_error_toast(page, "创建领域失败")
 
         print(f"PASS: 已创建领域草稿并跳转画布 -> {domain_name}")

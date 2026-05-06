@@ -52,12 +52,12 @@ test('P28 查询控制台首屏能打开并渲染核心区域 @p28', async ({ pa
 
   // 单一数据目录 + fixture 数据源名称
   await expect(page.getByText('数据目录').first()).toBeVisible()
-  await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
+  await expect(page.getByTestId('query-resource-source-1').getByText('教学 PostgreSQL')).toBeVisible()
   await expect(page.getByText('lesson_progress').first()).toBeVisible()
   await expect(page.getByText('课程进度').first()).toBeVisible()
 
   // 数据源选择收敛到左侧资源栏，避免工具栏重复筛选和右侧上下文挤压编辑器。
-  await expect(page.getByLabel('选择数据源')).toHaveCount(0)
+  await expect(page.getByTestId('query-resource-source-select')).toBeVisible()
   await expect(page.getByText('执行上下文')).toHaveCount(0)
   await expect(page.getByText('/api/v1/queries/execute')).toHaveCount(0)
 
@@ -88,7 +88,7 @@ test('P28 查询控制台默认 SQL 可直接执行 @p28', async ({ page }) => {
   })
 
   await gotoV2(page, '/queries')
-  await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
+  await expect(page.getByTestId('query-resource-source-1').getByText('教学 PostgreSQL')).toBeVisible()
   await page.getByRole('button', { name: /执行/ }).first().click()
 
   await expect(page.getByText('1 行').first()).toBeVisible()

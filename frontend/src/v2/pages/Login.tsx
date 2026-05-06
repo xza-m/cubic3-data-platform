@@ -54,13 +54,18 @@ import { apiClient, getAccessToken, setAccessToken } from '@v2/api/client'
 import { useTheme } from '@v2/components/ThemeProvider'
 import { ev, obs } from '@v2/observability'
 import { t } from '@v2/i18n'
+import { extractLoginToken } from './login-utils'
 
 async function loginRequest(username: string, password: string): Promise<string> {
-  const res = await apiClient.post<{ access_token: string }>('/auth/login', {
+  const res = await apiClient.post<LoginResponse>('/auth/login', {
     username,
     password,
   })
-  return res.data.access_token
+  const token = extractLoginToken(res.data)
+  if (!token) {
+    throw new Error(t('login.error.missingToken', '登录接口未返回 token'))
+  }
+  return token
 }
 
 export default function Login() {

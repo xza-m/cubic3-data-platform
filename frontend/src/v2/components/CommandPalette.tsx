@@ -56,9 +56,9 @@ function _useClientSearch(query: string, navigate: ReturnType<typeof useNavigate
         results.push({
           id: `domain:${d.name}`,
           label: d.title || d.name,
-          hint: t('palette.domainHint', '业务域 · {name}', { name: d.name }),
+          hint: t('palette.domainHint', '业务上下文 · {name}', { name: d.name }),
           icon: Globe,
-          group: t('palette.group.domain', '业务域'),
+          group: t('palette.group.domain', '业务上下文'),
           run: () => { navigate(`/semantic/domains/${d.id ?? d.name}`); onClose() },
         })
       }

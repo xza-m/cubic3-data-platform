@@ -108,6 +108,7 @@ const OntologyMetrics = lazy(() => import('@v2/pages/semantic/ontology/Metrics')
 const OntologyRelations = lazy(() => import('@v2/pages/semantic/ontology/Relations'))
 const OntologyGovernance = lazy(() => import('@v2/pages/semantic/ontology/Governance'))
 const DevTools = lazy(() => import('@v2/pages/semantic/devtools/DevTools'))
+const SemanticModelingAgent = lazy(() => import('@v2/pages/semantic/modeling-agent/ModelingAgent'))
 const Cubes = lazy(() => import('@v2/pages/semantic/cubes/Cubes'))
 const CubeCreate = lazy(() => import('@v2/pages/semantic/cubes/CubeCreate'))
 const CubeDetail = lazy(() => import('@v2/pages/semantic/cubes/CubeDetail'))
@@ -288,6 +289,9 @@ export default function AppRoutes() {
             {/* 语义诊断工作台 */}
             <Route path="workbench" element={wrap(<DevTools />)} />
 
+            {/* 顶层建模助手 Agent 任务流：不归属于 Cube 层级 */}
+            <Route path="modeling-agent/new" element={wrap(<SemanticModelingAgent />)} />
+
             {/* Cube：静态 new 在动态 :name 前；edit 作为 :name 的子路由 */}
             <Route path="cubes">
               <Route index element={wrap(<Cubes />)} />
@@ -301,7 +305,7 @@ export default function AppRoutes() {
             {/* 视图详情 */}
             <Route path="views/:name" element={wrap(<ViewDetail />)} />
 
-            {/* 业务域 */}
+            {/* 业务上下文 */}
             <Route path="domains">
               <Route index element={wrap(<Domains />)} />
               <Route path=":id" element={wrap(<DomainCanvas />)} />

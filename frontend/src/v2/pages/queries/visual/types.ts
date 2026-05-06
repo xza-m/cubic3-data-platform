@@ -36,6 +36,16 @@ export interface FilterRule {
   value: string | string[] | [string, string] | undefined
 }
 
+/** 条件连接关系。 */
+export type FilterLogic = 'AND' | 'OR'
+
+/** 一组筛选条件；组内用 `logic` 连接，组间由 QueryDraft.filterGroupLogic 连接。 */
+export interface FilterGroup {
+  id: string
+  logic: FilterLogic
+  rules: FilterRule[]
+}
+
 /**
  * 可视化查询的内部草稿；UI 纯受控，不落库。
  * `orderBy` 预留，当前 UI 暂不暴露（v1 原型里有 ORDER BY 段落但未实现）。
@@ -43,7 +53,10 @@ export interface FilterRule {
 export interface QueryDraft {
   datasetId: number | null
   selectedFields: string[] // physical_name 列表（保持顺序）
+  /** 兼容旧版平铺筛选；新 UI 使用 filterGroups。 */
   filters: FilterRule[]
+  filterGroups?: FilterGroup[]
+  filterGroupLogic?: FilterLogic
   limit: number
   orderBy?: Array<{ field: string; direction: 'ASC' | 'DESC' }>
 }
@@ -58,12 +71,23 @@ export function emptyFilter(): FilterRule {
   }
 }
 
+/** 新筛选组的默认值。 */
+export function emptyFilterGroup(rules: FilterRule[] = []): FilterGroup {
+  return {
+    id: `filter-group-${Math.random().toString(36).slice(2, 10)}`,
+    logic: 'AND',
+    rules,
+  }
+}
+
 /** 新草稿默认值。 */
 export function emptyDraft(): QueryDraft {
   return {
     datasetId: null,
     selectedFields: [],
     filters: [],
+    filterGroups: [],
+    filterGroupLogic: 'AND',
     limit: 1000,
   }
 }
