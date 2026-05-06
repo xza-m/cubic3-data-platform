@@ -1,5 +1,6 @@
 from .cube_modeling_service import CubeModelingService
 from .metric_semantics_service import MetricSemanticsService
+from .semantic_modeling_agent import SemanticModelingAgent
 from .semantic_definition_service import SemanticDefinitionService
 from .semantic_query_service import SemanticQueryService
 from .semantic_runtime_binding_service import SemanticRuntimeBindingService
@@ -10,6 +11,7 @@ from .view_publish_service import ViewPublishService
 __all__ = [
     "CubeModelingService",
     "MetricSemanticsService",
+    "SemanticModelingAgent",
     "SemanticDefinitionService",
     "SemanticQueryService",
     "SemanticRuntimeBindingService",

@@ -33,7 +33,7 @@ def _save_sample_cube(repo: YamlCubeRepository) -> None:
         CubeDefinition(
             name="orders",
             title="订单",
-            table="ods.orders",
+            table="dws.orders",
             source_id=1,
             source_database="dw",
             dimensions={
@@ -232,10 +232,17 @@ def test_execution_compiler_preview_returns_pseudo_sql(tmp_path):
     preview = service.compile_metric_preview("gmv")
     assert preview["status"] == "ready"
     assert preview["target_type"] == "sql"
-    assert "FROM ods.orders" in preview["pseudo_sql"]
+    assert "FROM dws.orders" in preview["pseudo_sql"]
     assert preview["bindings"]["measure_ref"] == "orders.gmv"
     assert preview["traceability"]["business_metric"]["name"] == "gmv"
     assert preview["traceability"]["analysis_measure"]["measure_ref"] == "orders.gmv"
+    assert preview["resource_set"]["logical"]["cubes"] == ["orders"]
+    assert preview["resource_set"]["logical"]["metrics"] == ["gmv"]
+    assert preview["resource_set"]["physical"][0]["data_source_id"] == "1"
+    assert preview["resource_set"]["physical"][0]["project"] == "dw"
+    assert preview["resource_set"]["physical"][0]["schema"] == "dws"
+    assert preview["resource_set"]["physical"][0]["table"] == "orders"
+    assert preview["ticket_material"]["resource_set"] == preview["resource_set"]
 
     retrieval_preview = service.compile_preview(
         target_type="retrieval",
@@ -246,6 +253,10 @@ def test_execution_compiler_preview_returns_pseudo_sql(tmp_path):
     assert retrieval_preview["target_type"] == "retrieval"
     assert retrieval_preview["retrieval_request"]["query"] == "解释订单口径"
     assert retrieval_preview["retrieval_request"]["sources"] == ["knowledge-base", "docs"]
+    assert retrieval_preview["resource_set"] == {
+        "logical": {"retrieval_sources": ["knowledge-base", "docs"]},
+        "physical": [],
+    }
 
     tool_preview = service.compile_preview(
         target_type="tool",
@@ -256,6 +267,10 @@ def test_execution_compiler_preview_returns_pseudo_sql(tmp_path):
     assert tool_preview["target_type"] == "tool"
     assert tool_preview["tool_call"]["name"] == "send_notification"
     assert tool_preview["tool_call"]["arguments"]["channel"] == "lark"
+    assert tool_preview["resource_set"] == {
+        "logical": {"tools": ["send_notification"]},
+        "physical": [],
+    }
 
     plan_preview = service.compile_plan_preview(
         target_type="retrieval",

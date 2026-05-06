@@ -110,7 +110,7 @@ def _cube(name: str, status: str = "active") -> CubeDefinition:
     )
 
 
-def test_publish_domain_rejects_1n_without_strategy():
+def test_publish_domain_ignores_join_payload_and_keeps_context_only():
     service = DomainModelingService(
         domain_repo=_InMemoryDomainRepo(),
         catalog_repo=_InMemoryCatalogRepo(),
@@ -118,26 +118,28 @@ def test_publish_domain_rejects_1n_without_strategy():
     )
     domain = service.create_domain({"name": "商业域"})
 
-    with pytest.raises(ApplicationException, match="1:N"):
-        service.publish_domain(
-            domain.id or domain.code,
-            cubes=["orders", "order_items"],
-            joins=[
-                {
-                    "name": "orders_to_items",
-                    "source_cube": "orders",
-                    "target_cube": "order_items",
-                    "source_field": "id",
-                    "target_field": "order_id",
-                    "join_type": "left",
-                    "cardinality": "1:N",
-                    "aggregation_strategy": "none",
-                }
-            ],
-        )
+    published = service.publish_domain(
+        domain.id or domain.code,
+        cubes=["orders", "order_items"],
+        joins=[
+            {
+                "name": "orders_to_items",
+                "source_cube": "orders",
+                "target_cube": "order_items",
+                "source_field": "id",
+                "target_field": "order_id",
+                "join_type": "left",
+                "cardinality": "1:N",
+                "aggregation_strategy": "none",
+            }
+        ],
+    )
+
+    assert published.cubes == ["orders", "order_items"]
+    assert published.joins == []
 
 
-def test_validate_domain_detects_cycle_and_inactive_cube():
+def test_validate_domain_checks_cube_assets_only():
     service = DomainModelingService(
         domain_repo=_InMemoryDomainRepo(),
         catalog_repo=_InMemoryCatalogRepo(),
@@ -176,7 +178,44 @@ def test_validate_domain_detects_cycle_and_inactive_cube():
     diagnostics = service.validate_domain(domain)
 
     assert any(item["kind"] == "inactive_cube" for item in diagnostics)
-    assert any(item["kind"] == "cyclic_graph" for item in diagnostics)
+    assert not any(item["kind"] == "cyclic_graph" for item in diagnostics)
+
+
+def test_domain_context_preview_returns_candidate_scope_without_join_truth():
+    repo = _InMemoryDomainRepo()
+    service = DomainModelingService(
+        domain_repo=repo,
+        catalog_repo=_InMemoryCatalogRepo(),
+        cube_repo=_InMemoryCubeRepo([_cube("student_comments"), _cube("comment_audit_events")]),
+    )
+    domain = DomainDefinition(
+        code="comment_governance",
+        name="评论治理域",
+        status="active",
+        cubes=["student_comments", "comment_audit_events"],
+        ontology_refs={
+            "objects": ["student_comment"],
+            "metrics": ["student_comment_count"],
+        },
+        default_context={
+            "time_dimension": "comment_time",
+            "default_roles": ["content_audit"],
+        },
+        agent_hints={
+            "priority_terms": ["评论", "举报", "审核"],
+        },
+    )
+    repo.save(domain)
+
+    preview = service.get_domain_context_preview("comment_governance")
+
+    assert preview["domain"]["code"] == "comment_governance"
+    assert preview["role"] == "business_context"
+    assert preview["candidate_scope"]["cube_refs"] == ["student_comments", "comment_audit_events"]
+    assert preview["candidate_scope"]["ontology_refs"]["metrics"] == ["student_comment_count"]
+    assert preview["agent_hints"]["priority_terms"] == ["评论", "举报", "审核"]
+    assert preview["execution_truth_source"] == "cube"
+    assert "joins" not in preview
 
 
 def test_create_domain_generates_code_and_draft_status():
@@ -373,7 +412,7 @@ def test_publish_domain_rejects_duplicate_fingerprint():
 
     duplicate = service.create_domain({"name": "重复领域"})
 
-    with pytest.raises(ApplicationException, match="结构完全重复"):
+    with pytest.raises(ApplicationException, match="资产范围"):
         service.publish_domain(
             duplicate.id or duplicate.code,
             cubes=["student", "orders"],
@@ -479,7 +518,7 @@ def test_get_domain_detail_falls_back_to_default_catalog_and_registry_summary():
     assert detail["state_summary"]["publish_status"] == "draft"
 
 
-def test_add_cube_and_add_join_cover_missing_dedup_and_replace():
+def test_add_cube_dedups_and_add_join_is_rejected():
     service = DomainModelingService(
         domain_repo=_InMemoryDomainRepo(),
         catalog_repo=_InMemoryCatalogRepo(),
@@ -494,39 +533,23 @@ def test_add_cube_and_add_join_cover_missing_dedup_and_replace():
     same_domain = service.add_cube(published.id or published.code, "orders")
     assert same_domain.cubes == ["orders", "student"]
 
-    joined = service.add_join(
-        published.id or published.code,
-        {
-            "name": "orders_to_student",
-            "source_cube": "orders",
-            "target_cube": "student",
-            "source_field": "student_id",
-            "target_field": "id",
-            "join_type": "left",
-            "cardinality": "N:1",
-            "aggregation_strategy": "none",
-        },
-    )
-    replaced = service.add_join(
-        joined.id or joined.code,
-        {
-            "name": "orders_to_student_new",
-            "source_cube": "orders",
-            "target_cube": "student",
-            "source_field": "sid",
-            "target_field": "id",
-            "join_type": "inner",
-            "cardinality": "N:1",
-            "aggregation_strategy": "none",
-        },
-    )
-
-    assert len(replaced.joins) == 1
-    assert replaced.joins[0].name == "orders_to_student_new"
-    assert replaced.joins[0].source_field == "sid"
+    with pytest.raises(ApplicationException, match="不再维护 Join"):
+        service.add_join(
+            published.id or published.code,
+            {
+                "name": "orders_to_student",
+                "source_cube": "orders",
+                "target_cube": "student",
+                "source_field": "student_id",
+                "target_field": "id",
+                "join_type": "left",
+                "cardinality": "N:1",
+                "aggregation_strategy": "none",
+            },
+        )
 
 
-def test_validate_domain_reports_missing_cube_outside_domain_and_duplicate_edge():
+def test_validate_domain_reports_missing_cube_without_join_diagnostics():
     service = DomainModelingService(
         domain_repo=_InMemoryDomainRepo(),
         catalog_repo=_InMemoryCatalogRepo(),
@@ -557,8 +580,8 @@ def test_validate_domain_reports_missing_cube_outside_domain_and_duplicate_edge(
     kinds = {item["kind"] for item in diagnostics}
 
     assert "missing_cube" in kinds
-    assert "join_cube_outside_domain" in kinds
-    assert "duplicate_edge" in kinds
+    assert "join_cube_outside_domain" not in kinds
+    assert "duplicate_edge" not in kinds
 
 
 def test_registry_failures_do_not_break_publish_or_summary():
@@ -656,23 +679,23 @@ def test_publish_domain_reports_validation_errors_and_summary_recovers_missing_r
     )
     domain = service.create_domain({"name": "学业分析"})
 
-    with pytest.raises(ApplicationException, match="Join orders -> student 引用了不在领域中的 Cube"):
-        service.publish_domain(
-            domain.id or domain.code,
-            cubes=["orders"],
-            joins=[
-                {
-                    "name": "orders_to_student",
-                    "source_cube": "orders",
-                    "target_cube": "student",
-                    "source_field": "student_id",
-                    "target_field": "id",
-                    "join_type": "left",
-                    "cardinality": "N:1",
-                    "aggregation_strategy": "none",
-                }
-            ],
-        )
+    published = service.publish_domain(
+        domain.id or domain.code,
+        cubes=["orders"],
+        joins=[
+            {
+                "name": "orders_to_student",
+                "source_cube": "orders",
+                "target_cube": "student",
+                "source_field": "student_id",
+                "target_field": "id",
+                "join_type": "left",
+                "cardinality": "N:1",
+                "aggregation_strategy": "none",
+            }
+        ],
+    )
+    assert published.joins == []
 
     registry.entries[("domain", domain.id or domain.code)] = _RegistryEntry({"sync_status": "warn", "publish_status": "draft"})
     assert service._build_state_summary(domain)["publish_status"] == "draft"
@@ -793,6 +816,6 @@ def test_get_domain_detail_includes_governance_summary():
         "active_cube_count": 1,
         "draft_cube_count": 1,
         "deprecated_cube_count": 1,
-        "join_count": 1,
+        "join_count": 0,
         "dangling_cube_count": 1,
     }

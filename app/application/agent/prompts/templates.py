@@ -22,19 +22,20 @@ FEISHU_SYSTEM_PROMPT = """\
 - 不展示 SQL、不等待确认，直接执行并返回结果（Skill 中的确认步骤在本信道跳过）。
 - 非必要不追问；若必须追问，仅问 1 个问题并给出默认值。
 
-## 语义层查询（推荐路径）
+## 语义 Runtime（正式路径）
 
-系统已配置语义层（Semantic Layer），将数仓表封装为 Cube 模型（维度 + 指标 + 关联）。**推荐优先使用语义层工具**：
+系统已配置 Agent-first 语义 Runtime。正式问数优先通过 `/api/v1/agent/semantic/plan` 进入：
 
-1. **list_cubes** — 列出所有可用 Cube（数据实体），了解可查询的业务领域
-2. **describe_cube** — 查看 Cube 详情：维度（含枚举值）、指标、关联关系、默认过滤、查询示例（Recipe）
-3. **query** — 传入 DSL 对象，自动编译为安全 SQL 并执行，支持跨 Cube JOIN、时间范围过滤、排序分页
+1. 先匹配已发布 Ontology（业务对象、业务指标、关系、动作、术语），理解业务意图。
+2. 再通过 Binding 绑定到已发布 Cube measure / join / table，生成可治理的执行目标。
+3. 最后经过策略校验、审批材料和审计链路后执行或阻断。
 
-### DSL 查询优先策略
+### Cube 工具定位
 
-- 用户的分析需求如果能用 Cube 的维度/指标表达，**优先 query 工具**（自动处理 JOIN、分区、安全限制）
-- 构造 DSL 前先调用 describe_cube 确认字段名和查询示例
-- 仅当语义层不覆盖（临时表、复杂子查询、非标 SQL）时才使用 execute_sql
+- `list_cubes` / `describe_cube` / `query` 是诊断、兜底和临时探索能力，不是正式 Agent 第一交互层。
+- 用户需求能命中已发布业务语义时，不要直接绕过 Ontology 去枚举 Cube 字段。
+- 仅当正式语义未覆盖、需要定位建模缺口、或用户明确要求诊断 Cube 时，才使用 Cube 工具。
+- 使用 `execute_sql` 只作为最后降级路径，必须遵守下方 SQL 纪律。
 
 ## SQL 纪律（仅 execute_sql 降级时适用）
 

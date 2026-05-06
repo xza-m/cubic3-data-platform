@@ -15,6 +15,7 @@ class YamlDomainRepository(IDomainRepository):
     def __init__(self, domains_dir: str):
         self._dir = Path(domains_dir)
         self._cache: Dict[str, DomainDefinition] = {}
+        self._runtime_cache: Dict[str, DomainDefinition] = {}
         self._loaded = False
 
     def _ensure_loaded(self) -> None:
@@ -34,6 +35,7 @@ class YamlDomainRepository(IDomainRepository):
                     self._cache[domain.id or domain.code] = domain
             except Exception as exc:
                 raise ValueError(f"Failed to load Domain YAML '{fp.name}': {exc}") from exc
+        self._cache.update(self._runtime_cache)
         self._loaded = True
 
     def reload(self) -> None:
@@ -60,7 +62,10 @@ class YamlDomainRepository(IDomainRepository):
         fp = self._dir / f"domain_{domain.code}.yml"
         data = domain.model_dump(exclude_none=True)
         fp.write_text(yaml.dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-        self._cache[domain.id or domain.code] = domain
+        key = domain.id or domain.code
+        self._cache[key] = domain
+        if should_ignore_runtime_yaml(fp):
+            self._runtime_cache[key] = domain
 
     def delete(self, domain_id: str) -> bool:
         domain = self.get(domain_id)
@@ -70,4 +75,5 @@ class YamlDomainRepository(IDomainRepository):
         if fp.exists():
             fp.unlink()
         self._cache.pop(domain.id or domain.code, None)
+        self._runtime_cache.pop(domain.id or domain.code, None)
         return True

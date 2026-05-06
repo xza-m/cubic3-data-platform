@@ -51,6 +51,7 @@ def _register_all_models():
         UserRoleORM,
         UserPasswordORM,
     )
+    from app.infrastructure.governance.models import GovernanceAuditTraceORM  # noqa
     from app.domain.queries.scheduled_query import ScheduledQuery            # noqa  B-back-8
     from app.domain.queries.scheduled_query_run import ScheduledQueryRun    # noqa  B-back-8
     from app.domain.semantic.diagnose_run import DiagnoseRun                 # noqa  B-back-9

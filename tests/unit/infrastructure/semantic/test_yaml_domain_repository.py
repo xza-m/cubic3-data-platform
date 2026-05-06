@@ -173,6 +173,27 @@ def test_yaml_domain_repository_ignores_runtime_debug_fixtures(tmp_path):
     assert [domain.code for domain in domains] == ["academic"]
 
 
+def test_yaml_domain_repository_keeps_saved_runtime_domain_until_process_restart(tmp_path):
+    domains_dir = tmp_path / "domains"
+    repo = YamlDomainRepository(str(domains_dir))
+    runtime_domain = DomainDefinition(
+        code="playwright_1777776402",
+        name="Playwright 领域草稿 1777776402",
+        catalog_code="default",
+        cubes=[],
+        joins=[],
+    )
+
+    repo.save(runtime_domain)
+    repo.reload()
+
+    assert repo.get("playwright_1777776402") is not None
+    assert repo.get_by_code("playwright_1777776402") is not None
+
+    fresh_repo = YamlDomainRepository(str(domains_dir))
+    assert fresh_repo.list_all() == []
+
+
 def test_yaml_domain_repository_invalid_yaml_raises(tmp_path):
     domains_dir = tmp_path / "domains"
     domains_dir.mkdir()

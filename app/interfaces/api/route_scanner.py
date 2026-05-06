@@ -4,6 +4,7 @@
 import re
 from typing import Dict, List, Any
 from flask import Flask
+from app.interfaces.api.openapi_metadata import get_openapi_metadata, merge_operation_metadata
 
 
 def scan_routes_to_openapi(app: Flask) -> Dict[str, Any]:
@@ -54,7 +55,7 @@ def scan_routes_to_openapi(app: Flask) -> Dict[str, Any]:
                 continue
             
             method_lower = method.lower()
-            paths[path][method_lower] = _generate_operation(
+            operation = _generate_operation(
                 method=method,
                 tag=tag,
                 summary=summary,
@@ -63,6 +64,10 @@ def scan_routes_to_openapi(app: Flask) -> Dict[str, Any]:
                 path_params=path_params,
                 docstring=docstring
             )
+            metadata = get_openapi_metadata(rule.endpoint, method, path)
+            if metadata:
+                operation = merge_operation_metadata(operation, metadata)
+            paths[path][method_lower] = operation
     
     return paths
 
@@ -284,6 +289,14 @@ def _generate_responses() -> Dict[str, Any]:
         },
         "404": {
             "description": "资源不存在",
+            "content": {
+                "application/json": {
+                    "schema": {"$ref": "#/components/schemas/ErrorResponse"}
+                }
+            }
+        },
+        "422": {
+            "description": "请求语义合法性校验失败",
             "content": {
                 "application/json": {
                     "schema": {"$ref": "#/components/schemas/ErrorResponse"}

@@ -1,4 +1,4 @@
-"""领域画布服务。"""
+"""业务上下文资产画布服务。"""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -74,20 +74,7 @@ class DomainCanvasService:
                 }
             )
 
-        edges = [
-            {
-                "id": join.name,
-                "source": join.source_cube,
-                "target": join.target_cube,
-                "relationship": join.cardinality,
-                "join_type": join.join_type,
-                "aggregation_strategy": join.aggregation_strategy,
-                "source_field": join.source_field,
-                "target_field": join.target_field,
-                "description": join.description,
-            }
-            for join in domain.joins
-        ]
+        edges: List[Dict[str, Any]] = []
 
         library = []
         domain_cube_set = set(domain.cubes)
@@ -170,7 +157,7 @@ class DomainCanvasService:
             "active_cube_count": 0,
             "draft_cube_count": 0,
             "deprecated_cube_count": 0,
-            "join_count": len(domain.joins),
+            "join_count": 0,
             "dangling_cube_count": 0,
         }
         for cube_name in domain.cubes:

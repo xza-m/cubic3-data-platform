@@ -15,6 +15,10 @@ from app.interfaces.api.route_scanner import (
     _generate_request_body,
     _generate_responses,
 )
+from app.interfaces.api.openapi_metadata import (
+    clear_extra_openapi_metadata,
+    register_openapi_metadata,
+)
 
 
 # ============================================================================
@@ -254,3 +258,74 @@ class TestScanRoutesToOpenapi:
         assert "post" in op
         assert "head" not in op
         assert "options" not in op
+
+    def test_scan_merges_explicit_metadata(self):
+        """显式 OpenAPI 元数据会覆盖自动扫描的泛化契约。"""
+        app = Flask(__name__)
+
+        @app.route("/api/items", methods=["POST"])
+        def create_item():
+            """创建条目"""
+            return ""
+
+        register_openapi_metadata(
+            endpoint="create_item",
+            method="POST",
+            metadata={
+                "operationId": "CreateItemForAgent",
+                "summary": "创建条目（测试）",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": ["name"],
+                                "properties": {"name": {"type": "string"}},
+                            }
+                        }
+                    },
+                },
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {"type": "integer"},
+                                        "message": {"type": "string"},
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {"id": {"type": "integer"}},
+                                        },
+                                    },
+                                }
+                            }
+                        },
+                    }
+                },
+                "x-agent-safe": False,
+                "x-side-effect": "write",
+                "x-agent-risk": "medium",
+                "x-requires-confirmation": True,
+                "x-permission-scope": "items:write",
+            },
+        )
+
+        try:
+            paths = scan_routes_to_openapi(app)
+        finally:
+            clear_extra_openapi_metadata()
+
+        op = paths["/api/items"]["post"]
+        assert op["operationId"] == "CreateItemForAgent"
+        assert op["summary"] == "创建条目（测试）"
+        assert op["requestBody"]["content"]["application/json"]["schema"]["required"] == ["name"]
+        assert op["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]["properties"]["id"]["type"] == "integer"
+        assert op["x-agent-safe"] is False
+        assert op["x-side-effect"] == "write"
+        assert op["x-agent-risk"] == "medium"
+        assert op["x-requires-confirmation"] is True
+        assert op["x-permission-scope"] == "items:write"

@@ -524,6 +524,15 @@ def create_semantic_blueprint(
             return not_found(str(exc))
         return success(data=result)
 
+    @bp.route('/domains/<domain_id>/context-preview', methods=['POST'])
+    @require_auth
+    def get_domain_context_preview(domain_id):
+        try:
+            result = domain_modeling_service.get_domain_context_preview(domain_id)
+        except Exception as exc:
+            return not_found(str(exc))
+        return success(data=result)
+
     @bp.route('/domains/<domain_id>/cubes', methods=['POST'])
     @require_admin
     def add_cube_to_domain(domain_id):
@@ -540,12 +549,10 @@ def create_semantic_blueprint(
     @bp.route('/domains/<domain_id>/joins', methods=['POST'])
     @require_admin
     def add_join_to_domain(domain_id):
-        body = request.get_json(silent=True) or {}
-        try:
-            domain = domain_modeling_service.add_join(domain_id, body)
-        except Exception as exc:
-            return error(f"添加 Join 失败: {str(exc)}")
-        return success(data=domain_modeling_service.get_domain_detail(domain.id or domain.code))
+        return error(
+            "Domain 已收窄为业务上下文和资产组织对象，不再维护 Join；"
+            "请在 Cube 技术语义或 Ontology 业务关系中建模"
+        )
 
     @bp.route('/domains/<domain_id>/publish', methods=['POST'])
     @require_admin
@@ -560,7 +567,6 @@ def create_semantic_blueprint(
                 if isinstance(prev, dict):
                     prev_snapshot = {
                         "cubes": prev.get("cubes") or [],
-                        "joins": prev.get("joins") or [],
                     }
             except Exception:
                 prev_snapshot = None
@@ -569,7 +575,6 @@ def create_semantic_blueprint(
             domain = domain_modeling_service.publish_domain(
                 domain_id,
                 cubes=body.get("cubes"),
-                joins=body.get("joins"),
             )
         except Exception as exc:
             if history_service is not None:
@@ -593,7 +598,6 @@ def create_semantic_blueprint(
             try:
                 next_snapshot = {
                     "cubes": detail.get("cubes") or [] if isinstance(detail, dict) else [],
-                    "joins": detail.get("joins") or [] if isinstance(detail, dict) else [],
                 }
                 history_service.record_publish(
                     domain_id=str(domain.id or domain.code),

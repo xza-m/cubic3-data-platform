@@ -27,6 +27,9 @@ class YamlGovernanceAuditTraceRepository(IGovernanceAuditTraceRepository):
         target_name: str | None = None,
         decision: str | None = None,
         route_type: str | None = None,
+        principal_id: str | None = None,
+        semantic_plan_id: str | None = None,
+        sql_hash: str | None = None,
     ):
         items = []
         for item in self._store.list_all():
@@ -39,6 +42,12 @@ class YamlGovernanceAuditTraceRepository(IGovernanceAuditTraceRepository):
             if decision and item.decision != decision:
                 continue
             if route_type and item.route_type != route_type:
+                continue
+            if principal_id and item.principal_id != principal_id:
+                continue
+            if semantic_plan_id and item.semantic_plan_id != semantic_plan_id:
+                continue
+            if sql_hash and item.sql_hash != sql_hash:
                 continue
             items.append(item)
         return sorted(items, key=lambda item: item.timestamp, reverse=True)

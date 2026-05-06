@@ -92,11 +92,17 @@ class GovernanceAuditTrace(BaseModel):
     id: str
     target_type: str
     target_name: str
+    principal_id: Optional[str] = None
+    semantic_plan_id: Optional[str] = None
+    sql_hash: Optional[str] = None
+    gateway_query_id: Optional[str] = None
+    maxcompute_task_id: Optional[str] = None
     viewer_roles: List[str] = Field(default_factory=list)
     route_type: str = "direct"
     execution_target: str
     decision: Literal["allow", "blocked", "not_configured"] | str
     policy: Dict[str, Any] | None = None
+    policy_decision: Dict[str, Any] = Field(default_factory=dict)
     traceability: Dict[str, Any] = Field(default_factory=dict)
     reason: Optional[str] = None
     timestamp: str

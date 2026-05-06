@@ -239,10 +239,16 @@ class QueryDSL(BaseModel):
 
 
 # ──────────────────────────────────────────────
-# Domain / 领域关系建模
+# Domain / 业务上下文与资产组织
 # ──────────────────────────────────────────────
 
 class DomainJoinDef(BaseModel):
+    """历史 Domain YAML 兼容字段。
+
+    Domain 已收窄为业务上下文和资产组织对象，不再承载 Join 语义。
+    关系执行语义归 Cube.joins，业务关系语义归 Ontology。
+    """
+
     name: str
     source_cube: str
     target_cube: str
@@ -257,12 +263,6 @@ class DomainJoinDef(BaseModel):
         "distinct_on_target",
     ] = "none"
     description: Optional[str] = None
-
-    @model_validator(mode="after")
-    def _check_cardinality_strategy(self) -> "DomainJoinDef":
-        if self.cardinality == "1:N" and self.aggregation_strategy == "none":
-            raise ValueError("1:N 关系必须指定 aggregation_strategy，不能为 none")
-        return self
 
 
 class CatalogDefinition(BaseModel):
@@ -283,20 +283,15 @@ class DomainDefinition(BaseModel):
     owner: Optional[str] = None
     cubes: List[str] = Field(default_factory=list)
     joins: List[DomainJoinDef] = Field(default_factory=list)
+    ontology_refs: Dict[str, Any] = Field(default_factory=dict)
+    default_context: Dict[str, Any] = Field(default_factory=dict)
+    agent_hints: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _normalize_id_and_validate(self) -> "DomainDefinition":
         self.id = self.id or self.code
         if len(set(self.cubes)) != len(self.cubes):
             raise ValueError(f"领域 '{self.code}' 包含重复 Cube 成员")
-        seen_edges = set()
-        for join in self.joins:
-            edge_key = (join.source_cube, join.target_cube)
-            if edge_key in seen_edges:
-                raise ValueError(
-                    f"领域 '{self.code}' 存在重复同向关系: {join.source_cube} -> {join.target_cube}"
-                )
-            seen_edges.add(edge_key)
         return self
 
 

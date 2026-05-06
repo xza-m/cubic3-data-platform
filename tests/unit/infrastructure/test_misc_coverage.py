@@ -99,7 +99,9 @@ class TestScheduler:
             with patch("app.di.container.get_container", return_value=fake_container):
                 init_jobs()
                 fake_scheduler.start.assert_called_once()
-                fake_scheduler.add_job.assert_called_once()
+                assert fake_scheduler.add_job.call_count == 2
+                job_ids = {call.kwargs["id"] for call in fake_scheduler.add_job.call_args_list}
+                assert job_ids == {"platform_datasource_catalog_sync", "query_export_cleanup"}
                 fake_service.reload_all_schedules.assert_called_once()
 
         with patch("app.infrastructure.scheduler.scheduler", fake_scheduler):

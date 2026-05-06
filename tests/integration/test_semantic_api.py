@@ -479,6 +479,26 @@ class TestDomainsEndpoint:
         assert resp.status_code == 200
         assert resp.get_json()["data"]["domain"]["code"] == "academic"
 
+    def test_domain_context_preview_returns_candidate_scope(self, semantic_client, mock_domain_modeling_service):
+        mock_domain_modeling_service.get_domain_context_preview.return_value = {
+            "domain": {"code": "academic", "name": "学业域"},
+            "role": "business_context",
+            "candidate_scope": {
+                "cube_refs": ["orders"],
+                "ontology_refs": {"objects": ["order"], "metrics": ["order_count"]},
+            },
+            "default_context": {"time_dimension": "created_at"},
+            "agent_hints": {"priority_terms": ["订单"]},
+            "execution_truth_source": "cube",
+        }
+
+        resp = semantic_client.post("/api/v1/semantic/domains/academic/context-preview")
+
+        assert resp.status_code == 200
+        assert resp.get_json()["data"]["role"] == "business_context"
+        assert resp.get_json()["data"]["execution_truth_source"] == "cube"
+        mock_domain_modeling_service.get_domain_context_preview.assert_called_once_with("academic")
+
     def test_publish_domain_returns_200(self, semantic_client, mock_domain_modeling_service):
         mock_domain_modeling_service.get_domain_detail.return_value = {
             "id": "academic",
@@ -498,17 +518,16 @@ class TestDomainsEndpoint:
         mock_domain_modeling_service.publish_domain.assert_called_once_with(
             "academic",
             cubes=["orders"],
-            joins=[],
         )
 
     def test_publish_domain_duplicate_returns_400(self, semantic_client, mock_domain_modeling_service):
-        mock_domain_modeling_service.publish_domain.side_effect = Exception("领域发布失败: 当前关系图与领域 'academic' 结构完全重复")
+        mock_domain_modeling_service.publish_domain.side_effect = Exception("领域发布失败: 当前资产范围与领域 'academic' 完全重复")
         resp = semantic_client.post(
             "/api/v1/semantic/domains/academic/publish",
             json={"cubes": ["orders"], "joins": []},
         )
         assert resp.status_code == 400
-        assert "结构完全重复" in resp.get_json()["message"]
+        assert "资产范围" in resp.get_json()["message"]
 
 
 # ============================================================================

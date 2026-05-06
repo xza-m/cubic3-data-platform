@@ -21,7 +21,7 @@ def _save_sample_cube(repo: YamlCubeRepository) -> None:
         CubeDefinition(
             name="orders",
             title="订单",
-            table="ods.orders",
+            table="dws.orders",
             source_id=1,
             source_database="dw",
             dimensions={
@@ -125,6 +125,95 @@ def test_router_routes_metric_and_alias_to_cube(tmp_path):
     alias_route = service.route(question="查看成交额趋势")
     assert alias_route["route_type"] == "cube"
     assert alias_route["matched"]["metric_name"] == "gmv"
+
+    projection = alias_route["projection_result"]
+    assert projection["binding_status"] == "linked"
+    assert projection["resolved_bindings"][0]["cube_name"] == "orders"
+    assert projection["resolved_bindings"][0]["measure_ref"] == "orders.gmv"
+
+
+def test_official_runtime_only_matches_active_ontology_and_glossary_targets(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    _save_sample_cube(cube_repo)
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+
+    object_repo.save(BusinessObject(name="order", title="订单", status="active"))
+    metric_repo.save(
+        BusinessMetric(
+            name="active_gmv",
+            title="有效GMV",
+            object_name="order",
+            semantic_formula="已发布 GMV",
+            measure_refs=["orders.gmv"],
+            aliases=["有效成交额"],
+            status="active",
+        )
+    )
+    metric_repo.save(
+        BusinessMetric(
+            name="draft_gmv",
+            title="草稿GMV",
+            object_name="order",
+            semantic_formula="草稿 GMV",
+            measure_refs=["orders.gmv"],
+            aliases=["草稿成交额"],
+            status="draft",
+        )
+    )
+    glossary_repo.save(
+        GlossaryEntry(
+            term="草稿口径",
+            canonical_name="draft_gmv",
+            entry_type="metric",
+            status="active",
+        )
+    )
+
+    compiler = ExecutionCompilerPreviewService(
+        metric_repository=metric_repo,
+        cube_repository=cube_repo,
+    )
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+
+    active_route = service.route(question="查看有效成交额趋势", runtime_mode="official")
+    assert active_route["runtime_mode"] == "official"
+    assert active_route["business_intent"]["primary_match"]["name"] == "active_gmv"
+    assert active_route["route_type"] == "cube"
+
+    draft_route = service.route(question="查看草稿成交额趋势", runtime_mode="official")
+    assert draft_route["runtime_mode"] == "official"
+    assert draft_route["route_type"] == "blocked"
+    assert draft_route["reason"] == "未命中已发布业务语义"
+
+    glossary_route = service.route(question="查看草稿口径趋势", runtime_mode="official")
+    assert glossary_route["route_type"] == "blocked"
+    assert glossary_route["reason"] == "未命中已发布业务语义"
+
+    preview_route = service.route(question="查看草稿成交额趋势", runtime_mode="preview")
+    assert preview_route["runtime_mode"] == "preview"
+    assert preview_route["business_intent"]["primary_match"]["name"] == "draft_gmv"
 
 
 def test_router_supports_hybrid_and_blocked_paths(tmp_path):

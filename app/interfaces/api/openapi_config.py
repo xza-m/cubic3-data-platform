@@ -2,8 +2,29 @@
 OpenAPI 文档配置
 用于自动生成 API 文档
 """
-from flask_openapi3 import Info, Tag, Server
-from typing import List
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class Info:
+    title: str
+    version: str
+    description: str
+    contact: dict[str, Any]
+    license: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class Tag:
+    name: str
+    description: str
+
+
+@dataclass(frozen=True)
+class Server:
+    url: str
+    description: str
 
 
 # ============================================================================

@@ -33,7 +33,7 @@ def _build_client(tmp_path):
         CubeDefinition(
             name="orders",
             title="订单",
-            table="ods.orders",
+            table="dws.orders",
             source_id=1,
             source_database="dw",
             dimensions={"status": DimensionDef(title="状态", type="string", sql="{CUBE}.status")},
@@ -242,3 +242,84 @@ def test_semantic_router_api_returns_multi_intent_plan(tmp_path):
     assert payload["route"]["route_type"] == "hybrid"
     assert payload["route"]["targets"] == ["knowledge", "cube", "tool"]
     assert {item["entity_type"] for item in payload["route"]["matched_entities"]} == {"metric", "relation", "action"}
+
+
+def test_semantic_router_execute_plan_blocks_m3_raw_resource(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    cube_repo.save(
+        CubeDefinition(
+            name="raw_orders",
+            title="原始订单",
+            table="ods.raw_orders",
+            source_id=1,
+            source_database="dw",
+            dimensions={"id": DimensionDef(title="订单ID", type="string", sql="{CUBE}.id")},
+            measures={"raw_count": MeasureDef(title="原始订单数", type="count", sql="{CUBE}.id")},
+        )
+    )
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+    object_repo.save(BusinessObject(name="raw_order", title="原始订单"))
+    metric_repo.save(
+        BusinessMetric(
+            name="raw_order_count",
+            title="原始订单数",
+            object_name="raw_order",
+            semantic_formula="原始订单记录数量",
+            measure_refs=["raw_orders.raw_count"],
+        )
+    )
+    compiler = ExecutionCompilerPreviewService(
+        metric_repository=metric_repo,
+        cube_repository=cube_repo,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    runtime = ExecutionCompilerRuntimeService(
+        preview_service=compiler,
+        execute_query_handler_factory=lambda: type(
+            "ShouldNotExecuteQueryHandler",
+            (),
+            {"handle": lambda self, command: (_ for _ in ()).throw(AssertionError("M3 raw data must not execute"))},
+        )(),
+    )
+    router = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        runtime_service=runtime,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+    app = Flask(__name__)
+    app.config["TESTING"] = True
+    app.register_blueprint(create_semantic_router_blueprint(router))
+    register_error_handlers(app)
+    from tests.conftest import install_default_admin_auth
+
+    client = install_default_admin_auth(app.test_client())
+
+    resp = client.post(
+        "/api/v1/semantic-router/execute-plan",
+        json={"question": "查看原始订单数", "viewer_roles": ["admin"]},
+    )
+
+    assert resp.status_code == 200
+    result = resp.get_json()["data"]["execution_results"][0]
+    assert result["status"] == "blocked"
+    assert result["policy_decision"]["decision"] == "require_approval"
+    assert result["policy_decision"]["effective_data_level"] == "M3"

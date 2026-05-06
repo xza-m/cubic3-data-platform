@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, List, Optional
 from app.domain.semantic.entities import (
     CatalogDefinition,
     DomainDefinition,
-    DomainJoinDef,
     generate_catalog_code,
     generate_domain_code,
 )
@@ -63,7 +62,7 @@ class DomainModelingService:
                     "status": domain.status,
                     "owner": domain.owner,
                     "cube_count": len(domain.cubes),
-                    "join_count": len(domain.joins),
+                    "join_count": 0,
                     "state_summary": summary,
                 }
             )
@@ -156,14 +155,68 @@ class DomainModelingService:
 
     def get_domain_detail(self, domain_id: str) -> Dict[str, Any]:
         domain = self.get_domain(domain_id)
+        payload = domain.model_dump(mode="json")
+        payload["joins"] = []
         return {
-            **domain.model_dump(mode="json"),
+            **payload,
             **{
                 "catalog_code": self._resolve_catalog_definition(domain.catalog_code).code,
                 "catalog_name": self._resolve_catalog_definition(domain.catalog_code).name,
             },
             "state_summary": self._build_state_summary(domain),
             "governance_summary": self._build_governance_summary(domain),
+        }
+
+    def get_domain_context_preview(self, domain_id: str) -> Dict[str, Any]:
+        """返回 Domain 作为业务上下文和 Agent 候选范围的只读预览。"""
+        domain = self.get_domain(domain_id)
+        cube_refs = self._normalize_domain_cubes(domain.cubes)
+        cube_candidates = []
+        missing_cubes = []
+        for cube_name in cube_refs:
+            cube = self._cube_repo.get(cube_name)
+            if cube is None:
+                missing_cubes.append(cube_name)
+                continue
+            cube_candidates.append(
+                {
+                    "name": cube.name,
+                    "title": cube.title,
+                    "status": cube.status,
+                    "dimension_count": len(cube.dimensions),
+                    "measure_count": len(cube.measures),
+                }
+            )
+        catalog = self._resolve_catalog_definition(domain.catalog_code)
+        return {
+            "domain": {
+                "id": domain.id,
+                "code": domain.code,
+                "name": domain.name,
+                "description": domain.description,
+                "status": domain.status,
+                "owner": domain.owner,
+                "catalog_code": catalog.code,
+                "catalog_name": catalog.name,
+            },
+            "role": "business_context",
+            "candidate_scope": {
+                "cube_refs": cube_refs,
+                "cube_candidates": cube_candidates,
+                "ontology_refs": domain.ontology_refs,
+            },
+            "default_context": domain.default_context,
+            "agent_hints": domain.agent_hints,
+            "execution_truth_source": "cube",
+            "business_truth_source": "ontology",
+            "issues": [
+                {
+                    "severity": "warning",
+                    "code": "missing_cube",
+                    "message": f"Domain 引用的 Cube 不存在: {cube_name}",
+                }
+                for cube_name in missing_cubes
+            ],
         }
 
     def create_domain(self, payload: Dict[str, Any]) -> DomainDefinition:
@@ -196,6 +249,7 @@ class DomainModelingService:
         merged["id"] = existing.id or existing.code
         merged["catalog_code"] = self._resolve_catalog_code_from_payload(payload, existing=existing)
         merged["cubes"] = self._normalize_domain_cubes(merged.get("cubes") or [])
+        merged["joins"] = []
         if not payload.get("status"):
             merged["status"] = existing.status
         domain = DomainDefinition(**merged)
@@ -225,8 +279,7 @@ class DomainModelingService:
         merged = existing.model_dump(mode="json")
         if cubes is not None:
             merged["cubes"] = cubes
-        if joins is not None:
-            merged["joins"] = joins
+        merged["joins"] = []
         duplicate_cubes = self._find_duplicate_domain_cubes(merged.get("cubes") or [])
         if duplicate_cubes:
             raise ApplicationException(
@@ -245,7 +298,7 @@ class DomainModelingService:
         duplicate = self._find_duplicate_domain(domain)
         if duplicate is not None:
             raise ApplicationException(
-                f"领域发布失败: 当前关系图与领域 '{duplicate.code}' 结构完全重复，请复用已有领域或调整关系图"
+                f"领域发布失败: 当前资产范围与领域 '{duplicate.code}' 完全重复，请复用已有领域或调整候选资产"
             )
         domain = DomainDefinition(**{**domain.model_dump(mode="json"), "status": "active"})
         self._domain_repo.save(domain)
@@ -260,18 +313,9 @@ class DomainModelingService:
         return self.publish_domain(domain_id, cubes=cubes)
 
     def add_join(self, domain_id: str, payload: Dict[str, Any]) -> DomainDefinition:
-        domain = self._find_domain(domain_id)
-        joins = [item.model_dump(mode="json") for item in domain.joins]
-        join = DomainJoinDef(**payload)
-        joins = [
-            item
-            for item in joins
-            if not (
-                item["source_cube"] == join.source_cube
-                and item["target_cube"] == join.target_cube
-            )
-        ] + [join.model_dump(mode="json")]
-        return self.publish_domain(domain_id, joins=joins)
+        raise ApplicationException(
+            "Domain 已收窄为业务上下文和资产组织对象，不再维护 Join；请在 Cube 技术语义或 Ontology 业务关系中建模"
+        )
 
     def validate_domain(self, domain: DomainDefinition) -> List[Dict[str, Any]]:
         diagnostics: List[Dict[str, Any]] = []
@@ -294,38 +338,6 @@ class DomainModelingService:
                         "message": f"领域发布只允许 active Cube，当前 {cube_name} 为 {cube.status}",
                     }
                 )
-        domain_cube_set = set(domain.cubes)
-        seen_edges = set()
-        adjacency: Dict[str, List[str]] = defaultdict(list)
-        for join in domain.joins:
-            if join.source_cube not in domain_cube_set or join.target_cube not in domain_cube_set:
-                diagnostics.append(
-                    {
-                        "level": "error",
-                        "kind": "join_cube_outside_domain",
-                        "message": f"Join {join.source_cube} -> {join.target_cube} 引用了不在领域中的 Cube",
-                    }
-                )
-            edge_key = (join.source_cube, join.target_cube)
-            if edge_key in seen_edges:
-                diagnostics.append(
-                    {
-                        "level": "error",
-                        "kind": "duplicate_edge",
-                        "message": f"领域内存在重复同向边: {join.source_cube} -> {join.target_cube}",
-                    }
-                )
-            seen_edges.add(edge_key)
-            adjacency[join.source_cube].append(join.target_cube)
-
-        if self._has_cycle(domain.cubes, adjacency):
-            diagnostics.append(
-                {
-                    "level": "error",
-                    "kind": "cyclic_graph",
-                    "message": "领域关系图存在环路，不能发布",
-                }
-            )
         return diagnostics
 
     def _ensure_default_catalog(self) -> None:
@@ -402,6 +414,7 @@ class DomainModelingService:
             return
         try:
             payload = domain.model_dump(mode="json", exclude_none=True)
+            payload["joins"] = []
             digest = hashlib.sha1(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
             fingerprint = self._build_domain_fingerprint(domain)
             self._registry_repo.upsert(
@@ -414,7 +427,6 @@ class DomainModelingService:
                 last_published_at=datetime.utcnow() if domain.status == "active" else None,
                 lineage_summary={
                     "cube_count": len(domain.cubes),
-                    "join_count": len(domain.joins),
                     "cubes": list(domain.cubes),
                 },
                 source_binding_summary={"domain_code": domain.code, "domain_name": domain.name},
@@ -452,7 +464,7 @@ class DomainModelingService:
             "active_cube_count": 0,
             "draft_cube_count": 0,
             "deprecated_cube_count": 0,
-            "join_count": len(domain.joins),
+            "join_count": 0,
             "dangling_cube_count": 0,
         }
         for cube_name in domain.cubes:
@@ -517,29 +529,9 @@ class DomainModelingService:
     def _build_domain_fingerprint(domain: DomainDefinition) -> str:
         normalized = {
             "cubes": sorted(domain.cubes),
-            "joins": sorted(
-                [
-                    {
-                        "source_cube": join.source_cube,
-                        "target_cube": join.target_cube,
-                        "source_field": join.source_field,
-                        "target_field": join.target_field,
-                        "join_type": join.join_type,
-                        "cardinality": join.cardinality,
-                        "aggregation_strategy": join.aggregation_strategy,
-                    }
-                    for join in domain.joins
-                ],
-                key=lambda item: (
-                    item["source_cube"],
-                    item["target_cube"],
-                    item["source_field"],
-                    item["target_field"],
-                    item["join_type"],
-                    item["cardinality"],
-                    item["aggregation_strategy"],
-                ),
-            ),
+            "ontology_refs": domain.ontology_refs,
+            "default_context": domain.default_context,
+            "agent_hints": domain.agent_hints,
         }
         payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
         return hashlib.sha1(payload.encode("utf-8")).hexdigest()
@@ -552,23 +544,3 @@ class DomainModelingService:
             if self._build_domain_fingerprint(existing) == fingerprint:
                 return existing
         return None
-
-    @staticmethod
-    def _has_cycle(nodes: List[str], adjacency: Dict[str, List[str]]) -> bool:
-        visited = set()
-        visiting = set()
-
-        def dfs(node: str) -> bool:
-            if node in visiting:
-                return True
-            if node in visited:
-                return False
-            visiting.add(node)
-            for neighbor in adjacency.get(node, []):
-                if dfs(neighbor):
-                    return True
-            visiting.remove(node)
-            visited.add(node)
-            return False
-
-        return any(dfs(node) for node in nodes)

@@ -11,7 +11,7 @@ from app.application.semantic.semantic_runtime_binding_service import (
 )
 from app.domain.semantic.compiler import CompilationError, CompileResult, QueryCompiler
 from app.domain.semantic.dialects import MaxComputeDialect, SQLDialect
-from app.domain.semantic.entities import CubeDefinition, DomainDefinition, JoinDef, QueryDSL
+from app.domain.semantic.entities import CubeDefinition, DomainDefinition, QueryDSL
 from app.domain.semantic.join_graph import JoinGraph
 from app.domain.semantic.ports.cube_repository import ICubeRepository
 from app.domain.semantic.ports.domain_repository import IDomainRepository
@@ -134,7 +134,7 @@ class SemanticQueryService:
                 self._dialect = dialect
                 self._compiler = QueryCompiler(self.get_join_graph(), self._dialect)
             return self._compiler
-        return QueryCompiler(self._build_domain_join_graph(domain), dialect)
+        return QueryCompiler(self._build_domain_scoped_join_graph(domain), dialect)
 
     def _resolve_dialect(self, dsl: QueryDSL) -> SQLDialect:
         if self._runtime_binding_service is None:
@@ -253,29 +253,20 @@ class SemanticQueryService:
             raise CompilationError(f"领域 '{domain.code}' 当前状态为 '{domain.status}'，不能进入默认查询链路")
         return domain
 
-    def _build_domain_join_graph(self, domain: DomainDefinition) -> JoinGraph:
+    def _build_domain_scoped_join_graph(self, domain: DomainDefinition) -> JoinGraph:
+        """按 Domain 候选资产裁剪 Cube JoinGraph，不从 Domain 注入 Join 语义。"""
         domain_cubes: Dict[str, CubeDefinition] = {}
+        domain_cube_names = set(domain.cubes)
         for cube_name in domain.cubes:
             cube = self._cube_repo.get(cube_name)
             if cube is None:
                 raise CompilationError(f"领域 '{domain.code}' 引用了不存在的 Cube: {cube_name}")
             payload = cube.model_dump(mode="json")
-            payload["joins"] = {}
+            payload["joins"] = {
+                alias: join
+                for alias, join in (payload.get("joins") or {}).items()
+                if isinstance(join, dict) and join.get("cube") in domain_cube_names
+            }
             domain_cubes[cube_name] = CubeDefinition(**payload)
-
-        for join in domain.joins:
-            source_cube = domain_cubes.get(join.source_cube)
-            target_cube = domain_cubes.get(join.target_cube)
-            if source_cube is None or target_cube is None:
-                raise CompilationError(
-                    f"领域 '{domain.code}' 的 Join 引用了不存在的 Cube: {join.source_cube} -> {join.target_cube}"
-                )
-            source_cube.joins[join.name] = JoinDef(
-                cube=join.target_cube,
-                type="left_each" if join.join_type == "left_each" else join.join_type,  # 兼容旧字段
-                relationship=join.cardinality,
-                sql=f"{{CUBE}}.{join.source_field} = {{{join.target_cube}}}.{join.target_field}",
-                context=domain.code,
-            )
 
         return JoinGraph(list(domain_cubes.values()))

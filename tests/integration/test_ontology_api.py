@@ -36,7 +36,7 @@ def _build_sample_cube_repo(tmp_path) -> YamlCubeRepository:
         CubeDefinition(
             name="orders",
             title="订单",
-            table="ods.orders",
+            table="dws.orders",
             source_id=1,
             source_database="dw",
             dimensions={
@@ -328,7 +328,7 @@ def test_ontology_foundation_and_preview_flow(tmp_path):
     assert compile_resp.status_code == 200
     compile_payload = compile_resp.get_json()["data"]
     assert compile_payload["status"] == "ready"
-    assert "FROM ods.orders" in compile_payload["pseudo_sql"]
+    assert "FROM dws.orders" in compile_payload["pseudo_sql"]
     assert compile_payload["traceability"]["analysis_measure"]["measure_ref"] == "orders.gmv"
 
     retrieval_compile_resp = client.post(

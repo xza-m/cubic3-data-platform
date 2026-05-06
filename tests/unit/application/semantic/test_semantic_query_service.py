@@ -3,7 +3,7 @@ import pytest
 from app.application.semantic.semantic_query_service import SemanticQueryService
 from app.domain.semantic.compiler import CompilationError
 from app.domain.semantic.dialects import MaxComputeDialect
-from app.domain.semantic.entities import CubeDefinition, DimensionDef, DomainDefinition, MeasureDef, QueryDSL
+from app.domain.semantic.entities import CubeDefinition, DimensionDef, DomainDefinition, JoinDef, MeasureDef, QueryDSL
 
 
 class _CubeRepo:
@@ -46,7 +46,7 @@ class _RuntimeBindingService:
         return self.adapter, {"id": cube.source_id}, cube.source_database, cube
 
 
-def _cube(name: str) -> CubeDefinition:
+def _cube(name: str, joins: dict | None = None) -> CubeDefinition:
     return CubeDefinition(
         name=name,
         title=name,
@@ -59,6 +59,7 @@ def _cube(name: str) -> CubeDefinition:
             "student_id": DimensionDef(title="学生ID", type="number", sql="{CUBE}.student_id"),
         },
         measures={"total_count": MeasureDef(title="总数", type="count", sql="{CUBE}.id")},
+        joins=joins or {},
     )
 
 
@@ -74,7 +75,41 @@ def test_multi_cube_query_requires_domain_context():
         )
 
 
-def test_domain_context_builds_join_graph():
+def test_domain_context_scopes_cube_join_graph_without_owning_join_semantics():
+    domain = DomainDefinition(
+        code="academic",
+        name="学业域",
+        status="active",
+        cubes=["answer_records", "student"],
+    )
+    answer_records = _cube(
+        "answer_records",
+        joins={
+            "answer_to_student": JoinDef(
+                cube="student",
+                type="left",
+                relationship="N:1",
+                sql="{CUBE}.student_id = {student}.id",
+            )
+        },
+    )
+    service = SemanticQueryService(
+        cube_repo=_CubeRepo([answer_records, _cube("student")]),
+        domain_repo=_DomainRepo([domain]),
+    )
+
+    result = service.compile_query(
+        {
+            "measures": ["answer_records.total_count"],
+            "dimensions": ["student.id"],
+            "domain_code": "academic",
+        }
+    )
+
+    assert "LEFT JOIN public.student student ON answer_records.student_id = student.id" in result.sql
+
+
+def test_domain_context_does_not_inject_join_semantics():
     domain = DomainDefinition(
         code="academic",
         name="学业域",
@@ -98,15 +133,14 @@ def test_domain_context_builds_join_graph():
         domain_repo=_DomainRepo([domain]),
     )
 
-    result = service.compile_query(
-        {
-            "measures": ["answer_records.total_count"],
-            "dimensions": ["student.id"],
-            "domain_code": "academic",
-        }
-    )
-
-    assert "LEFT JOIN public.student student ON answer_records.student_id = student.id" in result.sql
+    with pytest.raises(Exception, match="No JOIN path|join path not found|关联路径不存在|not found"):
+        service.compile_query(
+            {
+                "measures": ["answer_records.total_count"],
+                "dimensions": ["student.id"],
+                "domain_code": "academic",
+            }
+        )
 
 
 def test_multi_cube_query_rejects_non_active_domain():
@@ -239,7 +273,7 @@ def test_get_join_graph_caches_when_no_getter():
     assert third is not first
 
 
-def test_build_domain_join_graph_rejects_missing_cube_and_bad_join_reference():
+def test_build_domain_scoped_join_graph_rejects_missing_cube():
     domain = DomainDefinition(
         code="academic",
         name="学业域",
@@ -261,32 +295,7 @@ def test_build_domain_join_graph_rejects_missing_cube_and_bad_join_reference():
     service = SemanticQueryService(cube_repo=_CubeRepo([_cube("answer_records")]))
 
     with pytest.raises(CompilationError, match="引用了不存在的 Cube: student"):
-        service._build_domain_join_graph(domain)
-
-    broken_service = SemanticQueryService(
-        cube_repo=_CubeRepo([_cube("answer_records"), _cube("student")])
-    )
-    domain = DomainDefinition(
-        code="academic",
-        name="学业域",
-        status="active",
-        cubes=["answer_records"],
-        joins=[
-            {
-                "name": "ghost_join",
-                "source_cube": "answer_records",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            }
-        ],
-    )
-
-    with pytest.raises(CompilationError, match="Join 引用了不存在的 Cube"):
-        broken_service._build_domain_join_graph(domain)
+        service._build_domain_scoped_join_graph(domain)
 
 
 def test_infer_primary_cube_and_friendly_hints_cover_remaining_branches():

@@ -40,11 +40,13 @@ from .interfaces.api.v1.subscriptions import app_instance_subscriptions_bp
 
 # 语义层 API v1
 from .interfaces.api.v1.semantic import create_semantic_blueprint
+from .interfaces.api.v1.semantic_modeling_agent import create_semantic_modeling_agent_blueprint
 from .interfaces.api.v1.ontology import create_ontology_blueprint
 from .interfaces.api.v1.semantic_mapper import create_semantic_mapper_blueprint
 from .interfaces.api.v1.semantic_router import create_semantic_router_blueprint
 from .interfaces.api.v1.execution_compiler import create_execution_compiler_blueprint
 from .interfaces.api.v1.governance import create_governance_blueprint
+from .interfaces.api.v1.agent import create_agent_blueprint
 from .interfaces.api.v1.scheduled_queries import bp as scheduled_queries_v1_bp
 
 from .infrastructure.scheduler import init_jobs
@@ -107,6 +109,7 @@ def create_app(role: str = "web") -> Flask:
     from .domain.semantic.diagnose_run import DiagnoseRun  # noqa
     from .domain.entities.user_preferences import UserPreferences  # noqa  B-back-1
     from .infrastructure.users.models import UserORM, RoleORM, UserRoleORM, UserPasswordORM  # noqa  W4.D-2
+    from .infrastructure.governance.models import GovernanceAuditTraceORM  # noqa
 
     # 注册执行器（worker 执行任务时需要）
     from .executors import register_all_executors
@@ -157,6 +160,9 @@ def create_app(role: str = "web") -> Flask:
             dataset_handler=container.create_dataset_handler(),
             registry_repo=container.semantic_registry_repository(),
         ))
+        app.register_blueprint(create_semantic_modeling_agent_blueprint(
+            container.semantic_modeling_agent(),
+        ))
         app.register_blueprint(create_ontology_blueprint(
             container.ontology_definition_service(),
             container.semantic_mapper_preview_service(),
@@ -172,6 +178,9 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_semantic_router_blueprint(
             container.semantic_router_preview_service(),
+        ))
+        app.register_blueprint(create_agent_blueprint(
+            container.agent_plan_handler(),
         ))
         app.register_blueprint(create_governance_blueprint(
             container.ontology_audit_trace_repository(),

@@ -5,7 +5,7 @@ SHELL := /bin/bash
 PYTHON ?= python
 NPM ?= npm
 FRONTEND_DIR := frontend
-DOMAIN_SMOKE_BASE_URL ?= http://127.0.0.1:3000
+DOMAIN_SMOKE_BASE_URL ?= http://127.0.0.1:3102
 VERIFY_FILES ?=
 VERIFY_BASE ?=
 VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(VERIFY_FILES)),,--worktree))
@@ -28,6 +28,8 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	verify-changed \
 	review \
 	verify-semantic \
+	test-agent-runtime \
+	test-modeling-agent \
 	smoke-semantic \
 	docs-health \
 	docs-impact \
@@ -77,6 +79,8 @@ help:
 	@printf '  %-26s %s\n' 'make verify-changed' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 执行最低必跑 verify-* 目标'
 	@printf '  %-26s %s\n' 'make review' '审阅前总入口（verify + docs-health + docs-impact）'
 	@printf '  %-26s %s\n' 'make verify-semantic' '语义中心专项总入口（共享层 + 语义 smoke）'
+	@printf '  %-26s %s\n' 'make test-agent-runtime' 'Agent-first Runtime official 链路测试'
+	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Agent 与 Domain 上下文最小链路测试'
 	@printf '  %-26s %s\n' 'make smoke-semantic' '语义中心关键路径运行验证'
 	@printf '  %-26s %s\n' 'make coverage' 'coverage 聚合入口（backend + frontend，可选，不并入默认四层）'
 	@printf '  %-26s %s\n' 'make coverage-backend' '后端完整 pytest 覆盖率 + ratchet 防倒退校验（scripts/backend_coverage_rules.json）'
@@ -153,7 +157,8 @@ typecheck-backend:
 	@printf '%s\n' '[layer2][backend] skip: 当前仓库未配置 mypy / pyright 统一入口'
 
 typecheck-contracts:
-	@printf '%s\n' '[layer2][contracts] skip: 当前仓库未配置 OpenAPI / protobuf / GraphQL 一致性检查'
+	@printf '%s\n' '[layer2][contracts] 校验 OpenAPI Agent 契约'
+	PYTHONPATH=. $(PYTHON) scripts/checks/openapi_contracts.py
 
 build-frontend:
 	@printf '%s\n' '[layer2][build][frontend] 运行 v2 生产构建（vite build --config v2.vite.config.ts）'
@@ -254,7 +259,26 @@ verify-changed:
 	@printf '%s\n' '[routing] 按规则检测结果执行当前改动的最低必跑交付入口'
 	$(PYTHON) scripts/checks/changed_validation.py --execute $(VERIFY_CONTEXT) $(VERIFY_FILES)
 
-verify-semantic: verify-backend verify-frontend smoke-semantic
+test-modeling-agent:
+	@printf '%s\n' '[layer3][modeling-agent] 运行建模助手 Agent 与 Domain 上下文最小链路测试'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
+		tests/unit/domain/semantic/test_entities.py::TestDomainEntities::test_domain_definition_accepts_context_fields_without_join_truth \
+		tests/unit/application/semantic/test_domain_modeling_service.py::test_domain_context_preview_returns_candidate_scope_without_join_truth \
+		tests/integration/test_semantic_api.py::TestDomainsEndpoint::test_domain_context_preview_returns_candidate_scope \
+		tests/unit/application/semantic/test_semantic_modeling_agent.py \
+		tests/integration/test_semantic_modeling_agent_api.py
+	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx
+
+test-agent-runtime:
+	@printf '%s\n' '[layer3][agent-runtime] 运行 Agent-first official Runtime 最小链路测试'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
+		tests/unit/application/semantic_router/test_preview_service.py::test_official_runtime_only_matches_active_ontology_and_glossary_targets \
+		tests/unit/application/semantic_router/test_preview_service.py::test_router_routes_metric_and_alias_to_cube \
+		tests/unit/application/execution_compiler/test_execution_compiler_preview_service.py \
+		tests/unit/application/test_agent_plan_handler.py::test_agent_plan_handler_orchestrates_semantic_plan_and_ticket_preview \
+		tests/integration/test_agent_semantic_api.py::test_agent_semantic_plan_api_returns_preview_only_ticket
+
+verify-semantic: test-agent-runtime test-modeling-agent verify-backend verify-frontend smoke-semantic
 
 coverage: coverage-backend coverage-frontend
 

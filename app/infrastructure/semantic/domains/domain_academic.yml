@@ -2,7 +2,7 @@ id: academic
 code: academic
 name: 学业分析域
 catalog_code: learning
-description: 学业分析和学习行为相关的领域关系模型。
+description: 学业分析和学习行为相关的业务上下文，用于组织候选 Cube 与本体引用。
 status: active
 owner: semantic-team
 cubes:
@@ -10,31 +10,4 @@ cubes:
   - student
   - question
   - knowledge
-joins:
-  - name: answer_records_to_student
-    source_cube: answer_records
-    target_cube: student
-    source_field: student_id
-    target_field: user_id
-    join_type: left
-    cardinality: N:1
-    aggregation_strategy: none
-    description: 答题记录关联学生维表
-  - name: answer_records_to_question
-    source_cube: answer_records
-    target_cube: question
-    source_field: question_id
-    target_field: question_id
-    join_type: left
-    cardinality: N:1
-    aggregation_strategy: none
-    description: 答题记录关联题目维表
-  - name: answer_records_to_knowledge
-    source_cube: answer_records
-    target_cube: knowledge
-    source_field: knowledge_id
-    target_field: node_id
-    join_type: left
-    cardinality: N:1
-    aggregation_strategy: none
-    description: 答题记录关联知识点维表
+joins: []

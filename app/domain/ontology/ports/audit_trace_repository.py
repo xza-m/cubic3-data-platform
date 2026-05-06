@@ -25,6 +25,9 @@ class IGovernanceAuditTraceRepository(ABC):
         target_name: str | None = None,
         decision: str | None = None,
         route_type: str | None = None,
+        principal_id: str | None = None,
+        semantic_plan_id: str | None = None,
+        sql_hash: str | None = None,
     ) -> List[GovernanceAuditTrace]: ...
 
     @abstractmethod

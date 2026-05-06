@@ -47,27 +47,27 @@ class SemanticMapperPreviewService:
             entity = self._object_repository.get(entity_name)
             if entity is None:
                 raise ValueError(f"未找到业务对象: {entity_name}")
-            return self._preview_object(entity)
+            return self._with_binding_contract(self._preview_object(entity))
         if entity_type == "metric":
             entity = self._metric_repository.get(entity_name)
             if entity is None:
                 raise ValueError(f"未找到业务指标: {entity_name}")
-            return self._preview_metric(entity)
+            return self._with_binding_contract(self._preview_metric(entity))
         if entity_type == "relation":
             entity = self._relation_repository.get(entity_name)
             if entity is None:
                 raise ValueError(f"未找到业务关系: {entity_name}")
-            return self._preview_relation(entity)
+            return self._with_binding_contract(self._preview_relation(entity))
         if entity_type == "action":
             entity = self._action_repository.get(entity_name)
             if entity is None:
                 raise ValueError(f"未找到业务动作: {entity_name}")
-            return self._preview_action(entity)
+            return self._with_binding_contract(self._preview_action(entity))
         if entity_type == "glossary":
             entity = self._glossary_repository.get(entity_name)
             if entity is None:
                 raise ValueError(f"未找到术语: {entity_name}")
-            return self._preview_glossary(entity)
+            return self._with_binding_contract(self._preview_glossary(entity))
         raise ValueError(f"不支持的预览类型: {entity_type}")
 
     def consistency_report(self) -> Dict[str, Any]:
@@ -421,7 +421,9 @@ class SemanticMapperPreviewService:
                 {
                     "target_type": "measure",
                     "target_name": f"{cube.name}.{measure_name}",
+                    "measure_ref": f"{cube.name}.{measure_name}",
                     "cube_name": cube.name,
+                    "measure_name": measure_name,
                     "measure_title": measure.title,
                     "match_reason": "显式 measure_refs 映射",
                 }
@@ -436,7 +438,9 @@ class SemanticMapperPreviewService:
                         {
                             "target_type": "measure",
                             "target_name": f"{cube.name}.{measure_name}",
+                            "measure_ref": f"{cube.name}.{measure_name}",
                             "cube_name": cube.name,
+                            "measure_name": measure_name,
                             "measure_title": measure.title,
                             "score": score,
                             "match_reason": "名称/标题/别名匹配",
@@ -609,6 +613,64 @@ class SemanticMapperPreviewService:
         if cube is None or measure_name not in cube.measures:
             return None
         return cube, measure_name
+
+    def _with_binding_contract(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        resolved_bindings = [self._normalize_binding(target) for target in payload.get("projection", {}).get("targets", [])]
+        issues = [str(issue) for issue in payload.get("consistency", {}).get("issues", [])]
+        consistency_status = str(payload.get("consistency", {}).get("status") or "warning")
+        if consistency_status == "ok":
+            binding_status = "linked" if resolved_bindings else "unlinked"
+        elif consistency_status == "stale":
+            binding_status = "stale"
+        else:
+            binding_status = "partial" if resolved_bindings else "unlinked"
+        projection_result = {
+            "projection": payload.get("projection", {}),
+            "resolved_bindings": resolved_bindings,
+            "binding_status": binding_status,
+            "binding_issues": issues,
+        }
+        return {
+            **payload,
+            "projection_result": projection_result,
+            "resolved_bindings": resolved_bindings,
+            "binding_status": binding_status,
+            "binding_issues": issues,
+        }
+
+    @staticmethod
+    def _normalize_binding(target: Dict[str, Any]) -> Dict[str, Any]:
+        target_type = str(target.get("target_type") or "")
+        target_name = str(target.get("target_name") or "")
+        binding: Dict[str, Any] = {
+            "target_type": target_type,
+            "target_name": target_name,
+            "status": "linked",
+            "match_reason": target.get("match_reason"),
+        }
+        if target_type == "measure":
+            measure_ref = str(target.get("measure_ref") or target_name)
+            cube_name, _, measure_name = measure_ref.partition(".")
+            binding.update(
+                {
+                    "measure_ref": measure_ref,
+                    "cube_name": str(target.get("cube_name") or cube_name),
+                    "measure_name": str(target.get("measure_name") or measure_name),
+                }
+            )
+        elif target_type == "cube":
+            binding["cube_name"] = target_name
+        elif target_type == "join_path":
+            binding.update(
+                {
+                    "join_path": target.get("join_path"),
+                    "source_cube": target.get("source_cube"),
+                    "target_cube": target.get("target_cube"),
+                }
+            )
+        elif target_type == "event_cube":
+            binding["cube_name"] = target_name
+        return binding
 
     @staticmethod
     def _match_score(primary_name: str, title: str, aliases: Iterable[str], candidates: Iterable[str]) -> int:

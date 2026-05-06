@@ -1908,7 +1908,6 @@ def test_semantic_routes_cover_remaining_success_and_not_found_branches():
     domain_modeling_service.get_domain_detail.return_value = {'code': 'learning', 'name': '学习域'}
     domain_modeling_service.update_domain.return_value = SimpleNamespace(id='learning', code='learning')
     domain_modeling_service.add_cube.return_value = SimpleNamespace(id='learning', code='learning')
-    domain_modeling_service.add_join.return_value = SimpleNamespace(id='learning', code='learning')
 
     app = Flask(__name__)
     app.config['TESTING'] = True
@@ -1953,7 +1952,9 @@ def test_semantic_routes_cover_remaining_success_and_not_found_branches():
         '/api/v1/semantic/domains/learning/joins',
         json={'source_cube': 'orders', 'target_cube': 'students'},
     )
-    assert add_join_resp.status_code == 200
+    assert add_join_resp.status_code == 400
+    assert '不再维护 Join' in add_join_resp.get_json()['message']
+    domain_modeling_service.add_join.assert_not_called()
 
 
 def test_feishu_routes_cover_events_p2p_admin_and_card_actions(monkeypatch):

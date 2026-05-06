@@ -6,6 +6,7 @@ import re
 from typing import Any, Callable, Dict, Optional
 import uuid
 
+from app.application.governance.access import AccessPolicyDecisionService, PrincipalResolver
 from app.application.query.commands.execute_query import ExecuteQueryCommand
 from app.domain.ontology.entities import GovernanceAuditTrace
 
@@ -31,12 +32,16 @@ class ExecutionCompilerRuntimeService:
         knowledge_service=None,
         semantic_service=None,
         audit_trace_repository=None,
+        principal_resolver=None,
+        access_policy_service=None,
     ):
         self._preview_service = preview_service
         self._execute_query_handler_factory = execute_query_handler_factory
         self._knowledge_service = knowledge_service
         self._semantic_service = semantic_service
         self._audit_trace_repository = audit_trace_repository
+        self._principal_resolver = principal_resolver or PrincipalResolver()
+        self._access_policy_service = access_policy_service or AccessPolicyDecisionService()
 
     def execute(
         self,
@@ -48,7 +53,10 @@ class ExecutionCompilerRuntimeService:
         tool_name: Optional[str] = None,
         tool_arguments: Optional[Dict[str, Any]] = None,
         viewer_roles: Optional[list[str]] = None,
+        principal_context: Optional[dict[str, Any]] = None,
         route_type: Optional[str] = None,
+        approval_id: Optional[str] = None,
+        semantic_plan_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         preview = self._preview_service.compile_preview(
             target_type=target_type,
@@ -58,6 +66,12 @@ class ExecutionCompilerRuntimeService:
             tool_name=tool_name,
             tool_arguments=tool_arguments,
             viewer_roles=viewer_roles,
+            principal_context=principal_context,
+        )
+        principal = self._principal_resolver.resolve(
+            principal_context=principal_context,
+            viewer_roles=viewer_roles,
+            authenticated_user=None,
         )
 
         resolved_target_type = (preview.get("target_type") or target_type or "").strip().lower()
@@ -66,6 +80,7 @@ class ExecutionCompilerRuntimeService:
                 preview=preview,
                 execution_status="blocked",
                 viewer_roles=viewer_roles,
+                principal_context=principal.to_dict(),
             )
             audit_trace_id = self._record_audit_trace(
                 preview=preview,
@@ -79,6 +94,41 @@ class ExecutionCompilerRuntimeService:
                 "execution_request": preview.get("execution_request"),
                 "bindings": preview.get("bindings", {}),
                 "policy": preview.get("policy"),
+                "traceability": preview.get("traceability", {}),
+                "governance_trace": governance_trace,
+                "audit_trace_id": audit_trace_id,
+            }
+
+        policy_decision = self._access_policy_service.post_compile(
+            principal=principal,
+            compiled_targets=[preview],
+            approval_id=approval_id,
+        )
+        preview["_policy_decision"] = policy_decision.to_dict()
+        preview["_ticket_preview"] = policy_decision.ticket_preview
+        preview["_principal_context"] = principal.to_dict()
+        preview["_semantic_plan_id"] = semantic_plan_id
+        if policy_decision.decision != "allow":
+            governance_trace = self._build_governance_trace(
+                preview=preview,
+                execution_status="blocked",
+                viewer_roles=viewer_roles,
+                principal_context=principal.to_dict(),
+            )
+            audit_trace_id = self._record_audit_trace(
+                preview=preview,
+                governance_trace=governance_trace,
+                route_type=route_type,
+            )
+            return {
+                "status": "blocked",
+                "target_type": resolved_target_type,
+                "reason": policy_decision.reason,
+                "execution_request": preview.get("execution_request"),
+                "bindings": preview.get("bindings", {}),
+                "policy": preview.get("policy"),
+                "policy_decision": policy_decision.to_dict(),
+                "ticket_preview": policy_decision.ticket_preview,
                 "traceability": preview.get("traceability", {}),
                 "governance_trace": governance_trace,
                 "audit_trace_id": audit_trace_id,
@@ -131,6 +181,8 @@ class ExecutionCompilerRuntimeService:
             "result": result,
             "bindings": preview.get("bindings", {}),
             "policy": preview.get("policy"),
+            "policy_decision": preview.get("_policy_decision"),
+            "ticket_preview": preview.get("_ticket_preview"),
             "traceability": preview.get("traceability", {}),
             "governance_trace": governance_trace,
             "audit_trace_id": audit_trace_id,
@@ -161,6 +213,8 @@ class ExecutionCompilerRuntimeService:
                 "execution_request": execution_request,
                 "bindings": preview.get("bindings", {}),
                 "policy": preview.get("policy"),
+                "policy_decision": preview.get("_policy_decision"),
+                "ticket_preview": preview.get("_ticket_preview"),
                 "traceability": preview.get("traceability", {}),
                 "governance_trace": governance_trace,
                 "audit_trace_id": audit_trace_id,
@@ -190,6 +244,8 @@ class ExecutionCompilerRuntimeService:
             "result": result,
             "bindings": preview.get("bindings", {}),
             "policy": preview.get("policy"),
+            "policy_decision": preview.get("_policy_decision"),
+            "ticket_preview": preview.get("_ticket_preview"),
             "traceability": preview.get("traceability", {}),
             "governance_trace": governance_trace,
             "audit_trace_id": audit_trace_id,
@@ -239,6 +295,8 @@ class ExecutionCompilerRuntimeService:
                 "execution_request": execution_request,
                 "bindings": preview.get("bindings", {}),
                 "policy": preview.get("policy"),
+                "policy_decision": preview.get("_policy_decision"),
+                "ticket_preview": preview.get("_ticket_preview"),
                 "traceability": preview.get("traceability", {}),
                 "governance_trace": governance_trace,
                 "audit_trace_id": audit_trace_id,
@@ -261,6 +319,8 @@ class ExecutionCompilerRuntimeService:
             "result": result,
             "bindings": preview.get("bindings", {}),
             "policy": preview.get("policy"),
+            "policy_decision": preview.get("_policy_decision"),
+            "ticket_preview": preview.get("_ticket_preview"),
             "traceability": preview.get("traceability", {}),
             "governance_trace": governance_trace,
             "audit_trace_id": audit_trace_id,
@@ -272,23 +332,30 @@ class ExecutionCompilerRuntimeService:
         preview: Dict[str, Any],
         execution_status: str,
         viewer_roles: Optional[list[str]] = None,
+        principal_context: Optional[dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         policy = preview.get("policy") or {}
         bindings = preview.get("bindings") or {}
         matched_policy = policy.get("matched_policy")
+        policy_decision = preview.get("_policy_decision") or {}
         return {
-            "status": policy.get("status", "allow"),
+            "status": policy_decision.get("decision") or policy.get("status", "allow"),
             "visibility": policy.get("visibility", "public"),
             "matched_policy": matched_policy,
             "required_roles": policy.get("required_roles", []),
             "viewer_roles": viewer_roles or [],
+            "principal_context": principal_context or preview.get("_principal_context") or {},
             "target_type": preview.get("target_type"),
             "target_name": bindings.get("metric_name")
             or bindings.get("tool_name")
             or bindings.get("retrieval_query")
             or "unknown",
+            "data_level": preview.get("data_level"),
+            "resource_set": preview.get("resource_set") or [],
+            "sql_hash": preview.get("sql_hash"),
+            "policy_decision": policy_decision,
             "execution_status": execution_status,
-            "reason": preview.get("reason") or policy.get("reason"),
+            "reason": policy_decision.get("reason") or preview.get("reason") or policy.get("reason"),
         }
 
     def _record_audit_trace(
@@ -301,16 +368,21 @@ class ExecutionCompilerRuntimeService:
         if self._audit_trace_repository is None:
             return None
         trace_id = uuid.uuid4().hex
+        principal_context = governance_trace.get("principal_context") or {}
         self._audit_trace_repository.save(
             GovernanceAuditTrace(
                 id=trace_id,
                 target_type=str(governance_trace.get("target_type") or preview.get("target_type") or "unknown"),
                 target_name=str(governance_trace.get("target_name") or "unknown"),
+                principal_id=principal_context.get("principal_id"),
+                semantic_plan_id=preview.get("_semantic_plan_id"),
+                sql_hash=preview.get("sql_hash"),
                 viewer_roles=list(governance_trace.get("viewer_roles") or []),
                 route_type=(route_type or "direct").strip() or "direct",
                 execution_target=str(preview.get("target_type") or "unknown"),
                 decision=str(governance_trace.get("status") or "allow"),
                 policy=governance_trace.get("matched_policy"),
+                policy_decision=governance_trace.get("policy_decision") or {},
                 traceability=preview.get("traceability") or {},
                 reason=governance_trace.get("reason"),
                 timestamp=datetime.utcnow().isoformat(timespec="microseconds"),

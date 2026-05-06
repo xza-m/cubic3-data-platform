@@ -130,7 +130,7 @@ def test_get_canvas_handles_missing_domain_and_registry_failures():
     assert any(item["name"] == "active_cube" for item in data["library_cubes"])
 
 
-def test_get_canvas_includes_registry_summaries_and_edges():
+def test_get_canvas_includes_registry_summaries_without_domain_edges():
     domain = DomainDefinition(
         code="academic",
         name="学业域",
@@ -167,7 +167,7 @@ def test_get_canvas_includes_registry_summaries_and_edges():
 
     assert data["domain"]["state_summary"]["sync_status"] == "warn"
     assert data["nodes"][0]["source_binding_summary"] == {"display": "dws.answer_records"}
-    assert data["edges"][0]["description"] == "答题关联学生"
+    assert data["edges"] == []
 
 
 def test_get_canvas_uses_default_catalog_name_for_blank_catalog_code():
@@ -236,7 +236,7 @@ def test_get_canvas_includes_governance_summary_and_related_domain_projections()
         "active_cube_count": 1,
         "draft_cube_count": 1,
         "deprecated_cube_count": 0,
-        "join_count": 1,
+        "join_count": 0,
         "dangling_cube_count": 0,
     }
     assert orders_node["related_domain_ids"] == ["academic", "teaching"]

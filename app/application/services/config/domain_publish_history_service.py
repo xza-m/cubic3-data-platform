@@ -117,27 +117,33 @@ class DomainPublishHistoryService:
         prev_snapshot: Optional[Dict[str, Any]],
         next_snapshot: Dict[str, Any],
     ) -> str:
-        """粗粒度差异摘要: cubes/joins 数量变化"""
+        """粗粒度差异摘要: 资产范围与业务上下文变化。"""
         def _len(snapshot: Optional[Dict[str, Any]], key: str) -> int:
             if not isinstance(snapshot, dict):
                 return 0
             value = snapshot.get(key) or []
             return len(value) if isinstance(value, list) else 0
 
+        def _context(snapshot: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+            if not isinstance(snapshot, dict):
+                return {}
+            return {
+                "ontology_refs": snapshot.get("ontology_refs") or {},
+                "default_context": snapshot.get("default_context") or {},
+                "agent_hints": snapshot.get("agent_hints") or {},
+            }
+
         prev_cubes = _len(prev_snapshot, 'cubes')
-        prev_joins = _len(prev_snapshot, 'joins')
         next_cubes = _len(next_snapshot, 'cubes')
-        next_joins = _len(next_snapshot, 'joins')
 
         parts: List[str] = []
         if next_cubes != prev_cubes:
             delta = next_cubes - prev_cubes
             parts.append(f"{'+' if delta > 0 else ''}{delta} cubes")
-        if next_joins != prev_joins:
-            delta = next_joins - prev_joins
-            parts.append(f"{'+' if delta > 0 else ''}{delta} joins")
+        if _context(prev_snapshot) != _context(next_snapshot):
+            parts.append("context changed")
         if not parts:
-            parts.append("no structural change")
+            parts.append("no asset/context change")
         return ", ".join(parts)
 
     @staticmethod

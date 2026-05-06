@@ -18,14 +18,22 @@ def create_governance_blueprint(audit_repository):
         target_name = (request.args.get("target_name") or "").strip() or None
         decision = (request.args.get("decision") or "").strip() or None
         route_type = (request.args.get("route_type") or "").strip() or None
-        if policy_name or target_type or target_name or decision or route_type:
-            items = audit_repository.list_filtered(
-                policy_name=policy_name or None,
-                target_type=target_type,
-                target_name=target_name,
-                decision=decision,
-                route_type=route_type,
-            )
+        principal_id = (request.args.get("principal_id") or "").strip() or None
+        semantic_plan_id = (request.args.get("semantic_plan_id") or "").strip() or None
+        sql_hash = (request.args.get("sql_hash") or "").strip() or None
+        filters = {
+            "policy_name": policy_name or None,
+            "target_type": target_type,
+            "target_name": target_name,
+            "decision": decision,
+            "route_type": route_type,
+            "principal_id": principal_id,
+            "semantic_plan_id": semantic_plan_id,
+            "sql_hash": sql_hash,
+        }
+        filters = {key: value for key, value in filters.items() if value}
+        if filters:
+            items = audit_repository.list_filtered(**filters)
         else:
             items = audit_repository.list_all()
         return success(
