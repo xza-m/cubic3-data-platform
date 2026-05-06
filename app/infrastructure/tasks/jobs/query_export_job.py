@@ -20,7 +20,7 @@ import traceback
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
-from flask import current_app
+from flask import current_app, has_app_context
 from rq import get_current_job  # type: ignore
 
 from app.domain.entities.data_source import DataSource
@@ -282,11 +282,18 @@ def _local_download_url(export_id: int) -> str:
 
 def _get_output_dir() -> str:
     """获取导出文件的持久化目录（backend + worker 共享）。"""
-    base = current_app.config.get('QUERY_EXPORT_DIR') or current_app.config.get(
-        'EXTRACTION_RESULT_DIR', 'instance/query_exports'
-    )
-    if not os.path.isabs(base):
+    if has_app_context():
+        base = current_app.config.get('QUERY_EXPORT_DIR') or current_app.config.get(
+            'EXTRACTION_RESULT_DIR', 'instance/query_exports'
+        )
         root = os.path.dirname(current_app.instance_path)
+    else:
+        base = os.environ.get('QUERY_EXPORT_DIR') or os.environ.get(
+            'EXTRACTION_RESULT_DIR',
+            'instance/query_exports',
+        )
+        root = os.getcwd()
+    if not os.path.isabs(base):
         base = os.path.join(root, base)
     # 若借用了 extraction 的目录，再下钻一层避免混杂
     if base.rstrip('/').endswith('extraction_results'):

@@ -10,6 +10,7 @@
 pytest 标记：@pytest.mark.redesign
 """
 import pytest
+import jwt
 
 BASE = "/api/v1/queries/scheduled"
 
@@ -134,6 +135,19 @@ class TestScheduledQueryCRUD:
         """boundary: page_size=1000 也能正常返回"""
         r = client.get(f"{BASE}?page=1&page_size=1000", headers=auth_headers)
         assert r.status_code == 200
+
+    def test_list_with_non_numeric_subject_returns_empty_page(self, client, app):
+        """boundary: 飞书 open_id 这类非数字主体不应触发 bigint 过滤 500。"""
+        token = jwt.encode(
+            {"user_id": "ou_a233770c5639ea99ec09a3a5e148fee0", "roles": ["admin"]},
+            app.config.get("JWT_SECRET", "your-secret-key"),
+            algorithm="HS256",
+        )
+        r = client.get(BASE, headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        data = r.get_json()["data"]
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 @pytest.mark.redesign
