@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-05-05
 ---
 
 # 技术栈与架构说明
@@ -181,9 +181,28 @@ app/
   - 支持对象 / 动作 / 业务指标的最小语义权限声明
   - 语义路由与执行预览可基于 `viewer_roles` 返回 `allow / blocked`
   - `Policy Impact` 可汇总受影响分析实体、治理挂点状态与当前问题清单
+- `Agent-ready Access Governance`
+  - `/api/v1/agent/semantic/plan` 已固定为 Agent-first Runtime 入口，API 层和 `AgentPlanHandler` 统一注入 `runtime_mode=official`
+  - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`：先做业务语义命中，再通过 Binding 编译到 Cube 执行目标；诊断类 `/semantic-router/*` 仍保留 preview 能力
+  - `viewer_roles` 仍兼容，但 API 层统一归一为 `PrincipalContext`
+  - `Semantic Mapper` 稳定输出 `projection_result / resolved_bindings / binding_status / binding_issues`，只做只读 Binding，不定义第三套 mapping 真相源
+  - `Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
+  - Phase 1 只生成 `TicketPreview`，`enforcement=preview_only`，不作为 gateway 执行凭证
+  - `/semantic-router/execute-plan` 与 `/execution-compiler/execute` 已补 M3/raw/ODS 拦截，返回 `require_approval` 且不真实执行
+  - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 查询
+- `建模助手 Agent`
+  - 新增 `/api/v1/semantic/modeling-agent/spec-draft`、`draft-from-spec`、`validate`、`agent-ready-check`、`apply`、`publish`，由应用层 `SemanticModelingAgent` 编排 Cube 草稿与 Ontology 草稿生成
+  - `SemanticModelingAgentSpec` 只作为构建输入、用户确认材料和审计快照，不作为运行时语义源
+  - `agent-ready-check` 用于构建页沙盒确认 Cube 已可执行、Ontology 已发布且业务指标能绑定真实 Cube Measure；它不替代正式 `/api/v1/agent/semantic/plan`
+  - 默认只发布 Cube；Ontology 必须经业务语义确认后显式发布，正式 Agent 问数链路仍只消费已发布 Ontology
+- `Domain 业务上下文`
+  - `Domain` 收窄为业务主题、资产组织、默认上下文、候选范围和 Agent 提示的承载对象
+  - 新增 `/api/v1/semantic/domains/<domain_id>/context-preview`，用于预览该业务上下文下候选 Cube、Ontology 引用和沙盒 Agent 上下文
+  - `Domain` 不作为第三套语义真相源；指标、关系、动作和权限真相仍归属 `Ontology`，分析执行真相仍归属 `Cube`
 
-当前前端已把这条主链收口到两个工作台的最小联动：
+当前前端已把这条主链收口到顶层构建任务流与两个工作台的最小联动：
 
+- `建模助手 Agent` 位于 `/semantic/modeling-agent/new`，作为语义中心顶层任务流，不归属于 `/semantic/cubes/new`
 - `业务语义工作台` 可从对象投影视图直接跳到 `语义工作台 / Cube 管理`
 - `语义工作台` 可从 Cube 标题区回看来源业务对象
 - stale / impact 告警已在 `业务语义工作台` 收口为可定位的实体提示
@@ -197,6 +216,8 @@ app/
 - `业务语义工作台` 的治理链已可回看 `/api/v1/governance/audit-traces` 返回的最近审计记录列表，并支持按 `decision / route_type` 做最小筛选
 - `业务语义工作台` 的“发布 / 影响 / 历史”面板已补入最近一次发布失败的内联反馈，发布阻断不再只通过 toast 呈现
 - `业务语义工作台` 已补入订单域模板预览与一键应用入口，可直接消费 `/api/v1/ontology/templates/order-domain` 与 `/apply`，快速生成订单域对象、属性、业务指标、关系、动作、术语与权限基线
+- `业务语义工作台` 总览页已补入 Agent 预演面板，可调用 `/api/v1/agent/semantic/plan` 查看 route、compiled SQL、policy decision 与 `preview_only` ticket
+- `建模助手 Agent` 页面已补入 Agent-ready 检查，可在草稿发布前查看 Cube / Ontology 状态、指标绑定和真相源边界
 - 智能问数后端消息主链已优先尝试走语义路由与统一执行运行时，仅在未命中或执行失败时回退 Agent / 传统 LLM
 - 智能问数后端消息主链已开始生成并返回 `semantic_plan` 相关上下文；当前 v2 前端 `/data-chat` 仍是 Placeholder，完整聊天界面尚未恢复。
 - `Cube` 激活时已补入最小业务语义优先准入校验：对 `certified=true` 的 Measure，必须存在至少一个 `BusinessMetric.measure_refs` 反向引用
@@ -208,7 +229,7 @@ app/
 - 完整 Policy 执行引擎
 
 这意味着平台当前采用的是“业务语义真相源 + 分析执行真相源 + 只读投影与预览 + 最小路由骨架 + 最小统一执行编译层”的收缩版双层语义架构。
-当前已进入 Phase 7/8 的最小落地区间：在保持对齐检查只读投影定位不变的前提下，平台已经具备 `Metric Federation`、`Relation / Action Projection Preview`、最小语义路由、统一执行预览与最小运行时执行，以及最小语义权限、`governance_trace`、`audit_trace`、发布/影响/历史查询链和订单域模板基线；但尚未进入完整 Agent 运行时、平台级审计中心、脱敏/血缘联动与最终产品化阶段。
+当前已进入 Phase 7/8 的最小落地区间：在保持对齐检查只读投影定位不变的前提下，平台已经具备 `Metric Federation`、`Relation / Action Projection Preview`、最小语义路由、统一执行预览与最小运行时执行，以及最小语义权限、`governance_trace`、PostgreSQL 审计、发布/影响/历史查询链、订单域模板基线和 Agent-ready 规划预演；但尚未进入 gateway 真实 ticket、防重放、RAM 身份切换、脱敏/血缘联动与最终产品化阶段。
 
 ## 5. 前端结构
 
@@ -240,6 +261,7 @@ frontend/src/
 - `/config/*`
 - `/settings`
 - `/semantic/ontology`
+- `/semantic/modeling-agent/new`（建模助手 Agent）
 - `/semantic/workbench`（语义诊断）
 - `/semantic/cubes`
 - `/semantic/domains`
@@ -249,8 +271,8 @@ frontend/src/
 
 - 首页工作台不再由前端拼装多组统计请求，统一消费 `/api/v1/dashboard/overview`
 - 查询中心旧入口 `/queries/editor`、`/queries/templates` 只保留兼容重定向；`/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是当前有效子路由
-- 语义中心当前以 `/semantic/ontology` 作为业务语义主入口，覆盖对象、指标、关系、治理和工作台总览；`/semantic/workbench` 当前承接语义诊断 / DevTools
-- `/semantic/cubes`、`/semantic/domains`、`/semantic/views/:name` 继续作为物理语义资产与领域画布入口
+- 语义中心当前以 `/semantic/modeling-agent/new` 作为建模助手 Agent 顶层任务流，以 `/semantic/ontology` 作为业务语义主入口，覆盖对象、指标、关系、治理和工作台总览；`/semantic/workbench` 当前承接语义诊断 / DevTools
+- `/semantic/cubes`、`/semantic/domains`、`/semantic/views/:name` 继续作为物理语义资产、业务上下文资产画布与 View 入口
 - `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 当前保留为真实 v2 页面；`/semantic/tools`、`/semantic/overview` 等旧别名会重定向到当前入口
 - v2 路由/API 详细审计见 [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 
@@ -276,10 +298,12 @@ frontend/src/
 - `/api/v1/conversations`
 - `/api/v1/files`
 - `/api/v1/semantic`
+- `/api/v1/semantic/modeling-agent`
 - `/api/v1/ontology`
 - `/api/v1/semantic-mapper`
 - `/api/v1/semantic-router`
 - `/api/v1/execution-compiler`
+- `/api/v1/agent`
 - `/api/v1/apps`
 - `/api/v1/app-instances`
 - `/api/v1/app-executions`
@@ -289,6 +313,9 @@ frontend/src/
 
 需要特别注意：
 
+- `/api/docs/openapi.json` 是当前唯一 OpenAPI 输出入口：由 Flask `url_map` 扫描生成路径，再通过轻量显式元数据补充核心接口的 request / response schema、Agent 风险字段和权限语义；不通过 FastAPI 或重新注册路由生成第二套契约。
+- 第一阶段 Agent-ready 契约强制覆盖数据源元数据读取、语义路由预演、执行编译预览、治理审计查询和 `/api/v1/agent/semantic/plan` official Runtime 主入口。
+- Agent 自动调用准入以 OpenAPI 扩展字段为准：只有 `x-side-effect=none`、`x-requires-confirmation=false` 且权限范围明确的接口可作为自动调用候选；预览、执行、发布、写入、删除类接口即使可读 schema，也必须由 Agent 按风险字段走确认或仅生成计划。
 - 健康检查路径是 `/health`，不是 `/api/v1/health`
 - 数据中心 API 使用 `/api/v1/data-center/*`
 - 首页工作台聚合 API 使用 `/api/v1/dashboard/overview`
@@ -299,6 +326,9 @@ frontend/src/
   - `/api/v1/semantic-mapper/*`：只读投影预览、一致性报告、stale 检查、Measure 反向引用
   - `/api/v1/semantic-router/*`：最小语义路由、执行路径规划与回溯预览
   - `/api/v1/execution-compiler/*`：统一的 SQL / Retrieval / Tool 执行预览、计划预览与最小运行时执行
+  - `/api/v1/agent/semantic/plan`：Agent-first official Runtime 主入口，返回 `runtime_mode / business_intent / projection_result / resolved_bindings / compiled_targets / policy_decision / semantic_trace` 与 preview-only ticket
+- `/api/v1/semantic/modeling-agent/*`：建模助手 Agent 的构建期接口，负责从事实表和业务意图生成、校验、Agent-ready 检查、保存并按范围发布 Cube + Ontology 草稿；不被正式 Agent 运行时直接读取
+- `/api/v1/semantic/domains/<domain_id>/context-preview`：Domain 业务上下文预览接口，只返回候选范围和 Agent 沙盒提示，不作为执行时 Join 或指标真相源
 - `/semantic/ontology`：业务语义工作台前端首期版本，已覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模与投影预览
 
 其中与 Phase 2 直接相关的已实现接口包括：
@@ -338,6 +368,13 @@ frontend/src/
 - `/api/v1/semantic-router/route`：支持按 `viewer_roles` 做对象 / 动作 / 业务指标的最小权限阻断
 - `/api/v1/execution-compiler/compile-preview`：支持按 `viewer_roles` 返回 `allow / blocked`
 
+与 Agent-ready Phase 1 直接相关的已实现接口包括：
+
+- `/api/v1/agent/semantic/plan`
+- `/api/v1/semantic-router/execute-plan`：命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
+- `/api/v1/execution-compiler/execute`：命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
+- `/api/v1/governance/audit-traces`：支持按 `principal_id / semantic_plan_id / sql_hash / decision / route_type / policy` 查询
+
 ## 7. 语义层落地方式
 
 语义层不只是一组接口，还包含仓库内的 YAML 定义与运行时服务：
@@ -358,9 +395,11 @@ frontend/src/
 
 当前语义对象边界同时固定为：
 
-- `Cube` 与 `Domain` 是正式建模对象，领域编排和对象治理围绕这两类对象展开。
+- `Cube` 是分析执行真相源，`Ontology` 是业务语义真相源；正式 Agent 问数链路只消费已发布 Ontology，并通过投影绑定到 Cube 执行。
+- `Domain` 是收窄后的业务上下文和资产组织对象，用于承载业务主题、候选 Cube、本体引用、默认上下文和 Agent 提示；它不是第三套真相源。
 - v2 当前由 `Cube 创建 / 编辑` 页面与语义诊断工作台共同承接 `选数据源 -> 生成草稿 -> 微调 -> 调试 -> 发布` 的开发流；`Cube 管理` 负责正式资产浏览与修订入口。
-- `Domain.cubes[]` 与领域画布是 `Cube <-> Domain` 关系的唯一真相；同一个 Cube 可以被多个领域引用。
+- `Domain.cubes[]` 与业务上下文资产画布只作为 `Cube <-> Domain` 资产归属 / 候选范围的事实；同一个 Cube 可以被多个业务上下文引用。
+- Domain 画布只展示业务上下文中的 Cube 资产组织和候选范围，不再维护 Join / 关系边；执行 Join 只存在于 `Cube.joins`，业务关系只存在于 `Ontology BusinessRelation`。
 - `Cube.domain_id` 仅保留为兼容投影字段，用于列表和详情摘要，不反向驱动领域关系持久化。
 - 已发布 Cube 不直接在资产页裸改；前端通过 `POST /api/v1/semantic/cubes/<cube_name>/revisions` 创建修订草稿，再回流工作台继续开发。
 - `View` 在工作台和摘要接口层按“特殊 Cube”收敛，继续走详情、编译与物化链路，但不升格为一级导航。

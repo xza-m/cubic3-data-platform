@@ -3,7 +3,7 @@ doc_type: architecture-index
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-05-05
 ---
 
 # 架构设计目录
@@ -29,8 +29,9 @@ last_reviewed: 2026-04-25
 2. [backend.md](backend.md)：后端分层、依赖注入、异步任务与语义存储
 3. [frontend.md](frontend.md)：前端路由域、页面模型、数据访问与验证策略
 4. [decisions/README.md](decisions/README.md)：当前仍有效的架构决策记录
-5. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
-6. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
+5. [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)：Agent 语义规划、飞书 SSO Principal、两阶段权限、ExecutionProfile、ticket 与 gateway / MaxCompute RAM 适配边界
+6. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
+7. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
 
 ## 当前文件
 
@@ -42,6 +43,8 @@ last_reviewed: 2026-04-25
   - React SPA 路由结构、页面域、共享壳层与校验策略
 - [decisions/README.md](decisions/README.md)
   - ADR 索引与维护规则
+- [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)
+  - 当前 Agent-ready 语义规划主链、飞书 SSO 作为身份事实来源、轻量 `Principal` 投影、`PrincipalContext` 兼容、两阶段 `PolicyDecision`、M3/raw 拦截、`TicketPreview / ExecutionTicket`、`ExecutionProfile` 与 gateway / MaxCompute RAM 适配边界
   - 当前新增双层语义架构约束：
     - 对齐检查（内部实现为 `Semantic Mapper`）只做只读投影与一致性检测
     - `BusinessMetric` 采用语义公式而非执行公式
@@ -70,6 +73,19 @@ last_reviewed: 2026-04-25
     - 内部 `Policy Metadata` 作为对象 / 动作 / 业务指标的最小语义权限元数据
     - 语义路由与执行规划可按 `viewer_roles` 做最小权限阻断
     - 执行预览可返回 `allow / blocked` 执行结果
+  - 当前已补入 Agent-ready Phase 1 治理收敛：
+    - `/api/v1/agent/semantic/plan` 作为 Agent-first official Runtime 主入口，由 `AgentPlanHandler` 编排 `PrincipalResolver -> Pre-route Policy -> Semantic Router -> Semantic Mapper -> Execution Compiler -> Post-compile Policy`
+    - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`；诊断类 `/semantic-router/*` 保留 preview，用于工作台 route / binding / compile / policy / trace 排障
+    - `viewer_roles` 在 API 层兼容，并统一归一为 `PrincipalContext`
+    - `Semantic Mapper` 输出稳定 `projection_result / resolved_bindings / binding_status / binding_issues`，`Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`
+    - `/api/v1/semantic-router/execute-plan` 与 `/api/v1/execution-compiler/execute` 命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
+    - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 过滤
+    - `/api/docs/openapi.json` 作为唯一 OpenAPI 输出入口，当前已为第一批只读 / 预览 / 审计接口补入 Agent 风险扩展和字段级 `data` schema；`make typecheck-contracts` 负责阻断核心契约缺失、重复 `operationId` 与非法 Agent 扩展字段
+  - 当前已补入建模助手 Agent 最小链路：
+    - `/semantic/modeling-agent/new` 是语义中心顶层 `建模助手 Agent` 任务流，不归入 Cube 层级
+    - `/api/v1/semantic/modeling-agent/spec-draft -> draft-from-spec -> validate -> agent-ready-check -> apply -> publish` 由 `SemanticModelingAgent` 编排，生成 Cube 技术语义与 Ontology 业务语义草稿
+    - `SemanticModelingAgentSpec` 只作为构建期输入、确认材料和审计快照；正式 Agent 规划仍只消费已发布 Ontology，分析执行仍以 Cube 为真相源
+    - `/api/v1/semantic/domains/<domain_id>/context-preview` 将 Domain 收窄为业务主题、候选资产、默认上下文和 Agent 提示预览；Domain 不作为指标、关系、动作或 Join 的第三套真相源，业务上下文资产画布也不再维护关系边
   - 当前前端已提供 `/semantic/ontology` 的业务语义工作台首期版本：
     - 覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模
     - 支持只读投影预览、指标联邦追踪、运行时路由预演、统一执行预览、最小治理挂点预览，以及业务语义与 `Cube` 的最小双向跳转
@@ -83,6 +99,7 @@ last_reviewed: 2026-04-25
     - 当前业务语义发布链已进一步收紧：业务指标、关系、动作、权限在发布前会校验依赖对象是否已激活、是否具备最小分析投影依据；校验失败会直接阻断发布
     - 智能问数后端消息主链已开始返回 `semantic_plan` 相关上下文；当前 v2 `/data-chat` 仍是占位页，尚未恢复完整聊天界面
     - 当前已补入订单域模板预览与一键应用入口：`/api/v1/ontology/templates/order-domain` 与业务语义工作台顶部操作区可快速生成订单域对象、属性、关系、动作、指标、术语和权限初始样板，作为后续复制到第二域的基线模板
+    - 当前工作台总览页已补入轻量 Agent 预演面板，可直接调用 `/api/v1/agent/semantic/plan` 查看 route、compiled SQL、policy decision 与 `preview_only` ticket
 
 ## 与其他文档的分工
 

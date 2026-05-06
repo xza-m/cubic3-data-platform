@@ -121,6 +121,7 @@ Phase 1 当前已验证的数据中心主链路基线为：
 
 - 工作台：`/dashboard`
 - 查询分析中心：`/queries`
+- 建模助手 Agent：`/semantic/modeling-agent/new`
 - 业务语义工作台：`/semantic/ontology`
 - 语义诊断工作台：`/semantic/workbench`
 
@@ -132,6 +133,7 @@ Phase 1 当前已验证的数据中心主链路基线为：
 - `/api/v1/semantic-mapper`
 - `/api/v1/semantic-router`
 - `/api/v1/execution-compiler`
+- `/api/v1/semantic/modeling-agent`
 
 其中当前已落地的 Phase 2 增强包括：
 
@@ -155,6 +157,16 @@ Phase 1 当前已验证的数据中心主链路基线为：
 - `/api/v1/execution-compiler/compile-preview`：支持 `sql / retrieval / tool`
 - `/api/v1/execution-compiler/plan-preview`：返回统一执行计划预览结构
 - `/api/v1/execution-compiler/execute`：支持 `sql / retrieval / tool` 最小真实执行，并统一返回 `governance_trace / audit_trace_id`
+
+当前已落地的建模助手 Agent 最小增强包括：
+
+- `/api/v1/semantic/modeling-agent/spec-draft`
+- `/api/v1/semantic/modeling-agent/draft-from-spec`
+- `/api/v1/semantic/modeling-agent/validate`
+- `/api/v1/semantic/modeling-agent/agent-ready-check`
+- `/api/v1/semantic/modeling-agent/apply`
+- `/api/v1/semantic/modeling-agent/publish`
+- `/api/v1/semantic/domains/<domain_id>/context-preview`
 
 当前已落地的 Phase 6 最小增强包括：
 

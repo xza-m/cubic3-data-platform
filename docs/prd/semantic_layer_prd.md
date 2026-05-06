@@ -57,8 +57,10 @@
 | **Recipe** | 查询配方，包含典型业务问题和对应的标准 DSL，系统自动从 DSL 中提取关联的 Cube/View 并构建反向索引，作为 Few-shot 示例注入 LLM | Cursor Skill 中的示例 / dbt Metrics 的 example queries |
 
 > 当前实现基线（2026-03）
-> - `Cube` / `Domain` 是正式建模对象。
-> - `Domain.cubes[]` / 领域画布是对象关系真相，`Cube.domain_id` 仅作为兼容投影字段保留。
+> - `Cube` 是分析执行真相源，`Ontology` 是业务语义真相源。
+> - `Domain` 收窄为业务上下文、资产组织、候选范围和 Agent 提示的承载对象，不作为指标、关系、动作或 Join 的第三套真相源。
+> - `Domain.cubes[]` / 业务上下文资产画布只作为 `Cube <-> Domain` 资产归属和候选范围事实，`Cube.domain_id` 仅作为兼容投影字段保留。
+> - Domain 不再提供 Join 建模入口；历史 `joins` 字段只允许被读入和审计，不参与发布、校验、画布、查询编译或正式 Agent 命中。
 > - `View` 在当前工作台按“特殊 Cube”收敛到列表、详情、编译与物化链路。
 > - `Recipe` 继续保持轻量消费对象，主要服务查询示例和上下文注入。
 > - “同一领域内重复实例化同一个 Cube 且使用不同 Join 条件”不属于当前范围。
