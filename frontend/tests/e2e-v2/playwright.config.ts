@@ -24,6 +24,17 @@ const configDir = path.dirname(fileURLToPath(import.meta.url))
 const frontendDir = path.resolve(configDir, '..', '..')
 
 const isCI = !!process.env.CI
+const useExternalServer = process.env.V2_E2E_EXTERNAL_SERVER === '1'
+const managedWebServer = {
+  command: `npm run dev:v2 -- --host ${baseUrlObject.hostname} --port ${managedServerPort} --strictPort`,
+  cwd: frontendDir,
+  reuseExistingServer: !isCI,
+  timeout: 120_000,
+  url: baseURL,
+  env: {
+    VITE_AUTH_BYPASS: '1',
+  },
+}
 
 export default defineConfig({
   testDir: '.',
@@ -38,16 +49,7 @@ export default defineConfig({
     ['list'],
     ['html', { outputFolder: path.resolve(frontendDir, 'playwright-report-v2'), open: 'never' }],
   ],
-  webServer: {
-    command: `npm run dev:v2 -- --host ${baseUrlObject.hostname} --port ${managedServerPort} --strictPort`,
-    cwd: frontendDir,
-    reuseExistingServer: !isCI,
-    timeout: 120_000,
-    url: baseURL,
-    env: {
-      VITE_AUTH_BYPASS: '1',
-    },
-  },
+  ...(useExternalServer ? {} : { webServer: managedWebServer }),
   use: {
     baseURL,
     viewport: { width: 1440, height: 900 },

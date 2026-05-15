@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>权限治理闭环 | Cubic3 Learn</title>
+    <link rel="stylesheet" href="./tutorial.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="side">
+        <div class="brand"><span class="logo">C3</span><span>Cubic3 Learn</span></div>
+        <div class="nav-title">Start learning</div>
+        <a class="nav-link" href="./self-service-query.html">自助查询入门</a>
+        <a class="nav-link" href="./semantic-modeling.html">语义建模工作流</a>
+        <a class="nav-link" href="./app-development.html">开发应用与推送</a>
+        <a class="nav-link active" href="./access-governance.html">权限治理闭环</a>
+      </aside>
+      <main class="main">
+        <article class="article">
+          <div class="eyebrow">Governance</div>
+          <h1>权限治理闭环</h1>
+          <p class="lead">权限体系应尽量薄：平台只管理成员、机器接入、权限包和可访问数据等级；MaxCompute 继续承担底层数据面的物理权限。管理员要能在一个页面完成配置、验证和回收。</p>
+          <div class="meta">
+            <span class="pill">18 min</span>
+            <span class="pill">Admin</span>
+            <span class="pill">权限管理</span>
+          </div>
+
+          <section id="concept" class="section">
+            <div class="section-head">
+              <h2>核心概念</h2>
+              <p>不要把权限拆成用户看不懂的多套体系。</p>
+            </div>
+            <div class="step">
+              <div class="step-no">1</div>
+              <div>
+                <h3>成员</h3>
+                <p>成员来自飞书 SSO 或内部引导账号。列表展示真实姓名，ID 只作为辅助识别，避免把 open_id 暴露给业务管理员。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">2</div>
+              <div>
+                <h3>机器接入</h3>
+                <p>Bot、Skill、Job 使用机器主体和 API Key 认证。API Key 只证明调用方身份，不直接代表真人数据权限。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">3</div>
+              <div>
+                <h3>权限包</h3>
+                <p>权限包把平台职责和数据等级收敛成少量可理解选项，例如语义建模、治理管理员、M0 公开语义、M1 聚合数据、M2 受控明细。</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="steps" class="section">
+            <div class="section-head">
+              <h2>管理员配置流程</h2>
+              <p>推荐按成员选择、配置、保存、验证四步完成。</p>
+            </div>
+            <div class="step">
+              <div class="step-no">1</div>
+              <div>
+                <h3>选择成员</h3>
+                <p>在成员列表按姓名、邮箱或来源筛选。右侧上下文只展示身份摘要，不在上下文面板里做复杂点选。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">2</div>
+              <div>
+                <h3>配置权限包</h3>
+                <p>在主区域使用清晰的权限包选择器完成修改。保存前展示本次变更摘要，让管理员知道新增或移除了哪些能力。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">3</div>
+              <div>
+                <h3>验证数据访问</h3>
+                <p>用 Agent preview 或查询预检验证 M0、M1、M2 行为。M3/raw 默认不直接开放，通过调整数据等级或数据策略来控制。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">4</div>
+              <div>
+                <h3>审计与回收</h3>
+                <p>每次角色修改都记录操作者、目标成员、变更前后权限包和时间。离职或角色变化时可以快速回收。</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="note">权限产品闭环的判断标准：管理员能看懂成员是谁、能配置权限包、能验证查询结果、能在审计里追踪变更。</div>
+          <a class="cta" href="/config/access">打开权限管理</a>
+        </article>
+      </main>
+      <aside class="toc">
+        <div class="progress"><span style="width: 100%"></span></div>
+        <h2>权限治理闭环</h2>
+        <a href="#concept">核心概念</a>
+        <a href="#steps">管理员配置流程</a>
+      </aside>
+    </div>
+  </body>
+</html>

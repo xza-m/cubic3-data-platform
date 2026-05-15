@@ -10,7 +10,9 @@
 //   — 后端 ChannelType 只有 feishu / email / webhook / oss。
 
 import type { ReactNode } from 'react'
-import { Send } from 'lucide-react'
+import { Edit3, Power, PowerOff, Send, Trash2 } from 'lucide-react'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { IdentityName } from '@v2/components/IdentityName'
 import { Chip, type ChipTone } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
@@ -73,48 +75,40 @@ export function ChannelDetailContent({
   row: Channel
   actions?: ChannelActions
 }) {
+  const hasActions = Boolean(actions?.onTest || actions?.onToggle || actions?.onEdit || actions?.onDelete)
+
   return (
     <div className="space-y-4 px-4 py-4 text-xs">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={actions?.onTest}
-          className="inline-flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
-          aria-label={t('channel.action.sendTest', '发送测试消息')}
-        >
-          <Send size={11} aria-hidden />
-          {t('channel.action.test', '发送测试')}
-        </button>
-        <button
-          type="button"
-          onClick={actions?.onToggle}
-          className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-          style={{ borderColor: 'var(--border)' }}
-        >
-          {row.enabled
-            ? t('channel.action.disable', '禁用')
-            : t('channel.action.enable', '启用')}
-        </button>
-        {actions?.onEdit ? (
-          <button
-            type="button"
-            onClick={actions.onEdit}
-            className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            {t('common.edit', '编辑')}
-          </button>
-        ) : null}
-        {actions?.onDelete ? (
-          <button
-            type="button"
-            onClick={actions.onDelete}
-            className="rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:ring-2 dark:text-red-400 dark:hover:bg-red-900/20"
-          >
-            {t('common.delete', '删除')}
-          </button>
-        ) : null}
-      </div>
+      {hasActions ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ActionIconButton
+            label={t('channel.action.sendTest', '发送测试消息')}
+            icon={Send}
+            variant="primary"
+            onClick={actions?.onTest}
+          />
+          <ActionIconButton
+            label={row.enabled ? t('channel.action.disable', '禁用') : t('channel.action.enable', '启用')}
+            icon={row.enabled ? PowerOff : Power}
+            onClick={actions?.onToggle}
+          />
+          {actions?.onEdit ? (
+            <ActionIconButton
+              label={t('common.edit', '编辑')}
+              icon={Edit3}
+              onClick={actions.onEdit}
+            />
+          ) : null}
+          {actions?.onDelete ? (
+            <ActionIconButton
+              label={t('common.delete', '删除')}
+              icon={Trash2}
+              variant="danger"
+              onClick={actions.onDelete}
+            />
+          ) : null}
+        </div>
+      ) : null}
 
       <DetailSection title={t('channel.section.basic', '基础信息')}>
         <DetailRow label={t('common.id', '编号')} value={<code>#{row.id}</code>} />
@@ -128,7 +122,10 @@ export function ChannelDetailContent({
               : <Chip tone="neutral">{t('common.disabled', '已停')}</Chip>
           }
         />
-        <DetailRow label={t('common.createdBy', '创建人')} value={row.created_by ?? '—'} />
+        <DetailRow
+          label={t('common.createdBy', '创建人')}
+          value={<IdentityName value={row.created_by} displayName={row.created_by_display_name} />}
+        />
         <DetailRow
           label={t('common.updatedAt', '更新时间')}
           value={fmtRelative(row.updated_at)}
@@ -188,7 +185,10 @@ export function ChannelContextBody({
           {t('common.meta', '元数据')}
         </div>
         <dl className="mt-2 space-y-1 text-xs">
-          <CtxPair label={t('common.createdBy', '创建人')} value={row.created_by ?? '—'} />
+          <CtxPair
+            label={t('common.createdBy', '创建人')}
+            value={<IdentityName value={row.created_by} displayName={row.created_by_display_name} />}
+          />
           <CtxPair label={t('common.updatedAt', '更新')} value={fmtRelative(row.updated_at)} />
         </dl>
       </section>
@@ -237,7 +237,7 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
-function CtxPair({ label, value }: { label: string; value: string }) {
+function CtxPair({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt style={{ color: 'var(--text-3)' }}>{label}</dt>

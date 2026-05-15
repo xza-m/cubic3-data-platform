@@ -5,10 +5,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, RefreshCcw, Play } from 'lucide-react'
+import { Activity, Play } from 'lucide-react'
 import { useExtractionRuns, useRerunExtractionRun } from '@v2/hooks/extraction'
 import type { ExtractionRun } from '@v2/api/extraction'
 import { useToast } from '@v2/components/ui/Toast'
+import { RefreshButton } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import {
   ExtractionRunDetailContent,
   runStatusChip,
@@ -107,15 +109,11 @@ export default function ExtractionRuns() {
         >
           {triggerOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <button
-          type="button"
+        <RefreshButton
           onClick={() => refetch()}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
-          {t('extractionRuns.action.refresh', '刷新')}
-        </button>
+          loading={isFetching}
+          ariaLabel={t('extractionRuns.action.refresh', '刷新执行记录')}
+        />
       </div>,
     )
     return () => setTopBarActions(null)
@@ -129,7 +127,7 @@ export default function ExtractionRuns() {
           {t('extractionRuns.context.title', '执行记录')}
         </div>
       ),
-      subtitle: 'GET /api/v1/extraction/runs',
+      subtitle: t('extractionRuns.context.subtitle', '查看最近抽取任务的执行状态'),
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
@@ -211,9 +209,10 @@ export default function ExtractionRuns() {
 
       <div className="relative flex-1 overflow-hidden">
         {isLoading ? <SkeletonRows /> : isError ? (
-          <ErrorState
+          <RetryState
             message={error instanceof Error ? error.message : t('extractionRuns.state.loadFailed', '加载失败')}
             onRetry={() => refetch()}
+            retryAriaLabel={t('extractionRuns.action.retry', '重试加载执行记录')}
           />
         ) : rows.length === 0 ? (
           <EmptyState />
@@ -371,17 +370,6 @@ function SkeletonRows() {
           ))}
         </div>
       ))}
-    </div>
-  )
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2">
-      <p className="text-xs" style={{ color: 'var(--danger)' }}>{message}</p>
-      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
-        {t('extractionRuns.action.retry', '重试')}
-      </button>
     </div>
   )
 }

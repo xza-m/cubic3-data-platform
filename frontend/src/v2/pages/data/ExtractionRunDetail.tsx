@@ -7,9 +7,10 @@
 
 import { useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Activity, ArrowLeft, RefreshCcw } from 'lucide-react'
+import { Activity, ArrowLeft } from 'lucide-react'
 import { useExtractionRuns } from '@v2/hooks/extraction'
 import type { ExtractionRun } from '@v2/api/extraction'
+import { RefreshButton } from '@v2/components/CommonControls'
 import {
   ExtractionRunDetailContent,
   runStatusChip,
@@ -77,14 +78,11 @@ export default function ExtractionRunDetail() {
         >
           <ArrowLeft size={12} /> {t('extractionRunDetail.action.back', '返回列表')}
         </button>
-        <button
-          type="button"
+        <RefreshButton
           onClick={() => refetch()}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} /> {t('extractionRunDetail.action.refresh', '刷新')}
-        </button>
+          loading={isFetching}
+          ariaLabel={t('extractionRunDetail.action.refresh', '刷新执行记录')}
+        />
       </div>,
     )
     return () => setTopBarActions(null)

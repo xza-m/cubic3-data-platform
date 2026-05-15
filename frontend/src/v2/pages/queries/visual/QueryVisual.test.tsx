@@ -192,7 +192,15 @@ describe('QueryVisual page', () => {
     expect(parsed.sql).toContain('FROM public.orders')
     expect(parsed.source_id).toBe(7)
     expect(parsed.origin).toBe('visual')
-    expect(navigateSpy).toHaveBeenCalledWith('/queries')
+    expect(navigateSpy).toHaveBeenCalledWith('/queries', {
+      state: {
+        queryWorkbenchPrefill: expect.objectContaining({
+          sql: expect.stringContaining('FROM public.orders'),
+          source_id: 7,
+          origin: 'visual',
+        }),
+      },
+    })
   })
 
   it('dataset 切换会清空已选字段与筛选', async () => {

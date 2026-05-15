@@ -4,12 +4,14 @@
 // 接口：GET /api/v1/app-instances
 // B-back-2: health 列暂不展示，待后端上线 — see plan §3.4
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, RefreshCcw } from 'lucide-react'
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
+import { CreateButton, RefreshButton, Toolbar, ToolbarSearch } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import { useInstances, useEnableInstance, useDisableInstance } from '@v2/hooks/instances'
+import { useToast } from '@v2/components/ui'
 import { InstanceStatusChip, ExecStatusChip, scheduleLabel, InstancePeekContent } from '../_shared/instance-content'
 import type { AppInstance } from '@v2/api/instances'
 
@@ -28,6 +30,8 @@ function PeekPanel({
 }) {
   return (
     <div
+      role="complementary"
+      aria-label={t('peek.aria.preview', '行预览')}
       className="flex w-72 shrink-0 flex-col border-l"
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
@@ -71,8 +75,13 @@ function PeekPanel({
 // 主页面
 // ============================================================================
 
+function mutationErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err || '')
+}
+
 export default function Instances() {
   const navigate = useNavigate()
+  const toast = useToast()
   const [keyword, setKeyword] = useState('')
   const [peek, setPeek] = useState<AppInstance | null>(null)
 
@@ -84,6 +93,25 @@ export default function Instances() {
 
   const enableMut = useEnableInstance()
   const disableMut = useDisableInstance()
+
+  const handleRefresh = useCallback(async () => {
+    const result = await refetch()
+    if (result.isSuccess) {
+      toast.show({
+        tone: 'success',
+        title: t('instances.toast.refreshed', '应用实例已刷新'),
+        description: t('instances.toast.refreshedCount', '当前列表 {count} 条', {
+          count: result.data?.items.length ?? instances.length,
+        }),
+      })
+    } else {
+      toast.show({
+        tone: 'danger',
+        title: t('instances.toast.refreshFailed', '刷新应用实例失败'),
+        description: result.error instanceof Error ? result.error.message : String(result.error ?? ''),
+      })
+    }
+  }, [instances.length, refetch, toast])
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase()
@@ -110,35 +138,24 @@ export default function Instances() {
           <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
             {t('instances.title', '应用实例')}
           </span>
-          <div className="flex items-center gap-2">
-            <input
-              className="rounded border px-2 py-1 text-xs outline-none focus:ring-1"
-              style={{
-                background: 'var(--bg-surface-2)',
-                borderColor: 'var(--border)',
-                color: 'var(--text-1)',
-                width: 200,
-              }}
-              placeholder={t('instances.search_placeholder', '按名称 / 应用 / 所有者搜索…')}
+          <Toolbar>
+            <ToolbarSearch
               value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+              onChange={setKeyword}
+              placeholder={t('instances.search_placeholder', '按名称 / 应用 / 所有者搜索…')}
+              ariaLabel={t('instances.search.aria', '搜索应用实例')}
+              width={220}
             />
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost"
-              onClick={() => refetch()}
-            >
-              <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
+            <RefreshButton
+              onClick={() => void handleRefresh()}
+              loading={isFetching}
+              ariaLabel={t('instances.action.refresh', '刷新应用实例')}
+            />
+            <CreateButton
+              label={t('instances.create', '创建实例')}
               onClick={() => navigate('/apps/instances/new')}
-            >
-              <Plus size={12} />
-              {t('instances.create', '创建实例')}
-            </button>
-          </div>
+            />
+          </Toolbar>
         </div>
 
         {/* Table */}
@@ -154,14 +171,12 @@ export default function Instances() {
             )}
 
             {isError && !isLoading && (
-              <div className="flex flex-col items-center gap-3 py-12">
-                <p className="text-xs" style={{ color: 'var(--danger)' }}>
-                  {t('state.load_error', '加载失败')}
-                </p>
-                <button type="button" className="btn btn-sm" onClick={() => refetch()}>
-                  {t('action.retry', '重试')}
-                </button>
-              </div>
+              <RetryState
+                className="py-12"
+                message={t('state.load_error', '加载失败')}
+                onRetry={handleRefresh}
+                retryAriaLabel={t('instances.action.retry', '重试加载应用实例')}
+              />
             )}
 
             {!isLoading && !isError && (
@@ -241,7 +256,21 @@ export default function Instances() {
                               disabled={disableMut.isPending}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                disableMut.mutate(inst.id)
+                                disableMut.mutate(inst.id, {
+                                  onSuccess: () => {
+                                    toast.show({
+                                      tone: 'success',
+                                      title: t('instances.toast.disabled', '{name} 已停止', { name: inst.name }),
+                                    })
+                                  },
+                                  onError: (err) => {
+                                    toast.show({
+                                      tone: 'danger',
+                                      title: t('instances.toast.disableFailed', '停止失败'),
+                                      description: mutationErrorMessage(err),
+                                    })
+                                  },
+                                })
                               }}
                             >
                               {t('action.disable', '停止')}
@@ -253,7 +282,21 @@ export default function Instances() {
                               disabled={enableMut.isPending}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                enableMut.mutate(inst.id)
+                                enableMut.mutate(inst.id, {
+                                  onSuccess: () => {
+                                    toast.show({
+                                      tone: 'success',
+                                      title: t('instances.toast.enabled', '{name} 已启用', { name: inst.name }),
+                                    })
+                                  },
+                                  onError: (err) => {
+                                    toast.show({
+                                      tone: 'danger',
+                                      title: t('instances.toast.enableFailed', '启用失败'),
+                                      description: mutationErrorMessage(err),
+                                    })
+                                  },
+                                })
                               }}
                             >
                               {t('action.enable', '启用')}

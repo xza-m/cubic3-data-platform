@@ -108,7 +108,7 @@ describe('ThemeProvider', () => {
   it('prefers server theme over localStorage', () => {
     window.localStorage.setItem(STORAGE_KEY, 'light')
     mockGet.mockReturnValue({
-      data: { user_id: 1, theme: 'dark', default_landing: '/', list_page_size: 20, table_density: 'comfortable', extra: {}, updated_at: null },
+      data: { principal_id: 'internal:test:test_admin', theme: 'dark', default_landing: '/', list_page_size: 20, table_density: 'comfortable', extra: {}, updated_at: null },
     })
     render(
       <ThemeProvider>
@@ -163,7 +163,7 @@ describe('ThemeProvider', () => {
   it('setTheme calls mutate when prefs are loaded', () => {
     const mutate = vi.fn()
     mockGet.mockReturnValue({
-      data: { user_id: 1, theme: 'light', default_landing: '/', list_page_size: 20, table_density: 'comfortable', extra: {}, updated_at: null },
+      data: { principal_id: 'internal:test:test_admin', theme: 'light', default_landing: '/', list_page_size: 20, table_density: 'comfortable', extra: {}, updated_at: null },
     })
     mockPut.mockReturnValue({ mutate })
     render(
@@ -227,7 +227,7 @@ describe('ThemeProvider', () => {
       throw new Error('quota')
     })
     mockGet.mockReturnValue({
-      data: { user_id: 1, theme: 'light', default_landing: '/', list_page_size: 20, table_density: 'comfortable', extra: {}, updated_at: null },
+      data: { principal_id: 'internal:test:test_admin', theme: 'light', default_landing: '/', list_page_size: 20, table_density: 'comfortable', extra: {}, updated_at: null },
     })
     expect(() =>
       render(

@@ -25,6 +25,7 @@ export interface Subscription {
   delivery_config: Record<string, unknown>
   enabled: boolean
   created_by: string | null
+  created_by_display_name?: string | null
   created_at: string | null
   updated_at: string | null
   /** include_relations=true 时后端附带（见 to_dict） */

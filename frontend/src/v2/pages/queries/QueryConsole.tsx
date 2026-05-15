@@ -5,6 +5,7 @@
 // Monaco editor 必须 lazy import（不进入 main chunk）。
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   ChevronDown,
   Columns3,
@@ -24,25 +25,18 @@ import {
   useDatasourceSchemaTables,
 } from '@v2/hooks/datasources'
 import { fmtNum } from '@v2/lib/format'
+import { IdentityName } from '@v2/components/IdentityName'
 import type { DatasourceTableSummary } from '@v2/api/datasources'
 import type { QueryRunResult } from '@v2/api/queries'
 import { t } from '@v2/i18n'
+import {
+  consumeStoredQueryWorkbenchPrefill,
+  extractRouteQueryWorkbenchPrefill,
+  type QueryWorkbenchPrefillPayload,
+} from './_shared/workbench-prefill'
 
 // Monaco editor lazy import — 不进入 main chunk
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
-
-/**
- * sessionStorage 预填 key —— 由 /queries/visual 跳转时写入，QueryConsole mount
- * 时读取一次并清掉。与 visual/QueryVisual.tsx::V2_QUERY_VISUAL_PREFILL_KEY 约定。
- */
-const V2_QUERY_VISUAL_PREFILL_KEY = 'v2:queryVisual:pendingPrefill'
-
-interface QueryVisualPrefill {
-  sql: string
-  source_id: number | null
-  origin: 'visual'
-  created_at: number
-}
 
 interface SelectedTable {
   sourceId: number
@@ -51,37 +45,6 @@ interface SelectedTable {
   tableName: string
   comment: string | null
   rowCount: number | null
-}
-
-/** 读取一次并清空；解析失败 / 结构异常时返回 null。 */
-function consumeVisualPrefill(): QueryVisualPrefill | null {
-  try {
-    const raw = sessionStorage.getItem(V2_QUERY_VISUAL_PREFILL_KEY)
-    if (!raw) return null
-    sessionStorage.removeItem(V2_QUERY_VISUAL_PREFILL_KEY)
-    const parsed = JSON.parse(raw) as unknown
-    if (
-      !parsed ||
-      typeof parsed !== 'object' ||
-      typeof (parsed as { sql?: unknown }).sql !== 'string'
-    ) {
-      return null
-    }
-    const obj = parsed as {
-      sql: string
-      source_id?: number | null
-      origin?: string
-      created_at?: number
-    }
-    return {
-      sql: obj.sql,
-      source_id: typeof obj.source_id === 'number' ? obj.source_id : null,
-      origin: 'visual',
-      created_at: typeof obj.created_at === 'number' ? obj.created_at : Date.now(),
-    }
-  } catch {
-    return null
-  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -102,9 +65,14 @@ function sqlIdentifier(value: string): string {
 // ──────────────────────────────────────────────────────────────────────────
 
 export default function QueryConsole() {
-  // 先尝试从 sessionStorage 读取 /queries/visual 传来的 prefill；命中则覆盖默认 SQL。
+  const location = useLocation()
+  // 先尝试读取 route state，再读取 sessionStorage；命中则覆盖默认 SQL。
   // 使用 lazy initializer，避免每次 render 都访问 sessionStorage。
-  const [initialPrefill] = useState<QueryVisualPrefill | null>(() => consumeVisualPrefill())
+  const [initialPrefill] = useState<QueryWorkbenchPrefillPayload | null>(() => {
+    const routePrefill = extractRouteQueryWorkbenchPrefill(location.state)
+    const storedPrefill = consumeStoredQueryWorkbenchPrefill()
+    return routePrefill ?? storedPrefill
+  })
 
   const [sql, setSql] = useState<string>(() => initialPrefill?.sql ?? DEFAULT_SQL)
   const [sourceId, setSourceId] = useState<number | null>(initialPrefill?.source_id ?? null)
@@ -616,6 +584,24 @@ export default function QueryConsole() {
                 / {database}
               </span>
             ) : null}
+            {initialPrefill ? (
+              <span
+                data-testid="query-workbench-prefill-origin"
+                className="hidden min-w-0 items-center gap-1 truncate rounded border px-2 py-0.5 md:inline-flex"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
+              >
+                <span className="truncate">{prefillOriginLabel(initialPrefill)}</span>
+                {initialPrefill.principal_id ? (
+                  <>
+                    <span>·</span>
+                    <IdentityName
+                      value={initialPrefill.principal_id}
+                      displayName={initialPrefill.principal_display_name}
+                    />
+                  </>
+                ) : null}
+              </span>
+            ) : null}
           </div>
 
           <span className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-3)' }}>
@@ -771,6 +757,20 @@ export default function QueryConsole() {
       )}
     </div>
   )
+}
+
+function prefillOriginLabel(prefill: QueryWorkbenchPrefillPayload): string {
+  if (prefill.origin === 'saved_query') {
+    return prefill.query_name
+      ? t('queryConsole.prefill.savedNamed', '来自已保存查询：{name}', { name: prefill.query_name })
+      : t('queryConsole.prefill.saved', '来自已保存查询')
+  }
+  if (prefill.origin === 'query_history') {
+    return prefill.history_id
+      ? t('queryConsole.prefill.historyId', '来自查询历史 #{id}', { id: prefill.history_id })
+      : t('queryConsole.prefill.history', '来自查询历史')
+  }
+  return t('queryConsole.prefill.visual', '来自可视化构建')
 }
 
 // ──────────────────────────────────────────────────────────────────────────

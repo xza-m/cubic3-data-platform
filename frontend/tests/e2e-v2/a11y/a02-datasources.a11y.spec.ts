@@ -21,7 +21,7 @@ import prefFx from '../fixtures/preferences.json' with { type: 'json' }
 test.beforeEach(async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources/types', envelope(dsFx.types))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources/1', envelope(dsFx.detail))

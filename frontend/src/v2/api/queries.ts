@@ -16,6 +16,7 @@ export interface QueryHistoryItem {
   source_name: string | null
   status: string
   executed_by: string
+  executed_by_display_name?: string | null
   executed_at: string
   execution_time_ms: number | null
   row_count: number | null
@@ -33,6 +34,7 @@ export interface SavedQuery {
   tags: string[]
   is_favorite: boolean
   created_by: string
+  created_by_display_name?: string | null
   created_at: string
   updated_at: string
 }

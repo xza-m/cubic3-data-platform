@@ -5,7 +5,7 @@
 // 数据源：useDatasourceSchema / useDatasourceSchemaTables / useDatasourceSchemaTableColumns。
 
 import { useEffect, useState } from 'react'
-import { Database, Table as TableIcon, Columns as ColumnsIcon, RefreshCcw } from 'lucide-react'
+import { Database, Table as TableIcon, Columns as ColumnsIcon, Loader2, RefreshCcw } from 'lucide-react'
 import {
   useDatasourceSchema,
   useDatasourceSchemaTables,
@@ -48,6 +48,7 @@ export function DatasourceSchemaBrowser({ datasourceId }: Props) {
         active={activeDb}
         onSelect={setActiveDb}
         onRefresh={() => dbs.refetch()}
+        isRefreshing={dbs.isFetching}
         fetchedAt={dbs.data?.fetched_at}
       />
       <TableColumn
@@ -58,6 +59,7 @@ export function DatasourceSchemaBrowser({ datasourceId }: Props) {
         active={activeTable}
         onSelect={setActiveTable}
         onRefresh={() => tables.refetch()}
+        isRefreshing={tables.isFetching}
         fetchedAt={tables.data?.fetched_at}
       />
       <ColumnPanel
@@ -68,6 +70,7 @@ export function DatasourceSchemaBrowser({ datasourceId }: Props) {
         rowCount={columns.data?.row_count_estimate}
         items={columns.data?.columns ?? []}
         onRefresh={() => columns.refetch()}
+        isRefreshing={columns.isFetching}
         fetchedAt={columns.data?.fetched_at}
       />
     </div>
@@ -82,7 +85,8 @@ function DbColumn(props: {
   items: string[]
   active: string | null
   onSelect: (db: string) => void
-  onRefresh: () => void
+  onRefresh: () => unknown
+  isRefreshing: boolean
   fetchedAt?: string
 }) {
   return (
@@ -90,6 +94,7 @@ function DbColumn(props: {
       title={t('schemaBrowser.col.databases', '数据库')}
       icon={<Database size={12} />}
       onRefresh={props.onRefresh}
+      isRefreshing={props.isRefreshing}
       fetchedAt={props.fetchedAt}
       width="w-44"
     >
@@ -118,7 +123,8 @@ function TableColumn(props: {
   items: { table_name: string; comment: string; row_count: number | null }[]
   active: string | null
   onSelect: (table: string) => void
-  onRefresh: () => void
+  onRefresh: () => unknown
+  isRefreshing: boolean
   fetchedAt?: string
 }) {
   return (
@@ -130,6 +136,7 @@ function TableColumn(props: {
       }
       icon={<TableIcon size={12} />}
       onRefresh={props.onRefresh}
+      isRefreshing={props.isRefreshing}
       fetchedAt={props.fetchedAt}
       width="w-64"
     >
@@ -168,7 +175,8 @@ function ColumnPanel(props: {
   table: string | null
   rowCount: number | null | undefined
   items: { name: string; type: string; nullable: boolean; comment: string }[]
-  onRefresh: () => void
+  onRefresh: () => unknown
+  isRefreshing: boolean
   fetchedAt?: string
 }) {
   return (
@@ -180,6 +188,7 @@ function ColumnPanel(props: {
       }
       icon={<ColumnsIcon size={12} />}
       onRefresh={props.onRefresh}
+      isRefreshing={props.isRefreshing}
       fetchedAt={props.fetchedAt}
       width="flex-1"
       meta={
@@ -242,6 +251,7 @@ function ColumnShell({
   width,
   meta,
   onRefresh,
+  isRefreshing,
   fetchedAt,
   children,
 }: {
@@ -249,7 +259,8 @@ function ColumnShell({
   icon: React.ReactNode
   width: string
   meta?: React.ReactNode
-  onRefresh: () => void
+  onRefresh: () => unknown
+  isRefreshing: boolean
   fetchedAt?: string
   children: React.ReactNode
 }) {
@@ -269,6 +280,8 @@ function ColumnShell({
         <button
           type="button"
           onClick={onRefresh}
+          disabled={isRefreshing}
+          aria-busy={isRefreshing || undefined}
           className={`${meta ? 'ml-2' : 'ml-auto'} inline-flex items-center rounded p-1`}
           style={{ color: 'var(--text-3)' }}
           title={
@@ -277,7 +290,7 @@ function ColumnShell({
               : t('schemaBrowser.refresh', '刷新')
           }
         >
-          <RefreshCcw size={11} />
+          {isRefreshing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCcw size={11} />}
         </button>
       </div>
       <div className="flex-1 overflow-auto">{children}</div>

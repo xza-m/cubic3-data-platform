@@ -6,9 +6,11 @@
 // Round 4 · T-001c（第二批）— 全量 t() 替换；key 命名：queries.saved.*
 
 import { useState, type ReactNode } from 'react'
-import { Star } from 'lucide-react'
+import { Edit3, ExternalLink, Star, Trash2 } from 'lucide-react'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import type { SavedQuery, SavedQueryDetail, CreateSavedQueryPayload, UpdateSavedQueryPayload } from '@v2/api/queries'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { IdentityName } from '@v2/components/IdentityName'
 import { t } from '@v2/i18n'
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -48,46 +50,40 @@ export function SavedQueryDetailContent({
 }) {
   return (
     <div className="space-y-4 px-4 py-4 text-xs">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         {actions?.onOpen && (
-          <button
-            type="button"
+          <ActionIconButton
+            label={t('queries.saved.action.openInWorkbench', '在工作台打开')}
+            icon={ExternalLink}
+            variant="primary"
             onClick={actions.onOpen}
-            className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-          >
-            {t('queries.saved.action.openInWorkbench', '在工作台打开')}
-          </button>
+          />
         )}
         {actions?.onEdit && (
-          <button
-            type="button"
+          <ActionIconButton
+            label={t('queries.saved.action.edit', '编辑')}
+            icon={Edit3}
             onClick={actions.onEdit}
-            className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)]"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            {t('queries.saved.action.edit', '编辑')}
-          </button>
+          />
         )}
         {actions?.onToggleFavorite && (
-          <button
-            type="button"
+          <ActionIconButton
+            label={
+              row.is_favorite
+                ? t('queries.saved.action.unfavorite', '取消收藏')
+                : t('queries.saved.action.favorite', '收藏')
+            }
+            icon={Star}
             onClick={actions.onToggleFavorite}
-            className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)]"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            {row.is_favorite
-              ? t('queries.saved.action.unfavorite', '取消收藏')
-              : t('queries.saved.action.favorite', '收藏')}
-          </button>
+          />
         )}
         {actions?.onDelete && (
-          <button
-            type="button"
+          <ActionIconButton
+            label={t('queries.saved.action.delete', '删除')}
+            icon={Trash2}
+            variant="danger"
             onClick={actions.onDelete}
-            className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-          >
-            {t('queries.saved.action.delete', '删除')}
-          </button>
+          />
         )}
       </div>
 
@@ -95,7 +91,10 @@ export function SavedQueryDetailContent({
         <Row label={t('queries.saved.field.id', '编号')} value={<code>#{row.id}</code>} />
         <Row label={t('queries.saved.field.name', '名称')} value={row.query_name} />
         <Row label={t('queries.saved.field.code', '代码')} value={<code>{row.query_code}</code>} />
-        <Row label={t('queries.saved.field.owner', '负责人')} value={row.created_by} />
+        <Row
+          label={t('queries.saved.field.owner', '负责人')}
+          value={<IdentityName value={row.created_by} displayName={row.created_by_display_name} />}
+        />
         <Row
           label={t('queries.saved.field.favorite', '收藏')}
           value={
@@ -190,7 +189,10 @@ export function SavedQueryContextBody({
           {t('queries.saved.section.info', '信息')}
         </div>
         <dl className="mt-2 space-y-1 text-xs">
-          <Pair label={t('queries.saved.field.owner', '负责人')} value={row.created_by} />
+          <Pair
+            label={t('queries.saved.field.owner', '负责人')}
+            value={<IdentityName value={row.created_by} displayName={row.created_by_display_name} />}
+          />
           <Pair label={t('queries.saved.field.updated', '更新')} value={fmtRelative(row.updated_at)} />
           {row.tags?.length ? (
             <div className="flex items-start justify-between gap-2">

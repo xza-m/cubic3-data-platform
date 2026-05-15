@@ -7,10 +7,11 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, RefreshCcw, Workflow, Clock, Save } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Workflow, Clock, Save } from 'lucide-react'
 import { useExtractionTasks, useExecuteTask, useUpdateExtractionTask, useUpdateTaskSchedule } from '@v2/hooks/extraction'
 import type { ExtractionTask } from '@v2/api/extraction'
 import { useToast } from '@v2/components/ui/Toast'
+import { RefreshButton } from '@v2/components/CommonControls'
 import {
   ExtractionTaskDetailContent,
   taskStatusChip,
@@ -115,15 +116,11 @@ export default function ExtractionTaskDetail() {
         >
           <ArrowLeft size={12} /> {t('extractionTaskDetail.action.back', '返回列表')}
         </button>
-        <button
-          type="button"
+        <RefreshButton
           onClick={() => refetch()}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
-          {t('extractionTaskDetail.action.refresh', '刷新')}
-        </button>
+          loading={isFetching}
+          ariaLabel={t('extractionTaskDetail.action.refresh', '刷新提取任务')}
+        />
         <button
           type="button"
           onClick={() => navigate('/extraction/runs')}

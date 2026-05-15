@@ -1,6 +1,6 @@
 {
   "default": {
-    "user_id": 1,
+    "principal_id": "internal:test:test_admin",
     "theme": "light",
     "default_landing": "/dashboard",
     "list_page_size": 50,
@@ -9,7 +9,7 @@
     "updated_at": "2026-04-15T08:00:00+08:00"
   },
   "dark": {
-    "user_id": 1,
+    "principal_id": "internal:test:test_admin",
     "theme": "dark",
     "default_landing": "/dashboard",
     "list_page_size": 50,

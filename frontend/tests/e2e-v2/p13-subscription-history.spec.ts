@@ -48,7 +48,7 @@ test('P13 订阅详情 渲染并把动作收敛到 header @p13', async ({ page }
 
   const detailHeader = page.locator('header').filter({ hasText: '每日抽取告警' })
   await expect(detailHeader.getByRole('button', { name: /^触发$/ })).toHaveCount(1)
-  await expect(detailHeader.getByRole('button', { name: /^停用$/ })).toHaveCount(1)
+  await expect(detailHeader.getByRole('button', { name: /^暂停$/ })).toHaveCount(1)
   await expect(detailHeader.getByRole('button', { name: /^渠道$/ })).toHaveCount(1)
   await expect(detailHeader.getByRole('button', { name: /^编辑$/ })).toHaveCount(1)
   await expect(detailHeader.getByRole('button', { name: /^删除$/ })).toHaveCount(1)

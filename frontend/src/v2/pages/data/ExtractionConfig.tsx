@@ -5,7 +5,8 @@
 
 import { useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Activity, CheckCircle2, RefreshCcw, Settings2, XCircle } from 'lucide-react'
+import { Activity, CheckCircle2, Settings2, XCircle } from 'lucide-react'
+import { RefreshButton } from '@v2/components/CommonControls'
 import { Card, CardBody, CardHead, Skeleton } from '@v2/components/ui'
 import { useExtractionHealth } from '@v2/hooks/extraction'
 import { useAppShell } from '@v2/layout/AppShell'
@@ -24,15 +25,11 @@ export default function ExtractionConfig() {
 
   useEffect(() => {
     setTopBarActions(
-      <button
-        type="button"
+      <RefreshButton
         onClick={() => refetch()}
-        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-        style={{ color: 'var(--text-2)' }}
-      >
-        <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
-        {t('extractionConfig.action.refresh', '刷新')}
-      </button>,
+        loading={isFetching}
+        ariaLabel={t('extractionConfig.action.refresh', '刷新任务配置')}
+      />,
     )
     return () => setTopBarActions(null)
   }, [setTopBarActions, refetch, isFetching])

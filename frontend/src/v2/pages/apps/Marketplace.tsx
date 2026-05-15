@@ -11,10 +11,12 @@
 
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Grid, List, MoreHorizontal, RefreshCcw } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { t } from '@v2/i18n'
 import { useApps, useAppCategories, useEnableApp, useDisableApp } from '@v2/hooks/apps'
 import { useToast } from '@v2/components/ui'
+import { RefreshButton, Toolbar, ToolbarSearch, ViewModeToggle } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import { AppCard, AppRow } from './_shared/app-card'
 import type { App, AppCategoryOption } from '@v2/api/apps'
 
@@ -112,54 +114,28 @@ export default function Marketplace() {
               {t('marketplace.subtitle', '语义化分析与运营应用')}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              className="rounded border px-2 py-1 text-xs outline-none focus:ring-1"
-              style={{
-                background: 'var(--bg-surface-2)',
-                borderColor: 'var(--border)',
-                color: 'var(--text-1)',
-                width: 200,
-              }}
-              placeholder={t('marketplace.search_placeholder', '搜索应用名 / 描述…')}
+          <Toolbar>
+            <ToolbarSearch
               value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+              onChange={setKeyword}
+              placeholder={t('marketplace.search_placeholder', '搜索应用名 / 描述…')}
+              ariaLabel={t('marketplace.search.aria', '搜索应用')}
+              width={220}
             />
-            {/* View toggle */}
-            <div
-              className="flex items-center gap-0.5 rounded border p-0.5"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
-            >
-              {(
-                [
-                  { key: 'grid' as ViewMode, Icon: Grid, label: t('view.grid', '卡片') },
-                  { key: 'list' as ViewMode, Icon: List, label: t('view.list', '列表') },
-                ] as const
-              ).map(({ key, Icon, label }) => (
-                <button
-                  key={key}
-                  type="button"
-                  title={label}
-                  className="btn btn-sm"
-                  style={{
-                    background: view === key ? 'var(--accent)' : 'transparent',
-                    color: view === key ? 'var(--on-accent)' : 'var(--text-2)',
-                  }}
-                  onClick={() => setView(key)}
-                >
-                  <Icon size={12} />
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost"
+            <ViewModeToggle<ViewMode>
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'grid', icon: 'grid', label: t('view.grid', '卡片') },
+                { value: 'list', icon: 'list', label: t('view.list', '列表') },
+              ]}
+            />
+            <RefreshButton
               onClick={() => refetch()}
-              title={t('action.refresh', '刷新')}
-            >
-              <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-            </button>
-          </div>
+              loading={isFetching}
+              ariaLabel={t('marketplace.action.refresh', '刷新应用列表')}
+            />
+          </Toolbar>
         </div>
 
         {/* Facet rail: category + status */}
@@ -225,7 +201,7 @@ export default function Marketplace() {
         <div
           className={
             view === 'grid'
-              ? 'grid flex-1 gap-3 overflow-auto p-3 md:grid-cols-2 xl:grid-cols-3'
+              ? 'grid flex-1 auto-rows-max content-start items-start gap-3 overflow-auto p-3 md:grid-cols-2 xl:grid-cols-3'
               : 'flex flex-1 flex-col gap-2 overflow-auto p-3'
           }
         >
@@ -239,14 +215,12 @@ export default function Marketplace() {
           )}
 
           {isError && !isLoading && (
-            <div className="col-span-full flex flex-col items-center gap-3 py-10">
-              <p className="text-xs" style={{ color: 'var(--danger)' }}>
-                {t('state.load_error', '加载失败，请重试')}
-              </p>
-              <button type="button" className="btn btn-sm" onClick={() => refetch()}>
-                {t('action.retry', '重试')}
-              </button>
-            </div>
+            <RetryState
+              className="col-span-full py-10"
+              message={t('state.load_error', '加载失败，请重试')}
+              onRetry={() => refetch()}
+              retryAriaLabel={t('marketplace.action.retry', '重试加载应用市场')}
+            />
           )}
 
           {!isLoading && !isError && filtered.length === 0 && (
@@ -317,7 +291,7 @@ function AppCardWithMenu({
   const menuRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div className="relative">
+    <div className="group relative" data-testid="marketplace-app-card">
       <AppCard
         app={app}
         categoryLabel={categoryLabel}

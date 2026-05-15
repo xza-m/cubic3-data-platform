@@ -16,6 +16,7 @@ import { t } from '@v2/i18n'
 // Legacy 路径 → v2 等价路径。`:param` 占位符自动从 useParams 取值并替换。
 // 6 个月后清理零命中条目。详见 docs/.../04-cutover-and-migration.md §4.1。
 const LEGACY_REDIRECTS: Record<string, string> = {
+  '/queries/console': '/queries',
   '/queries/editor': '/queries',
   '/queries/templates': '/queries',
   '/semantic/overview': '/semantic/workbench',
@@ -46,6 +47,7 @@ const Dashboard = lazy(() => import('@v2/pages/Dashboard'))
 const NotFound = lazy(() => import('@v2/pages/NotFound'))
 const Forbidden = lazy(() => import('@v2/pages/Forbidden'))
 const SettingsPage = lazy(() => import('@v2/pages/settings/Settings'))
+const ProfilePage = lazy(() => import('@v2/pages/profile/Profile'))
 
 // ── Data 域（data-center / extraction） ────────────────────────────────────────
 const Datasources = lazy(() => import('@v2/pages/data/Datasources'))
@@ -91,11 +93,7 @@ const Channels = lazy(() => import('@v2/pages/config/channels/Channels'))
 const ChannelDetail = lazy(() => import('@v2/pages/config/channels/ChannelDetail'))
 const Subscriptions = lazy(() => import('@v2/pages/config/subscriptions/Subscriptions'))
 const SubscriptionDetail = lazy(() => import('@v2/pages/config/subscriptions/SubscriptionDetail'))
-// P14: Users + Roles
-const Users = lazy(() => import('@v2/pages/config/users/Users'))
-const UserDetail = lazy(() => import('@v2/pages/config/users/UserDetail'))
-const Roles = lazy(() => import('@v2/pages/config/roles/Roles'))
-const RoleDetail = lazy(() => import('@v2/pages/config/roles/RoleDetail'))
+const AccessIdentity = lazy(() => import('@v2/pages/config/access/AccessIdentity'))
 
 // ── Semantic 域 ───────────────────────────────────────────────────────────────
 const OntologyLayout = lazy(() => import('@v2/pages/semantic/ontology/_layout'))
@@ -231,18 +229,28 @@ export default function AppRoutes() {
               <Route path="new" element={wrap(<InstanceCreate />)} />
               <Route path=":id" element={wrap(<InstanceDetail />)} />
             </Route>
+            <Route path="executions">
+              <Route index element={wrap(<Executions />)} />
+              <Route path=":id" element={wrap(<ExecutionDetail />)} />
+            </Route>
             <Route path=":code" element={wrap(<AppDetail />)} />
           </Route>
 
-          {/* ── 执行监控 ── */}
+          {/* Legacy 重定向：/executions → /apps/executions，避免旧链接丢失应用侧边栏 */}
           <Route path="executions">
-            <Route index element={wrap(<Executions />)} />
-            <Route path=":id" element={wrap(<ExecutionDetail />)} />
+            <Route index element={<Navigate to="/apps/executions" replace />} />
+            <Route path=":id" element={<LegacyRedirect to="/apps/executions/:id" />} />
           </Route>
 
           {/* ── 配置中心 ── */}
           <Route path="config">
-            <Route index element={<Navigate to="/config/channels" replace />} />
+            <Route index element={<Navigate to="/config/access" replace />} />
+
+            <Route path="access">
+              <Route index element={wrap(<AccessIdentity view="permissions" />)} />
+              <Route path="audit" element={wrap(<AccessIdentity view="audit" />)} />
+              <Route path="observability" element={wrap(<AccessIdentity view="observability" />)} />
+            </Route>
 
             <Route path="channels">
               <Route index element={wrap(<Channels />)} />
@@ -254,15 +262,6 @@ export default function AppRoutes() {
               <Route path=":id" element={wrap(<SubscriptionDetail />)} />
             </Route>
 
-            {/* P14: 用户与角色管理 */}
-            <Route path="users">
-              <Route index element={wrap(<Users />)} />
-              <Route path=":id" element={wrap(<UserDetail />)} />
-            </Route>
-            <Route path="roles">
-              <Route index element={wrap(<Roles />)} />
-              <Route path=":id" element={wrap(<RoleDetail />)} />
-            </Route>
           </Route>
 
           {/* ── 语义中心 ── */}
@@ -291,6 +290,7 @@ export default function AppRoutes() {
 
             {/* 顶层建模助手 Agent 任务流：不归属于 Cube 层级 */}
             <Route path="modeling-agent/new" element={wrap(<SemanticModelingAgent />)} />
+            <Route path="modeling-agent/:sessionId" element={wrap(<SemanticModelingAgent />)} />
 
             {/* Cube：静态 new 在动态 :name 前；edit 作为 :name 的子路由 */}
             <Route path="cubes">
@@ -317,6 +317,7 @@ export default function AppRoutes() {
 
           {/* ── 设置 ── */}
           <Route path="settings" element={wrap(<SettingsPage />)} />
+          <Route path="profile" element={wrap(<ProfilePage />)} />
 
           {/* ── Legacy redirect 表（cutover 兼容） ── */}
           {Object.entries(LEGACY_REDIRECTS).map(([from, to]) => (

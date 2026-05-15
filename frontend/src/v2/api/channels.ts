@@ -31,6 +31,7 @@ export interface Channel {
   config: ChannelConfig
   enabled: boolean
   created_by: string | null
+  created_by_display_name?: string | null
   created_at: string | null
   updated_at: string | null
 }

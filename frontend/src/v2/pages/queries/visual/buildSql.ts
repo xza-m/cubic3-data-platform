@@ -32,10 +32,7 @@ export function quoteIdent(name: string): string {
 
 /** 物理表名 → "schema.table" 或 "table"，都过一遍 quoteIdent。 */
 export function quoteTable(physicalTable: string): string {
-  // 若包含 . 则按 schema.table 拆分；否则整体引用
-  if (!physicalTable.includes('.')) return quoteIdent(physicalTable)
-  const [schema, table] = physicalTable.split('.')
-  return `${quoteIdent(schema)}.${quoteIdent(table)}`
+  return physicalTable.split('.').map((part) => quoteIdent(part)).join('.')
 }
 
 /** 判断是否为"数值 / 布尔 / 日期"类型 —— 这些类型的字面量**不加引号**。 */

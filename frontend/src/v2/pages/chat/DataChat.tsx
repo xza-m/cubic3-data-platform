@@ -3,8 +3,8 @@
 // Data Chat 对话工作台。当前接入已有 /api/v1/conversations 契约：
 // 选择数据集 → 创建/选择对话 → 发送问题。
 
-import { useEffect, useMemo, useState } from 'react'
-import { Bot, Loader2, MessageSquarePlus, RefreshCcw, Send, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Bot, Loader2, MessageSquarePlus, Send, Sparkles } from 'lucide-react'
 import { useDatasets } from '@v2/hooks/datasets'
 import {
   useConversation,
@@ -14,6 +14,7 @@ import {
 } from '@v2/hooks/conversations'
 import type { Conversation, ConversationMessage } from '@v2/api/conversations'
 import { Button, Card, CardBody, CardHead, Chip, Select, Textarea, useToast } from '@v2/components/ui'
+import { RefreshButton } from '@v2/components/CommonControls'
 import { useAppShell } from '@v2/layout/AppShell'
 import { fmtDateTime } from '@v2/lib/format'
 import { t } from '@v2/i18n'
@@ -45,20 +46,36 @@ export default function DataChat() {
   const [draft, setDraft] = useState('')
 
   const activeConversationQ = useConversation(activeConversationId)
-  const activeConversation = activeConversationQ.data ?? conversations.find((c) => c.id === activeConversationId) ?? null
-  const messages = activeConversationQ.data?.messages ?? []
+  const {
+    data: activeConversationData,
+    refetch: refetchActiveConversation,
+    isFetching: isActiveConversationFetching,
+  } = activeConversationQ
+  const activeConversation = activeConversationData ?? conversations.find((c) => c.id === activeConversationId) ?? null
+  const messages = activeConversationData?.messages ?? []
+
+  const handleRefresh = useCallback(() => {
+    if (activeConversationId == null) {
+      return conversationsQ.refetch()
+    }
+    return Promise.all([
+      conversationsQ.refetch(),
+      refetchActiveConversation(),
+    ])
+  }, [activeConversationId, conversationsQ, refetchActiveConversation])
 
   useEffect(() => {
     setBreadcrumbs([t('nav.chat.label', 'Data Chat')])
     setTopBarActions(
-      <Button size="sm" variant="ghost" onClick={() => conversationsQ.refetch()}>
-        <RefreshCcw size={12} className={conversationsQ.isFetching ? 'animate-spin' : ''} />{' '}
-        {t('action.refresh', '刷新')}
-      </Button>,
+      <RefreshButton
+        onClick={handleRefresh}
+        loading={conversationsQ.isFetching || isActiveConversationFetching}
+        ariaLabel={t('dataChat.action.refresh', '刷新数据对话')}
+      />,
     )
     setContextPanel({
       title: t('dataChat.ctx.title', 'Data Chat'),
-      subtitle: 'GET /api/v1/conversations',
+      subtitle: t('dataChat.ctx.subtitle', '选择数据集后发起自然语言问数'),
       body: (
         <div className="space-y-3 px-4 py-4 text-xs text-2">
           <p>{t('dataChat.ctx.contract', '对话入口使用 conversations 契约，发送消息前必须先绑定数据集。')}</p>
@@ -70,7 +87,14 @@ export default function DataChat() {
       setTopBarActions(null)
       setContextPanel(null)
     }
-  }, [conversationsQ, setBreadcrumbs, setContextPanel, setTopBarActions])
+  }, [
+    conversationsQ.isFetching,
+    handleRefresh,
+    isActiveConversationFetching,
+    setBreadcrumbs,
+    setContextPanel,
+    setTopBarActions,
+  ])
 
   useEffect(() => {
     if (selectedDatasetId == null && datasets.length > 0) {

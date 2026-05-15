@@ -24,7 +24,7 @@ const mockGet = getMyPreferences as ReturnType<typeof vi.fn>
 const mockPut = putMyPreferences as ReturnType<typeof vi.fn>
 
 const DEFAULT_PREFS: UserPreferences = {
-  user_id: 1,
+  principal_id: 'internal:test:test_admin',
   theme: 'system',
   default_landing: '/dashboard',
   list_page_size: 20,

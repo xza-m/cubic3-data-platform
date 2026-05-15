@@ -7,11 +7,13 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Chip, SkeletonRows, Switch, Table, useToast, type TableColumn } from '@v2/components/ui'
+import { CreateButton } from '@v2/components/CommonControls'
 import { t } from '@v2/i18n'
 import { fmtDateTime } from '@v2/lib/format'
 import { useChannels, useDeleteChannel, useUpdateChannel } from '@v2/hooks/channels'
 import { useCreateChannel } from '@v2/hooks/channels'
 import type { Channel, ChannelType, CreateChannelPayload } from '@v2/api/channels'
+import { IdentityName } from '@v2/components/IdentityName'
 import {
   CHANNEL_TYPE_LABEL,
   channelTypeChip,
@@ -275,7 +277,10 @@ export default function Channels() {
       render: (r) => (
         <button
           type="button"
-          onClick={() => setPeekRow(r)}
+          onClick={(event) => {
+            event.stopPropagation()
+            setPeekRow(r)
+          }}
           className="text-left font-medium hover:underline focus-visible:ring-2"
           style={{ color: 'var(--text-1)' }}
         >
@@ -298,7 +303,11 @@ export default function Channels() {
       key: 'created_by',
       title: t('common.createdBy', '创建人'),
       width: 100,
-      render: (r) => <span style={{ color: 'var(--text-2)' }}>{r.created_by ?? '—'}</span>,
+      render: (r) => (
+        <span style={{ color: 'var(--text-2)' }}>
+          <IdentityName value={r.created_by} displayName={r.created_by_display_name} />
+        </span>
+      ),
     },
     {
       key: 'updated_at',
@@ -328,9 +337,6 @@ export default function Channels() {
         style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
       >
         <div>
-          <nav className="mb-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-            {t('nav.config', '配置')} / {t('nav.channels', '渠道')}
-          </nav>
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
             {t('channel.page.title', '渠道')}
           </h1>
@@ -347,13 +353,7 @@ export default function Channels() {
               </Chip>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
-          >
-            + {t('channel.action.create', '接入新渠道')}
-          </button>
+          <CreateButton label={t('channel.action.create', '接入新渠道')} onClick={openCreate} />
         </div>
       </header>
 
@@ -369,7 +369,8 @@ export default function Channels() {
               rows={rows}
               columns={columns}
               rowKey={(r) => r.id}
-              onRowClick={(r) => navigate(`/config/channels/${r.id}`)}
+              activeKey={peekRow?.id}
+              onRowClick={(r) => setPeekRow(r)}
               emptyText={t('channel.empty', '暂无渠道，点击「接入新渠道」创建')}
             />
           )}
@@ -379,7 +380,9 @@ export default function Channels() {
         {/* TODO: 等待 X-Crosscut PeekPanel 组件 — 当前用内联 Sheet 替代 */}
         {peekRow ? (
           <aside
-            className="w-72 shrink-0 border-l"
+            role="complementary"
+            aria-label={t('peek.aria.preview', '行预览')}
+            className="flex w-72 shrink-0 flex-col border-l"
             style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
           >
             <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
@@ -400,7 +403,7 @@ export default function Channels() {
                 ✕
               </button>
             </div>
-            <div className="overflow-auto" style={{ height: 'calc(100% - 45px)' }}>
+            <div className="min-h-0 flex-1 overflow-auto">
               <ChannelDetailContent
                 row={peekRow}
                 actions={{
@@ -411,6 +414,15 @@ export default function Channels() {
                   onDelete: () => void handleDelete(peekRow),
                 }}
               />
+            </div>
+            <div className="border-t p-3" style={{ borderColor: 'var(--border)' }}>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary w-full"
+                onClick={() => navigate(`/config/channels/${peekRow.id}`)}
+              >
+                {t('action.view_detail', '查看详情')}
+              </button>
             </div>
           </aside>
         ) : null}
