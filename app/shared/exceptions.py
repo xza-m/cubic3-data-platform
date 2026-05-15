@@ -74,6 +74,11 @@ class AuthorizationError(ApplicationException):
     pass
 
 
+class RateLimitExceededError(AuthorizationError):
+    """请求频率超过限制"""
+    pass
+
+
 # ============================================================================
 # 常用异常别名（向后兼容）
 # ============================================================================

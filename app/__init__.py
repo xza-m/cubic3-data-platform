@@ -23,11 +23,6 @@ from .interfaces.api.v1.auth import bp as auth_v1_bp
 from .interfaces.api.v1.feishu import bp as feishu_v1_bp
 from .interfaces.api.v1.dashboard import create_dashboard_blueprint
 
-# 用户偏好 API v1（B-back-1）
-from .interfaces.api.v1.user_preferences import bp as user_preferences_v1_bp
-from .interfaces.api.v1.users import bp as users_v1_bp
-from .interfaces.api.v1.roles import bp as roles_v1_bp, permissions_bp as permissions_v1_bp
-
 # 应用中心 API v1
 from .interfaces.api.v1.apps import bp as apps_v1_bp
 from .interfaces.api.v1.app_instances import bp as app_instances_v1_bp
@@ -41,6 +36,7 @@ from .interfaces.api.v1.subscriptions import app_instance_subscriptions_bp
 # 语义层 API v1
 from .interfaces.api.v1.semantic import create_semantic_blueprint
 from .interfaces.api.v1.semantic_modeling_agent import create_semantic_modeling_agent_blueprint
+from .interfaces.api.v1.semantic_modeling_copilot import create_semantic_modeling_copilot_blueprint
 from .interfaces.api.v1.ontology import create_ontology_blueprint
 from .interfaces.api.v1.semantic_mapper import create_semantic_mapper_blueprint
 from .interfaces.api.v1.semantic_router import create_semantic_router_blueprint
@@ -48,6 +44,8 @@ from .interfaces.api.v1.execution_compiler import create_execution_compiler_blue
 from .interfaces.api.v1.governance import create_governance_blueprint
 from .interfaces.api.v1.agent import create_agent_blueprint
 from .interfaces.api.v1.scheduled_queries import bp as scheduled_queries_v1_bp
+from .interfaces.api.v1.access import bp as access_v1_bp
+from .interfaces.api.v1.access_preferences import bp as access_preferences_v1_bp
 
 from .infrastructure.scheduler import init_jobs
 
@@ -107,9 +105,21 @@ def create_app(role: str = "web") -> Flask:
     from .domain.queries.scheduled_query import ScheduledQuery  # noqa
     from .domain.queries.scheduled_query_run import ScheduledQueryRun  # noqa
     from .domain.semantic.diagnose_run import DiagnoseRun  # noqa
-    from .domain.entities.user_preferences import UserPreferences  # noqa  B-back-1
-    from .infrastructure.users.models import UserORM, RoleORM, UserRoleORM, UserPasswordORM  # noqa  W4.D-2
-    from .infrastructure.governance.models import GovernanceAuditTraceORM  # noqa
+    from .infrastructure.access.models import (  # noqa
+        AccessApiKeyORM,
+        AccessDelegationEventORM,
+        AccessPrincipalAliasORM,
+        AccessPrincipalORM,
+        AccessRoleBindingORM,
+        AccessServicePrincipalORM,
+        PrincipalPreferencesORM,
+    )
+    from .infrastructure.governance.models import (  # noqa
+        AccessDataPolicyORM,
+        AccessExecutionProfileORM,
+        AccessPolicyDecisionORM,
+        GovernanceAuditTraceORM,
+    )
 
     # 注册执行器（worker 执行任务时需要）
     from .executors import register_all_executors
@@ -138,10 +148,8 @@ def create_app(role: str = "web") -> Flask:
         app.register_blueprint(sql_lab_v1_bp)
         app.register_blueprint(queries_v1_bp)
         app.register_blueprint(feishu_v1_bp)
-        app.register_blueprint(user_preferences_v1_bp)
-        app.register_blueprint(users_v1_bp)
-        app.register_blueprint(roles_v1_bp)
-        app.register_blueprint(permissions_v1_bp)
+        app.register_blueprint(access_v1_bp)
+        app.register_blueprint(access_preferences_v1_bp)
         app.register_blueprint(apps_v1_bp)
         app.register_blueprint(app_instances_v1_bp)
         app.register_blueprint(app_executions_v1_bp)
@@ -163,6 +171,55 @@ def create_app(role: str = "web") -> Flask:
         app.register_blueprint(create_semantic_modeling_agent_blueprint(
             container.semantic_modeling_agent(),
         ))
+        # 语义建模 Copilot：session-first 对话工作台。
+        # 依赖未在 DI 容器中暴露，这里做最小装配；
+        # publish 链路接真实 ModelingProposalService，确保 Cube + Ontology 一气呵成发布到 active。
+        try:
+            from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
+            from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
+            from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
+            from app.application.semantic.modeling_proposal_service import ModelingProposalService
+            from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
+            from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
+            from app.infrastructure.semantic.yaml_modeling_agent_session_repository import (
+                YamlModelingAgentSessionRepository,
+            )
+            from app.infrastructure.semantic.yaml_modeling_proposal_repository import (
+                YamlModelingProposalRepository,
+            )
+
+            semantic_dir = app.config.get('SEMANTIC_DIR') or 'app/infrastructure/semantic'
+            _session_repo = YamlModelingAgentSessionRepository(f'{semantic_dir}/modeling_agent_sessions')
+            _proposal_repo = YamlModelingProposalRepository(f'{semantic_dir}/modeling_proposals')
+            _runtime = OpenAIAgentsSdkAdapter(
+                enable_sdk=bool(app.config.get('LLM_API_KEY')),
+                model=app.config.get('LLM_MODEL') or 'gpt-4o-mini',
+            )
+            _readiness = PublishReadinessChecker()
+            _source_recall = SourceCandidateRecallService(
+                datasource_repository=container.datasource_repository(),
+                table_cache_service=container.table_cache_service(),
+                dataset_repository=container.dataset_repository(),
+            )
+            _tools = ModelingToolRegistry(
+                builder=container.semantic_modeling_agent(),
+                readiness_checker=_readiness,
+                source_candidate_recall_service=_source_recall,
+            )
+            _proposal_service = ModelingProposalService(
+                repository=_proposal_repo,
+                builder=container.semantic_modeling_agent(),
+                readiness_checker=_readiness,
+            )
+            _copilot_service = SemanticModelingCopilotService(
+                session_repository=_session_repo,
+                runtime=_runtime,
+                tools=_tools,
+                proposal_service=_proposal_service,
+            )
+            app.register_blueprint(create_semantic_modeling_copilot_blueprint(_copilot_service))
+        except Exception as exc:  # pragma: no cover
+            app.logger.warning('semantic modeling copilot blueprint not registered: %s', exc)
         app.register_blueprint(create_ontology_blueprint(
             container.ontology_definition_service(),
             container.semantic_mapper_preview_service(),
@@ -227,9 +284,14 @@ def create_app(role: str = "web") -> Flask:
 
     with app.app_context():
         if role == "web" and not _testing:
-            from app.infrastructure.seed import seed_app_definitions, seed_system_instances
+            from app.infrastructure.seed import (
+                seed_access_governance_defaults,
+                seed_app_definitions,
+                seed_system_instances,
+            )
             seed_app_definitions()
             seed_system_instances()
+            seed_access_governance_defaults()
 
             init_jobs()
             logging.getLogger(__name__).info("Scheduler initialized with app-center schedules")

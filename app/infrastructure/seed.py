@@ -533,3 +533,120 @@ def seed_system_instances():
     except Exception as e:
         db.session.rollback()
         logger.warning(f"创建系统维护实例失败: {e}")
+
+
+def seed_access_governance_defaults():
+    """填充简化权限产品的默认数据访问规则。"""
+
+    from app.infrastructure.governance.repositories import SqlAccessGovernanceRepository
+
+    try:
+        repo = SqlAccessGovernanceRepository(db.session)
+        for profile in [
+            {
+                "profile_code": "mc_m0_reader",
+                "name": "M0 基础数据查询",
+                "credential_mode": "gateway_binding",
+                "data_level": "M0",
+                "allowed_operations": ["metadata.read", "semantic.plan", "query"],
+                "max_rows": 5000,
+                "timeout_seconds": 30,
+                "export_allowed": False,
+                "requires_strong_audit": False,
+                "description": "DIM / ADS 基础数据查询，由 gateway 映射到 M0 RAM 只读身份。",
+            },
+            {
+                "profile_code": "mc_m1_reader",
+                "name": "M1 汇总数据查询",
+                "credential_mode": "gateway_binding",
+                "data_level": "M1",
+                "allowed_operations": ["query"],
+                "max_rows": 10000,
+                "timeout_seconds": 60,
+                "export_allowed": False,
+                "requires_strong_audit": False,
+                "description": "DWS 汇总层查询，由 gateway 映射到 M1 RAM 只读身份。",
+            },
+            {
+                "profile_code": "mc_m2_detail_reader",
+                "name": "M2 明细数据查询",
+                "credential_mode": "gateway_binding",
+                "data_level": "M2",
+                "allowed_operations": ["query"],
+                "max_rows": 20000,
+                "timeout_seconds": 120,
+                "export_allowed": False,
+                "requires_strong_audit": True,
+                "description": "受控 DWD 明细查询，由 gateway 映射到 M2 RAM 只读身份。",
+            },
+        ]:
+            repo.upsert_execution_profile(profile)
+
+        for policy in [
+            {
+                "policy_code": "m0_public_read",
+                "name": "M0 基础数据访问",
+                "priority": 10,
+                "subject_roles": ["data_m0_reader"],
+                "resource_scope": {
+                    "data_levels": ["M0"],
+                    "table_layers": ["dim", "ads"],
+                    "table_prefixes": ["dim_", "ads_"],
+                },
+                "actions": ["metadata.read", "semantic.plan", "query"],
+                "effect": "allow",
+                "execution_profile_code": "mc_m0_reader",
+                "policy_version": "v1",
+            },
+            {
+                "policy_code": "m1_aggregate_read",
+                "name": "M1 聚合数据访问",
+                "priority": 20,
+                "subject_roles": ["data_m1_reader"],
+                "resource_scope": {
+                    "data_levels": ["M1"],
+                    "table_layers": ["dws"],
+                    "table_prefixes": ["dws_"],
+                },
+                "actions": ["query"],
+                "effect": "allow",
+                "execution_profile_code": "mc_m1_reader",
+                "policy_version": "v1",
+            },
+            {
+                "policy_code": "m2_detail_read",
+                "name": "M2 受控明细访问",
+                "priority": 30,
+                "subject_roles": ["data_m2_detail_reader"],
+                "resource_scope": {
+                    "data_levels": ["M2"],
+                    "table_layers": ["dwd"],
+                    "table_prefixes": ["dwd_"],
+                },
+                "actions": ["query"],
+                "effect": "allow",
+                "execution_profile_code": "mc_m2_detail_reader",
+                "policy_version": "v1",
+            },
+            {
+                "policy_code": "m3_raw_block",
+                "name": "M3 原始高敏数据阻断",
+                "priority": 1000,
+                "subject_roles": [],
+                "resource_scope": {
+                    "data_levels": ["M3"],
+                    "table_layers": ["ods", "raw"],
+                    "table_prefixes": ["ods_", "raw_"],
+                },
+                "actions": ["*"],
+                "effect": "deny",
+                "execution_profile_code": None,
+                "reason": "M3/raw data 默认不可直接消费，请治理为 M2 受控资产。",
+                "policy_version": "v1",
+            },
+        ]:
+            repo.upsert_data_policy(policy)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.warning(f"填充访问治理默认规则失败: {e}")
