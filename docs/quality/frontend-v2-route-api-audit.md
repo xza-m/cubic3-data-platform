@@ -50,9 +50,7 @@ last_reviewed: 2026-04-25
 | `/executions` | `apps/executions/Executions.tsx` | `/api/v1/app-executions` | 已接线 |
 | `/config/channels` | `config/channels/Channels.tsx` | `/api/v1/channels` | 已接线 |
 | `/config/subscriptions` | `config/subscriptions/Subscriptions.tsx` | `/api/v1/subscriptions` | 已接线 |
-| `/config/users` | `config/users/Users.tsx` | `/api/v1/users` | 已接线 |
-| `/config/roles` | `config/roles/Roles.tsx` | `/api/v1/roles`、`/api/v1/permissions` | 已接线 |
-| `/settings` | `settings/Settings.tsx` | `/api/v1/users/me/preferences` | 已接线 |
+| `/settings` | `settings/Settings.tsx` | `/api/v1/access/me/preferences` | 已接线 |
 | `/semantic/ontology` | `semantic/ontology/Workbench.tsx` | `/api/v1/ontology/workbench/*` | 已接线 |
 | `/semantic/ontology/objects` | `semantic/ontology/Objects.tsx` | `/api/v1/ontology/objects` | 已接线 |
 | `/semantic/ontology/objects/:name` | `semantic/ontology/ObjectDetail.tsx` | `/api/v1/ontology/objects/<name>` | 已接线 |

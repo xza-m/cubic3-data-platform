@@ -48,6 +48,8 @@ class ExecutionCompilerRuntimeService:
         *,
         target_type: str,
         metric_name: Optional[str] = None,
+        query_dsl: Optional[Dict[str, Any]] = None,
+        question: Optional[str] = None,
         retrieval_query: Optional[str] = None,
         retrieval_sources: Optional[list[str]] = None,
         tool_name: Optional[str] = None,
@@ -61,6 +63,8 @@ class ExecutionCompilerRuntimeService:
         preview = self._preview_service.compile_preview(
             target_type=target_type,
             metric_name=metric_name,
+            query_dsl=query_dsl,
+            question=question,
             retrieval_query=retrieval_query,
             retrieval_sources=retrieval_sources,
             tool_name=tool_name,

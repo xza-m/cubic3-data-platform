@@ -55,6 +55,7 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	test-integration-frontend \
 	smoke-backend \
 	smoke-frontend \
+	smoke-access \
 	smoke-observability \
 	coverage \
 	coverage-backend \
@@ -102,6 +103,7 @@ help:
 	@printf '  %-26s %s\n' 'make test-frontend' '前端自动化测试聚合'
 	@printf '  %-26s %s\n' 'make smoke-backend' '后端关键 API smoke'
 	@printf '  %-26s %s\n' 'make smoke-frontend' '前端平台壳层 smoke（== local-smoke）'
+	@printf '  %-26s %s\n' 'make smoke-access' '权限体系产品闭环 smoke（Principal / API Key / DataPolicy / Agent）'
 	@printf '  %-26s %s\n' 'make docs-health' '文档健康检查'
 	@printf '%s\n' ''
 	@printf '%s\n' '本地闸门（GitLab CI 未就位时的替代入口）:'
@@ -204,6 +206,10 @@ smoke-frontend:
 	@printf '%s\n' '[layer4][frontend] 运行前端 v2 cutover smoke (Round 3 W6.A · scripts/cutover/deploy.sh 走该 6/6 用例)'
 	cd $(FRONTEND_DIR) && $(NPM) run e2e:smoke
 
+smoke-access:
+	@printf '%s\n' '[layer4][access] 运行权限体系产品闭环 smoke'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov tests/integration/access
+
 smoke-observability:
 	@printf '%s\n' '[layer4][observability] skip: 当前仓库未配置统一可观测阈值校验'
 
@@ -266,7 +272,9 @@ test-modeling-agent:
 		tests/unit/application/semantic/test_domain_modeling_service.py::test_domain_context_preview_returns_candidate_scope_without_join_truth \
 		tests/integration/test_semantic_api.py::TestDomainsEndpoint::test_domain_context_preview_returns_candidate_scope \
 		tests/unit/application/semantic/test_semantic_modeling_agent.py \
-		tests/integration/test_semantic_modeling_agent_api.py
+		tests/integration/test_semantic_modeling_agent_api.py \
+		tests/unit/application/semantic/test_modeling_copilot_service.py \
+		tests/integration/test_semantic_modeling_copilot_api.py
 	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx
 
 test-agent-runtime:

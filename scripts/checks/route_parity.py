@@ -64,11 +64,7 @@ KNOWN_LEGACY_ONLY: list[str] = [
 # Genuine v2-only routes (demo detail pages not in legacy App.tsx, plus error pages)
 KNOWN_V2_ONLY: list[str] = [
     "/config/channels/:id",
-    "/config/roles",                # W3 P14 · 角色管理列表（legacy 仅有 /config/team）
-    "/config/roles/:id",            # W3 P14 · 角色详情
     "/config/subscriptions/:id",
-    "/config/users",                # W3 P14 · 用户管理列表
-    "/config/users/:id",            # W3 P14 · 用户详情
     "/data-center/datasources/:id",
     "/executions/:id",
     "/extraction-tasks/:id",

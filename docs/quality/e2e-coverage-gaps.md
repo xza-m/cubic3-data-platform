@@ -19,7 +19,7 @@
 | Ontology 操作 | `p04-ontology-object-validation`、`p05-ontology-metric-dryrun`、`p06-ontology-relations`、`p19-ontology-object-search` |
 | 数据源/数据集 | `p02-datasource-test-connection`、`p03-dataset-fields-profile`、`p15-datasource-test-detail`、`p16-datasource-schema-browser` |
 | 查询中心 | `p09-query-history-filter` |
-| 配置中心 | `p12-channel-test-send`、`p13-subscription-history`、`p14-config-users` |
+| 配置中心 | `p12-channel-test-send`、`p13-subscription-history` |
 | 抽取任务 | `p10-extraction-task-schedule`、`p17-extraction-run-rerun`、`p18-extraction-run-jump-task` |
 | 应用市场 | `p01-app-instances`、`p20-marketplace-facet`、`p22-instance-health` |
 

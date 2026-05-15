@@ -3,7 +3,7 @@ doc_type: knowledge-base-index
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-05-13
 ---
 
 # 文档中心
@@ -42,6 +42,7 @@ last_reviewed: 2026-04-25
 - 查看技术栈与分层：[TECH_STACK_AND_ARCHITECTURE.md](TECH_STACK_AND_ARCHITECTURE.md)
 - 查看统一设计语言与工作台风格：[DESIGN.md](DESIGN.md)
 - 查看当前系统设计与架构决策：[architecture/README.md](architecture/README.md)
+- 查看访问网关到 MaxCompute 的权限闭环方案：[access-gateway-maxcompute-ram.md](architecture/access-gateway-maxcompute-ram.md)
 - 快速跑起项目：[QUICK_START.md](QUICK_START.md)
 - 排查启动、端口、构建、代理问题：[STARTUP_GUIDE.md](STARTUP_GUIDE.md)
 - 查看统一验证矩阵：[quality/testing.md](quality/testing.md)
@@ -52,6 +53,7 @@ last_reviewed: 2026-04-25
 - 查看本地联调与专项运行前提：[runbooks/local-dev.md](runbooks/local-dev.md)
 - 执行日常知识库维护：[KNOWLEDGE_BASE_MAINTENANCE_SOP.md](KNOWLEDGE_BASE_MAINTENANCE_SOP.md)
 - 查看语义中心专项验证：[semantic_verification.md](semantic_verification.md)
+- 语义建模 Copilot（后端事实）：`business_question` 入口下若 `candidate_table` / `table` 为 `project.table` 全限定名，会规范为 `physical_table` 并补默认 MaxCompute `source_id`，再调确定性 `generate_semantic_draft`；学生评论等高置信场景首轮走确定性 fast path 直接生成 spec，不依赖 LLM 才能进入审阅；Agent-led spec 在保存 / 校验前会补齐 measure、grain、time_dimension、additivity、binding_status、policy 和最小证据包；Chat 内"使用推荐 / 接受 Cube 草稿 / 解释阻塞项"是确定性动作，不触发 LLM；工具注册须使用 `SemanticModelingAgent`，勿误绑仅含校验矩阵的 Builder。
 - 查看语义层术语与统一口径：[semantic-glossary.md](semantic-glossary.md)
 - 查看产品范围与需求背景：[PRD 目录](prd/README.md)
 - 查看设计参考与工作草案：[reference-design/README.md](reference-design/README.md)

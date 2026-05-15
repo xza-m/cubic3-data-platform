@@ -3,7 +3,7 @@ doc_type: architecture-index
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-13
 ---
 
 # 架构设计目录
@@ -30,8 +30,9 @@ last_reviewed: 2026-05-05
 3. [frontend.md](frontend.md)：前端路由域、页面模型、数据访问与验证策略
 4. [decisions/README.md](decisions/README.md)：当前仍有效的架构决策记录
 5. [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)：Agent 语义规划、飞书 SSO Principal、两阶段权限、ExecutionProfile、ticket 与 gateway / MaxCompute RAM 适配边界
-6. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
-7. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
+6. [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)：访问网关到 MaxCompute 的 RAM User、Project Role、CredentialBinding、观测和 smoke 方案
+7. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
+8. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
 
 ## 当前文件
 
@@ -45,6 +46,7 @@ last_reviewed: 2026-05-05
   - ADR 索引与维护规则
 - [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)
   - 当前 Agent-ready 语义规划主链、飞书 SSO 作为身份事实来源、轻量 `Principal` 投影、`PrincipalContext` 兼容、两阶段 `PolicyDecision`、M3/raw 拦截、`TicketPreview / ExecutionTicket`、`ExecutionProfile` 与 gateway / MaxCompute RAM 适配边界
+  - 具体 gateway -> MaxCompute RAM User 与 Project Role 方案见 [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)
   - 当前新增双层语义架构约束：
     - 对齐检查（内部实现为 `Semantic Mapper`）只做只读投影与一致性检测
     - `BusinessMetric` 采用语义公式而非执行公式
@@ -71,12 +73,12 @@ last_reviewed: 2026-05-05
     - 智能问数消息主链已优先尝试走语义路由与统一执行运行时，仅在未命中或执行失败时回退旧链路
   - 当前已补入 Phase 6 最小语义权限挂点：
     - 内部 `Policy Metadata` 作为对象 / 动作 / 业务指标的最小语义权限元数据
-    - 语义路由与执行规划可按 `viewer_roles` 做最小权限阻断
+    - 语义路由与执行规划可按服务端 `PrincipalContext` 做最小权限阻断
     - 执行预览可返回 `allow / blocked` 执行结果
   - 当前已补入 Agent-ready Phase 1 治理收敛：
     - `/api/v1/agent/semantic/plan` 作为 Agent-first official Runtime 主入口，由 `AgentPlanHandler` 编排 `PrincipalResolver -> Pre-route Policy -> Semantic Router -> Semantic Mapper -> Execution Compiler -> Post-compile Policy`
     - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`；诊断类 `/semantic-router/*` 保留 preview，用于工作台 route / binding / compile / policy / trace 排障
-    - `viewer_roles` 在 API 层兼容，并统一归一为 `PrincipalContext`
+    - Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；请求体角色、JWT 角色声明和 `viewer_roles` 不参与授权
     - `Semantic Mapper` 输出稳定 `projection_result / resolved_bindings / binding_status / binding_issues`，`Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`
     - `/api/v1/semantic-router/execute-plan` 与 `/api/v1/execution-compiler/execute` 命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
     - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 过滤
@@ -85,6 +87,10 @@ last_reviewed: 2026-05-05
     - `/semantic/modeling-agent/new` 是语义中心顶层 `建模助手 Agent` 任务流，不归入 Cube 层级
     - `/api/v1/semantic/modeling-agent/spec-draft -> draft-from-spec -> validate -> agent-ready-check -> apply -> publish` 由 `SemanticModelingAgent` 编排，生成 Cube 技术语义与 Ontology 业务语义草稿
     - `SemanticModelingAgentSpec` 只作为构建期输入、确认材料和审计快照；正式 Agent 规划仍只消费已发布 Ontology，分析执行仍以 Cube 为真相源
+    - `/semantic/modeling-agent/new` 的 Copilot 体验采用 Chat-first 结构：中间 Chat 始终是注意力中心，右侧 Artifact 面板按需展示 `Review / Spec / Source / Preview / Trace`，生成的 Proposal Review 不阻断对话流；当前五个 artifact 均已接入产品化主链路
+    - `/api/v1/semantic/modeling-copilot/sessions/<session_id>/review` 是建模助手的只读 artifact 投影，用于展示候选变更、阻塞项、原因解释、源表证据、Trace 回放、Publish Gate 和发布后验收；它不引入第二套语义资产模型，正式真相仍是已发布 Cube、Ontology、Binding 与 Policy
+    - `save_proposal` 只接受已生成或已编辑的 `raw_spec`，业务问题不能直接绕过 spec 校验进入 Proposal 草稿，避免旧 `business_question` source kind 误入治理发布链；Agent-led spec 会在保存 / 校验前确定性补齐 measure、grain、time_dimension、additivity、binding_status、policy 和最小证据包
+    - Chat 内"使用推荐 / 接受 Cube 草稿 / 解释阻塞项"是确定性状态动作，不调用 LLM；自由业务问题和新意图理解仍进入 LLM Runtime
     - `/api/v1/semantic/domains/<domain_id>/context-preview` 将 Domain 收窄为业务主题、候选资产、默认上下文和 Agent 提示预览；Domain 不作为指标、关系、动作或 Join 的第三套真相源，业务上下文资产画布也不再维护关系边
   - 当前前端已提供 `/semantic/ontology` 的业务语义工作台首期版本：
     - 覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模

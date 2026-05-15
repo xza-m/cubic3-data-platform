@@ -36,8 +36,8 @@ class TestLogin:
         app.config["ADMIN_USERNAME"] = "boot_admin"
         app.config["ADMIN_PASSWORD"] = "boot_pass"
         with patch(
-            "app.interfaces.api.v1.auth._user_service",
-            return_value=None,
+            "app.interfaces.api.v1.auth._ensure_internal_principal",
+            return_value="internal:local:boot_admin",
         ):
             resp = client_no_auth.post(
                 "/api/v1/auth/login",
@@ -55,8 +55,8 @@ class TestLogin:
         app.config["ADMIN_USERNAME"] = "boot_admin"
         app.config["ADMIN_PASSWORD"] = "boot_pass"
         with patch(
-            "app.interfaces.api.v1.auth._user_service",
-            return_value=None,
+            "app.interfaces.api.v1.auth._ensure_internal_principal",
+            return_value="internal:local:boot_admin",
         ):
             resp = client_no_auth.post(
                 "/api/v1/auth/login",

@@ -52,7 +52,7 @@ class AgentPlanHandler:
                 runtime_options=normalized_runtime_options,
             )
 
-        plan = self._router_service.plan(
+        plan = self._plan_with_router(
             question=normalized_question,
             principal_context=principal.to_dict(),
             viewer_roles=principal.roles,
@@ -87,6 +87,8 @@ class AgentPlanHandler:
         preview = self._compiler_service.compile_preview(
             target_type=str(target.get("target_type") or ""),
             metric_name=target.get("metric_name"),
+            query_dsl=target.get("query_dsl"),
+            question=target.get("question"),
             retrieval_query=target.get("retrieval_query"),
             retrieval_sources=target.get("retrieval_sources"),
             tool_name=target.get("tool_name"),
@@ -98,6 +100,30 @@ class AgentPlanHandler:
             "target": target,
             **preview,
         }
+
+    def _plan_with_router(
+        self,
+        *,
+        question: str,
+        principal_context: dict[str, Any],
+        viewer_roles: list[str],
+        runtime_mode: str,
+    ) -> dict[str, Any]:
+        try:
+            return self._router_service.plan(
+                question=question,
+                principal_context=principal_context,
+                viewer_roles=viewer_roles,
+                runtime_mode=runtime_mode,
+            )
+        except TypeError as exc:
+            if "viewer_roles" not in str(exc):
+                raise
+            return self._router_service.plan(
+                question=question,
+                principal_context=principal_context,
+                runtime_mode=runtime_mode,
+            )
 
     @staticmethod
     def _build_response(

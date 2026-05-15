@@ -1,27 +1,11 @@
 """语义路由、计划与最小执行 API。"""
 from __future__ import annotations
 
-from flask import Blueprint, g, request
+from flask import Blueprint, request
 
-from app.application.governance.access import PrincipalResolver
 from app.interfaces.api.middleware.auth import require_admin, require_auth
+from app.interfaces.api.v1.principal_context import principal_context_from_bearer
 from app.shared.response import error, success
-
-
-def _authenticated_user_from_g() -> dict:
-    return {
-        "user_id": getattr(g, "user_id", None),
-        "user_name": getattr(g, "user_name", None),
-        "roles": getattr(g, "user_roles", []) or [],
-    }
-
-
-def _principal_context_from_body(body: dict) -> dict:
-    return PrincipalResolver().resolve(
-        principal_context=body.get("principal_context"),
-        viewer_roles=body.get("viewer_roles"),
-        authenticated_user=_authenticated_user_from_g(),
-    ).to_dict()
 
 
 def _runtime_mode_from_body(body: dict) -> str | None:
@@ -40,9 +24,10 @@ def create_semantic_router_blueprint(router_service):
         if not question:
             return error("请求体缺少必填字段: question")
         try:
-            principal_context = _principal_context_from_body(body)
+            principal_context = principal_context_from_bearer(source="semantic_router")
             payload = router_service.route(
                 question=question,
+                viewer_roles=None,
                 principal_context=principal_context,
                 runtime_mode=_runtime_mode_from_body(body),
             )
@@ -58,9 +43,10 @@ def create_semantic_router_blueprint(router_service):
         if not question:
             return error("请求体缺少必填字段: question")
         try:
-            principal_context = _principal_context_from_body(body)
+            principal_context = principal_context_from_bearer(source="semantic_router")
             payload = router_service.plan(
                 question=question,
+                viewer_roles=None,
                 principal_context=principal_context,
                 runtime_mode=_runtime_mode_from_body(body),
             )
@@ -76,9 +62,10 @@ def create_semantic_router_blueprint(router_service):
         if not question:
             return error("请求体缺少必填字段: question")
         try:
-            principal_context = _principal_context_from_body(body)
+            principal_context = principal_context_from_bearer(source="semantic_router")
             payload = router_service.execute_plan_preview(
                 question=question,
+                viewer_roles=None,
                 principal_context=principal_context,
                 runtime_mode=_runtime_mode_from_body(body),
             )
@@ -94,9 +81,10 @@ def create_semantic_router_blueprint(router_service):
         if not question:
             return error("请求体缺少必填字段: question")
         try:
-            principal_context = _principal_context_from_body(body)
+            principal_context = principal_context_from_bearer(source="semantic_router")
             payload = router_service.execute_plan(
                 question=question,
+                viewer_roles=None,
                 principal_context=principal_context,
                 runtime_options=body.get("runtime_options") or {},
                 runtime_mode=_runtime_mode_from_body(body),

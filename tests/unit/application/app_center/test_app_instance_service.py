@@ -10,6 +10,7 @@ AppInstanceService 单元测试
 - enable_instance / disable_instance: 成功、实例不存在、无权限
 """
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.application.services.app_center.app_instance_service import AppInstanceService
@@ -564,6 +565,49 @@ class TestDisableInstance:
 
         instance.disable.assert_called_once()
         mock_scheduler_service.remove_schedule.assert_called_once_with(1)
+
+    def test_success_when_legacy_feishu_owner_matches_principal_alias(
+        self, service, mock_app_instance_repo, monkeypatch
+    ):
+        instance = _make_app_instance(instance_id=1, owner="ou_legacy_owner")
+        instance.is_owned_by.return_value = False
+        mock_app_instance_repo.find_by_id.return_value = instance
+        monkeypatch.setattr(
+            service,
+            "_list_owner_aliases",
+            lambda owner: [
+                SimpleNamespace(
+                    external_id="ou_legacy_owner",
+                    principal_id="feishu:tenant_a:on_current_user",
+                )
+            ],
+        )
+
+        result = service.disable_instance(
+            instance_id=1,
+            user="feishu:tenant_a:on_current_user",
+        )
+
+        instance.disable.assert_called_once()
+        mock_app_instance_repo.commit.assert_called_once()
+        assert result == instance.to_dict.return_value
+
+    def test_success_when_platform_admin_is_not_owner(
+        self, service, mock_app_instance_repo
+    ):
+        instance = _make_app_instance(instance_id=1, owner="owner1")
+        instance.is_owned_by.return_value = False
+        mock_app_instance_repo.find_by_id.return_value = instance
+
+        result = service.disable_instance(
+            instance_id=1,
+            user="feishu:tenant_a:on_admin",
+            roles=["platform_admin"],
+        )
+
+        instance.disable.assert_called_once()
+        mock_app_instance_repo.commit.assert_called_once()
+        assert result == instance.to_dict.return_value
 
     def test_raises_not_found_when_instance_missing(
         self, service, mock_app_instance_repo

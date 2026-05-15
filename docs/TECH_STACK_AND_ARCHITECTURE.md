@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-13
 ---
 
 # 技术栈与架构说明
@@ -179,15 +179,16 @@ app/
   - `execute` 会附带统一 `governance_trace` 与 `audit_trace_id`，记录命中策略、角色、目标与执行状态
 - `语义权限（内部实现为 Policy Metadata）`
   - 支持对象 / 动作 / 业务指标的最小语义权限声明
-  - 语义路由与执行预览可基于 `viewer_roles` 返回 `allow / blocked`
+  - 语义路由与执行预览基于服务端解析出的 `PrincipalContext` 和 RoleBinding 返回 `allow / blocked`
   - `Policy Impact` 可汇总受影响分析实体、治理挂点状态与当前问题清单
 - `Agent-ready Access Governance`
   - `/api/v1/agent/semantic/plan` 已固定为 Agent-first Runtime 入口，API 层和 `AgentPlanHandler` 统一注入 `runtime_mode=official`
   - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`：先做业务语义命中，再通过 Binding 编译到 Cube 执行目标；诊断类 `/semantic-router/*` 仍保留 preview 能力
-  - `viewer_roles` 仍兼容，但 API 层统一归一为 `PrincipalContext`
+  - Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；正式 `/api/v1/agent/semantic/plan` 不信任请求体角色、JWT 角色声明和 `viewer_roles`，诊断类 preview API 仅可用 `viewer_roles` 做沙盒预演
   - `Semantic Mapper` 稳定输出 `projection_result / resolved_bindings / binding_status / binding_issues`，只做只读 Binding，不定义第三套 mapping 真相源
-  - `Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
+  - `Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；运行时 SQL 必须由 `QueryDSL -> QueryCompiler` 生成，基础维度分组与时间过滤不能绕开 DSL；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
   - Phase 1 只生成 `TicketPreview`，`enforcement=preview_only`，不作为 gateway 执行凭证
+  - 权限职责边界固定为 data-platform 负责 `Principal / PermissionPackage / RoleBinding / DataPolicy / PolicyDecision / GatewayAccessContextPreview`，`dw-query-gateway` 负责接收可信 `GatewayAccessContext`、SQL guard 与 `CredentialBinding`，MaxCompute 负责 RAM / ACL 物理兜底；data-platform 不保存真实 RAM 凭据；gateway 到 MaxCompute 的落地方案见 `docs/architecture/access-gateway-maxcompute-ram.md`
   - `/semantic-router/execute-plan` 与 `/execution-compiler/execute` 已补 M3/raw/ODS 拦截，返回 `require_approval` 且不真实执行
   - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 查询
 - `建模助手 Agent`
@@ -207,7 +208,7 @@ app/
 - `语义工作台` 可从 Cube 标题区回看来源业务对象
 - stale / impact 告警已在 `业务语义工作台` 收口为可定位的实体提示
 - `业务语义工作台` 的对象 / 关系 / 动作 / 业务指标页已接入运行时路由预演，可直接展示 `route_type`、`planning_mode`、多意图命中结果、planning steps 与 traceability
-- `业务语义工作台` 的权限页已支持影响范围说明和真实治理挂点预演，可直接展示 `viewer_roles` 在语义路由与执行预览上的 `allow / blocked` 结果与原因
+- `业务语义工作台` 的权限页已支持影响范围说明和真实治理挂点预演，可直接展示服务端 `PrincipalContext` 与 RoleBinding 在语义路由、执行预览上的 `allow / blocked` 结果与原因
 - `业务语义工作台` 的权限页已接入 `Policy Impact` 治理影响总览，可集中查看受影响的 Cube / Measure / Event Cube、治理挂点状态与当前问题列表
 - `业务语义工作台` 的业务指标页与权限页已接入统一执行预览，可直接查看编译产物、Bindings、Traceability 与执行计划
 - `业务语义工作台` 的权限页已接入“最近治理执行结果”卡片，可直接查看真实执行下的 `governance_trace`、命中策略与执行状态
@@ -365,8 +366,8 @@ frontend/src/
 与 Phase 6 直接相关的已实现接口包括：
 
 - `/api/v1/ontology/policies`
-- `/api/v1/semantic-router/route`：支持按 `viewer_roles` 做对象 / 动作 / 业务指标的最小权限阻断
-- `/api/v1/execution-compiler/compile-preview`：支持按 `viewer_roles` 返回 `allow / blocked`
+- `/api/v1/semantic-router/route`：支持按 `PrincipalContext` 做对象 / 动作 / 业务指标的最小权限阻断
+- `/api/v1/execution-compiler/compile-preview`：支持按 `PrincipalContext` 返回 `allow / blocked`
 
 与 Agent-ready Phase 1 直接相关的已实现接口包括：
 

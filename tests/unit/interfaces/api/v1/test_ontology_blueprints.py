@@ -32,7 +32,7 @@ class _AppWithAuthClient:
 
     def test_client(self):
         from tests.conftest import install_default_admin_auth
-        return install_default_admin_auth(self._app.test_client())
+        return install_default_admin_auth(self._app.test_client(), roles=("admin", "platform_admin"))
 
     def __getattr__(self, name):
         return getattr(self._app, name)
