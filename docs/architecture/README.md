@@ -31,8 +31,9 @@ last_reviewed: 2026-05-13
 4. [decisions/README.md](decisions/README.md)：当前仍有效的架构决策记录
 5. [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)：Agent 语义规划、飞书 SSO Principal、两阶段权限、ExecutionProfile、ticket 与 gateway / MaxCompute RAM 适配边界
 6. [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)：访问网关到 MaxCompute 的 RAM User、Project Role、CredentialBinding、观测和 smoke 方案
-7. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
-8. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
+7. [source-candidate-recall-scoring.md](source-candidate-recall-scoring.md)：建模 Copilot 从业务问题召回候选数据源的本地元数据打分、解释和门槛
+8. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
+9. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
 
 ## 当前文件
 
@@ -47,6 +48,7 @@ last_reviewed: 2026-05-13
 - [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)
   - 当前 Agent-ready 语义规划主链、飞书 SSO 作为身份事实来源、轻量 `Principal` 投影、`PrincipalContext` 兼容、两阶段 `PolicyDecision`、M3/raw 拦截、`TicketPreview / ExecutionTicket`、`ExecutionProfile` 与 gateway / MaxCompute RAM 适配边界
   - 具体 gateway -> MaxCompute RAM User 与 Project Role 方案见 [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)
+  - Modeling Copilot 候选源召回与元数据打分方案见 [source-candidate-recall-scoring.md](source-candidate-recall-scoring.md)
   - 当前新增双层语义架构约束：
     - 对齐检查（内部实现为 `Semantic Mapper`）只做只读投影与一致性检测
     - `BusinessMetric` 采用语义公式而非执行公式
