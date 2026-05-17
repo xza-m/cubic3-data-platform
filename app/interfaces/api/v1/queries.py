@@ -55,6 +55,19 @@ def get_current_user():
     return g.get('principal_id') or g.get('user_id', 'admin')
 
 
+def _principal_id_from_request(requested_principal_id: str | None = None) -> str:
+    """解析本次请求的有效 Principal。
+
+    查询工作台可以携带 prefill 中的 principal_id 作为显式主体意图；
+    后端只接受它与认证主体一致，避免通过请求体代执行其他 Principal。
+    """
+    current_principal_id = str(get_current_user())
+    requested = str(requested_principal_id or "").strip()
+    if requested and requested != current_principal_id:
+        raise AuthorizationError("请求主体与当前认证主体不一致，不能代执行其他 Principal")
+    return current_principal_id
+
+
 def _gateway_query_enabled() -> bool:
     return bool(current_app.config.get("QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN"))
 
@@ -72,8 +85,8 @@ def _gateway_query_client() -> GatewayQueryClient:
     )
 
 
-def _request_principal():
-    principal_id = get_current_user()
+def _request_principal(requested_principal_id: str | None = None):
+    principal_id = _principal_id_from_request(requested_principal_id)
     jwt_roles = list(getattr(g, "user_roles", []) or [])
     binding_roles: list[str] = []
     try:
@@ -195,7 +208,7 @@ def _policy_denied_response(decision):
 
 
 def _execute_via_gateway(schema: ExecuteQueryRequest):
-    principal = _request_principal()
+    principal = _request_principal(schema.principal_id)
     repository = SqlAccessGovernanceRepository(db.session)
     decision = AccessPolicyDecisionService(policy_repository=repository).post_compile(
         principal=principal,
@@ -235,12 +248,13 @@ def execute_query():
         schema = ExecuteQueryRequest(**request.json)
         if _gateway_query_enabled():
             return _execute_via_gateway(schema)
+        executed_by = _principal_id_from_request(schema.principal_id)
         command = ExecuteQueryCommand(
             source_id=schema.source_id,
             sql_query=schema.sql_query,
             query_id=schema.query_id,
             limit=schema.limit,
-            executed_by=get_current_user()
+            executed_by=executed_by
         )
         container = get_app_container()
         handler = container.execute_query_handler()
@@ -248,6 +262,8 @@ def execute_query():
         return success(data=result)
     except ValidationError as e:
         return error(message=f'请求参数错误: {e.errors()}') if hasattr(e, 'errors') else error(message=str(e))
+    except AuthorizationError as e:
+        return error(message=str(e), status=403)
     except ApplicationException as e:
         return error(message=str(e))
     except GatewayQueryError as e:
@@ -288,6 +304,7 @@ def create_query():
     """保存查询"""
     try:
         schema = CreateQueryRequest(**request.json)
+        created_by = _principal_id_from_request(schema.principal_id)
         command = CreateQueryCommand(
             query_name=schema.query_name,
             source_id=schema.source_id,
@@ -296,7 +313,7 @@ def create_query():
             folder_id=schema.folder_id,
             tags=schema.tags,
             is_favorite=schema.is_favorite,
-            created_by=get_current_user()
+            created_by=created_by
         )
         container = get_app_container()
         handler = container.create_query_handler()
@@ -308,6 +325,8 @@ def create_query():
         })
     except ValidationError as e:
         return error(message=f'请求参数错误: {e.errors()}')
+    except AuthorizationError as e:
+        return error(message=str(e), status=403)
     except (AppValidationError, ApplicationException) as e:
         return error(message=str(e))
     except Exception as e:

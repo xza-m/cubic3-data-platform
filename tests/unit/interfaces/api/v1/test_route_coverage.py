@@ -383,6 +383,49 @@ def test_queries_routes_prefer_principal_identity_over_legacy_user_id(monkeypatc
     assert list_histories_handler.handle.call_args.kwargs['executed_by'] == 'feishu:tenant:on_current'
 
 
+def test_queries_routes_reject_body_principal_mismatch(monkeypatch):
+    container = MagicMock()
+    monkeypatch.setattr(queries_api, 'get_app_container', lambda: container)
+
+    execute_handler = attach_handler(container, 'execute_query_handler', result={'rows': [[1]], 'columns': ['value']})
+    create_handler = attach_handler(
+        container,
+        'create_query_handler',
+        result=SimpleNamespace(id=1, query_code='q_001', query_name='周报'),
+    )
+
+    client = build_app(queries_api.bp).test_client()
+    headers = auth_headers_with_principal(
+        user_id='legacy-user-001',
+        principal_id='feishu:tenant:on_current',
+    )
+
+    execute_resp = client.post(
+        '/api/v1/queries/execute',
+        json={
+            'source_id': 7,
+            'sql_query': 'SELECT 1',
+            'principal_id': 'feishu:tenant:on_other',
+        },
+        headers=headers,
+    )
+    assert execute_resp.status_code == 403
+    assert execute_handler.handle.call_count == 0
+
+    create_resp = client.post(
+        '/api/v1/queries',
+        json={
+            'query_name': '周报',
+            'source_id': 1,
+            'sql_query': 'SELECT 1',
+            'principal_id': 'feishu:tenant:on_other',
+        },
+        headers=headers,
+    )
+    assert create_resp.status_code == 403
+    assert create_handler.handle.call_count == 0
+
+
 def test_queries_routes_cover_validation_and_exception_paths(monkeypatch):
     container = MagicMock()
     monkeypatch.setattr(queries_api, 'get_app_container', lambda: container)

@@ -74,3 +74,34 @@ def test_query_execute_blocks_gateway_when_data_policy_denies(app, monkeypatch):
 
     assert response.status_code == 400
     assert response.get_json()["data"]["policy_decision"]["reason_code"] == "data_policy_not_matched"
+
+
+def test_query_execute_rejects_body_principal_mismatch_before_gateway(app, monkeypatch):
+    app.config["QUERY_GATEWAY_BASE_URL"] = "http://dw-query-gateway:8000"
+    app.config["QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN"] = "platform-secret"
+    with app.app_context():
+        seed_access_governance_defaults()
+
+    class StubGatewayQueryClient:
+        def __init__(self, **_kwargs):
+            raise AssertionError("principal mismatch must not call gateway")
+
+    monkeypatch.setattr("app.interfaces.api.v1.queries.GatewayQueryClient", StubGatewayQueryClient)
+    token = _make_jwt(
+        user_id="principal:feishu:t1:on_m1_user",
+        user_name="M1 User",
+        roles=["viewer", "data_m1_reader"],
+    )
+
+    response = app.test_client().post(
+        "/api/v1/queries/execute",
+        json={
+            "source_id": 1,
+            "sql_query": "SELECT count(*) FROM dw.dws_course_daily",
+            "limit": 1000,
+            "principal_id": "principal:feishu:t1:on_other_user",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 403

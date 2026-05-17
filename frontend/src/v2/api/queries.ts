@@ -48,6 +48,7 @@ export interface ExecuteQueryRequest {
   sql_query: string
   query_id?: number
   limit?: number
+  principal_id?: string
 }
 
 export interface ExecuteQueryRaw {
@@ -82,6 +83,7 @@ export interface CreateSavedQueryPayload {
   folder_id?: number
   tags?: string[]
   is_favorite?: boolean
+  principal_id?: string
 }
 
 export interface UpdateSavedQueryPayload {

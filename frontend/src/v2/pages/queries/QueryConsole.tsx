@@ -127,6 +127,7 @@ export default function QueryConsole() {
   )
   const executeMut = useExecuteQuery()
   const createMut = useCreateSavedQuery()
+  const prefillPrincipalId = initialPrefill?.principal_id?.trim() || undefined
 
   // auto-select first source
   useEffect(() => {
@@ -203,13 +204,18 @@ export default function QueryConsole() {
     }
     setErrorMsg(null)
     try {
-      const res = await executeMut.mutateAsync({ source_id: sourceId, sql_query: sql, limit: 200 })
+      const res = await executeMut.mutateAsync({
+        source_id: sourceId,
+        sql_query: sql,
+        limit: 200,
+        principal_id: prefillPrincipalId,
+      })
       setResult(res)
     } catch (err) {
       setResult(null)
       setErrorMsg(err instanceof Error ? err.message : t('queryConsole.state.execFailed', '执行失败'))
     }
-  }, [sourceId, sql, executeMut])
+  }, [sourceId, sql, executeMut, prefillPrincipalId])
 
   const handleSave = useCallback(async () => {
     if (!saveName.trim() || sourceId == null) return
@@ -218,13 +224,14 @@ export default function QueryConsole() {
         query_name: saveName.trim(),
         source_id: sourceId,
         sql_query: sql,
+        principal_id: prefillPrincipalId,
       })
       setSaveDialogOpen(false)
       setSaveName('')
     } catch (_err) {
       // error handled by mutation
     }
-  }, [saveName, sourceId, sql, createMut])
+  }, [saveName, sourceId, sql, createMut, prefillPrincipalId])
 
   return (
     <div className="relative flex flex-1 overflow-hidden">

@@ -188,10 +188,16 @@ describe('QueryVisual page', () => {
 
     const raw = sessionStorage.getItem(V2_QUERY_VISUAL_PREFILL_KEY)
     expect(raw).toBeTruthy()
-    const parsed = JSON.parse(raw!) as { sql: string; source_id: number | null; origin: string }
+    const parsed = JSON.parse(raw!) as {
+      sql: string
+      source_id: number | null
+      origin: string
+      principal_id?: string
+    }
     expect(parsed.sql).toContain('FROM public.orders')
     expect(parsed.source_id).toBe(7)
     expect(parsed.origin).toBe('visual')
+    expect(parsed.principal_id).toBeUndefined()
     expect(navigateSpy).toHaveBeenCalledWith('/queries', {
       state: {
         queryWorkbenchPrefill: expect.objectContaining({
