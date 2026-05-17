@@ -91,6 +91,7 @@ def test_dashboard_overview_service_aggregates_real_counts(app, db_session, monk
         _make_history(105, 5, executed_at=now - timedelta(days=3)),
         _make_history(106, 6, executed_at=now - timedelta(days=4)),
         _make_history(107, 7, executed_at=two_weeks_ago),
+        _make_history(108, 8, executed_at=now - timedelta(days=6)),
     ]
     db_session.add_all(histories)
     db_session.commit()
@@ -105,7 +106,7 @@ def test_dashboard_overview_service_aggregates_real_counts(app, db_session, monk
     assert len(overview['recent_queries']) == 5
     assert overview['health']['datasource_connectivity'] == 66.7
     assert overview['health']['semantic_coverage'] is None
-    assert overview['health']['query_success_rate'] == 83.3
+    assert overview['health']['query_success_rate'] == 85.7
     assert overview['trends']['datasource_month_delta'] == 1
     assert overview['trends']['dataset_week_delta'] == 1
-    assert overview['trends']['query_count_week'] == 6
+    assert overview['trends']['query_count_week'] == 7
