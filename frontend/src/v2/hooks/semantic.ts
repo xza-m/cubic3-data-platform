@@ -12,22 +12,34 @@ import { ev, obs } from '@v2/observability'
 import {
   activateCube,
   addCubeToDomain,
+  acceptSemanticModelingCopilotCubeDraft,
   applySemanticModelingAgent,
+  applySemanticModelingProposal,
+  approveSemanticModelingProposal,
   checkSemanticModelingAgentReady,
+  closeSemanticModelingProposal,
   compileDsl,
+  confirmSemanticModelingCopilotAssumption,
   createCube,
   createDomain,
   createSemanticModelingAgentSpecDraft,
+  createSemanticModelingCopilotSession,
+  createSemanticModelingProposal,
   deprecateCube,
   describeCube,
   describeDomain,
   describeView,
   draftSemanticModelingAgentFromSpec,
+  draftSemanticModelingProposal,
   draftCubeFromSource,
   getDomainCanvas,
   getDomainPublishHistory,
   getMaterializeStatus,
   getSemanticGraph,
+  getSemanticModelingCopilotReview,
+  getSemanticModelingCopilotSession,
+  getSemanticModelingProposal,
+  getSemanticModelingProposalGapView,
   getViewMaterializeRuns,
   listCatalogs,
   listCubes,
@@ -36,12 +48,22 @@ import {
   materializeView,
   publishDomain,
   publishSemanticModelingAgent,
+  publishSemanticModelingProposal,
+  previewSemanticModelingCopilotSandbox,
   previewDomainContext,
   readSemanticFile,
+  deleteSemanticModelingCopilotSession,
+  listSemanticModelingCopilotSessions,
+  publishSemanticModelingCopilotProposal,
+  patchSemanticModelingCopilotSpec,
+  renameSemanticModelingCopilotSession,
+  saveSemanticModelingCopilotProposal,
   schemaSyncCube,
+  sendSemanticModelingCopilotMessage,
   updateCube,
   updateDomain,
   validateSemanticModelingAgent,
+  validateSemanticModelingProposal,
   validateCubeFields,
   validateSemanticFile,
   writeSemanticFile,
@@ -50,6 +72,15 @@ import {
   type CubeDraftBody,
   type DomainSummary,
   type FileType,
+  type SemanticModelingProposalApproveBody,
+  type SemanticModelingProposalCloseRequest,
+  type SemanticModelingProposalCreateBody,
+  type SemanticModelingProposalPublishRequest,
+  type SemanticModelingCopilotCreateSessionBody,
+  type SemanticModelingCopilotListSessionsParams,
+  type SemanticModelingCopilotReview,
+  type SemanticModelingCopilotSendMessageBody,
+  type SemanticModelingCopilotSessionList,
   type SemanticModelingAgentPublishRequest,
   type SemanticModelingAgentSpec,
   type SemanticModelingAgentSpecDraftBody,
@@ -174,6 +205,265 @@ export function usePublishSemanticModelingAgent() {
     mutationFn: (body: SemanticModelingAgentPublishRequest) => publishSemanticModelingAgent(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function useSemanticModelingProposal(proposalId: string | undefined) {
+  return useQuery({
+    queryKey: qk('semantic', 'modeling-proposal', proposalId),
+    queryFn: () => getSemanticModelingProposal(proposalId!),
+    enabled: !!proposalId,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useSemanticModelingProposalGapView(proposalId: string | undefined) {
+  return useQuery({
+    queryKey: qk('semantic', 'modeling-proposal-gap-view', proposalId),
+    queryFn: () => getSemanticModelingProposalGapView(proposalId!),
+    enabled: !!proposalId,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useCreateSemanticModelingProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: SemanticModelingProposalCreateBody) => createSemanticModelingProposal(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function useDraftSemanticModelingProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (proposalId: string) => draftSemanticModelingProposal(proposalId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function useValidateSemanticModelingProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (proposalId: string) => validateSemanticModelingProposal(proposalId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function useApproveSemanticModelingProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proposalId, ...body }: { proposalId: string } & SemanticModelingProposalApproveBody) =>
+      approveSemanticModelingProposal(proposalId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function useApplySemanticModelingProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (proposalId: string) => applySemanticModelingProposal(proposalId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function usePublishSemanticModelingProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      publishTargets,
+    }: {
+      proposalId: string
+      publishTargets?: NonNullable<SemanticModelingProposalPublishRequest['publish_targets']>
+    }) => publishSemanticModelingProposal(proposalId, publishTargets ? { publish_targets: publishTargets } : undefined),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function useCloseSemanticModelingProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      proposalId,
+      closeReason,
+      ...body
+    }: {
+      proposalId: string
+      closeReason: SemanticModelingProposalCloseRequest['close_reason']
+    } & Omit<SemanticModelingProposalCloseRequest, 'close_reason'>) =>
+      closeSemanticModelingProposal(proposalId, { ...body, close_reason: closeReason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function useSemanticModelingCopilotSession(sessionId: string | undefined) {
+  return useQuery({
+    queryKey: qk('semantic', 'modeling-copilot-session', sessionId),
+    queryFn: () => getSemanticModelingCopilotSession(sessionId!),
+    enabled: !!sessionId,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useSemanticModelingCopilotReview(sessionId: string | undefined) {
+  return useQuery<SemanticModelingCopilotReview>({
+    queryKey: qk('semantic', 'modeling-copilot-review', sessionId),
+    queryFn: () => getSemanticModelingCopilotReview(sessionId!),
+    enabled: !!sessionId,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useCreateSemanticModelingCopilotSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: SemanticModelingCopilotCreateSessionBody) => createSemanticModelingCopilotSession(body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
+    },
+  })
+}
+
+export function useSemanticModelingCopilotSessions(
+  params: SemanticModelingCopilotListSessionsParams = {},
+) {
+  return useQuery<SemanticModelingCopilotSessionList>({
+    queryKey: qk('semantic', 'modeling-copilot-sessions', params),
+    queryFn: () => listSemanticModelingCopilotSessions(params),
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useDeleteSemanticModelingCopilotSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sessionId: string) => deleteSemanticModelingCopilotSession(sessionId),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
+      qc.removeQueries({ queryKey: qk('semantic', 'modeling-copilot-session', data.id) })
+    },
+  })
+}
+
+export function useRenameSemanticModelingCopilotSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, title }: { sessionId: string; title: string }) =>
+      renameSemanticModelingCopilotSession(sessionId, title),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
+    },
+  })
+}
+
+export function useSendSemanticModelingCopilotMessage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, ...body }: { sessionId: string } & SemanticModelingCopilotSendMessageBody) =>
+      sendSemanticModelingCopilotMessage(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+    },
+  })
+}
+
+export function useConfirmSemanticModelingCopilotAssumption() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, confirmationId, value }: { sessionId: string; confirmationId: string; value?: unknown }) =>
+      confirmSemanticModelingCopilotAssumption(sessionId, { confirmation_id: confirmationId, value }),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+    },
+  })
+}
+
+export function useAcceptSemanticModelingCopilotCubeDraft() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body?: Record<string, unknown> }) =>
+      acceptSemanticModelingCopilotCubeDraft(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
+    },
+  })
+}
+
+export function usePreviewSemanticModelingCopilotSandbox() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body?: Record<string, unknown> }) =>
+      previewSemanticModelingCopilotSandbox(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+    },
+  })
+}
+
+export function useSaveSemanticModelingCopilotProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body?: Record<string, unknown> }) =>
+      saveSemanticModelingCopilotProposal(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function usePublishSemanticModelingCopilotProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body?: Record<string, unknown> }) =>
+      publishSemanticModelingCopilotProposal(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
+      qc.invalidateQueries({ queryKey: ['semantic'] })
+    },
+  })
+}
+
+export function useUpdateSemanticModelingCopilotSpec() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body: Record<string, unknown> }) =>
+      patchSemanticModelingCopilotSpec(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
     },
   })
 }

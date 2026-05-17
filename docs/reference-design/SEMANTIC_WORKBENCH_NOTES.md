@@ -228,3 +228,131 @@ rail  |  statusbar
 - **Design Token 对齐**：把 `tokens.css` 合并进既有 Tailwind + CSS Variables 体系，优先补齐 dark 模式缺失项
 - **命令面板**：基于 `cmdk` 实现 `useCommandPalette`，索引来源为各模块注册函数（对象 / 指标 / 数据集 / 查询 / 应用）
 - **模块落地顺序**：语义中心（已有结构基础）→ 查询中心（交互最复杂）→ 工作台/数据中心/应用中心 → 智能问数 → 配置中心
+
+## 建模 Copilot · Chat-first + Artifact Panel 定位（2026-05）
+
+> 状态：当前基线。修复 2026-05 之前的"对话原生 Copilot 不可用"问题，重新定位为"Chat 为主界面、右侧产物面板承接 Review 与治理材料"。本节是设计契约，前后端实现以本节为准。
+
+### 定位
+
+**建模 Copilot 不是两套页面设计，也不是把 Review 工作台盖在 Chat 之上的表单流，而是「Chat-first 的语义建模助手」**：
+
+- Chat 负责**启动、澄清和注意力中心**
+- Artifact Panel 负责**按需承接 Review / Spec / Source / Preview / Trace**
+- Proposal 负责**治理和发布**
+
+这条设计保留当前 Chat 交互样式，不重做消息卡片与输入区；生成的 spec、候选变更和发布前状态进入右侧常驻产物面板，不阻挡用户继续和 Copilot 对话。
+
+### 三段式产品形态
+
+```text
+阶段 ① 对话启动 / 澄清 ─ LLM 必需
+  • 用户用业务问题描述需求
+  • LLM 抽取信号：业务主题 / 候选指标 / 候选时间字段 / 候选源表
+  • Copilot 给"我理解到了什么 / 我建议怎么做 / 我还需要你确认什么"
+  • 没有足够信息时，提出最关键的一个澄清问题（不一次问多个）
+
+阶段 ② Artifact 审阅 / 编辑 / 校验 ─ LLM 不参与
+  • Chat 保持主界面，右侧 Artifact Panel 默认进入 Review
+  • Review 展示候选变更、阻塞项、原因解释、发布前状态和 Data Agent 消费状态；阻塞项可直接确认、跳转编辑或要求解释
+  • Chat 内"使用推荐"、"接受 Cube 草稿"、"解释阻塞项"是确定性状态动作，不再发起 LLM 调用
+  • Spec 由右侧产物面板承接，复用 CubeEditor 直接编辑当前 raw_spec
+  • Source 由右侧产物面板承接，展示源表、字段证据、样本行和推荐原因
+  • Preview 由右侧产物面板承接，展示草稿态沙盒预演、正式 runtime 污染边界和 Data Agent 消费状态
+  • Trace 由右侧产物面板承接，回放工具调用、人工确认、Proposal 保存和发布审计
+  • 用户可以直接改字段名 / 类型 / SQL / measure_ref，不需要离开当前会话
+  • 每次编辑后 PATCH /sessions/<id>/spec → 后端重新校验 → 重算 readiness
+  • 校验失败用业务化 message + inline error icon 标在对应字段
+
+阶段 ③ Proposal 治理发布 ─ LLM 不参与
+  • [应用语义]  → save_proposal（ModelingProposal validated）
+  • Publish Gate 统一检查 Spec 完整、阻塞项清零、沙盒预演、正式 runtime 状态
+  • [确认发布]  → approve + apply + publish 一键三联调
+  • Cube + Ontology active，Data Agent 立即可消费，并在 Review / Preview 展示发布后样例问答验收状态
+```
+
+### LLM 依赖契约
+
+- **阶段 ①** LLM 必需：普通业务问题、自由澄清和新意图理解仍由 `POST /sessions/<id>/messages` 进入 LLM；未配 `LLM_API_KEY` 时返回 `503 + details.code === "LLM_REQUIRED"`，前端渲染顶部红色 banner 阻断自由对话入口，并指引用户走旧的 modeling-agent spec wizard
+- **阶段 ②③** LLM 不参与，纯确定性逻辑。Chat 里的"使用推荐"、"接受 Cube 草稿"、"解释阻塞项"会被后端短路为状态动作或固定解释，避免 Review 过程中因 LLM 超时卡住
+
+环境变量：
+
+```bash
+LLM_API_KEY=sk-xxx              # OpenAI / DeepSeek / Qwen / 飞书 LLM 任一兼容协议
+LLM_API_BASE=https://api.openai.com/v1   # 可换成兼容 endpoint
+LLM_MODEL=gpt-4o-mini           # 可换成 claude-* / qwen-* 等
+LLM_TIMEOUT=60
+```
+
+### 前端关键组件
+
+- `frontend/src/v2/pages/semantic/modeling-agent/ModelingAgent.tsx` — 主页
+  - Chat-first 双栏结构：左侧会话列表，中间 `chat-workspace`，右侧 `artifact-panel`
+  - 集成 LLM_REQUIRED banner、右侧 `Review / Spec / Source / Preview / Trace` artifact
+  - `useUpdateSemanticModelingCopilotSpec` debounced 800ms PATCH
+- `ProposalReviewWorkbench` — 右侧 Review artifact
+  - 从 `/sessions/<id>/review` 读取候选变更、阻塞项、原因解释、Publish Gate 和发布后验收状态
+  - confirmation 阻塞可直接使用推荐值确认；validation / binding 阻塞可跳转右侧 Spec 或让 Copilot 解释
+  - 无后端 Review artifact 时回退当前 session 快照，保持前端可降级展示
+- `ArtifactSpecPanel` — 右侧 Spec artifact
+  - 复用 `CubeEditor` 编辑当前 `raw_spec.cube`
+  - 编辑后通过 `PATCH /sessions/<id>/spec` 回写 session 并重新校验
+- `ArtifactSourcePanel` — 右侧 Source artifact
+  - 读取 `review.source_evidence` 或 `workbench_state.source_evidence`
+  - 展示源表、字段证据、样本行和“为什么选择这张表”的推荐依据
+- `ArtifactPreviewPanel` — 右侧 Preview artifact
+  - 读取 `workbench_state.sandbox_preview`
+  - 明确展示草稿态预演、正式 runtime 是否污染、Data Agent 发布前不可消费状态和发布后验收摘要
+- `ArtifactTracePanel` — 右侧 Trace artifact
+  - 读取 `review.trace_state` 或 session tool traces
+  - 回放工具调用、用户确认、Proposal 保存和发布审计事件
+- `frontend/src/v2/pages/semantic/modeling-agent/components/CubeEditor.tsx` — 可编辑 / 只读双模 Cube spec 编辑器
+  - dimensions 表 / measures 表行级增删改
+  - inline error 通过 `issues: CubeFieldIssue[]` prop 注入
+
+### 后端关键模块
+
+- `app/application/semantic/modeling_copilot_runtime.py`
+  - `OpenAICompatibleLLMAdapter`：通过 OpenAI Chat Completions 协议调 LLM
+  - `LLMRequiredError`：未配 LLM 或调用失败时抛，由 blueprint 转 503
+  - 删除原 deterministic fallback bootstrap（不再"假装能跑"）
+- `app/application/semantic/modeling_copilot_service.py`
+  - 新增 `update_spec(session_id, payload)`：部分覆盖 raw_spec + 重跑 validate + 重算 readiness
+  - 新增 `get_review(session_id)`：输出 Chat-first 右侧 artifact 读模型，包含 `source_evidence / trace_state / publish_gate / post_publish_validation`
+  - `get_session / get_review / save_proposal` 会从已保存 Proposal 的 `spec` 或 `embedded_spec` 回填 `raw_spec`，避免历史会话右侧 Spec 面板显示空草稿
+  - Chat 内确定性动作：`使用推荐` 批量确认当前 required confirmations，`接受 Cube 草稿` 锁定 spec，`解释阻塞项` 返回本地解释，不调用 LLM
+  - `save_proposal(session_id)` 必须已有可校验 `raw_spec`；保存前会修复 Agent-led spec 的 measure、grain、time_dimension、additivity、binding_status、policy 和最小证据包
+- `app/application/semantic/modeling_spec_repair.py`
+  - 集中承接 Agent-led spec 的确定性补全规则，避免 CopilotService、ProposalService 和 SemanticModelingAgent 各自重复修复逻辑
+- `app/application/semantic/modeling_proposal_service.py`
+  - Agent-led Proposal 在 draft / validate 前运行 spec repair；human-led 场景仍保留原校验阻断，不替用户做业务决策
+- `app/interfaces/api/v1/semantic_modeling_copilot.py`
+  - 新增 `PATCH /sessions/<id>/spec`
+  - 新增 `GET /sessions/<id>/review`
+  - `POST /sessions/<id>/messages` LLMRequiredError 转 503 + `details.code = LLM_REQUIRED`
+
+### 验证矩阵
+
+- 后端单测：`tests/unit/application/semantic/test_modeling_copilot_service.py`
+  - LLM_REQUIRED 路径、LLM stub 调用工具链、need_source_table 跳过 cube 生成、update_spec 部分覆盖与全替换、Review artifact 投影、SPEC_REQUIRED 阻断、Chat 内确定性动作、保存前 spec repair、已保存 Proposal 的 raw_spec hydration、`view_student_answer_analysis` 历史坏样本修复、发布前校验阻塞原因
+- 后端单测：`tests/unit/application/semantic/test_source_candidate_recall_service.py`
+  - 学生评论查询的候选来源排序必须优先 `dwd_interaction_comment_reports_df`，答题分析 view 不应抢占评论事实表
+- 后端单测：`tests/unit/application/semantic/test_modeling_proposal_service.py`
+  - Agent-led Proposal validate 前自动修复 runtime 合同字段；human-led binding / evidence 仍按原规则阻塞
+- 后端单测：`tests/unit/application/semantic/test_semantic_modeling_agent.py`
+  - 新生成的 student_comment spec 默认携带 approved binding、grain、time_dimension 和 additivity
+- 后端集成：`tests/integration/test_semantic_modeling_copilot_api.py`
+  - PATCH spec、GET review、send_message LLM_REQUIRED 503 + envelope
+- 前端单测：`frontend/src/v2/pages/semantic/modeling-agent/components/CubeEditor.test.tsx`
+  - readonly / editable 双模、增删改 dimensions / measures、inline error、空状态
+- 前端页面单测：`frontend/src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx`
+  - Chat 保持主界面、Proposal Review 进入右侧 artifact panel、Review artifact 展示变更 / 阻塞 / 原因 / 发布前状态、Spec tab 直接编辑并 PATCH、Source tab 展示源表证据、Preview tab 展示草稿态预演、Trace tab 回放审计、Publish Gate 与发布后验收状态
+- E2E：`frontend/tests/e2e-v2/p34-modeling-agent-smoke.spec.ts`
+  - 业务问题 → Chat 继续作为主界面 → 右侧 Review artifact 展示 student_comment_cube / student_comment_count / student_comment → 右侧阻断确认 → 右侧 Spec tab PATCH 生效 → Source tab 证据可查 → Trace tab 审计可回放 → Preview tab 展示草稿态边界 → 应用 → 发布 → Publish Gate 通过 → 发布后验收通过 → Data Agent 可消费
+
+### P2 待补
+
+- OntologyEditor 高级字段（Binding / Policy / 业务指标完整编辑）
+- 后端 validate 业务化错误消息翻译（当前常见阻塞已可在 Chat 内确定性解释）
+- E2E P35（新建 Cube）/ P36（澄清表名）/ P37（校验阻断回流）
