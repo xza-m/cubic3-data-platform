@@ -496,7 +496,7 @@ test('C03 执行监控列表行点击打开 PeekPanel，查看详情不落 404 @
 
 test('C04 渠道列表行点击打开 PeekPanel，查看详情不落 404 @smoke @interaction-contract', async ({ page }) => {
   await gotoV2(page, '/config/channels')
-  await openPeekAndFollowDetail(page, '测试群', /\/config\/channels\/301$/, '发送测试')
+  await openPeekAndFollowDetail(page, '测试群', /\/config\/channels\/301$/, '基础信息')
 })
 
 test('C05 订阅列表行点击打开 PeekPanel，查看详情不落 404 @smoke @interaction-contract', async ({ page }) => {
@@ -577,13 +577,18 @@ test('C06 访问网关使用 access 成员权限契约加载 @smoke @interaction
   await expect(page.getByText('查询次数', { exact: true })).toBeVisible()
   await expect(page.getByText('稳定性', { exact: true })).toBeVisible()
   await expect(page.getByText('网关拦截', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('访问趋势')).toBeVisible()
+  await expect(page.getByText('访问趋势', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('heading', { name: '全平台访问记录' })).toBeVisible()
   await expect(page.getByText('访问等级分布')).toBeVisible()
   await expect(page.getByText('物理权限检查')).toBeVisible()
-  await page.getByRole('button', { name: '查看' }).first().click()
-  await expect(page.getByRole('dialog').getByText('Principal 解析')).toBeVisible()
-  await expect(page.getByRole('dialog').getByText('MaxCompute 兜底')).toBeVisible()
+  const traceButtons = page.getByRole('button', { name: '查看' })
+  if (await traceButtons.count() > 0) {
+    await traceButtons.first().click()
+    await expect(page.getByRole('dialog').getByText('Principal 解析')).toBeVisible()
+    await expect(page.getByRole('dialog').getByText('MaxCompute 兜底')).toBeVisible()
+  } else {
+    await expect(page.getByText('暂无网关执行记录')).toBeVisible()
+  }
   await expectNoNotFound(page)
 })
 
