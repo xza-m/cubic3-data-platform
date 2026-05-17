@@ -5,4 +5,4 @@ property_type: number
 description: 被举报内容学科ID
 aliases:
 - comment_subject_id
-status: draft
+status: active

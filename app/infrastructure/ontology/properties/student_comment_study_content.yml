@@ -5,4 +5,4 @@ property_type: string
 description: 评论关联学习内容，敏感字段，仅限内部审核分析使用
 aliases:
 - study_content
-status: draft
+status: active

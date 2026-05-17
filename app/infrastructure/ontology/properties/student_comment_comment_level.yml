@@ -5,4 +5,4 @@ property_type: number
 description: 被举报评论层级
 aliases:
 - comment_level
-status: draft
+status: active

@@ -5,4 +5,4 @@ property_type: number
 description: 举报人用户类型
 aliases:
 - reporter_user_type
-status: draft
+status: active

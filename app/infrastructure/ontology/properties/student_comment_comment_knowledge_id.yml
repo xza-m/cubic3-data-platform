@@ -5,4 +5,4 @@ property_type: number
 description: 被举报内容关联知识点ID
 aliases:
 - comment_knowledge_id
-status: draft
+status: active

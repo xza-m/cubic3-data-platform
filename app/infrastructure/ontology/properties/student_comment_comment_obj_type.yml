@@ -5,4 +5,4 @@ property_type: number
 description: 评论主题对象类型，沿用评论DWD枚举
 aliases:
 - comment_obj_type
-status: draft
+status: active

@@ -5,4 +5,4 @@ property_type: string
 description: 举报人班级名称快照
 aliases:
 - reporter_class_name
-status: draft
+status: active

@@ -5,4 +5,4 @@ property_type: string
 description: 举报类型名称
 aliases:
 - report_type_name
-status: draft
+status: active

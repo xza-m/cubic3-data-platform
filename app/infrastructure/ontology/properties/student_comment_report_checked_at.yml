@@ -5,4 +5,4 @@ property_type: time
 description: 举报处理时间，来源于源表check_time
 aliases:
 - report_checked_at
-status: draft
+status: active

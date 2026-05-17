@@ -5,4 +5,4 @@ property_type: number
 description: 根评论ID
 aliases:
 - comment_root_id
-status: draft
+status: active

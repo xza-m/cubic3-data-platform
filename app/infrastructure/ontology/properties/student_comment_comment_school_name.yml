@@ -5,4 +5,4 @@ property_type: string
 description: 被举报内容发布者学校名称
 aliases:
 - comment_school_name
-status: draft
+status: active

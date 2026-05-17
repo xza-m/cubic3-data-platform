@@ -5,4 +5,4 @@ property_type: number
 description: 被举报内容业务状态
 aliases:
 - comment_status
-status: draft
+status: active

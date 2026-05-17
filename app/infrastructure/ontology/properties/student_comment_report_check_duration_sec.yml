@@ -5,4 +5,4 @@ property_type: number
 description: 举报从创建到处理的耗时，单位秒；未处理为空
 aliases:
 - report_check_duration_sec
-status: draft
+status: active

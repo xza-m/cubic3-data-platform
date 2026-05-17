@@ -7,7 +7,7 @@ semantic_labels:
 - 学生评论
 - 建模助手 Agent
 measure_refs:
-- dwd_interaction_comment_reports_df_draft_9e23.total_count
+- dwd_interaction_comment_reports_df.total_count
 aliases:
 - 学生评论数
-status: draft
+status: active

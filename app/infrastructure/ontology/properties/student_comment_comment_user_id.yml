@@ -5,4 +5,4 @@ property_type: number
 description: 被举报内容发布用户ID
 aliases:
 - comment_user_id
-status: draft
+status: active

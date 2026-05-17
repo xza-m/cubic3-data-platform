@@ -5,4 +5,4 @@ property_type: time
 description: 举报记录更新时间，来源于源表update_time
 aliases:
 - report_updated_at
-status: draft
+status: active

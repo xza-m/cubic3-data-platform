@@ -5,4 +5,4 @@ property_type: number
 description: 举报类型编码：1信息有误，2不友善，3网络暴力，4学习无关，5色情低俗，6政治敏感，7其他
 aliases:
 - report_type
-status: draft
+status: active

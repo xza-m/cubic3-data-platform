@@ -5,4 +5,4 @@ property_type: time
 description: 被举报内容发布时间
 aliases:
 - comment_published_at
-status: draft
+status: active

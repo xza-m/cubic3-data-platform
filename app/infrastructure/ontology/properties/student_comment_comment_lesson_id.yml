@@ -5,4 +5,4 @@ property_type: number
 description: 被举报内容关联课程ID
 aliases:
 - comment_lesson_id
-status: draft
+status: active

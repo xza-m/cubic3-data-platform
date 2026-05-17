@@ -5,4 +5,4 @@ property_type: number
 description: 是否待处理举报：1是，0否
 aliases:
 - is_report_pending
-status: draft
+status: active

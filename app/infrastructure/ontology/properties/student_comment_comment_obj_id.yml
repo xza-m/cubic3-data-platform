@@ -5,4 +5,4 @@ property_type: number
 description: 评论主题对象ID
 aliases:
 - comment_obj_id
-status: draft
+status: active

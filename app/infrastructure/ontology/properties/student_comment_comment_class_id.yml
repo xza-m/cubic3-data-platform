@@ -5,4 +5,4 @@ property_type: number
 description: 被举报内容发布者班级ID
 aliases:
 - comment_class_id
-status: draft
+status: active

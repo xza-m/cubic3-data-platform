@@ -5,4 +5,4 @@ property_type: number
 description: 父评论ID
 aliases:
 - comment_parent_id
-status: draft
+status: active

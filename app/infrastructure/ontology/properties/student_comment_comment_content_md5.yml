@@ -5,4 +5,4 @@ property_type: string
 description: 被举报内容归一化文本MD5，用于同质化聚类
 aliases:
 - comment_content_md5
-status: draft
+status: active

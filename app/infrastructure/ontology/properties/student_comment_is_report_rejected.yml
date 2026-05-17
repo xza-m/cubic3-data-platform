@@ -5,4 +5,4 @@ property_type: number
 description: 是否已驳回举报：1是，0否
 aliases:
 - is_report_rejected
-status: draft
+status: active

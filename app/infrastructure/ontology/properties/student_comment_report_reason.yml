@@ -5,4 +5,4 @@ property_type: string
 description: 举报原因补充说明
 aliases:
 - report_reason
-status: draft
+status: active

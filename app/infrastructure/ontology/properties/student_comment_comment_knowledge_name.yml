@@ -5,4 +5,4 @@ property_type: string
 description: 被举报内容关联知识点名称
 aliases:
 - comment_knowledge_name
-status: draft
+status: active

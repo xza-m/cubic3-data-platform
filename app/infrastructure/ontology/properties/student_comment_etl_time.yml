@@ -5,4 +5,4 @@ property_type: time
 description: ETL写入时间
 aliases:
 - etl_time
-status: draft
+status: active

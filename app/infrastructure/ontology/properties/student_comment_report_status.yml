@@ -5,4 +5,4 @@ property_type: number
 description: 举报处理状态编码：1待处理，2已处理，3已驳回
 aliases:
 - report_status
-status: draft
+status: active

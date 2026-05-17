@@ -5,4 +5,4 @@ property_type: string
 description: 举报处理人
 aliases:
 - report_operator
-status: draft
+status: active

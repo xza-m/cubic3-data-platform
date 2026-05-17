@@ -5,4 +5,4 @@ property_type: string
 description: 被举报内容文本，敏感字段，仅限内部审核分析使用
 aliases:
 - comment_content
-status: draft
+status: active
