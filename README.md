@@ -284,10 +284,19 @@ Worker：
 python run_worker.py
 ```
 
+查询执行 Worker（仅在需要消费 `/api/v1/query-execution/jobs` 或 Agent 语义执行任务时启动）：
+
+```bash
+python -m app.workers.query_execution_worker
+```
+
 说明：
 
 - Web 进程负责 API 与 `APScheduler` 固定周期调度注册
 - `run_worker.py` 负责消费目录同步、数据集同步等长耗时 RQ 任务
+- `app.workers.query_execution_worker` 负责从 PostgreSQL claim 查询执行任务，执行前复核 `ExecutionTicketSnapshot`，支持 lease 续租、过期恢复、取消下沉和过期结果清理
+- Web 与查询执行 Worker 需共享 `QUERY_EXECUTION_SPOOL_DIR`，默认是 `instance/query_execution_results`
+- 查询执行 Worker 常用生产参数：`QUERY_EXECUTION_LEASE_SECONDS` 默认 300 秒，`QUERY_WORKER_IDLE_SLEEP_SECONDS` 默认 2 秒，`QUERY_RESULT_CLEANUP_INTERVAL_SECONDS` 默认 300 秒，`QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS` 默认 3 次
 
 默认情况下，Vite 开发服务器运行在 `http://localhost:3000`。如果你没有启动 Nginx，而是直接让前端代理到 Flask，请显式设置：
 
@@ -333,6 +342,7 @@ make verify-docs
 
 # 语义中心专项校验
 make verify-semantic
+make test-query-execution
 make smoke-semantic
 
 # 可选：coverage 专项验证（不在默认闸门里）

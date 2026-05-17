@@ -60,7 +60,7 @@
 > - `Cube` 是分析执行真相源，`Ontology` 是业务语义真相源。
 > - `Domain` 收窄为业务上下文、资产组织、候选范围和 Agent 提示的承载对象，不作为指标、关系、动作或 Join 的第三套真相源。
 > - `Domain.cubes[]` / 业务上下文资产画布只作为 `Cube <-> Domain` 资产归属和候选范围事实，`Cube.domain_id` 仅作为兼容投影字段保留。
-> - Domain 不再提供 Join 建模入口；历史 `joins` 字段只允许被读入和审计，不参与发布、校验、画布、查询编译或正式 Agent 命中。
+> - Domain 不再提供 Join 建模入口，`DomainDefinition`、Domain YAML、Domain API 均不接受 `joins` 字段；执行 Join 只在 `Cube.joins` 建模，业务关系只在 `Ontology BusinessRelation` 建模。
 > - `View` 在当前工作台按“特殊 Cube”收敛到列表、详情、编译与物化链路。
 > - `Recipe` 继续保持轻量消费对象，主要服务查询示例和上下文注入。
 > - “同一领域内重复实例化同一个 Cube 且使用不同 Join 条件”不属于当前范围。

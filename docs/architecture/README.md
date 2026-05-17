@@ -3,7 +3,7 @@ doc_type: architecture-index
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-06
 ---
 
 # 架构设计目录
@@ -75,9 +75,12 @@ last_reviewed: 2026-05-05
     - 执行预览可返回 `allow / blocked` 执行结果
   - 当前已补入 Agent-ready Phase 1 治理收敛：
     - `/api/v1/agent/semantic/plan` 作为 Agent-first official Runtime 主入口，由 `AgentPlanHandler` 编排 `PrincipalResolver -> Pre-route Policy -> Semantic Router -> Semantic Mapper -> Execution Compiler -> Post-compile Policy`
+    - `/api/v1/agent/semantic/execute` 作为 Agent-first 查询执行入口，在 `policy_decision=allow` 时生成 `ExecutionTicketSnapshot` 并提交带 `QueryDSL v1` 治理快照的 `query_execution_jobs`；审批或拒绝只返回材料，不创建 job
+    - 统一查询执行面由 `QuerySubmissionService / QueryResultService / QueryExecutionWorkerService` 承接，Worker 只校验 ticket snapshot、Agent 语义 job 的 `QueryDSL v1` 快照和执行已编译 SQL，不读取 Ontology 或 Cube 资产；执行态支持 lease 续租、过期恢复、取消下沉、可重试提交和过期结果清理
+    - SQL Lab 的定位是数据开发同步查询工具面，可继续服务异构数据源调试；Query Execution 的定位是 Agent / Runtime 受治理执行面
     - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`；诊断类 `/semantic-router/*` 保留 preview，用于工作台 route / binding / compile / policy / trace 排障
     - `viewer_roles` 在 API 层兼容，并统一归一为 `PrincipalContext`
-    - `Semantic Mapper` 输出稳定 `projection_result / resolved_bindings / binding_status / binding_issues`，`Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`
+    - `Semantic Mapper` 输出稳定 `projection_result / resolved_bindings / binding_status / binding_issues`，`Execution Compiler` 输出 `query_dsl / logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；`QueryDSL v1` 是运行时唯一 SQL 生成输入，restricted 字段显式引用会被编译阻断
     - `/api/v1/semantic-router/execute-plan` 与 `/api/v1/execution-compiler/execute` 命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
     - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 过滤
     - `/api/docs/openapi.json` 作为唯一 OpenAPI 输出入口，当前已为第一批只读 / 预览 / 审计接口补入 Agent 风险扩展和字段级 `data` schema；`make typecheck-contracts` 负责阻断核心契约缺失、重复 `operationId` 与非法 Agent 扩展字段
