@@ -25,6 +25,13 @@ class CubeModelingSourceService:
         self._dataset_repository = dataset_repository
         self._datasource_repository = datasource_repository
 
+    def resolve_default_physical_source_id(self) -> int:
+        """与 ViewPublish / 语义默认绑定一致：优先 MaxCompute 数据源，否则回退 1。"""
+        for ds in self._datasource_repository.find_all():
+            if getattr(ds, "source_type", None) == "maxcompute":
+                return int(ds.id)
+        return 1
+
     def generate_cube_draft_from_source(
         self,
         *,

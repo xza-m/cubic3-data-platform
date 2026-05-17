@@ -1,0 +1,6 @@
+name: student_comment
+title: 学生评论
+description: 学生评论对应的核心业务对象，由建模助手 Agent 根据事实表生成。
+aliases:
+- 学生评论
+status: draft

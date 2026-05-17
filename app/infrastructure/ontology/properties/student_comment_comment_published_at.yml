@@ -1,0 +1,8 @@
+name: student_comment_comment_published_at
+title: 被举报内容发布时间
+object_name: student_comment
+property_type: time
+description: 被举报内容发布时间
+aliases:
+- comment_published_at
+status: draft

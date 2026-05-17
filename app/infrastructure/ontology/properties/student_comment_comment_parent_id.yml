@@ -1,0 +1,8 @@
+name: student_comment_comment_parent_id
+title: 父评论ID
+object_name: student_comment
+property_type: number
+description: 父评论ID
+aliases:
+- comment_parent_id
+status: draft

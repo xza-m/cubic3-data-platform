@@ -164,6 +164,7 @@ class SemanticRouterPreviewService:
                 projection_preview = self._mapper_preview_service.preview(entity_type="metric", entity_name=matched_metric.name)
             execution_preview = self._compiler_preview_service.compile_metric_preview(
                 matched_metric.name,
+                question=question,
                 viewer_roles=viewer_roles,
                 principal_context=principal_context,
             )
@@ -486,6 +487,8 @@ class SemanticRouterPreviewService:
             preview = self._compiler_preview_service.compile_preview(
                 target_type=str(target.get("target_type") or ""),
                 metric_name=target.get("metric_name"),
+                query_dsl=target.get("query_dsl"),
+                question=target.get("question"),
                 retrieval_query=target.get("retrieval_query"),
                 retrieval_sources=target.get("retrieval_sources"),
                 tool_name=target.get("tool_name"),
@@ -713,6 +716,7 @@ class SemanticRouterPreviewService:
                     "target_key": f"metric:{matched_metric.name}:sql",
                     "target_type": "sql",
                     "metric_name": matched_metric.name,
+                    "question": question,
                     "reason": "业务指标映射到可执行 Measure",
                 }
             )

@@ -1,0 +1,8 @@
+name: student_comment_comment_content_md5
+title: 被举报内容归一化文本MD5，用于同质化聚类
+object_name: student_comment
+property_type: string
+description: 被举报内容归一化文本MD5，用于同质化聚类
+aliases:
+- comment_content_md5
+status: draft

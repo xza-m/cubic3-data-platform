@@ -381,6 +381,8 @@ class TestCompilerTimeDimension:
         result = compiler.compile(dsl)
         assert "answer_date >= '20260221'" in result.sql
         assert "answer_date <= '20260227'" in result.sql
+        assert "answer_records__answer_date" not in result.sql
+        assert "GROUP BY" not in result.sql
 
     def test_time_granularity_day(self, compiler):
         """TC-10: 日粒度"""

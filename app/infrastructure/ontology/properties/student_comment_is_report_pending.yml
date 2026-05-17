@@ -1,0 +1,8 @@
+name: student_comment_is_report_pending
+title: 是否待处理举报：1是，0否
+object_name: student_comment
+property_type: number
+description: 是否待处理举报：1是，0否
+aliases:
+- is_report_pending
+status: draft

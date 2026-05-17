@@ -81,6 +81,8 @@ class TestYamlCubeRepository:
         cubes_dir = str(tmp_path / "cubes")
         _write_yml(cubes_dir, "test_cube", CUBE_DATA)
         _write_yml(cubes_dir, "playwright_cube_1774702941350", {**CUBE_DATA, "name": "playwright_cube_1774702941350"})
+        _write_yml(cubes_dir, "qa_cube_1775888855020", {**CUBE_DATA, "name": "qa_cube_1775888855020"})
+        _write_yml(cubes_dir, "student_comment_draft_1775888855020", {**CUBE_DATA, "name": "student_comment_draft_1775888855020"})
 
         repo = YamlCubeRepository(cubes_dir)
 

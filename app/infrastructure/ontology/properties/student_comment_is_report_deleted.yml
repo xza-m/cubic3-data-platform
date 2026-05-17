@@ -1,0 +1,8 @@
+name: student_comment_is_report_deleted
+title: 举报记录软删除标记：0正常，1已删除
+object_name: student_comment
+property_type: number
+description: 举报记录软删除标记：0正常，1已删除
+aliases:
+- is_report_deleted
+status: draft

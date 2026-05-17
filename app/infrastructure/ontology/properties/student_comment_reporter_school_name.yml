@@ -1,0 +1,8 @@
+name: student_comment_reporter_school_name
+title: 举报人学校名称快照
+object_name: student_comment
+property_type: string
+description: 举报人学校名称快照
+aliases:
+- reporter_school_name
+status: draft

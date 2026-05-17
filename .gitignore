@@ -184,6 +184,9 @@ app/infrastructure/semantic/catalogs/playwright_catalog_*.yml
 app/infrastructure/semantic/catalogs/qa_catalog_*.yml
 app/infrastructure/semantic/cubes/playwright_cube_*.yml
 app/infrastructure/semantic/cubes/qa_cube_*.yml
+app/infrastructure/semantic/cubes/*_draft_*.yml
+app/infrastructure/semantic/modeling_agent_sessions/
+app/infrastructure/semantic/modeling_proposals/
 app/infrastructure/semantic/domains/domain_playwright_*.yml
 app/infrastructure/semantic/domains/domain_qa_*.yml
 app/infrastructure/semantic/domains/domain_debug_*.yml

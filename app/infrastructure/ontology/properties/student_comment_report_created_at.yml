@@ -1,0 +1,8 @@
+name: student_comment_report_created_at
+title: 举报发生时间，来源于源表create_time
+object_name: student_comment
+property_type: time
+description: 举报发生时间，来源于源表create_time
+aliases:
+- report_created_at
+status: draft

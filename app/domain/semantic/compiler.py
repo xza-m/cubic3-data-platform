@@ -128,12 +128,8 @@ class QueryCompiler:
                 col_type = "string" if dim.type == "string" else "datetime"
                 expr = self._dialect.apply_granularity(raw_col, td.granularity, col_type)
                 alias = f"{dim_ref}__{td.granularity}"
-            else:
-                expr = raw_col
-                alias = self._ref_alias(dim_ref)
-
-            select_parts.append(f"  {expr} AS `{alias}`")
-            group_by_parts.append(f"`{alias}`")
+                select_parts.append(f"  {expr} AS `{alias}`")
+                group_by_parts.append(f"`{alias}`")
 
             if td.date_range and len(td.date_range) >= 2:
                 part = cube.partition
@@ -213,7 +209,7 @@ class QueryCompiler:
             order_by_parts.append(f"`{alias}` {direction.upper()}")
 
         # ── 组装 SQL ──
-        from_clause = f"{self._source_relation(primary)} {primary.name}"
+        from_clause = self._aliased_source_relation(primary)
         join_clauses: List[str] = []
         for edge in join_edges:
             target_cube = cubes[edge.target]
@@ -227,7 +223,7 @@ class QueryCompiler:
             on_parts = [self._resolve_join_sql(edge.join_def.sql, edge.source, cubes)]
             on_parts.extend(join_on_parts.get(edge.target, []))
             on_expr = " AND ".join(on_parts)
-            join_clauses.append(f"  {jt} {self._source_relation(target_cube)} {target_cube.name} ON {on_expr}")
+            join_clauses.append(f"  {jt} {self._aliased_source_relation(target_cube)} ON {on_expr}")
 
         limit_val = dsl.limit or self._dialect.default_limit()
 
@@ -307,6 +303,12 @@ class QueryCompiler:
                 source_sql = source_sql[:-1].rstrip()
             return f"(\n{source_sql}\n)"
         return cube.table
+
+    @classmethod
+    def _aliased_source_relation(cls, cube: CubeDefinition) -> str:
+        relation = cls._source_relation(cube)
+        separator = " AS " if relation.startswith("(") else " "
+        return f"{relation}{separator}{cube.name}"
 
     @staticmethod
     def _parse_ref(ref: str) -> Tuple[str, str]:

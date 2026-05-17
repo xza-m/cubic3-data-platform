@@ -1,0 +1,483 @@
+name: dwd_interaction_comment_reports_df
+title: 学生评论
+description: 互动域-学生笔记/评论举报事实表
+table: dwd_interaction_comment_reports_df
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: active
+grain: report_id
+entity_key: report_id
+partition:
+  field: ds
+  type: date
+  format: yyyyMMdd
+  max_range_days: 90
+default_filters: []
+dimensions:
+  comment_class_id:
+    title: 被举报内容发布者班级ID
+    type: number
+    sql: '`comment_class_id`'
+    description: 被举报内容发布者班级ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_class_name:
+    title: 被举报内容发布者班级名称
+    type: string
+    sql: '`comment_class_name`'
+    description: 被举报内容发布者班级名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_content:
+    title: 被举报内容文本，敏感字段，仅限内部审核分析使用
+    type: string
+    sql: '`comment_content`'
+    description: 被举报内容文本，敏感字段，仅限内部审核分析使用
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_content_md5:
+    title: 被举报内容归一化文本MD5，用于同质化聚类
+    type: string
+    sql: '`comment_content_md5`'
+    description: 被举报内容归一化文本MD5，用于同质化聚类
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_deleted:
+    title: 被举报内容软删除标记
+    type: number
+    sql: '`comment_deleted`'
+    description: 被举报内容软删除标记
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_grade_id:
+    title: 被举报内容发布者年级ID
+    type: number
+    sql: '`comment_grade_id`'
+    description: 被举报内容发布者年级ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_id:
+    title: 被举报评论/笔记内容ID
+    type: number
+    sql: '`comment_id`'
+    description: 被举报评论/笔记内容ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_knowledge_id:
+    title: 被举报内容关联知识点ID
+    type: number
+    sql: '`comment_knowledge_id`'
+    description: 被举报内容关联知识点ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_knowledge_name:
+    title: 被举报内容关联知识点名称
+    type: string
+    sql: '`comment_knowledge_name`'
+    description: 被举报内容关联知识点名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_lesson_id:
+    title: 被举报内容关联课程ID
+    type: number
+    sql: '`comment_lesson_id`'
+    description: 被举报内容关联课程ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_level:
+    title: 被举报评论层级
+    type: number
+    sql: '`comment_level`'
+    description: 被举报评论层级
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_obj_id:
+    title: 评论主题对象ID
+    type: number
+    sql: '`comment_obj_id`'
+    description: 评论主题对象ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_obj_type:
+    title: 评论主题对象类型，沿用评论DWD枚举
+    type: number
+    sql: '`comment_obj_type`'
+    description: 评论主题对象类型，沿用评论DWD枚举
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_parent_id:
+    title: 父评论ID
+    type: number
+    sql: '`comment_parent_id`'
+    description: 父评论ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_published_at:
+    title: 被举报内容发布时间
+    type: time
+    sql: '`comment_published_at`'
+    description: 被举报内容发布时间
+    source_data_type: datetime
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_review_status:
+    title: 被举报内容审核状态
+    type: number
+    sql: '`comment_review_status`'
+    description: 被举报内容审核状态
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_root_id:
+    title: 根评论ID
+    type: number
+    sql: '`comment_root_id`'
+    description: 根评论ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_school_id:
+    title: 被举报内容发布者学校ID
+    type: number
+    sql: '`comment_school_id`'
+    description: 被举报内容发布者学校ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_school_name:
+    title: 被举报内容发布者学校名称
+    type: string
+    sql: '`comment_school_name`'
+    description: 被举报内容发布者学校名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_status:
+    title: 被举报内容业务状态
+    type: number
+    sql: '`comment_status`'
+    description: 被举报内容业务状态
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_subject_id:
+    title: 被举报内容学科ID
+    type: number
+    sql: '`comment_subject_id`'
+    description: 被举报内容学科ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  comment_subject_name:
+    title: 被举报内容学科名称
+    type: string
+    sql: '`comment_subject_name`'
+    description: 被举报内容学科名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  comment_user_id:
+    title: 被举报内容发布用户ID
+    type: number
+    sql: '`comment_user_id`'
+    description: 被举报内容发布用户ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  etl_time:
+    title: ETL写入时间
+    type: time
+    sql: '`etl_time`'
+    description: ETL写入时间
+    source_data_type: datetime
+    synonyms: []
+    tags: []
+    primary_key: false
+  is_report_deleted:
+    title: 举报记录软删除标记：0正常，1已删除
+    type: number
+    sql: '`is_report_deleted`'
+    description: 举报记录软删除标记：0正常，1已删除
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  is_report_handled:
+    title: 是否已处理举报：1是，0否
+    type: number
+    sql: '`is_report_handled`'
+    description: 是否已处理举报：1是，0否
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  is_report_pending:
+    title: 是否待处理举报：1是，0否
+    type: number
+    sql: '`is_report_pending`'
+    description: 是否待处理举报：1是，0否
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  is_report_rejected:
+    title: 是否已驳回举报：1是，0否
+    type: number
+    sql: '`is_report_rejected`'
+    description: 是否已驳回举报：1是，0否
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  parent_content:
+    title: 父级评论内容，敏感字段，仅限内部审核分析使用
+    type: string
+    sql: '`parent_content`'
+    description: 父级评论内容，敏感字段，仅限内部审核分析使用
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  reference_content:
+    title: 评论关联上下文内容，敏感字段，仅限内部审核分析使用
+    type: string
+    sql: '`reference_content`'
+    description: 评论关联上下文内容，敏感字段，仅限内部审核分析使用
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_check_duration_sec:
+    title: 举报从创建到处理的耗时，单位秒；未处理为空
+    type: number
+    sql: '`report_check_duration_sec`'
+    description: 举报从创建到处理的耗时，单位秒；未处理为空
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_checked_at:
+    title: 举报处理时间，来源于源表check_time
+    type: time
+    sql: '`report_checked_at`'
+    description: 举报处理时间，来源于源表check_time
+    source_data_type: datetime
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_created_at:
+    title: 举报发生时间，来源于源表create_time
+    type: time
+    sql: '`report_created_at`'
+    description: 举报发生时间，来源于源表create_time
+    source_data_type: datetime
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_id:
+    title: 举报记录ID，举报事实主键
+    type: number
+    sql: '`report_id`'
+    description: 举报记录ID，举报事实主键
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  report_operator:
+    title: 举报处理人
+    type: string
+    sql: '`report_operator`'
+    description: 举报处理人
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_reason:
+    title: 举报原因补充说明
+    type: string
+    sql: '`report_reason`'
+    description: 举报原因补充说明
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_status:
+    title: 举报处理状态编码：1待处理，2已处理，3已驳回
+    type: number
+    sql: '`report_status`'
+    description: 举报处理状态编码：1待处理，2已处理，3已驳回
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_status_name:
+    title: 举报处理状态名称
+    type: string
+    sql: '`report_status_name`'
+    description: 举报处理状态名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_type:
+    title: 举报类型编码：1信息有误，2不友善，3网络暴力，4学习无关，5色情低俗，6政治敏感，7其他
+    type: number
+    sql: '`report_type`'
+    description: 举报类型编码：1信息有误，2不友善，3网络暴力，4学习无关，5色情低俗，6政治敏感，7其他
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_type_name:
+    title: 举报类型名称
+    type: string
+    sql: '`report_type_name`'
+    description: 举报类型名称
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  report_updated_at:
+    title: 举报记录更新时间，来源于源表update_time
+    type: time
+    sql: '`report_updated_at`'
+    description: 举报记录更新时间，来源于源表update_time
+    source_data_type: datetime
+    synonyms: []
+    tags: []
+    primary_key: false
+  reporter_class_name:
+    title: 举报人班级名称快照
+    type: string
+    sql: '`reporter_class_name`'
+    description: 举报人班级名称快照
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  reporter_school_name:
+    title: 举报人学校名称快照
+    type: string
+    sql: '`reporter_school_name`'
+    description: 举报人学校名称快照
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  reporter_user_id:
+    title: 举报人用户ID
+    type: number
+    sql: '`reporter_user_id`'
+    description: 举报人用户ID
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: true
+  reporter_user_name:
+    title: 举报人姓名快照
+    type: string
+    sql: '`reporter_user_name`'
+    description: 举报人姓名快照
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+  reporter_user_type:
+    title: 举报人用户类型
+    type: number
+    sql: '`reporter_user_type`'
+    description: 举报人用户类型
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    primary_key: false
+  study_content:
+    title: 评论关联学习内容，敏感字段，仅限内部审核分析使用
+    type: string
+    sql: '`study_content`'
+    description: 评论关联学习内容，敏感字段，仅限内部审核分析使用
+    source_data_type: string
+    synonyms: []
+    tags: []
+    primary_key: false
+measures:
+  sum_comment_llm_score:
+    title: 被举报内容LLM质量/风险评分
+    type: sum
+    sql: '`comment_llm_score`'
+    description: 自动生成的 comment_llm_score sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_comment_llm_second_score:
+    title: 被举报内容二次模型评分
+    type: sum
+    sql: '`comment_llm_second_score`'
+    description: 自动生成的 comment_llm_second_score sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  sum_comment_manual_score:
+    title: 被举报内容人工评分
+    type: sum
+    sql: '`comment_manual_score`'
+    description: 自动生成的 comment_manual_score sum指标
+    source_data_type: bigint
+    synonyms: []
+    tags: []
+    certified: false
+    non_additive: false
+  total_count:
+    title: 总数
+    type: count
+    sql: '`report_id`'
+    description: 自动生成的记录总数指标
+    source_data_type: count
+    synonyms: []
+    tags: []
+    certified: true
+    non_additive: false
+segments: {}
+joins: {}

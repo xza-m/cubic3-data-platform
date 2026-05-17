@@ -1,0 +1,13 @@
+name: student_comment_total_count
+title: 学生评论总数
+object_name: student_comment
+semantic_formula: 按 Cube measure dwd_interaction_comment_reports_df.total_count 计算
+description: 学生评论相关的默认业务指标。
+semantic_labels:
+- 学生评论
+- 建模助手 Agent
+measure_refs:
+- dwd_interaction_comment_reports_df_draft_9e23.total_count
+aliases:
+- 学生评论数
+status: draft

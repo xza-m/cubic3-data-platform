@@ -1,0 +1,8 @@
+name: student_comment_comment_knowledge_id
+title: 被举报内容关联知识点ID
+object_name: student_comment
+property_type: number
+description: 被举报内容关联知识点ID
+aliases:
+- comment_knowledge_id
+status: draft
