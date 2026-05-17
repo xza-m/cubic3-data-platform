@@ -1,0 +1,136 @@
+name: student_comment_cube
+title: 学生评论举报事实
+description: |
+  互动域学生笔记/评论举报事实表，用于围绕被举报学生评论做学校、班级、学科和时间维度的评论量分析。
+  该 Cube 只暴露聚合分析所需字段，评论正文与上下文内容标记为受限字段。
+table: df_cb_258187.dwd_interaction_comment_reports_df
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: active
+grain: report_id
+entity_key: report_id
+partition:
+  field: ds
+  type: date
+  format: yyyyMMdd
+  max_range_days: 30
+  latest_expr: "MAX_PT('dwd_interaction_comment_reports_df')"
+default_filters:
+  - sql: "{CUBE}.is_report_deleted = 0"
+    description: "仅统计未删除举报记录"
+dimensions:
+  report_id:
+    title: 举报记录ID
+    type: string
+    sql: "{CUBE}.report_id"
+    description: 举报事实主键
+    source_data_type: bigint
+    primary_key: true
+  comment_id:
+    title: 评论ID
+    type: string
+    sql: "{CUBE}.comment_id"
+    description: 被举报评论/笔记内容ID
+    source_data_type: bigint
+  school_id:
+    title: 学校ID
+    type: string
+    sql: "{CUBE}.comment_school_id"
+    description: 被举报内容发布者学校ID
+    source_data_type: bigint
+  school_name:
+    title: 学校名称
+    type: string
+    sql: "{CUBE}.comment_school_name"
+    description: 被举报内容发布者学校名称
+    source_data_type: string
+    synonyms:
+      - 学校
+      - 发布者学校
+  class_name:
+    title: 班级名称
+    type: string
+    sql: "{CUBE}.comment_class_name"
+    description: 被举报内容发布者班级名称
+    source_data_type: string
+  subject_name:
+    title: 学科名称
+    type: string
+    sql: "{CUBE}.comment_subject_name"
+    description: 被举报内容学科名称
+    source_data_type: string
+  knowledge_name:
+    title: 知识点名称
+    type: string
+    sql: "{CUBE}.comment_knowledge_name"
+    description: 被举报内容关联知识点名称
+    source_data_type: string
+  report_type_name:
+    title: 举报类型
+    type: string
+    sql: "{CUBE}.report_type_name"
+    description: 举报类型名称
+    source_data_type: string
+  report_status_name:
+    title: 举报处理状态
+    type: string
+    sql: "{CUBE}.report_status_name"
+    description: 举报处理状态名称
+    source_data_type: string
+  comment_published_at:
+    title: 评论发布时间
+    type: time
+    sql: "{CUBE}.comment_published_at"
+    description: 被举报内容发布时间
+    source_data_type: datetime
+  ds:
+    title: 分区日期
+    type: time
+    sql: "{CUBE}.ds"
+    description: 快照分区日期，格式 yyyyMMdd
+    source_data_type: string
+  comment_content:
+    title: 评论内容
+    type: string
+    sql: "{CUBE}.comment_content"
+    description: 被举报内容文本，敏感字段，仅限内部审核分析使用
+    source_data_type: string
+    tags:
+      - restricted
+  parent_content:
+    title: 父级评论内容
+    type: string
+    sql: "{CUBE}.parent_content"
+    description: 父级评论内容，敏感字段，仅限内部审核分析使用
+    source_data_type: string
+    tags:
+      - restricted
+  reference_content:
+    title: 关联上下文内容
+    type: string
+    sql: "{CUBE}.reference_content"
+    description: 评论关联上下文内容，敏感字段，仅限内部审核分析使用
+    source_data_type: string
+    tags:
+      - restricted
+  study_content:
+    title: 关联学习内容
+    type: string
+    sql: "{CUBE}.study_content"
+    description: 评论关联学习内容，敏感字段，仅限内部审核分析使用
+    source_data_type: string
+    tags:
+      - restricted
+measures:
+  comment_count:
+    title: 评论数
+    type: number
+    sql: COUNT(DISTINCT {CUBE}.comment_id)
+    description: 按被举报评论/笔记内容ID去重统计学生评论数量。
+    source_data_type: bigint
+    synonyms:
+      - 学生评论数
+      - 评论量
+    certified: true
+    non_additive: false

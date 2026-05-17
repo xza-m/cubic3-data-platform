@@ -1,0 +1,8 @@
+term: 学生评论
+canonical_name: StudentComment
+entry_type: object
+aliases:
+  - 学生互动评论
+  - 学生笔记评论
+description: 学生在互动学习场景中发布、被举报或被审核的笔记与评论内容。
+status: active

@@ -1,0 +1,10 @@
+name: student_comment_count_policy
+target_type: metric
+target_name: comment_count
+visibility: restricted
+allowed_roles:
+  - ops_readonly
+  - analyst
+  - admin
+description: 学生评论指标仅允许运营只读、分析师和管理员角色访问。
+status: active

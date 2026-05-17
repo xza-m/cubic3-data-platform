@@ -1,0 +1,8 @@
+name: StudentComment
+title: 学生评论
+description: 学生在互动学习场景中发布、被举报或被审核的笔记与评论内容。
+aliases:
+  - 学生互动评论
+  - 评论反馈
+  - 学生笔记评论
+status: active

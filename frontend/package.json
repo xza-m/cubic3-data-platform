@@ -26,7 +26,7 @@
     "perf:lhci:assert": "cd .. && npx --yes @lhci/cli@0.15.x assert --config=lighthouserc.json",
     "e2e:domain-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/domain_creation_smoke.py",
     "e2e:domain-publish-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/domain_publish_smoke.py",
-    "e2e:cube-draft-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/cube_draft_smoke.py",
+    "e2e:modeling-agent-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/modeling_agent_smoke.py",
     "ci:pre-push": "npm run lint && npm run test:unit && npm run build:v2",
     "prepare": "node -e \"try{require('child_process').execSync('git config core.hooksPath .husky',{cwd:'..',stdio:'ignore'})}catch(e){}\""
   },

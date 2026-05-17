@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-06
 ---
 
 # 测试与验证约束
@@ -106,8 +106,12 @@ last_reviewed: 2026-05-05
 | 后端聚合 | `make test-backend` | 串联后端单测与后端集成测试 |
 | 前端聚合 | `make test-frontend` | 串联前端单测和前端集成入口；v2 浏览器回归归入 smoke / e2e 专项 |
 | v2 E2E smoke | `make smoke-frontend` | Playwright v2 smoke（`npm run e2e:smoke`） |
+| Agent-first Runtime 最小链路 | `make test-agent-runtime` | official runtime、active Ontology 命中、Mapper Binding、业务意图到带 `dsl_version=v1` 的 QueryDSL 再到 QueryCompiler SQL、restricted 字段阻断、Execution Compiler 阻断，以及 `SemanticRuntimePreflightService` 对 object / metric / measure_refs / cube / measure 的真实环境资产预检 |
+| Agent Runtime 真实环境资产预检 | `make preflight-agent-runtime` | opt-in 入口，只读取 Cube / Ontology YAML，检查测试环境是否已发布指定 object、metric、cube 与 measure binding；不执行 SQL，不并入默认 verify |
+| Agent Runtime 真实执行验收 | `make live-agent-runtime` | opt-in 入口，使用临时控制面数据库 + 真实 MaxCompute datasource 配置，走 `/api/v1/agent/semantic/execute` → `QueryExecutionWorkerService` → `DataSourceWarehouseExecutionAdapter`，验证“最近 7 天学生评论数按学校汇总”真实 SQL 执行与 restricted 字段不泄露；访问外部数仓，不并入默认 verify |
 | 建模助手 Agent 最小链路 | `make test-modeling-agent` | SemanticModelingAgentSpec、草稿生成、校验、Agent-ready 检查、保存、cube-only 发布与 Domain context-preview 的后端/前端单测 |
-| 语义专项 smoke | `make smoke-semantic` | 领域创建、领域发布、Cube 草稿三条浏览器烟测 |
+| 统一查询执行面最小链路 | `make test-query-execution` | QueryExecution job、ticket snapshot、SQL Guard、Agent 语义 job 的 `QueryDSL v1` 治理快照校验、result object、Worker 状态机、lease 恢复、取消、清理、MaxCompute 错误分类、`/api/v1/query-execution/jobs` API，以及 Agent-first Runtime HTTP execute -> Worker -> result E2E 验收；其中包含基于已发布语义资产 fixture 的“最近 7 天学生评论数按学校汇总”业务 case，表、字段、measure binding、QueryDSL 和 restricted 字段均由 Cube / Ontology 提供 |
+| 语义专项 smoke | `make smoke-semantic` | 领域创建、领域发布、建模助手 Agent 任务流三条浏览器烟测 |
 | 自动化测试聚合 | `make test` | 串联 `test-unit`、`test-integration` |
 
 ### 4.4 层 4：运行验证
@@ -118,7 +122,7 @@ last_reviewed: 2026-05-05
 | 前端 | `make smoke-frontend` | 平台壳层浏览器 smoke |
 | 可观测 | `make smoke-observability` | 当前未配置统一阈值检查，显式 `skip` |
 | 聚合 | `make smoke` | 串联后端、前端、可观测验证 |
-| 语义专项 smoke | `make smoke-semantic` | 领域创建、领域发布、Cube 草稿三条浏览器烟测 |
+| 语义专项 smoke | `make smoke-semantic` | 领域创建、领域发布、建模助手 Agent 任务流三条浏览器烟测 |
 
 ## 6. 常用组合入口
 
@@ -127,7 +131,7 @@ last_reviewed: 2026-05-05
 | `make verify-backend` | 仅后端改动的默认交付入口 |
 | `make verify-frontend` | 仅前端非语义改动的默认交付入口 |
 | `make verify-docs` | 仅文档改动的默认交付入口 |
-| `make verify-semantic` | 语义中心改动；在建模助手 Agent / Domain 上下文最小链路、backend + frontend 基线之外补语义专项 smoke |
+| `make verify-semantic` | 语义中心改动；在 Agent Runtime、统一查询执行面、建模助手 Agent / Domain 上下文最小链路、backend + frontend 基线之外补语义专项 smoke |
 | `make verify` | 跨域、共享契约、关键链路或不确定影响面的仓库级收口入口 |
 | `make verify-detect` | 输出当前变更命中的规则、升级原因和建议交付入口 |
 | `make verify-changed` | 按规则检测结果执行当前改动的最低必跑交付入口 |

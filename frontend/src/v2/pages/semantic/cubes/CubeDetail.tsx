@@ -119,7 +119,7 @@ export default function CubeDetail() {
               size="sm"
               variant="ghost"
               className="justify-start w-full"
-              onClick={() => navigate('/semantic/devtools')}
+              onClick={() => navigate('/semantic/workbench')}
             >
               {t('nav.devtools', '语义诊断')}
             </Button>
@@ -185,7 +185,7 @@ export default function CubeDetail() {
           actions={{
             onOpenDesigner: () => navigate(`/semantic/cubes/${cube.name}/edit`),
             onJumpOntology: () => navigate('/semantic/ontology/objects'),
-            onRunDiagnose: () => navigate('/semantic/devtools'),
+            onRunDiagnose: () => navigate('/semantic/workbench'),
           }}
         />
       </div>

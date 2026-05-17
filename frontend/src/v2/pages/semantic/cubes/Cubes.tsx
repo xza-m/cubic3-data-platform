@@ -140,7 +140,7 @@ export default function Cubes() {
                 size="sm"
                 variant="ghost"
                 className="justify-start w-full"
-                onClick={() => navigate('/semantic/devtools')}
+                onClick={() => navigate('/semantic/workbench')}
               >
                 <Sparkles size={12} /> {t('nav.devtools', '语义诊断')}
               </Button>
@@ -374,7 +374,7 @@ function CubePeek({
           actions={{
             onOpenDesigner: () => { navigate(`/semantic/cubes/${cube.name}/edit`); onClose() },
             onJumpOntology: () => { navigate('/semantic/ontology/objects'); onClose() },
-            onRunDiagnose: () => { navigate('/semantic/devtools'); onClose() },
+            onRunDiagnose: () => { navigate('/semantic/workbench'); onClose() },
           }}
         />
       ) : null}

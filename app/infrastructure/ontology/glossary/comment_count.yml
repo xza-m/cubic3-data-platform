@@ -1,0 +1,9 @@
+term: 学生评论数
+canonical_name: comment_count
+entry_type: metric
+aliases:
+  - 评论数
+  - 评论量
+  - 评论数量
+description: 学生互动评论数量，对应业务指标 comment_count。
+status: active

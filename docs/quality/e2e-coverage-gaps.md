@@ -13,7 +13,7 @@
 
 | 能力 | v2 承接 |
 |---|---|
-| Cube 草稿链路 | `frontend/tests/e2e/cube_draft_smoke.py`（`make smoke-semantic` 调用）|
+| 建模助手 Agent 任务流 | `frontend/tests/e2e/modeling_agent_smoke.py`（`make smoke-semantic` 调用）|
 | Domain 创建 | `frontend/tests/e2e/domain_creation_smoke.py` |
 | Domain 发布 | `frontend/tests/e2e/domain_publish_smoke.py` + `frontend/tests/e2e-v2/p07-domain-publish.spec.ts` |
 | Ontology 操作 | `p04-ontology-object-validation`、`p05-ontology-metric-dryrun`、`p06-ontology-relations`、`p19-ontology-object-search` |

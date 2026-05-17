@@ -1,0 +1,16 @@
+name: comment_count
+title: 评论数
+object_name: StudentComment
+semantic_formula: 按评论内容ID去重统计学生评论数量
+description: 用于按学校、班级、学科、知识点和时间维度统计学生互动评论数量。
+semantic_labels:
+  - 学生评论
+  - 互动反馈
+  - 评论举报
+measure_refs:
+  - student_comment_cube.comment_count
+aliases:
+  - 学生评论数
+  - 评论量
+  - 评论数量
+status: active
