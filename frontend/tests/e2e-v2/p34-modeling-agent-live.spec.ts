@@ -4,6 +4,9 @@
 // 默认跳过，只有显式设置 P34_LIVE_API=1 时才运行，避免普通 v2 e2e
 // 套件无意写入 session / proposal / 语义资产。
 
+import { readdir, readFile, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 const QUESTION = '查询最近7天学生评论数，按学校汇总'
@@ -11,6 +14,14 @@ const LIVE_QUESTION =
   process.env.P34_LIVE_QUESTION ||
   `${QUESTION}，源表 df_cb_258187.dwd_interaction_comment_reports_df，关键词 comment reports interaction`
 const EXPECTED_SOURCE_TABLE = 'dwd_interaction_comment_reports_df'
+const REPO_ROOT = path.resolve(process.cwd(), '..')
+const TRACKED_STUDENT_COMMENT_ASSET_FILES = [
+  'app/infrastructure/ontology/glossary/student_comment.yml',
+  'app/infrastructure/ontology/metrics/student_comment_total_count.yml',
+  'app/infrastructure/ontology/objects/student_comment.yml',
+  'app/infrastructure/ontology/policies/student_comment_total_count_policy.yml',
+  'app/infrastructure/semantic/cubes/dwd_interaction_comment_reports_df.yml',
+]
 
 type ApiEnvelope<T> = {
   code?: number
@@ -40,6 +51,8 @@ type SourceCandidate = {
   name?: string
   table?: string
 }
+
+type FileSnapshot = Map<string, string>
 
 test.skip(process.env.P34_LIVE_API !== '1', '显式设置 P34_LIVE_API=1 才运行真实后端 smoke')
 
@@ -104,6 +117,31 @@ function objectAt(value: unknown): Record<string, unknown> {
 
 function arrayAt(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')) : []
+}
+
+async function trackedStudentCommentAssetPaths(): Promise<string[]> {
+  const propertyDir = path.join(REPO_ROOT, 'app/infrastructure/ontology/properties')
+  const propertyFiles = (await readdir(propertyDir))
+    .filter((name) => name.startsWith('student_comment_') && name.endsWith('.yml'))
+    .sort()
+    .map((name) => path.join('app/infrastructure/ontology/properties', name))
+  return [...TRACKED_STUDENT_COMMENT_ASSET_FILES, ...propertyFiles].map((relativePath) =>
+    path.join(REPO_ROOT, relativePath),
+  )
+}
+
+async function snapshotTrackedStudentCommentAssets(): Promise<FileSnapshot> {
+  const snapshot: FileSnapshot = new Map()
+  for (const filePath of await trackedStudentCommentAssetPaths()) {
+    snapshot.set(filePath, await readFile(filePath, 'utf8'))
+  }
+  return snapshot
+}
+
+async function restoreTrackedStudentCommentAssets(snapshot: FileSnapshot): Promise<void> {
+  await Promise.all(
+    Array.from(snapshot.entries()).map(([filePath, content]) => writeFile(filePath, content, 'utf8')),
+  )
 }
 
 async function confirmBlockingItems(
@@ -194,81 +232,86 @@ test('P34 live 真实后端完成 session -> deterministic draft -> proposal -> 
   page,
   request,
 }) => {
-  const auth = await login(request)
+  const semanticAssets = await snapshotTrackedStudentCommentAssets()
+  try {
+    const auth = await login(request)
 
-  let session = await api<CopilotSession>(
-    request,
-    'POST',
-    '/api/v1/semantic/modeling-copilot/sessions',
-    auth.headers,
-    {
-      user_goal: QUESTION,
-      message: LIVE_QUESTION,
-      entry_type: 'business_question',
-    },
-  )
-  expect(session.id).toBeTruthy()
+    let session = await api<CopilotSession>(
+      request,
+      'POST',
+      '/api/v1/semantic/modeling-copilot/sessions',
+      auth.headers,
+      {
+        user_goal: QUESTION,
+        message: LIVE_QUESTION,
+        entry_type: 'business_question',
+      },
+    )
+    expect(session.id).toBeTruthy()
 
-  session = await api<CopilotSession>(
-    request,
-    'POST',
-    `/api/v1/semantic/modeling-copilot/sessions/${session.id}/messages`,
-    auth.headers,
-    { message: LIVE_QUESTION },
-  )
+    session = await api<CopilotSession>(
+      request,
+      'POST',
+      `/api/v1/semantic/modeling-copilot/sessions/${session.id}/messages`,
+      auth.headers,
+      { message: LIVE_QUESTION },
+    )
 
-  session = await ensureReviewableSpec(request, session, auth.headers)
-  session = await confirmBlockingItems(request, session, auth.headers)
-  const stateAfterMessage = stateOf(session)
-  expect(objectAt(stateAfterMessage.raw_spec).cube, `缺少可保存 raw_spec: ${JSON.stringify(stateAfterMessage)}`)
-    .toBeTruthy()
+    session = await ensureReviewableSpec(request, session, auth.headers)
+    session = await confirmBlockingItems(request, session, auth.headers)
+    const stateAfterMessage = stateOf(session)
+    expect(objectAt(stateAfterMessage.raw_spec).cube, `缺少可保存 raw_spec: ${JSON.stringify(stateAfterMessage)}`)
+      .toBeTruthy()
 
-  session = await api<CopilotSession>(
-    request,
-    'POST',
-    `/api/v1/semantic/modeling-copilot/sessions/${session.id}/accept-cube-draft`,
-    auth.headers,
-    { reason: 'p34_live_smoke' },
-  )
-  expect(stateOf(session).cube_draft_accepted).toBe(true)
+    session = await api<CopilotSession>(
+      request,
+      'POST',
+      `/api/v1/semantic/modeling-copilot/sessions/${session.id}/accept-cube-draft`,
+      auth.headers,
+      { reason: 'p34_live_smoke' },
+    )
+    expect(stateOf(session).cube_draft_accepted).toBe(true)
 
-  session = await api<CopilotSession>(
-    request,
-    'POST',
-    `/api/v1/semantic/modeling-copilot/sessions/${session.id}/sandbox`,
-    auth.headers,
-    { sample_question: QUESTION },
-  )
-  expect(objectAt(stateOf(session).sandbox_preview).pollutes_official_route).toBe(false)
+    session = await api<CopilotSession>(
+      request,
+      'POST',
+      `/api/v1/semantic/modeling-copilot/sessions/${session.id}/sandbox`,
+      auth.headers,
+      { sample_question: QUESTION },
+    )
+    expect(objectAt(stateOf(session).sandbox_preview).pollutes_official_route).toBe(false)
 
-  session = await api<CopilotSession>(
-    request,
-    'POST',
-    `/api/v1/semantic/modeling-copilot/sessions/${session.id}/save-proposal`,
-    auth.headers,
-    { source: 'p34_live_smoke' },
-  )
-  const proposalId = session.current_proposal_id || String(objectAt(stateOf(session).advanced_refs).proposal_id || '')
-  expect(proposalId, `保存 Proposal 后缺少 proposal id: ${JSON.stringify(session)}`).toBeTruthy()
+    session = await api<CopilotSession>(
+      request,
+      'POST',
+      `/api/v1/semantic/modeling-copilot/sessions/${session.id}/save-proposal`,
+      auth.headers,
+      { source: 'p34_live_smoke' },
+    )
+    const proposalId = session.current_proposal_id || String(objectAt(stateOf(session).advanced_refs).proposal_id || '')
+    expect(proposalId, `保存 Proposal 后缺少 proposal id: ${JSON.stringify(session)}`).toBeTruthy()
 
-  session = await api<CopilotSession>(
-    request,
-    'POST',
-    `/api/v1/semantic/modeling-copilot/sessions/${session.id}/publish`,
-    auth.headers,
-    { source: 'p34_live_smoke' },
-  )
-  expect(objectAt(stateOf(session).publish_result).status, JSON.stringify(stateOf(session).publish_result))
-    .toBe('published')
+    session = await api<CopilotSession>(
+      request,
+      'POST',
+      `/api/v1/semantic/modeling-copilot/sessions/${session.id}/publish`,
+      auth.headers,
+      { source: 'p34_live_smoke' },
+    )
+    expect(objectAt(stateOf(session).publish_result).status, JSON.stringify(stateOf(session).publish_result))
+      .toBe('published')
 
-  const review = await api<CopilotReview>(
-    request,
-    'GET',
-    `/api/v1/semantic/modeling-copilot/sessions/${session.id}/review`,
-    auth.headers,
-  )
-  expect(review.status).toBe('published')
-  expect(objectAt(review.data_agent_consumption).state).toBe('available')
+    const review = await api<CopilotReview>(
+      request,
+      'GET',
+      `/api/v1/semantic/modeling-copilot/sessions/${session.id}/review`,
+      auth.headers,
+    )
+    expect(review.status).toBe('published')
+    expect(objectAt(review.data_agent_consumption).state).toBe('available')
 
-  await openPublishedSession(page, auth.token, session.id)
+    await openPublishedSession(page, auth.token, session.id)
+  } finally {
+    await restoreTrackedStudentCommentAssets(semanticAssets)
+  }
 })
