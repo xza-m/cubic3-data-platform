@@ -74,7 +74,12 @@ export function LeftRail({ pathname, onOpenCommandPalette }: LeftRailProps) {
           </button>
         </Tooltip>
         <Tooltip label={t('leftRail.settings', '设置')} side="right">
-          <button type="button" className="rail-btn" aria-label={t('leftRail.settings', '设置')}>
+          <button
+            type="button"
+            className="rail-btn"
+            aria-label={t('leftRail.settings', '设置')}
+            onClick={() => navigate('/settings')}
+          >
             <Settings size={16} />
           </button>
         </Tooltip>

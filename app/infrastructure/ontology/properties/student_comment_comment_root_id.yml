@@ -1,0 +1,8 @@
+name: student_comment_comment_root_id
+title: 根评论ID
+object_name: student_comment
+property_type: number
+description: 根评论ID
+aliases:
+- comment_root_id
+status: active

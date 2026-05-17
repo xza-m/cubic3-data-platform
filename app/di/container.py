@@ -133,7 +133,7 @@ from app.infrastructure.ontology.yaml_object_repository import YamlBusinessObjec
 from app.infrastructure.ontology.yaml_policy_repository import YamlPolicyMetadataRepository
 from app.infrastructure.ontology.yaml_property_repository import YamlBusinessPropertyRepository
 from app.infrastructure.ontology.yaml_relation_repository import YamlBusinessRelationRepository
-from app.infrastructure.governance.repositories import SqlGovernanceAuditTraceRepository
+from app.infrastructure.governance.repositories import SqlAccessGovernanceRepository, SqlGovernanceAuditTraceRepository
 
 # Infrastructure - Conversation Repositories
 from app.infrastructure.repositories.conversation_repository import ConversationRepository, MessageRepository
@@ -193,12 +193,6 @@ from app.application.query.handlers.template_handlers import (
     DeleteTemplateHandler,
     UseTemplateHandler,
 )
-
-from app.application.users.user_service import UserService
-from app.application.users.role_service import RoleService
-from app.infrastructure.users.password import BcryptHasher
-from app.infrastructure.users.repositories import SqlRoleRepository, SqlUserRepository
-
 
 class Container(containers.DeclarativeContainer):
     """
@@ -390,6 +384,11 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    access_governance_repository = providers.Factory(
+        SqlAccessGovernanceRepository,
+        session=db_session,
+    )
+
     metric_semantics_service = providers.Singleton(MetricSemanticsService)
 
     semantic_registry_repository = providers.Factory(
@@ -558,7 +557,10 @@ class Container(containers.DeclarativeContainer):
 
     principal_resolver = providers.Singleton(PrincipalResolver)
 
-    access_policy_service = providers.Singleton(AccessPolicyDecisionService)
+    access_policy_service = providers.Singleton(
+        AccessPolicyDecisionService,
+        policy_repository=access_governance_repository,
+    )
 
     semantic_mapper_preview_service = providers.Singleton(
         SemanticMapperPreviewService,
@@ -1162,36 +1164,6 @@ class Container(containers.DeclarativeContainer):
         subscription_service=subscription_service,
         subscription_repository=subscription_repository,
     )
-
-    # ========================================================================
-    # 应用层 - 用户/角色（W4.D-2）
-    # ========================================================================
-
-    user_repository = providers.Factory(
-        SqlUserRepository,
-        session=db_session,
-    )
-
-    role_repository = providers.Factory(
-        SqlRoleRepository,
-        session=db_session,
-    )
-
-    password_hasher = providers.Singleton(BcryptHasher)
-
-    user_service = providers.Factory(
-        UserService,
-        user_repo=user_repository,
-        role_repo=role_repository,
-        password_hasher=password_hasher,
-    )
-
-    role_service = providers.Factory(
-        RoleService,
-        role_repo=role_repository,
-    )
-
-
 
 def init_container(app: Flask) -> Container:
     """

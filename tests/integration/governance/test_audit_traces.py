@@ -43,7 +43,10 @@ def _build_client(repository: MagicMock):
     flask_app.register_blueprint(bp)
     register_error_handlers(flask_app)
     from tests.conftest import install_default_admin_auth
-    return flask_app, install_default_admin_auth(flask_app.test_client())
+    return flask_app, install_default_admin_auth(
+        flask_app.test_client(),
+        roles=("admin", "platform_admin"),
+    )
 
 
 @pytest.mark.redesign

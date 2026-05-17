@@ -51,7 +51,7 @@ const dashboardOverview = {
 test('R01 /dashboard KPI 渲染真实数字（res.data.data 对齐）@smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/dashboard/overview', envelope(dashboardOverview))
 
   await gotoV2(page, '/dashboard')
@@ -66,7 +66,7 @@ test('R01 /dashboard KPI 渲染真实数字（res.data.data 对齐）@smoke', as
 test('R02 /data-center/datasources/new 表单可达 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources/types', envelope(dsFx.types))
 
   await gotoV2(page, '/data-center/datasources/new')
@@ -79,7 +79,7 @@ test('R02 /data-center/datasources/new 表单可达 @smoke', async ({ page }) =>
 test('R03 /data-center/datasets/register 注册表单可达 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources', envelope(dsFx.list))
 
@@ -99,7 +99,7 @@ test('R03 /data-center/datasets/register 注册表单可达 @smoke', async ({ pa
 test('R04 /extraction/tasks/new 提取任务表单可达 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
 
   await gotoV2(page, '/extraction/tasks/new')
 
@@ -115,7 +115,7 @@ test('R04 /extraction/tasks/new 提取任务表单可达 @smoke', async ({ page 
 test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   const tableSummaries = [
     { table_name: 'lesson_progress', comment: '课程进度', row_count: 120 },
     ...Array.from({ length: 24 }, (_, index) => ({
@@ -219,7 +219,7 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
 test('R06 /data-center/datasets 虚拟表行显示查看 SQL 按钮 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
 
   const virtualDataset = {
     id: 999,

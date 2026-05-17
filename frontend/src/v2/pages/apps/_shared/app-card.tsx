@@ -76,7 +76,7 @@ export function AppCard({ app, categoryLabel, onOpen, onCreateInstance }: AppCar
     <button
       type="button"
       onClick={onOpen}
-      className="group relative flex flex-col overflow-hidden rounded-md border text-left transition-all hover:-translate-y-px hover:shadow-md"
+      className="group relative flex h-full min-h-[168px] w-full flex-col overflow-hidden rounded-md border text-left transition-all hover:-translate-y-px hover:shadow-md"
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
       {/* Accent stripe */}

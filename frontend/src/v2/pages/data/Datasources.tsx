@@ -6,9 +6,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, Filter, Plus, RefreshCcw, Search, ServerCog } from 'lucide-react'
+import { Database, Filter, Search, ServerCog } from 'lucide-react'
 import { useDatasources } from '@v2/hooks/datasources'
 import type { Datasource } from '@v2/api/datasources'
+import { CreateButton, RefreshButton, Toolbar } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import {
   connectionStatusChip,
   datasourceTabLabel,
@@ -60,27 +62,17 @@ export default function Datasources() {
   // TopBar 操作
   useEffect(() => {
     setTopBarActions(
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
+      <Toolbar>
+        <RefreshButton
           onClick={() => void handleRefresh()}
-          disabled={isFetching}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs disabled:opacity-60"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-          {t('datasources.action.refresh', '刷新')}
-        </button>
-        <button
-          type="button"
+          loading={isFetching}
+          ariaLabel={t('datasources.action.refreshList', '刷新数据源')}
+        />
+        <CreateButton
+          label={t('datasources.action.create', '新建数据源')}
           onClick={() => navigate('/data-center/datasources/new')}
-          className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
-          style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
-        >
-          <Plus size={12} />
-          {t('datasources.action.create', '新建数据源')}
-        </button>
-      </div>,
+        />
+      </Toolbar>,
     )
     return () => setTopBarActions(null)
   }, [setTopBarActions, handleRefresh, isFetching, navigate])
@@ -119,7 +111,7 @@ export default function Datasources() {
           {t('datasources.context.title', '数据源概览')}
         </div>
       ),
-      subtitle: 'GET /api/v1/data-center/datasources',
+      subtitle: t('datasources.context.subtitle', '统一管理外部连接与同步状态'),
       body: (
         <div className="space-y-4 px-4 py-4">
           <CtxSection title={t('datasources.context.scale', '规模')}>
@@ -159,14 +151,13 @@ export default function Datasources() {
               >
                 + {t('datasources.action.create', '新建数据源')}
               </button>
-              <button
-                type="button"
-                onClick={() => refetch()}
-                className="flex w-full items-center rounded-md px-2 py-1 text-left"
-                style={{ color: 'var(--text-2)' }}
-              >
-                ↻ {t('datasources.action.refetch', '重新拉取')}
-              </button>
+              <RefreshButton
+                onClick={handleRefresh}
+                loading={isFetching}
+                label={t('datasources.action.refetch', '重新拉取')}
+                loadingLabel={t('datasources.action.refetching', '重新拉取中…')}
+                ariaLabel={t('datasources.action.refreshList', '刷新数据源')}
+              />
             </div>
           </CtxSection>
           <CtxSection title={t('datasources.context.hints', '使用提示')}>
@@ -181,7 +172,7 @@ export default function Datasources() {
       ),
     })
     return () => setContextPanel(null)
-  }, [setContextPanel, summary, refetch, navigate])
+  }, [handleRefresh, isFetching, setContextPanel, summary, navigate])
 
   const peekRow = useMemo(
     () => (peekId == null ? null : rows.find((r) => r.id === peekId) ?? null),
@@ -365,9 +356,10 @@ export default function Datasources() {
         {isLoading ? (
           <SkeletonRows rows={8} columns={6} />
         ) : isError ? (
-          <ErrorState
+          <RetryState
             message={error instanceof Error ? error.message : t('datasources.state.loadFailed', '加载失败')}
             onRetry={() => refetch()}
+            retryAriaLabel={t('datasources.action.retry', '重试加载数据源')}
           />
         ) : rows.length === 0 ? (
           <EmptyState
@@ -480,24 +472,6 @@ function SkeletonRows({ rows, columns }: { rows: number; columns: number }) {
           ))}
         </div>
       ))}
-    </div>
-  )
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2">
-      <p className="text-xs" style={{ color: 'var(--danger)' }}>
-        {message}
-      </p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="rounded-md border px-3 py-1.5 text-xs"
-        style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-      >
-        {t('datasources.action.retry', '重试')}
-      </button>
     </div>
   )
 }

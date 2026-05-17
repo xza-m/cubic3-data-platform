@@ -3,17 +3,21 @@
 // 执行记录列表页（L0）。
 // 接口：GET /api/v1/app-executions
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { RefreshCcw } from 'lucide-react'
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
+import { ListPagination } from '@v2/components/ListPagination'
+import { RefreshButton, Toolbar, ToolbarSearch, ToolbarSelect } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
+import { useToast } from '@v2/components/ui'
 import { useExecutions } from '@v2/hooks/instances'
 import { ExecStatusChip } from '../_shared/instance-content'
 import { fmtDuration, ExecutionPeekContent } from '../_shared/execution-content'
 import type { AppExecution } from '@v2/api/instances'
 
 type StatusFilter = '' | AppExecution['status']
+const EXECUTIONS_PAGE_SIZE = 20
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: '', label: t('exec.status.all', '全部状态') },
@@ -40,6 +44,8 @@ function PeekPanel({
 
   return (
     <div
+      role="complementary"
+      aria-label={t('peek.aria.preview', '行预览')}
       className="flex w-72 shrink-0 flex-col border-l"
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
@@ -101,6 +107,7 @@ function PeekPanel({
 
 export default function Executions() {
   const navigate = useNavigate()
+  const toast = useToast()
   const [searchParams] = useSearchParams()
   const appCodeFilter = searchParams.get('app_code') ?? undefined
   const instanceIdFilter = searchParams.get('instance_id')
@@ -110,15 +117,17 @@ export default function Executions() {
   const [keyword, setKeyword] = useState('')
   const [status, setStatus] = useState<StatusFilter>('')
   const [peek, setPeek] = useState<AppExecution | null>(null)
+  const [pageNo, setPageNo] = useState(1)
 
   const { data: page, isLoading, isError, refetch, isFetching } = useExecutions({
     app_code: appCodeFilter,
     instance_id: instanceIdFilter,
     status: status || undefined,
-    page: 1,
-    page_size: 50,
+    page: pageNo,
+    page_size: EXECUTIONS_PAGE_SIZE,
   })
   const executions = useMemo(() => page?.items ?? [], [page])
+  const total = page?.total ?? 0
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase()
@@ -142,6 +151,25 @@ export default function Executions() {
     return { total, ok, failed, running }
   }, [executions])
 
+  const handleRefresh = useCallback(async () => {
+    const result = await refetch()
+    if (result.isSuccess) {
+      toast.show({
+        tone: 'success',
+        title: t('executions.toast.refreshed', '执行记录已刷新'),
+        description: t('executions.toast.refreshedCount', '当前列表 {count} 条', {
+          count: result.data?.items.length ?? executions.length,
+        }),
+      })
+    } else {
+      toast.show({
+        tone: 'danger',
+        title: t('executions.toast.refreshFailed', '刷新执行记录失败'),
+        description: result.error instanceof Error ? result.error.message : String(result.error ?? ''),
+      })
+    }
+  }, [executions.length, refetch, toast])
+
   return (
     <div className="flex flex-1 overflow-hidden p-4">
       <div
@@ -164,44 +192,33 @@ export default function Executions() {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              className="rounded border px-2 py-1 text-xs outline-none focus:ring-1"
-              style={{
-                background: 'var(--bg-surface-2)',
-                borderColor: 'var(--border)',
-                color: 'var(--text-1)',
-                width: 200,
+          <Toolbar>
+            <ToolbarSearch
+              value={keyword}
+              onChange={(value) => {
+                setKeyword(value)
+                setPageNo(1)
               }}
               placeholder={t('executions.search_placeholder', '按 ID / 实例名搜索…')}
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+              ariaLabel={t('executions.search.aria', '搜索执行记录')}
+              width={220}
             />
-            <select
-              className="rounded border px-2 py-1 text-xs outline-none"
-              style={{
-                background: 'var(--bg-surface-2)',
-                borderColor: 'var(--border)',
-                color: 'var(--text-1)',
-                width: 120,
-              }}
+            <ToolbarSelect<StatusFilter>
               value={status}
-              onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            >
-              {STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost"
-              onClick={() => refetch()}
-            >
-              <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-            </button>
-          </div>
+              onChange={(value) => {
+                setStatus(value)
+                setPageNo(1)
+              }}
+              options={STATUS_OPTIONS}
+              ariaLabel={t('executions.filter.status', '筛选执行状态')}
+              width={124}
+            />
+            <RefreshButton
+              onClick={() => void handleRefresh()}
+              loading={isFetching}
+              ariaLabel={t('executions.action.refresh', '刷新执行记录')}
+            />
+          </Toolbar>
         </div>
 
         {/* Stats bar */}
@@ -217,29 +234,28 @@ export default function Executions() {
 
         {/* Table + Peek */}
         <div className="flex flex-1 overflow-hidden">
-          <div className="flex-1 overflow-auto">
-            {isLoading && (
-              <div
-                className="flex items-center justify-center py-12 text-xs"
-                style={{ color: 'var(--text-3)' }}
-              >
-                {t('state.loading', '加载中…')}
-              </div>
-            )}
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-auto">
+              {isLoading && (
+                <div
+                  className="flex items-center justify-center py-12 text-xs"
+                  style={{ color: 'var(--text-3)' }}
+                >
+                  {t('state.loading', '加载中…')}
+                </div>
+              )}
 
-            {isError && !isLoading && (
-              <div className="flex flex-col items-center gap-3 py-12">
-                <p className="text-xs" style={{ color: 'var(--danger)' }}>
-                  {t('state.load_error', '加载失败')}
-                </p>
-                <button type="button" className="btn btn-sm" onClick={() => refetch()}>
-                  {t('action.retry', '重试')}
-                </button>
-              </div>
-            )}
+              {isError && !isLoading && (
+                <RetryState
+                  className="py-12"
+                  message={t('state.load_error', '加载失败')}
+                  onRetry={handleRefresh}
+                  retryAriaLabel={t('executions.action.retry', '重试加载执行记录')}
+                />
+              )}
 
-            {!isLoading && !isError && (
-              <table className="w-full text-xs">
+              {!isLoading && !isError && (
+                <table className="w-full text-xs">
                 <thead>
                   <tr style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}>
                     <th className="px-4 py-2 text-left font-normal">#</th>
@@ -310,7 +326,18 @@ export default function Executions() {
                     </tr>
                   )}
                 </tbody>
-              </table>
+                </table>
+              )}
+            </div>
+            {!isLoading && !isError && keyword.trim() === '' && (
+              <div className="border-t px-4 pb-3" style={{ borderColor: 'var(--border)' }}>
+                <ListPagination
+                  page={pageNo}
+                  pageSize={EXECUTIONS_PAGE_SIZE}
+                  total={total}
+                  onPageChange={setPageNo}
+                />
+              </div>
             )}
           </div>
 

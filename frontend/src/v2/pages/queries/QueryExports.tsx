@@ -11,6 +11,7 @@ import {
   type QueryExport,
   type QueryExportStatus,
 } from '@v2/api/queries'
+import { RetryState } from '@v2/components/LoadState'
 import { useToast } from '@v2/components/ui'
 import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
@@ -119,19 +120,11 @@ export default function QueryExports() {
         {listQ.isLoading ? (
           <SkeletonRows />
         ) : listQ.isError ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2">
-            <span className="text-xs text-red-500">
-              {t('queryExport.state.loadFailed', '加载失败')}
-            </span>
-            <button
-              type="button"
-              onClick={() => void listQ.refetch()}
-              className="text-xs underline"
-              style={{ color: 'var(--accent)' }}
-            >
-              {t('queryExport.action.retry', '重试')}
-            </button>
-          </div>
+          <RetryState
+            message={t('queryExport.state.loadFailed', '加载失败')}
+            onRetry={() => listQ.refetch()}
+            retryAriaLabel={t('queryExport.action.retry', '重试加载导出任务')}
+          />
         ) : rows.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3">
             <p className="text-xs" style={{ color: 'var(--text-3)' }}>

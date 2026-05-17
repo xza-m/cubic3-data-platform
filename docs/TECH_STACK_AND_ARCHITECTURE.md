@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-06
+last_reviewed: 2026-05-13
 ---
 
 # 技术栈与架构说明
@@ -33,7 +33,6 @@ graph LR
     Redis["Redis"]
     Postgres["PostgreSQL"]
     Worker["RQ Worker"]
-    QueryWorker["Query Execution Worker"]
 
     Browser --> Vite
     Browser --> Nginx
@@ -43,8 +42,6 @@ graph LR
     Flask --> Redis
     Worker --> Redis
     Worker --> Postgres
-    QueryWorker --> Postgres
-    QueryWorker -->|shared spool| Flask
 ```
 
 说明：
@@ -52,8 +49,7 @@ graph LR
 - 开发模式通常走 `Browser -> Vite -> /api 代理 -> Nginx/Flask`
 - Docker 模式通常走 `Browser -> Nginx -> Flask`
 - `frontend/dist` 是 Nginx 托管前端的静态产物，由 `docker/nginx.Dockerfile` 在镜像构建阶段生成
-- `APScheduler` 注册在 Web 进程中，RQ Worker 只消费目录同步、数据集同步等长耗时任务
-- Query Execution Worker 是查询执行面进程：从 PostgreSQL job queue claim 已授权 SQL，执行数仓查询并写入共享 `QUERY_EXECUTION_SPOOL_DIR`
+- `APScheduler` 注册在 Web 进程中，RQ Worker 只消费长耗时任务
 
 ## 3. 技术栈
 
@@ -186,23 +182,20 @@ app/
   - `execute` 会附带统一 `governance_trace` 与 `audit_trace_id`，记录命中策略、角色、目标与执行状态
 - `语义权限（内部实现为 Policy Metadata）`
   - 支持对象 / 动作 / 业务指标的最小语义权限声明
-  - 语义路由与执行预览可基于 `viewer_roles` 返回 `allow / blocked`
+  - 语义路由与执行预览基于服务端解析出的 `PrincipalContext` 和 RoleBinding 返回 `allow / blocked`
   - `Policy Impact` 可汇总受影响分析实体、治理挂点状态与当前问题清单
 - `Agent-ready Access Governance`
   - `/api/v1/agent/semantic/plan` 已固定为 Agent-first Runtime 入口，API 层和 `AgentPlanHandler` 统一注入 `runtime_mode=official`
   - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`：先做业务语义命中，再通过 Binding 编译到 Cube 执行目标；诊断类 `/semantic-router/*` 仍保留 preview 能力
-  - `SemanticRuntimePreflightService` 用于真实环境验收前的 fail-fast 检查：确认 `BusinessObject / BusinessMetric / measure_refs / Cube / Measure` 均为 active 且绑定可解析，不要求测试输入携带物理字段
-  - `viewer_roles` 仍兼容，但 API 层统一归一为 `PrincipalContext`
+  - Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；正式 `/api/v1/agent/semantic/plan` 不信任请求体角色、JWT 角色声明和 `viewer_roles`，诊断类 preview API 仅可用 `viewer_roles` 做沙盒预演
   - `Semantic Mapper` 稳定输出 `projection_result / resolved_bindings / binding_status / binding_issues`，只做只读 Binding，不定义第三套 mapping 真相源
-  - `Execution Compiler` 先把业务意图收敛为带 `dsl_version=v1` 的 `QueryDSL`，再由统一 `QueryCompiler` 编译 SQL；预览服务不再直接拼接执行 SQL
-  - `QueryDSL v1` 当前支持指标 measure、同 Cube 维度、最近 N 天时间窗口，以及同源一跳 `N:1 / 1:1` 维表 Join；跨源 Join、多路径 Join、`1:N / N:N` 指标 Join 与显式引用 restricted 字段会被阻断
-  - `Execution Compiler` 输出 `query_dsl / logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
-  - `/api/v1/agent/semantic/plan` 只生成 `TicketPreview`，`enforcement=preview_only`，不创建可执行 job
-  - 新增统一查询执行面后，`/api/v1/agent/semantic/execute` 会在 `allow` 决策下生成 `ExecutionTicketSnapshot` 并提交带 `QueryDSL v1` 治理快照的 `query_execution_jobs`；`approval_required / deny` 不创建 job
-  - `Query Execution Worker` 只读取 job、ticket snapshot、`governance_snapshot.query_dsl`、DataSource 和已编译 SQL，不读取 Ontology / Cube YAML，也不做语义决策；执行前会复核 Agent 语义 job 的 `QueryDSL v1` 快照，执行态支持 lease 续租、过期恢复、取消下沉、可重试提交和续租失败停止处理
+  - `Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；运行时 SQL 必须由 `QueryDSL -> QueryCompiler` 生成，基础维度分组与时间过滤不能绕开 DSL；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
+  - `/api/v1/agent/semantic/plan` 只生成 `TicketPreview`，`enforcement=preview_only`，不作为 gateway 执行凭证
+  - `/api/v1/agent/semantic/execute` 在 `allow` 决策下生成 `ExecutionTicketSnapshot` 并提交带 `QueryDSL v1` 治理快照的 `query_execution_jobs`；`approval_required / deny` 不创建 job
+  - `Query Execution Worker` 只读取 job、ticket snapshot、`governance_snapshot.query_dsl`、DataSource 和已编译 SQL，不读取 Ontology / Cube YAML，也不做语义决策；执行态支持 lease 续租、过期恢复、取消下沉、可重试提交和续租失败停止处理
   - 查询结果写入 `query_result_objects` 与共享 spool 目录；Web API 通过 `/api/v1/query-execution/jobs/<query_id>` 提供状态、事件、结果和取消能力
-  - 过期 READY 结果由查询执行 Worker 定期清理：删除共享 spool 文件，标记 `EXPIRED`，清理失败写入事件
-  - SQL Lab 保留为数据开发人员使用的同步异构数据源查询工具面；它不是 Agent Runtime 的正式执行链路，不强制迁入 `ExecutionTicketSnapshot + async job` 协议
+  - SQL Lab 保留为数据开发人员使用的同步异构数据源查询工具面，不强制迁入 `ExecutionTicketSnapshot + async job` 协议
+  - 权限职责边界固定为 data-platform 负责 `Principal / PermissionPackage / RoleBinding / DataPolicy / PolicyDecision / GatewayAccessContextPreview`，`dw-query-gateway` 负责接收可信 `GatewayAccessContext`、SQL guard 与 `CredentialBinding`，MaxCompute 负责 RAM / ACL 物理兜底；data-platform 不保存真实 RAM 凭据；gateway 到 MaxCompute 的落地方案见 `docs/architecture/access-gateway-maxcompute-ram.md`
   - `/semantic-router/execute-plan` 与 `/execution-compiler/execute` 已补 M3/raw/ODS 拦截，返回 `require_approval` 且不真实执行
   - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 查询
 - `建模助手 Agent`
@@ -222,7 +215,7 @@ app/
 - `语义工作台` 可从 Cube 标题区回看来源业务对象
 - stale / impact 告警已在 `业务语义工作台` 收口为可定位的实体提示
 - `业务语义工作台` 的对象 / 关系 / 动作 / 业务指标页已接入运行时路由预演，可直接展示 `route_type`、`planning_mode`、多意图命中结果、planning steps 与 traceability
-- `业务语义工作台` 的权限页已支持影响范围说明和真实治理挂点预演，可直接展示 `viewer_roles` 在语义路由与执行预览上的 `allow / blocked` 结果与原因
+- `业务语义工作台` 的权限页已支持影响范围说明和真实治理挂点预演，可直接展示服务端 `PrincipalContext` 与 RoleBinding 在语义路由、执行预览上的 `allow / blocked` 结果与原因
 - `业务语义工作台` 的权限页已接入 `Policy Impact` 治理影响总览，可集中查看受影响的 Cube / Measure / Event Cube、治理挂点状态与当前问题列表
 - `业务语义工作台` 的业务指标页与权限页已接入统一执行预览，可直接查看编译产物、Bindings、Traceability 与执行计划
 - `业务语义工作台` 的权限页已接入“最近治理执行结果”卡片，可直接查看真实执行下的 `governance_trace`、命中策略与执行状态
@@ -244,7 +237,7 @@ app/
 - 完整 Policy 执行引擎
 
 这意味着平台当前采用的是“业务语义真相源 + 分析执行真相源 + 只读投影与预览 + 最小路由骨架 + 最小统一执行编译层”的收缩版双层语义架构。
-当前已进入 Phase 7/8 的最小落地区间：在保持对齐检查只读投影定位不变的前提下，平台已经具备 `Metric Federation`、`Relation / Action Projection Preview`、最小语义路由、统一执行预览与最小运行时执行，以及最小语义权限、`governance_trace`、PostgreSQL 审计、发布/影响/历史查询链、订单域模板基线、Agent-ready 规划预演和基于 `ExecutionTicketSnapshot` 的 Agent 查询执行闭环；RAM 身份切换、脱敏/血缘联动、异步 MaxCompute streaming fetch、对象存储 ResultStore 与最终产品化仍属于后续增强。
+当前已进入 Phase 7/8 的最小落地区间：在保持对齐检查只读投影定位不变的前提下，平台已经具备 `Metric Federation`、`Relation / Action Projection Preview`、最小语义路由、统一执行预览与最小运行时执行，以及最小语义权限、`governance_trace`、PostgreSQL 审计、发布/影响/历史查询链、订单域模板基线和 Agent-ready 规划预演；但尚未进入 gateway 真实 ticket、防重放、RAM 身份切换、脱敏/血缘联动与最终产品化阶段。
 
 ## 5. 前端结构
 
@@ -319,6 +312,7 @@ frontend/src/
 - `/api/v1/semantic-router`
 - `/api/v1/execution-compiler`
 - `/api/v1/agent`
+- `/api/v1/query-execution`
 - `/api/v1/apps`
 - `/api/v1/app-instances`
 - `/api/v1/app-executions`
@@ -342,6 +336,8 @@ frontend/src/
   - `/api/v1/semantic-router/*`：最小语义路由、执行路径规划与回溯预览
   - `/api/v1/execution-compiler/*`：统一的 SQL / Retrieval / Tool 执行预览、计划预览与最小运行时执行
   - `/api/v1/agent/semantic/plan`：Agent-first official Runtime 主入口，返回 `runtime_mode / business_intent / projection_result / resolved_bindings / compiled_targets / policy_decision / semantic_trace` 与 preview-only ticket
+  - `/api/v1/agent/semantic/execute`：Agent-first 查询执行入口，生成受治理的 async query execution job
+  - `/api/v1/query-execution/*`：统一查询执行面，提供 job 状态、事件、结果和取消能力
 - `/api/v1/semantic/modeling-agent/*`：建模助手 Agent 的构建期接口，负责从事实表和业务意图生成、校验、Agent-ready 检查、保存并按范围发布 Cube + Ontology 草稿；不被正式 Agent 运行时直接读取
 - `/api/v1/semantic/domains/<domain_id>/context-preview`：Domain 业务上下文预览接口，只返回候选范围和 Agent 沙盒提示，不作为执行时 Join 或指标真相源
 - `/semantic/ontology`：业务语义工作台前端首期版本，已覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模与投影预览
@@ -380,12 +376,14 @@ frontend/src/
 与 Phase 6 直接相关的已实现接口包括：
 
 - `/api/v1/ontology/policies`
-- `/api/v1/semantic-router/route`：支持按 `viewer_roles` 做对象 / 动作 / 业务指标的最小权限阻断
-- `/api/v1/execution-compiler/compile-preview`：支持按 `viewer_roles` 返回 `allow / blocked`
+- `/api/v1/semantic-router/route`：支持按 `PrincipalContext` 做对象 / 动作 / 业务指标的最小权限阻断
+- `/api/v1/execution-compiler/compile-preview`：支持按 `PrincipalContext` 返回 `allow / blocked`
 
 与 Agent-ready Phase 1 直接相关的已实现接口包括：
 
 - `/api/v1/agent/semantic/plan`
+- `/api/v1/agent/semantic/execute`
+- `/api/v1/query-execution/jobs/<query_id>`
 - `/api/v1/semantic-router/execute-plan`：命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
 - `/api/v1/execution-compiler/execute`：命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
 - `/api/v1/governance/audit-traces`：支持按 `principal_id / semantic_plan_id / sql_hash / decision / route_type / policy` 查询
@@ -414,11 +412,11 @@ frontend/src/
 - `Domain` 是收窄后的业务上下文和资产组织对象，用于承载业务主题、候选 Cube、本体引用、默认上下文和 Agent 提示；它不是第三套真相源。
 - v2 当前由 `Cube 创建 / 编辑` 页面与语义诊断工作台共同承接 `选数据源 -> 生成草稿 -> 微调 -> 调试 -> 发布` 的开发流；`Cube 管理` 负责正式资产浏览与修订入口。
 - `Domain.cubes[]` 与业务上下文资产画布只作为 `Cube <-> Domain` 资产归属 / 候选范围的事实；同一个 Cube 可以被多个业务上下文引用。
-- Domain 画布只展示业务上下文中的 Cube 资产组织和候选范围，Domain 数据模型、YAML 与 API 不再保留 `joins` / `join_count`；执行 Join 只存在于 `Cube.joins`，业务关系只存在于 `Ontology BusinessRelation`。
+- Domain 画布只展示业务上下文中的 Cube 资产组织和候选范围，不再维护 Join / 关系边；执行 Join 只存在于 `Cube.joins`，业务关系只存在于 `Ontology BusinessRelation`。
 - `Cube.domain_id` 仅保留为兼容投影字段，用于列表和详情摘要，不反向驱动领域关系持久化。
 - 已发布 Cube 不直接在资产页裸改；前端通过 `POST /api/v1/semantic/cubes/<cube_name>/revisions` 创建修订草稿，再回流工作台继续开发。
 - `View` 在工作台和摘要接口层按“特殊 Cube”收敛，继续走详情、编译与物化链路，但不升格为一级导航。
-- `Recipe` 保持轻量消费对象，主要通过详情和 `/semantic/workbench` 提供示例与上下文，不进入正式建模工作流。
+- `Recipe` 保持轻量消费对象，主要通过详情和 `DevTools` 提供示例与上下文，不进入正式建模工作流。
 - 当前不支持“同一领域内重复实例化同一个 Cube 且使用不同 Join 条件”的高级建模能力。
 
 所以它既是一个通用数据平台，也是一个带有教育分析语义资产沉淀的业务平台。

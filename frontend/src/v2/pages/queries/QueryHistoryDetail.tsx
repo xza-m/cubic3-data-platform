@@ -4,15 +4,32 @@
 // 主体数据走 GET /api/v1/queries/histories/:id；邻接导航仍借助 list 拉取。
 
 import { useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, type NavigateFunction } from 'react-router-dom'
 import { ArrowLeft, Play } from 'lucide-react'
 import { useQueryHistories, useQueryHistoryDetail } from '@v2/hooks/queries'
 import { t } from '@v2/i18n'
 import { fmtNum, fmtRelative } from '@v2/lib/format'
+import { IdentityName } from '@v2/components/IdentityName'
+import type { QueryHistoryItem } from '@v2/api/queries'
 import {
   QueryHistoryDetailContent,
   statusChip,
 } from './_shared/query-history-content'
+import { openQueryWorkbenchWithPrefill } from './_shared/workbench-prefill'
+
+function openHistoryInWorkbench(row: QueryHistoryItem, navigate: NavigateFunction) {
+  openQueryWorkbenchWithPrefill(
+    {
+      sql: row.sql_query,
+      source_id: row.source_id,
+      origin: 'query_history',
+      history_id: row.id,
+      principal_id: row.executed_by,
+      principal_display_name: row.executed_by_display_name ?? undefined,
+    },
+    navigate,
+  )
+}
 
 export default function QueryHistoryDetail() {
   const { id } = useParams<{ id: string }>()
@@ -83,7 +100,7 @@ export default function QueryHistoryDetail() {
           </button>
           <button
             type="button"
-            onClick={() => navigate('/queries/console')}
+            onClick={() => openHistoryInWorkbench(row, navigate)}
             className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
           >
@@ -109,7 +126,8 @@ export default function QueryHistoryDetail() {
                 {statusChip(row.status)}
               </div>
               <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-                {row.source_name ? <code>{row.source_name}</code> : '—'} · {row.executed_by} ·{' '}
+                {row.source_name ? <code>{row.source_name}</code> : '—'} ·{' '}
+                <IdentityName value={row.executed_by} displayName={row.executed_by_display_name} /> ·{' '}
                 {fmtRelative(row.executed_at)}
               </div>
             </div>
@@ -121,7 +139,7 @@ export default function QueryHistoryDetail() {
           <QueryHistoryDetailContent
             row={row}
             actions={{
-              onReplay: () => navigate('/queries/console'),
+              onReplay: () => openHistoryInWorkbench(row, navigate),
             }}
           />
         </div>
@@ -165,7 +183,10 @@ export default function QueryHistoryDetail() {
                 label={t('queryHistoryDetail.ctx.rowCount', '行数')}
                 value={row.row_count != null ? fmtNum(row.row_count) : '—'}
               />
-              <CtxPair label={t('queryHistoryDetail.ctx.executedBy', '执行人')} value={row.executed_by} />
+              <CtxPair
+                label={t('queryHistoryDetail.ctx.executedBy', '执行人')}
+                value={<IdentityName value={row.executed_by} displayName={row.executed_by_display_name} />}
+              />
               <CtxPair label={t('queryHistoryDetail.ctx.executedAt', '时间')} value={fmtRelative(row.executed_at)} />
             </dl>
           </section>

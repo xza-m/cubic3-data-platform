@@ -16,6 +16,7 @@ export interface QueryHistoryItem {
   source_name: string | null
   status: string
   executed_by: string
+  executed_by_display_name?: string | null
   executed_at: string
   execution_time_ms: number | null
   row_count: number | null
@@ -33,6 +34,7 @@ export interface SavedQuery {
   tags: string[]
   is_favorite: boolean
   created_by: string
+  created_by_display_name?: string | null
   created_at: string
   updated_at: string
 }
@@ -46,6 +48,7 @@ export interface ExecuteQueryRequest {
   sql_query: string
   query_id?: number
   limit?: number
+  principal_id?: string
 }
 
 export interface ExecuteQueryRaw {
@@ -80,6 +83,7 @@ export interface CreateSavedQueryPayload {
   folder_id?: number
   tags?: string[]
   is_favorite?: boolean
+  principal_id?: string
 }
 
 export interface UpdateSavedQueryPayload {

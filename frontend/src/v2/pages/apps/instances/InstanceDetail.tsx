@@ -10,6 +10,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Play, Square, Trash2 } from 'lucide-react'
 import { t } from '@v2/i18n'
 import { fmtDateTime } from '@v2/lib/format'
+import { useToast } from '@v2/components/ui'
 import {
   useInstance,
   useEnableInstance,
@@ -35,6 +36,10 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'runs', label: t('instancedetail.tab.runs', '执行记录') },
 ]
 
+function mutationErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err || '')
+}
+
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
@@ -52,6 +57,7 @@ export default function InstanceDetail() {
   const { id: idStr } = useParams<{ id: string }>()
   const id = idStr ? Number(idStr) : undefined
   const navigate = useNavigate()
+  const toast = useToast()
   const [tab, setTab] = useState<Tab>('overview')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -159,7 +165,23 @@ export default function InstanceDetail() {
                 type="button"
                 className="btn btn-sm btn-ghost"
                 disabled={disableMut.isPending}
-                onClick={() => disableMut.mutate(instance.id)}
+                onClick={() =>
+                  disableMut.mutate(instance.id, {
+                    onSuccess: () => {
+                      toast.show({
+                        tone: 'success',
+                        title: t('instances.toast.disabled', '{name} 已停止', { name: instance.name }),
+                      })
+                    },
+                    onError: (err) => {
+                      toast.show({
+                        tone: 'danger',
+                        title: t('instances.toast.disableFailed', '停止失败'),
+                        description: mutationErrorMessage(err),
+                      })
+                    },
+                  })
+                }
               >
                 <Square size={12} />
                 {t('action.disable', '停止')}
@@ -169,7 +191,23 @@ export default function InstanceDetail() {
                 type="button"
                 className="btn btn-sm btn-primary"
                 disabled={enableMut.isPending}
-                onClick={() => enableMut.mutate(instance.id)}
+                onClick={() =>
+                  enableMut.mutate(instance.id, {
+                    onSuccess: () => {
+                      toast.show({
+                        tone: 'success',
+                        title: t('instances.toast.enabled', '{name} 已启用', { name: instance.name }),
+                      })
+                    },
+                    onError: (err) => {
+                      toast.show({
+                        tone: 'danger',
+                        title: t('instances.toast.enableFailed', '启用失败'),
+                        description: mutationErrorMessage(err),
+                      })
+                    },
+                  })
+                }
               >
                 <Play size={12} />
                 {t('action.enable', '启用')}

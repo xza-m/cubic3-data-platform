@@ -14,6 +14,7 @@ import {
   Cable,
   BellRing,
   Search,
+  ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { t } from '@v2/i18n'
@@ -40,7 +41,23 @@ export interface NavModule {
   layout?: {
     secondarySidebar?: boolean
     inspector?: boolean
+    /**
+     * 按子路由前缀覆盖模块默认 layout。
+     * 命中规则：与当前 pathname 匹配 prefix（精确或 startsWith prefix + '/'），按 prefix 长度倒序取最长匹配。
+     */
+    byPathPrefix?: Array<{
+      prefix: string
+      secondarySidebar?: boolean
+      inspector?: boolean
+      hideBreadcrumbs?: boolean
+    }>
   }
+}
+
+export interface ResolvedLayout {
+  secondarySidebar: boolean
+  inspector: boolean
+  hideBreadcrumbs: boolean
 }
 
 // group 字段保留中文作为枚举键（代码逻辑用），展示时通过 groupLabel() 翻译。
@@ -133,6 +150,17 @@ export const NAV_MODULES: NavModule[] = [
     defaultPath: '/semantic/ontology',
     group: '语义',
     implemented: true,
+    layout: {
+      // /semantic/modeling-agent/* 走对话原生 fullBleed：自带左栏 sessions、隐藏 secondary sidebar / inspector / 面包屑
+      byPathPrefix: [
+        {
+          prefix: '/semantic/modeling-agent',
+          secondarySidebar: false,
+          inspector: false,
+          hideBreadcrumbs: true,
+        },
+      ],
+    },
     subnav: [
       {
         section: t('nav.semantic.section.build', '语义构建'),
@@ -195,7 +223,7 @@ export const NAV_MODULES: NavModule[] = [
     subnav: [
       { label: t('nav.apps.sub.list', '应用列表'), path: '/apps', implemented: true },
       { label: t('nav.apps.sub.instances', '应用实例'), path: '/apps/instances', implemented: true },
-      { label: t('nav.apps.sub.executions', '执行监控'), path: '/executions', implemented: true },
+      { label: t('nav.apps.sub.executions', '执行监控'), path: '/apps/executions', implemented: true },
     ],
   },
   {
@@ -215,6 +243,35 @@ export const NAV_MODULES: NavModule[] = [
     basePath: '/config/subscriptions',
     group: '应用',
     implemented: true,
+  },
+  {
+    id: 'access',
+    label: t('nav.access.label', '访问网关'),
+    description: t('nav.access.desc', '权限配置、审计与网关观测'),
+    icon: ShieldCheck,
+    basePath: '/config/access',
+    group: '系统',
+    implemented: true,
+    subnav: [
+      {
+        section: t('nav.access.section.permissions', '权限'),
+        label: t('nav.access.sub.permissions', '权限管理'),
+        path: '/config/access',
+        implemented: true,
+      },
+      {
+        section: t('nav.access.section.permissions', '权限'),
+        label: t('nav.access.sub.audit', '权限审计'),
+        path: '/config/access/audit',
+        implemented: true,
+      },
+      {
+        section: t('nav.access.section.gateway', '网关'),
+        label: t('nav.access.sub.observability', '网关观测'),
+        path: '/config/access/observability',
+        implemented: true,
+      },
+    ],
   },
 ]
 
@@ -241,3 +298,39 @@ export const findModule = (pathname: string): NavModule | null => {
 }
 
 export const moduleHomePath = (m: NavModule): string => m.defaultPath ?? m.basePath
+
+/**
+ * 计算当前 pathname 在某模块下的有效 layout。
+ *
+ * 顺序：
+ *   1. 取模块默认值（未配置则视为 secondarySidebar=true / inspector=true / hideBreadcrumbs=false）
+ *   2. 找出 layout.byPathPrefix 中能命中当前 pathname 的最长前缀，覆盖默认值
+ *
+ * 命中规则：pathname === prefix 或 pathname.startsWith(prefix + '/')。
+ */
+export const findLayout = (pathname: string, module: NavModule): ResolvedLayout => {
+  const fallback: ResolvedLayout = {
+    secondarySidebar: module.layout?.secondarySidebar !== false,
+    inspector: module.layout?.inspector !== false,
+    hideBreadcrumbs: false,
+  }
+  const overrides = module.layout?.byPathPrefix
+  if (!overrides || !overrides.length) return fallback
+
+  let best: { len: number; override: NonNullable<NavModule['layout']>['byPathPrefix'] extends infer T ? (T extends Array<infer U> ? U : never) : never } | null = null
+  for (const item of overrides) {
+    if (pathname === item.prefix || pathname.startsWith(`${item.prefix}/`)) {
+      if (best == null || item.prefix.length > best.len) {
+        best = { len: item.prefix.length, override: item }
+      }
+    }
+  }
+  if (!best) return fallback
+  return {
+    secondarySidebar:
+      best.override.secondarySidebar !== undefined ? best.override.secondarySidebar : fallback.secondarySidebar,
+    inspector:
+      best.override.inspector !== undefined ? best.override.inspector : fallback.inspector,
+    hideBreadcrumbs: best.override.hideBreadcrumbs === true,
+  }
+}

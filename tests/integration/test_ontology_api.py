@@ -82,7 +82,7 @@ def _build_sample_cube_repo(tmp_path) -> YamlCubeRepository:
     return repo
 
 
-def _make_client(tmp_path):
+def _make_client(tmp_path, *, roles=("finance", "platform_admin", "data_m1_reader")):
     object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
     property_repo = YamlBusinessPropertyRepository(str(tmp_path / "properties"))
     metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
@@ -173,7 +173,7 @@ def _make_client(tmp_path):
     app.register_blueprint(create_governance_blueprint(audit_repo))
     register_error_handlers(app)
     from tests.conftest import install_default_admin_auth
-    return install_default_admin_auth(app.test_client())
+    return install_default_admin_auth(app.test_client(), roles=roles)
 
 
 def test_ontology_foundation_and_preview_flow(tmp_path):
@@ -357,9 +357,10 @@ def test_ontology_foundation_and_preview_flow(tmp_path):
     assert tool_plan_payload["target_type"] == "tool"
     assert tool_plan_payload["steps"][0] == "识别工具调用意图"
 
-    blocked_compile_resp = client.post(
+    blocked_client = _make_client(tmp_path, roles=("analyst",))
+    blocked_compile_resp = blocked_client.post(
         "/api/v1/execution-compiler/compile-preview",
-        json={"metric_name": "gmv", "viewer_roles": ["analyst"]},
+        json={"metric_name": "gmv", "viewer_roles": ["finance"]},
     )
     assert blocked_compile_resp.status_code == 200
     blocked_compile_payload = blocked_compile_resp.get_json()["data"]

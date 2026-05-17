@@ -26,6 +26,9 @@ export function Dialog({ open, onClose, title, footer, width = 480, className, c
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center cmdk-backdrop" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === 'string' ? title : undefined}
         className={cn('surface rounded-xl border shadow-lg overflow-hidden', className)}
         style={{ width, background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
         onClick={(e) => e.stopPropagation()}

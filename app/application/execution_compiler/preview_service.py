@@ -98,6 +98,7 @@ class ExecutionCompilerPreviewService:
         tool_arguments: Optional[Dict[str, Any]] = None,
         analysis_intent: Optional[dict[str, Any]] = None,
         query_dsl: Optional[dict[str, Any]] = None,
+        question: Optional[str] = None,
         viewer_roles: Optional[list[str]] = None,
         principal_context: Optional[dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -109,6 +110,7 @@ class ExecutionCompilerPreviewService:
                 metric_name,
                 analysis_intent=analysis_intent,
                 query_dsl=query_dsl,
+                question=question,
                 viewer_roles=viewer_roles or [],
                 principal_context=principal_context,
             )
@@ -139,6 +141,7 @@ class ExecutionCompilerPreviewService:
         tool_arguments: Optional[Dict[str, Any]] = None,
         analysis_intent: Optional[dict[str, Any]] = None,
         query_dsl: Optional[dict[str, Any]] = None,
+        question: Optional[str] = None,
         viewer_roles: Optional[list[str]] = None,
         principal_context: Optional[dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -151,6 +154,7 @@ class ExecutionCompilerPreviewService:
             tool_arguments=tool_arguments,
             analysis_intent=analysis_intent,
             query_dsl=query_dsl,
+            question=question,
             viewer_roles=viewer_roles,
             principal_context=principal_context,
         )
@@ -171,6 +175,7 @@ class ExecutionCompilerPreviewService:
         metric_name: str,
         analysis_intent: Optional[dict[str, Any]] = None,
         query_dsl: Optional[dict[str, Any]] = None,
+        question: Optional[str] = None,
         viewer_roles: Optional[list[str]] = None,
         principal_context: Optional[dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -228,6 +233,7 @@ class ExecutionCompilerPreviewService:
                 measure_ref=measure_ref,
                 analysis_intent=analysis_intent or {},
                 query_dsl=query_dsl,
+                question=question,
             )
             compiled = QueryCompiler(JoinGraph(self._cube_repository.list_all())).compile(dsl)
         except (CompilationError, ValueError) as exc:
@@ -309,9 +315,13 @@ class ExecutionCompilerPreviewService:
         measure_ref: str,
         analysis_intent: dict[str, Any],
         query_dsl: Optional[dict[str, Any]],
+        question: Optional[str] = None,
     ) -> QueryDSL:
         if query_dsl is not None:
             return QueryDSL(**query_dsl)
+
+        if not analysis_intent and question:
+            analysis_intent = self._infer_analysis_intent_from_question(question)
 
         dimensions: list[str] = []
         inferred_join_path = analysis_intent.get("join_path")
@@ -353,6 +363,41 @@ class ExecutionCompilerPreviewService:
             domain_id=analysis_intent.get("domain_id"),
             domain_code=analysis_intent.get("domain_code"),
         )
+
+    @classmethod
+    def _infer_analysis_intent_from_question(cls, question: str) -> dict[str, Any]:
+        question_text = (question or "").strip()
+        if not question_text:
+            return {}
+
+        dimension_terms: list[str] = []
+        for match in re.finditer(r"按([^，,。；;]+?)(?:汇总|分组|统计|聚合|排行|排名|对比)", question_text):
+            dimension_terms.extend(cls._split_terms(match.group(1)))
+        for keyword in ("学校", "校区", "班级", "年级", "学科", "科目", "知识点", "课程", "状态", "类型"):
+            if keyword in question_text and keyword not in dimension_terms and any(marker in question_text for marker in ("按", "分", "各", "每")):
+                dimension_terms.append(keyword)
+
+        intent: dict[str, Any] = {}
+        if dimension_terms:
+            intent["dimension_terms"] = dimension_terms
+
+        recent_days = re.search(r"最近\s*(\d+)\s*天", question_text)
+        if recent_days:
+            intent["time_window"] = {"type": "last_n_days", "n": int(recent_days.group(1))}
+
+        if dimension_terms and any(keyword in question_text for keyword in ("top", "Top", "TOP", "排行", "排名")):
+            intent["order_by"] = [{"ref": "metric", "direction": "desc"}]
+        if intent:
+            intent["limit"] = 100
+        return intent
+
+    @staticmethod
+    def _split_terms(value: str) -> list[str]:
+        return [
+            item.strip()
+            for item in re.split(r"和|及|与|、|/|，|,", value)
+            if item.strip()
+        ]
 
     def _resolve_dimension_binding(self, cube, term: str) -> tuple[str, list[str] | None]:
         direct = self._find_dimension_name(cube, term)

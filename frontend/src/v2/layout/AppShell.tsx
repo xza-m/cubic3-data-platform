@@ -19,7 +19,7 @@ import { TabStrip, type TabItem } from './TabStrip'
 import { Inspector } from './Inspector'
 import { StatusBar } from './StatusBar'
 import { CommandPalette } from '@v2/components/CommandPalette'
-import { findModule, NAV_MODULES } from './navigation'
+import { findLayout, findModule, NAV_MODULES } from './navigation'
 
 interface ContextPanelPayload {
   title?: ReactNode
@@ -109,8 +109,9 @@ export function AppShell() {
   const [legacyEmptyState, setLegacyEmptyState] = useState<ReactNode | null>(null)
   const [peekActive, setPeekActive] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem(INSPECTOR_COLLAPSED_KEY) === '1'
+    if (typeof window === 'undefined') return true
+    const stored = window.localStorage.getItem(INSPECTOR_COLLAPSED_KEY)
+    return stored == null ? true : stored === '1'
   })
   const toggleInspectorCollapsed = useCallback(() => {
     setInspectorCollapsed((cur) => {
@@ -232,8 +233,14 @@ export function AppShell() {
 
   const effectiveContextPanel: ContextPanelPayload | null =
     contextPanel ?? (legacyEmptyState ? { body: legacyEmptyState } : null)
-  const showSecondarySidebar = module.layout?.secondarySidebar !== false
-  const showInspector = module.layout?.inspector !== false
+  const resolvedLayout = useMemo(
+    () => findLayout(location.pathname, module),
+    [location.pathname, module],
+  )
+  const showSecondarySidebar = resolvedLayout.secondarySidebar
+  const showInspector = resolvedLayout.inspector
+  const hideBreadcrumbs = resolvedLayout.hideBreadcrumbs
+  const hasInspectorContent = effectiveContextPanel?.body != null
 
   const tabsWithActive = useMemo(
     () => tabs.map((t) => ({ ...t, active: activeTab ? t.id === activeTab : t.active })),
@@ -267,6 +274,7 @@ export function AppShell() {
             breadcrumbs={breadcrumbs}
             actions={topBarActions}
             onOpenCommandPalette={openPalette}
+            hideBreadcrumbs={hideBreadcrumbs}
           />
           {tabsWithActive.length > 0 ? (
             <TabStrip
@@ -279,7 +287,7 @@ export function AppShell() {
             <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <Outlet />
             </section>
-            {peekActive || !showInspector ? null : (
+            {peekActive || !showInspector || !hasInspectorContent ? null : (
               <Inspector
                 title={effectiveContextPanel?.title}
                 subtitle={effectiveContextPanel?.subtitle}

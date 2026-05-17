@@ -5,8 +5,8 @@
 // 接 POST /api/v1/queries/:id/favorite
 
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Edit2, Star, Trash2 } from 'lucide-react'
+import { useNavigate, useParams, type NavigateFunction } from 'react-router-dom'
+import { ArrowLeft, Edit2, ExternalLink, Star, Trash2 } from 'lucide-react'
 import {
   useSavedQueryDetail,
   useSavedQueries,
@@ -19,7 +19,26 @@ import {
   SavedQueryDetailContent,
   SavedQueryInlineForm,
 } from './_shared/saved-query-content'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { IdentityName } from '@v2/components/IdentityName'
+import { openQueryWorkbenchWithPrefill } from './_shared/workbench-prefill'
 import { t } from '@v2/i18n'
+import type { SavedQuery, SavedQueryDetail } from '@v2/api/queries'
+
+function openSavedQueryInWorkbench(row: SavedQuery | SavedQueryDetail, navigate: NavigateFunction) {
+  openQueryWorkbenchWithPrefill(
+    {
+      sql: row.sql_query,
+      source_id: row.source_id,
+      origin: 'saved_query',
+      query_id: row.id,
+      query_name: row.query_name,
+      principal_id: row.created_by,
+      principal_display_name: row.created_by_display_name ?? undefined,
+    },
+    navigate,
+  )
+}
 
 export default function QueriesSavedDetail() {
   const { id } = useParams<{ id: string }>()
@@ -99,50 +118,40 @@ export default function QueriesSavedDetail() {
           >
             <ArrowLeft size={12} /> {t('queriesSavedDetail.action.back', '返回列表')}
           </button>
-          <button
-            type="button"
-            onClick={() => setEditing((e) => !e)}
-            className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-          >
-            <Edit2 size={12} />{' '}
-            {editing
-              ? t('queriesSavedDetail.action.cancelEdit', '取消编辑')
-              : t('queriesSavedDetail.action.edit', '编辑')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void favMut.mutateAsync(row.id)}
-            disabled={favMut.isPending}
-            className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-            style={{
-              borderColor: 'var(--border)',
-              color: row.is_favorite ? 'var(--warning)' : 'var(--text-2)',
-            }}
-          >
-            <Star
-              size={12}
-              fill={row.is_favorite ? 'currentColor' : 'none'}
+          <div className="ml-auto flex items-center gap-1.5">
+            <ActionIconButton
+              label={
+                editing
+                  ? t('queriesSavedDetail.action.cancelEdit', '取消编辑')
+                  : t('queriesSavedDetail.action.edit', '编辑')
+              }
+              icon={Edit2}
+              onClick={() => setEditing((e) => !e)}
             />
-            {row.is_favorite
-              ? t('queriesSavedDetail.action.unfavorite', '取消收藏')
-              : t('queriesSavedDetail.action.favorite', '收藏')}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/queries/console')}
-            className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white"
-          >
-            {t('queriesSavedDetail.action.openInConsole', '在工作台打开')}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleDelete()}
-            disabled={deleteMut.isPending}
-            className="ml-auto flex items-center gap-1.5 rounded border border-red-300 px-3 py-1.5 text-xs text-red-600 transition-colors hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-          >
-            <Trash2 size={12} /> {t('queriesSavedDetail.action.delete', '删除')}
-          </button>
+            <ActionIconButton
+              label={
+                row.is_favorite
+                  ? t('queriesSavedDetail.action.unfavorite', '取消收藏')
+                  : t('queriesSavedDetail.action.favorite', '收藏')
+              }
+              icon={Star}
+              loading={favMut.isPending}
+              onClick={() => void favMut.mutateAsync(row.id)}
+            />
+            <ActionIconButton
+              label={t('queriesSavedDetail.action.openInConsole', '在工作台打开')}
+              icon={ExternalLink}
+              variant="primary"
+              onClick={() => openSavedQueryInWorkbench(row, navigate)}
+            />
+            <ActionIconButton
+              label={t('queriesSavedDetail.action.delete', '删除')}
+              icon={Trash2}
+              variant="danger"
+              loading={deleteMut.isPending}
+              onClick={() => void handleDelete()}
+            />
+          </div>
         </div>
 
         {/* Detail header */}
@@ -171,7 +180,8 @@ export default function QueriesSavedDetail() {
                 </span>
               </div>
               <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-                {row.created_by} · {t('queriesSavedDetail.meta.updatedAt', '更新于 {time}', { time: fmtRelative(row.updated_at) })}
+                <IdentityName value={row.created_by} displayName={row.created_by_display_name} /> ·{' '}
+                {t('queriesSavedDetail.meta.updatedAt', '更新于 {time}', { time: fmtRelative(row.updated_at) })}
               </div>
             </div>
           </div>
@@ -198,7 +208,7 @@ export default function QueriesSavedDetail() {
             <SavedQueryDetailContent
               row={row}
               actions={{
-                onOpen: () => navigate('/queries/console'),
+                onOpen: () => openSavedQueryInWorkbench(row, navigate),
                 onEdit: () => setEditing(true),
                 onDelete: () => void handleDelete(),
                 onToggleFavorite: () => void favMut.mutateAsync(row.id),
@@ -233,7 +243,10 @@ export default function QueriesSavedDetail() {
               {t('queriesSavedDetail.ctx.info', '信息')}
             </div>
             <dl className="mt-2 space-y-1 text-xs">
-              <CtxPair label={t('queriesSavedDetail.info.owner', '负责人')} value={row.created_by} />
+              <CtxPair
+                label={t('queriesSavedDetail.info.owner', '负责人')}
+                value={<IdentityName value={row.created_by} displayName={row.created_by_display_name} />}
+              />
               <CtxPair label={t('queriesSavedDetail.info.createdAt', '创建')} value={fmtDateTime(row.created_at)} />
               <CtxPair label={t('queriesSavedDetail.info.updatedAt', '更新')} value={fmtRelative(row.updated_at)} />
             </dl>

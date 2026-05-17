@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await installApiCatchAll(page)
 
   let current = { ...prefFx.default }
-  await page.route('**/api/v1/users/me/preferences', async (route) => {
+  await page.route('**/api/v1/access/me/preferences', async (route) => {
     if (route.request().method() === 'PUT') {
       const body = JSON.parse(route.request().postData() ?? '{}')
       current = { ...current, ...body, updated_at: new Date().toISOString() }

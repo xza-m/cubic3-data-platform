@@ -6,9 +6,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, RefreshCcw, Pencil, ServerCog, ExternalLink, Play } from 'lucide-react'
+import { ArrowLeft, Pencil, ServerCog, ExternalLink, Play } from 'lucide-react'
 import { useDatasource, useDatasources, useTestConnection } from '@v2/hooks/datasources'
 import type { Datasource, TestConnectionResult } from '@v2/api/datasources'
+import { RefreshButton } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import {
   connectionStatusChip,
   datasourceTabLabel,
@@ -84,15 +86,13 @@ export default function DatasourceDetail() {
         >
           <ArrowLeft size={12} /> {t('datasourceDetail.action.back', '返回列表')}
         </button>
-        <button
-          type="button"
+        <RefreshButton
           onClick={() => refetch()}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-          {t('datasourceDetail.action.reload', '重新加载')}
-        </button>
+          loading={isFetching}
+          label={t('datasourceDetail.action.reload', '重新加载')}
+          loadingLabel={t('datasourceDetail.action.reloading', '重新加载中…')}
+          ariaLabel={t('datasourceDetail.action.reload', '重新加载')}
+        />
         {data ? (
           <button
             type="button"
@@ -239,19 +239,12 @@ export default function DatasourceDetail() {
 
   if (isError || !data) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2">
-        <p className="text-xs" style={{ color: 'var(--danger)' }}>
-          {error instanceof Error ? error.message : t('datasourceDetail.state.loadFailed', '加载失败')}
-        </p>
-        <button
-          type="button"
-          onClick={() => refetch()}
-          className="rounded-md border px-3 py-1.5 text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-        >
-          {t('datasourceDetail.action.retry', '重试')}
-        </button>
-      </div>
+      <RetryState
+        className="flex-1"
+        message={error instanceof Error ? error.message : t('datasourceDetail.state.loadFailed', '加载失败')}
+        onRetry={() => refetch()}
+        retryAriaLabel={t('datasourceDetail.action.retry', '重试加载数据源')}
+      />
     )
   }
 
@@ -286,8 +279,7 @@ export default function DatasourceDetail() {
               </span>
             </div>
             <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-              {data.source_type} · #{data.id} ·{' '}
-              <code>GET /api/v1/data-center/datasources/{data.id}</code>
+              {data.source_type} · #{data.id} · {t('datasourceDetail.subtitle', '连接配置与同步状态')}
             </div>
           </div>
         </div>

@@ -1,0 +1,8 @@
+name: student_comment_report_reason
+title: 举报原因补充说明
+object_name: student_comment
+property_type: string
+description: 举报原因补充说明
+aliases:
+- report_reason
+status: active

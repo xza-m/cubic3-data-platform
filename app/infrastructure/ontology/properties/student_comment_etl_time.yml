@@ -1,0 +1,8 @@
+name: student_comment_etl_time
+title: ETL写入时间
+object_name: student_comment
+property_type: time
+description: ETL写入时间
+aliases:
+- etl_time
+status: active

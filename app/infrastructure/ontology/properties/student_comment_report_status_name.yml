@@ -1,0 +1,8 @@
+name: student_comment_report_status_name
+title: 举报处理状态名称
+object_name: student_comment
+property_type: string
+description: 举报处理状态名称
+aliases:
+- report_status_name
+status: active

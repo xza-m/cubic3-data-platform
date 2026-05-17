@@ -6,8 +6,12 @@ from pathlib import Path
 
 
 RUNTIME_IGNORED_YAML_PATTERNS = (
+    'qa_catalog_*.yml',
+    'qa_cube_*.yml',
     'playwright_catalog_*.yml',
     'playwright_cube_*.yml',
+    '*_draft_*.yml',
+    'domain_qa_*.yml',
     'domain_playwright_*.yml',
     'domain_debug_*.yml',
     'domain_test*.yml',

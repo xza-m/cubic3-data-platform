@@ -3,7 +3,7 @@ doc_type: architecture
 status: current
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-05-03
+last_reviewed: 2026-05-12
 ---
 
 # Agent-Ready 语义与权限架构
@@ -16,6 +16,7 @@ last_reviewed: 2026-05-03
 - 不重做语义层，继续复用 `Semantic Router / Planner` 与 `Execution Compiler`。
 - 不让 gateway 承担业务授权判断，gateway 只校验执行票据并选择 MaxCompute 执行身份。
 - 不要求每个用户注册 RAM，MaxCompute 侧通过少量 RAM Role 或专用 RAM 用户做物理隔离底线。
+- 三层权限边界固定为：data-platform 做业务授权决策，gateway 做执行准入校验，MaxCompute 做物理权限兜底；最终放行必须同时满足三层校验。
 
 ## 1. 总体结论
 
@@ -43,8 +44,17 @@ last_reviewed: 2026-05-03
 | data-platform | Principal 投影、平台 RBAC、DataPolicy、PolicyDecision、审批、审计 | 直接保存 MaxCompute 密钥、直接执行生产 SQL |
 | Semantic Router / Planner | 将自然语言问题映射到语义资产与执行目标 | 最终数据授权 |
 | Execution Compiler | 生成 `logical_sql / resource_set / sql_hash / data_level` | 真实 MaxCompute 凭据选择 |
-| dw-query-gateway | 校验 `ExecutionTicket`、防重放、SQL 安全校验、注入行列约束、选择 RAM 身份 | 飞书身份解析、业务角色判断 |
+| dw-query-gateway | 校验 `ExecutionTicket`、防重放、SQL 安全校验、注入行列约束、按 `CredentialBinding` 选择 RAM 身份 | 飞书身份解析、业务角色判断、DataPolicy 求值 |
 | MaxCompute | 物理执行与底层资源隔离 | Agent 上下文、审批流、业务解释 |
+
+最终执行条件：
+
+```text
+allow =
+  data-platform DataPolicy allow
+  AND gateway ticket / SQL guard allow
+  AND MaxCompute RAM / ACL allow
+```
 
 ## 2. DDD 边界
 
@@ -100,7 +110,7 @@ flowchart LR
 
 继续承载平台操作层面的用户与角色能力，但后续身份事实来源收敛为飞书 SSO。
 
-当前本地 `users / roles / user_roles` 可继续服务平台管理后台；面向 Agent 与飞书用户时，新增轻量 `Principal` 投影，不强制创建完整本地用户。
+当前用户与权限主链统一收敛到 `access_principals / access_role_bindings`。飞书真人、内部管理员和 Agent / Bot / Skill / Job 都先解析为 `PrincipalContext`，平台操作和数据访问再分别读取平台角色与数据角色。
 
 ### 2.4 Access Governance Context
 
@@ -262,13 +272,10 @@ Feishu Group / Department
 
 | 角色 | 说明 |
 | --- | --- |
-| `platform_admin` | 平台管理员 |
-| `semantic_admin` | 语义中心管理员 |
-| `semantic_modeler` | 语义建模人员 |
-| `semantic_reviewer` | 语义发布审核人员 |
-| `governance_admin` | 权限治理管理员 |
-| `auditor` | 审计查看人员 |
-| `viewer` | 普通查看人员 |
+| `governance_admin` | 管理员，管理权限配置、访问规则和审计 |
+| `product_manager` | 产品经理，查看业务对象、指标解释和产品分析入口 |
+| `semantic_modeler` | 数据开发，维护业务对象、指标、Cube 和语义草稿 |
+| `viewer` | 普通用户，使用基础入口和公开页面 |
 
 示例平台权限：
 
@@ -288,9 +295,9 @@ audit.view
 
 | 角色 | 说明 |
 | --- | --- |
-| `data_m0_reader` | 可看公开摘要 |
-| `data_m1_reader` | 可查 DWS / ADS 聚合 |
-| `data_m2_detail_reader` | 可查受控 DWD 明细 |
+| `data_m0_reader` | 基础数据读取，默认 DIM / ADS |
+| `data_m1_reader` | 汇总数据读取，默认 DIM / ADS + DWS |
+| `data_m2_detail_reader` | 明细数据读取，默认 DIM / ADS + DWS + DWD |
 | `data_m3_requester` | 可发起 raw data 审批 |
 | `data_m3_approved_reader` | 审批通过后临时可查 raw data |
 | `data_exporter` | 可导出结果 |
@@ -427,8 +434,8 @@ gateway 校验资源时以 `data_source_id + project + schema + table + column` 
 
 | 等级 | 范围 | 默认策略 |
 | --- | --- | --- |
-| `M0` | 公开摘要、知识检索，不查 MaxCompute | allow |
-| `M1` | `dim / dws / ads` 聚合或维表 | `data_m1_reader` 可执行 |
+| `M0` | `dim / ads` 基础数据和公开语义结果 | `data_m0_reader` 可执行 |
+| `M1` | `dws` 汇总数据，继承 M0 | `data_m1_reader` 可执行 |
 | `M2` | `dwd` 受控明细 | `data_m2_detail_reader` 且强制行列范围 |
 | `M3` | `ods / raw / high-sensitive` | 必须审批 |
 
@@ -517,6 +524,8 @@ deny > require_approval > allow
 `ExecutionProfile` 是后续适配 gateway 和 MaxCompute RAM 的关键抽象。
 
 `DataPolicy` 不直接绑定 RAM 账号，只选择 `execution_profile_code`。
+`ExecutionProfile` 在 data-platform 中只表达逻辑执行画像和约束，不保存真实 RAM Role / RAM User 引用。
+真实凭据映射由 gateway 内部 `CredentialBinding` 维护。
 
 ```text
 DataPolicy
@@ -524,6 +533,7 @@ DataPolicy
   -> execution_profile_code
   -> ExecutionTicket
   -> gateway
+  -> CredentialBinding
   -> RAM Role / RAM User
   -> MaxCompute
 ```
@@ -534,8 +544,7 @@ DataPolicy
 profile_code
 name
 data_level
-credential_mode        ram_role / ram_user / gateway_default
-credential_ref
+credential_mode        inline_policy_decision / internal_query_execution / gateway_binding
 max_rows
 timeout_seconds
 export_allowed
@@ -554,34 +563,40 @@ status
 | `mc_m3_raw_approved` | M3 | raw data，必须审批，短 TTL，强审计，禁止导出 |
 | `mc_admin_maintenance` | 运维 | 仅平台维护任务使用，不给 Agent 使用 |
 
-### 6.3 RAM Role 与 RAM User 兼容
+### 6.3 Gateway CredentialBinding
 
-优先选择 RAM Role：
+gateway 内部维护 `CredentialBinding`，以 `execution_profile_code` 为稳定 key：
 
 ```json
 {
-  "profile_code": "mc_m2_controlled_reader",
+  "execution_profile_code": "mc_m2_controlled_reader",
   "credential_mode": "ram_role",
-  "credential_ref": "acs:ram::123456789:role/mc-m2-controlled-reader"
+  "credential_ref": "acs:ram::123456789:role/mc-m2-controlled-reader",
+  "hard_max_rows": 2000,
+  "allowed_projects": ["dw"]
 }
 ```
 
-如果 MaxCompute 或企业 RAM 集成限制导致 AssumeRole 不可行，则退化为专用 RAM 用户：
+如果 MaxCompute 或企业 RAM 集成限制导致 AssumeRole 不可行，gateway 可将同一个 `execution_profile_code`
+映射到专用 RAM 用户：
 
 ```json
 {
-  "profile_code": "mc_m2_controlled_reader",
+  "execution_profile_code": "mc_m2_controlled_reader",
   "credential_mode": "ram_user",
-  "credential_ref": "mc_m2_controlled_reader_user"
+  "credential_ref": "mc_m2_controlled_reader_user",
+  "hard_max_rows": 2000,
+  "allowed_projects": ["dw"]
 }
 ```
 
-data-platform 的 `DataPolicy` 不需要变化，只修改 `ExecutionProfile` 配置和 gateway 的凭据解析器。
+data-platform 的 `DataPolicy` 和 `ExecutionProfile` 不需要保存真实凭据。
+RAM Role / RAM User 轮换时只修改 gateway 的 `CredentialBinding` 和 MaxCompute 权限，不修改业务策略。
 
 约束：
 
 - `gateway_default` 不对 Agent 暴露，只允许本地开发、运维 smoke 或明确受控的系统任务使用。
-- Agent 查询必须使用显式 `ram_role` 或 `ram_user` profile。
+- Agent 查询必须使用显式 `gateway_binding` profile，由 gateway 解析到 `ram_role` 或 `ram_user`。
 
 ## 7. 两阶段权限判断
 
@@ -759,8 +774,9 @@ actor_id
 semantic_plan_id
 policy_decision_id
 policy_version
-execution_profile
-resource_set
+policy_epoch
+execution_profile_code
+resource_set_physical
 sql_hash
 logical_sql
 logical_sql_ref
@@ -772,6 +788,18 @@ expires_at
 signature
 signature_alg
 approval_id
+```
+
+禁止进入 ticket payload 的字段：
+
+```text
+roles
+data_roles
+platform_roles
+permission_package
+DataPolicy 原始表达式
+resource_set.logical
+credential_ref
 ```
 
 真实执行请求契约：
@@ -799,8 +827,9 @@ principal_id
 semantic_plan_id
 policy_decision_id
 policy_version
-execution_profile
-resource_set
+policy_epoch
+execution_profile_code
+resource_set_physical
 sql_hash
 logical_sql
 row_scope
@@ -817,10 +846,10 @@ gateway 接收请求后：
 logical_sql = ticket.logical_sql 或 resolve(ticket.logical_sql_ref)
 canonical_or_ast_hash(logical_sql) -> computed_sql_hash
 computed_sql_hash == ticket.sql_hash
-logical_sql 访问资源属于 ticket.resource_set 子集
+logical_sql 访问物理资源属于 ticket.resource_set_physical 子集
 gateway 注入 row_scope / column_scope
-gateway 选择 execution_profile 对应 RAM 身份
-gateway 按 ExecutionProfile.max_rows 重新裁剪 limit
+gateway 选择 execution_profile_code 对应 CredentialBinding / RAM 身份
+gateway 按 ticket constraints 与 CredentialBinding hard limit 重新裁剪 limit
 ```
 
 客户端传入的 `request_options.limit` 不进入信任边界，gateway 不能信任客户端 limit。
@@ -830,7 +859,7 @@ gateway 按 ExecutionProfile.max_rows 重新裁剪 limit
 M3 要求：
 
 - `approval_id` 必填。
-- `execution_profile = mc_m3_raw_approved`。
+- `execution_profile_code = mc_m3_raw_approved`。
 - TTL 更短。
 - `audit_level = strict`。
 - M3 ticket 默认一次性使用，`jti` 使用后立即标记 consumed。
@@ -851,7 +880,7 @@ Preview 与 execute 隔离：
 - M2/M3 ticket 使用后应将 `jti` 标记为 consumed；M3 必须一次性使用。
 - gateway 拒绝 `preview_only`。
 - gateway 重新计算 canonical logical SQL hash。
-- SQL 引用资源必须是 `resource_set` 子集。
+- SQL 引用物理资源必须是 `resource_set_physical` 子集。
 - gateway 注入的行列过滤不参与原始 `sql_hash`。
 
 ## 10. SQL Hash Canonical 规则
@@ -891,13 +920,14 @@ signature
 jti
 expires_at
 policy_version
-resource_set
+policy_epoch
+resource_set_physical
 sql_hash
-execution_profile
+execution_profile_code
 approval_id
 ```
 
-`policy_version` 使用全局单调递增版本号。gateway 维护 `min_accepted_policy_version`，低于该版本的 ticket 一律拒绝，不降级执行。策略撤销、降级或高敏策略变更后，应推进最小可接受版本，使存量 ticket 在下次请求自然失效。
+`policy_epoch` 使用全局单调递增整数。gateway 维护 `min_accepted_policy_epoch`，低于该值的 ticket 一律拒绝，不降级执行。策略撤销、降级或高敏策略变更后，应推进最小可接受 epoch，使存量 ticket 在下次请求自然失效。
 
 为减少误伤：
 
@@ -905,12 +935,12 @@ approval_id
 - 高敏策略撤销、M3 审批策略变化、ExecutionProfile 降级或 RAM 凭据轮换时必须推进。
 - 后续可将失效粒度细化到 `execution_profile`、Domain 或 Principal 级别；Phase 3 初期先用全局版本配合短 TTL 保持简单。
 
-### 11.2 Credential Provider
+### 11.2 CredentialBinding Provider
 
 gateway 内部新增：
 
 ```text
-ExecutionProfileCredentialProvider
+CredentialBindingProvider
   -> resolve(profile_code)
   -> assume_role / load_ram_user
   -> build MaxCompute client
@@ -919,11 +949,10 @@ ExecutionProfileCredentialProvider
 伪代码：
 
 ```python
-profile = profile_repository.get(ticket.execution_profile)
-credential = credential_provider.resolve(profile)
+credential = credential_binding_provider.resolve(ticket.execution_profile_code)
 logical_sql = ticket.logical_sql or trusted_plan_store.resolve(ticket.logical_sql_ref)
 sql = sql_guard.apply_scope(logical_sql, ticket.row_scope, ticket.column_scope)
-sql = sql_guard.wrap_limit(sql, profile.max_rows)
+sql = sql_guard.wrap_limit(sql, min(ticket.constraints.max_rows, credential.hard_max_rows))
 result = maxcompute_client.execute(sql, credential)
 ```
 
@@ -951,7 +980,8 @@ LIMIT <profile.max_rows>
 
 | RAM 身份 | 允许范围 |
 | --- | --- |
-| `mc_m1_agg_reader_role/user` | 只读 `dim / dws / ads` |
+| `mc_m0_basic_reader_role/user` | 只读 `dim / ads` |
+| `mc_m1_summary_reader_role/user` | 只读 `dws`，并可继承 M0 基础范围 |
 | `mc_m2_controlled_reader_role/user` | 只读受控 `dwd`，不含 `ods/raw` |
 | `mc_m3_raw_approved_role/user` | 只读指定 `ods/raw`，只能由审批 ticket 激活 |
 | `mc_admin_maintenance_role/user` | 运维专用，不对 Agent 暴露 |
@@ -1167,7 +1197,6 @@ profile_code PK
 name
 data_level
 credential_mode
-credential_ref
 max_rows
 timeout_seconds
 export_allowed
@@ -1246,7 +1275,7 @@ ticket_consumed
 | P6 | 命中 `pii / student_sensitive` 标签默认 mask 或 deny |
 | P7 | policy evaluation 异常时 fail closed |
 | P8 | `platform_admin` 如果没有对应 `DataRole`，数据查询一律 deny |
-| P9 | 低于 `min_accepted_policy_version` 的 ticket 一律拒绝 |
+| P9 | 低于 `min_accepted_policy_epoch` 的 ticket 一律拒绝 |
 
 ## 16. 分阶段落地
 
@@ -1254,8 +1283,8 @@ ticket_consumed
 
 目标：当前阶段只改 data-platform。
 
-- `PrincipalResolver` 支持飞书 SSO principal。
-- `viewer_roles` 只做兼容输入，统一归一为 `PrincipalContext`。
+- `PrincipalResolver` 支持飞书 SSO、内部管理员、API Key 和飞书委托 principal。
+- Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；请求体角色、JWT 角色声明和 `viewer_roles` 不参与授权。
 - 新增或强化 `DataPolicy / ExecutionProfile / PolicyDecision`。
 - `Execution Compiler` 输出 `resource_set / logical_sql / sql_hash / data_level`。
 - `/api/v1/agent/semantic/plan` 返回统一治理 envelope。
@@ -1274,8 +1303,8 @@ ticket_consumed
 ### Phase 3：gateway 联动
 
 - data-platform 生成真实 `ExecutionTicket`。
-- gateway 校验签名、jti、防重放、policy_version、resource_set、sql_hash、execution_profile。
-- gateway 按 `credential_mode` 选择 Assume RAM Role 或专用 RAM 用户。
+- gateway 校验签名、jti、防重放、policy_epoch、resource_set_physical、sql_hash、execution_profile_code。
+- gateway 按 `CredentialBinding` 选择 Assume RAM Role 或专用 RAM 用户。
 - gateway 回写审计。
 - M3 必须绑定审批结果和专用 profile。
 
@@ -1287,12 +1316,12 @@ ticket_consumed
 
 ## 17. 测试计划
 
-- `PrincipalResolver`：飞书 SSO、JWT、旧 `viewer_roles` 都能归一到 `PrincipalContext`。
+- `PrincipalResolver`：飞书 SSO、内部管理员、API Key 和飞书委托都能归一到 `PrincipalContext`，且请求体角色、JWT 角色声明和 `viewer_roles` 不能越权。
 - `RoleBinding`：飞书用户组和部门能映射到 `PlatformRole / DataRole`。
 - `PolicyDecision`：Pre-route 与 Post-compile 两阶段结果正确。
 - M3 拦截：现有真实执行端点遇到 raw data 返回 `require_approval`。
 - `TicketPreview`：永远带 `enforcement=preview_only`，gateway 不接受。
-- `ExecutionProfile`：同一个 DataPolicy 可切换 `ram_role / ram_user`，不影响策略判断。
+- `ExecutionProfile`：同一个 DataPolicy 可切换逻辑执行画像；RAM Role / RAM User 切换只改 gateway `CredentialBinding`，不影响策略判断。
 - `sql_hash`：compiler 和 gateway 对同一 logical SQL 生成一致 hash。
 - SQL hash 契约样例：基于 SQL AST / Logical Plan 覆盖标识符引用、keyword 大小写、空白归一、过滤条件顺序、子查询格式化。
 - Gateway SQL guard：验证复杂 Join、子查询、字段别名、字段裁剪、外层 limit 包裹和拒绝无法解析 SQL。
@@ -1320,7 +1349,7 @@ ticket_consumed
 - `KISS`：飞书做身份，本地只做最小 Principal 投影。
 - `YAGNI`：当前不引入 OPA、不做复杂用户中心、不做每用户 RAM。
 - `SOLID`：认证、角色映射、数据策略、执行票据、gateway 执行身份分离。
-- `DRY`：旧 `viewer_roles` 只在 `PrincipalResolver` 兼容，不在各 API 重复解释。
+- `DRY`：API 层统一通过 `PrincipalContext` 获取授权输入，不在语义路由、执行编译和 Agent 入口重复解释请求体角色。
 
 ## 19. 当前定案
 

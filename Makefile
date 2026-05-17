@@ -64,6 +64,7 @@ AGENT_RUNTIME_LIVE_QUESTION ?= 查询最近7天学生评论数，按学校汇总
 	test-integration-frontend \
 	smoke-backend \
 	smoke-frontend \
+	smoke-access \
 	smoke-observability \
 	coverage \
 	coverage-backend \
@@ -114,6 +115,7 @@ help:
 	@printf '  %-26s %s\n' 'make test-frontend' '前端自动化测试聚合'
 	@printf '  %-26s %s\n' 'make smoke-backend' '后端关键 API smoke'
 	@printf '  %-26s %s\n' 'make smoke-frontend' '前端平台壳层 smoke（== local-smoke）'
+	@printf '  %-26s %s\n' 'make smoke-access' '权限体系产品闭环 smoke（Principal / API Key / DataPolicy / Agent）'
 	@printf '  %-26s %s\n' 'make docs-health' '文档健康检查'
 	@printf '%s\n' ''
 	@printf '%s\n' '本地闸门（GitLab CI 未就位时的替代入口）:'
@@ -216,15 +218,19 @@ smoke-frontend:
 	@printf '%s\n' '[layer4][frontend] 运行前端 v2 cutover smoke (Round 3 W6.A · scripts/cutover/deploy.sh 走该 6/6 用例)'
 	cd $(FRONTEND_DIR) && $(NPM) run e2e:smoke
 
+smoke-access:
+	@printf '%s\n' '[layer4][access] 运行权限体系产品闭环 smoke'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov tests/integration/access
+
 smoke-observability:
 	@printf '%s\n' '[layer4][observability] skip: 当前仓库未配置统一可观测阈值校验'
 
 smoke-semantic:
-	@printf '%s\n' '[contract][semantic-smoke] 需要前端开发服务、最新后端代码和可写语义目录；该 smoke 会创建或更新草稿/测试资产，不属于默认 repo smoke'
+	@printf '%s\n' '[contract][semantic-smoke] 领域 smoke 需要前端开发服务、最新后端代码和可写语义目录；Modeling Copilot smoke 使用 v2 Playwright mock 闭环；不属于默认 repo smoke'
 	@printf '%s\n' '[layer4][semantic] 运行语义中心关键路径 smoke'
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-smoke
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-publish-smoke
-	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:modeling-agent-smoke
+	cd $(FRONTEND_DIR) && $(NPM) run e2e:modeling-agent-smoke
 
 verify: lint typecheck test smoke
 
@@ -278,7 +284,9 @@ test-modeling-agent:
 		tests/unit/application/semantic/test_domain_modeling_service.py::test_domain_context_preview_returns_candidate_scope_without_join_truth \
 		tests/integration/test_semantic_api.py::TestDomainsEndpoint::test_domain_context_preview_returns_candidate_scope \
 		tests/unit/application/semantic/test_semantic_modeling_agent.py \
-		tests/integration/test_semantic_modeling_agent_api.py
+		tests/integration/test_semantic_modeling_agent_api.py \
+		tests/unit/application/semantic/test_modeling_copilot_service.py \
+		tests/integration/test_semantic_modeling_copilot_api.py
 	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx
 
 test-agent-runtime:

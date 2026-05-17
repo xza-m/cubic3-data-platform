@@ -28,9 +28,9 @@ const OVERVIEW_FIXTURE = {
     query_count_week: 1800,
   },
   health: {
-    datasource_connectivity: 0.96,
-    semantic_coverage: 0.82,
-    query_success_rate: 0.99,
+    datasource_connectivity: 96,
+    semantic_coverage: 82,
+    query_success_rate: 99,
   },
   recent_queries: [
     {
@@ -47,10 +47,15 @@ test.beforeEach(async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/dashboard/overview', envelope(OVERVIEW_FIXTURE))
+  await mockJsonRoute(
+    page,
+    '**/api/v1/auth/me',
+    envelope({ user_id: 'feishu:tenant:on_demo', user_name: '轩志昂', roles: ['platform_admin', 'semantic_admin'] }),
+  )
   // 偏好接口决定默认 landing —— 确保走 /dashboard 而不是其它偏好项。
   await mockJsonRoute(
     page,
-    '**/api/v1/users/me/preferences',
+    '**/api/v1/access/me/preferences',
     envelope({ default_landing: '/dashboard' }),
   )
 })
@@ -71,6 +76,19 @@ test('P23 Dashboard 首屏 KPI + 侧卡片可见 @p23', async ({ page }) => {
 
   // 来自 fixture 的最近查询内容
   await expect(page.getByText('SELECT count(*) FROM lessons').first()).toBeVisible()
+  await expect(page.getByText('近 7 日查询成功率').first()).toBeVisible()
+  await expect(page.getByText('99%').first()).toBeVisible()
+
+  // 首页需要提供 Start learning 式的模块教程入口，避免首屏信息过空。
+  await expect(page.getByRole('heading', { name: 'Start learning' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /自助查询入门/ })).toHaveAttribute('href', /\/tutorials\/self-service-query\.html$/)
+  await expect(page.getByRole('link', { name: /语义建模工作流/ })).toHaveAttribute('href', /\/tutorials\/semantic-modeling\.html$/)
+  await expect(page.getByRole('link', { name: /开发应用与推送/ })).toHaveAttribute('href', /\/tutorials\/app-development\.html$/)
+  await expect(page.getByRole('link', { name: /权限治理闭环/ })).toHaveAttribute('href', /\/tutorials\/access-governance\.html$/)
+
+  // Dashboard CTA 统一使用小尺寸按钮，避免和其它模块的跳转按钮不一致。
+  await expect(page.getByRole('link', { name: /打开查询工作台/ })).toHaveClass(/btn-sm/)
+  await expect(page.getByRole('link', { name: /本体工作台/ })).toHaveClass(/btn-sm/)
 
   // Dashboard 不展示仅对深层模块有价值的空壳区域，也不暴露后端接口路径。
   await expect(page.getByText('/api/v1/dashboard/overview')).toHaveCount(0)
@@ -78,10 +96,22 @@ test('P23 Dashboard 首屏 KPI + 侧卡片可见 @p23', async ({ page }) => {
   await expect(page.getByText('上下文面板')).toHaveCount(0)
   await expect(page.getByText('平台健康度与最近活动')).toHaveCount(0)
 
-  // 用户确认 topbar 暂时保留现状。
+  // 顶栏保留个人入口，设置入口只保留左下角一个，避免重复心智。
+  await expect(page.getByRole('button', { name: '个人信息' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '我的偏好' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '历史' })).toBeVisible()
   await expect(page.getByRole('button', { name: '变更' })).toBeVisible()
   await expect(page.getByRole('button', { name: '通知' })).toBeVisible()
+})
+
+test('P23 顶栏个人入口打开个人信息页 @p23', async ({ page }) => {
+  await gotoV2(page, '/dashboard')
+
+  await page.getByRole('button', { name: '个人信息' }).click()
+  await expect(page).toHaveURL(/\/profile$/)
+  await expect(page.getByRole('heading', { name: '个人信息' })).toBeVisible()
+  await expect(page.getByText('轩志昂').first()).toBeVisible()
+  await expect(page.getByText('platform_admin').first()).toBeVisible()
 })
 
 test('P23 Dashboard 根路径按偏好重定向到 /dashboard @p23', async ({ page }) => {

@@ -15,6 +15,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Play, RotateCcw, Terminal, Clock, X } from 'lucide-react'
 import { Button, Card, CardBody, CardHead, Chip, Tabs, Tab } from '@v2/components/ui'
+import { RefreshButton } from '@v2/components/CommonControls'
 import { useAppShell } from '@v2/layout/AppShell'
 import { t } from '@v2/i18n'
 import { useCubeList, useCompileDsl } from '@v2/hooks/semantic'
@@ -309,14 +310,11 @@ function HistoryPanel() {
             {t('devtools.history.total', '共 {n} 条').replace('{n}', String(total))}
           </span>
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
+            <RefreshButton
               onClick={() => list.refetch()}
-              disabled={list.isFetching}
-            >
-              <RotateCcw size={11} /> {t('action.refresh', '刷新')}
-            </Button>
+              loading={list.isFetching}
+              ariaLabel={t('devtools.history.refresh', '刷新诊断历史')}
+            />
           </div>
         </div>
 

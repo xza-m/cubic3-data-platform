@@ -260,6 +260,11 @@ class TestCompilerBasic:
         assert compiler._source_relation(cube) == "(\nSELECT * FROM ods.source_cube\n)"
         assert compiler._source_relation(_make_cube("table_cube", "ods.table_cube")) == "ods.table_cube"
 
+        result = QueryCompiler(JoinGraph([cube])).compile(
+            QueryDSL(measures=["source_cube.cnt"])
+        )
+        assert "FROM (\nSELECT * FROM ods.source_cube\n) AS source_cube" in result.sql
+
     def test_filter_equals(self, compiler):
         """TC-05: 等值过滤"""
         dsl = QueryDSL(

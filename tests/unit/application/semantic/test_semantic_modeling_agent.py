@@ -53,6 +53,8 @@ def _builder(**overrides):
     ontology_service.save_metric.side_effect = lambda payload: payload
     ontology_service.save_glossary.side_effect = lambda payload: payload
     ontology_service.save_policy.side_effect = lambda payload: payload
+    ontology_service.save_relation.side_effect = lambda payload: payload
+    ontology_service.save_action.side_effect = lambda payload: payload
     ontology_service.publish_entity.side_effect = lambda entity_type, entity_name, validation=None: {
         "entity_type": entity_type,
         "name": entity_name,
@@ -63,6 +65,51 @@ def _builder(**overrides):
         cube_modeling_service=cube_modeling_service,
         ontology_service=ontology_service,
     )
+
+
+def test_coerce_business_question_uses_qualified_candidate_table():
+    """Copilot proposal 常见 source_kind=business_question + candidate_table=project.table。"""
+    source_service = MagicMock()
+    source_service.generate_cube_draft_from_source.return_value = _cube_draft()
+    source_service.resolve_default_physical_source_id.return_value = 99
+    builder = _builder(source_service=source_service)
+
+    result = builder.create_spec_draft(
+        {
+            "source_kind": "business_question",
+            "candidate_table": "df_cb_258187.dwd_interaction_comment_reports_df",
+            "business_subject": "学生评论",
+        }
+    )
+
+    source_service.generate_cube_draft_from_source.assert_called_once()
+    kw = source_service.generate_cube_draft_from_source.call_args.kwargs
+    assert kw["source_kind"] == "physical_table"
+    assert kw["database"] == "df_cb_258187"
+    assert kw["table"] == "dwd_interaction_comment_reports_df"
+    assert kw["source_id"] == 99
+    assert result["spec"]["source"]["source_kind"] == "physical_table"
+    assert result["spec"]["source"]["database"] == "df_cb_258187"
+    assert result["spec"]["source"]["table"] == "dwd_interaction_comment_reports_df"
+
+
+def test_coerce_business_question_keeps_explicit_source_id():
+    source_service = MagicMock()
+    source_service.generate_cube_draft_from_source.return_value = _cube_draft()
+    source_service.resolve_default_physical_source_id = MagicMock(return_value=1)
+    builder = _builder(source_service=source_service)
+
+    builder.create_spec_draft(
+        {
+            "source_kind": "business_question",
+            "candidate_table": "dw.dwd_student_comment_events",
+            "source_id": 7,
+            "business_subject": "学生评论",
+        }
+    )
+    kw = source_service.generate_cube_draft_from_source.call_args.kwargs
+    assert kw["source_id"] == 7
+    source_service.resolve_default_physical_source_id.assert_not_called()
 
 
 def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():
@@ -86,6 +133,10 @@ def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():
     assert spec["cube"]["name"] == "student_comments"
     assert spec["ontology"]["object"]["name"] == "student_comment"
     assert spec["ontology"]["metrics"][0]["measure_refs"] == ["student_comments.total_count"]
+    assert spec["ontology"]["metrics"][0]["binding_status"] == "approved"
+    assert spec["ontology"]["metrics"][0]["grain"] == "comment_time,comment_id"
+    assert spec["ontology"]["metrics"][0]["time_dimension"] == "comment_time"
+    assert spec["ontology"]["metrics"][0]["additivity"] == "additive"
     assert spec["ontology"]["glossary"][0]["term"] == "学生评论"
     assert spec["ontology"]["policies"][0]["visibility"] == "restricted"
     assert "comment_content" in spec["governance"]["sensitive_fields"]
@@ -115,6 +166,79 @@ def test_apply_saves_cube_and_ontology_but_does_not_publish():
     ontology_service.save_glossary.assert_called_once()
     ontology_service.save_policy.assert_called_once()
     ontology_service.publish_entity.assert_not_called()
+
+
+def test_apply_and_publish_include_relations_and_actions():
+    ontology_service = MagicMock()
+    for method_name in (
+        "save_object",
+        "save_metric",
+        "save_glossary",
+        "save_policy",
+        "save_relation",
+        "save_action",
+    ):
+        getattr(ontology_service, method_name).side_effect = lambda payload: payload
+    ontology_service.publish_entity.side_effect = lambda entity_type, entity_name, validation=None: {
+        "entity_type": entity_type,
+        "name": entity_name,
+        "status": "active",
+    }
+    cube_modeling_service = MagicMock()
+    cube_modeling_service.create_cube.return_value = SimpleNamespace(
+        name="student_comments",
+        model_dump=lambda mode="json": _cube_draft(),
+    )
+    cube_modeling_service.activate_cube.return_value = SimpleNamespace(
+        name="student_comments",
+        model_dump=lambda mode="json": {**_cube_draft(), "status": "active"},
+    )
+    builder = _builder(ontology_service=ontology_service, cube_modeling_service=cube_modeling_service)
+    spec = builder.create_spec_draft(
+        {
+            "source_kind": "physical_table",
+            "source_id": 7,
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+            "business_subject": "学生评论",
+        }
+    )["spec"]
+    spec["ontology"]["object"]["status"] = "active"
+    for key in ("metrics", "glossary", "policies"):
+        for item in spec["ontology"][key]:
+            item["status"] = "active"
+    spec["ontology"]["relations"] = [
+        {
+            "name": "student_comment_commenter",
+            "title": "评论由学生发布",
+            "source_object_name": "student_comment",
+            "target_object_name": "student",
+            "relation_type": "belongs_to",
+            "status": "active",
+        }
+    ]
+    spec["ontology"]["actions"] = [
+        {
+            "name": "student_comment_reported",
+            "title": "评论被举报",
+            "object_name": "student_comment",
+            "event_cube_refs": ["student_comments"],
+            "status": "active",
+        }
+    ]
+
+    apply_result = builder.apply(spec)
+    publish_result = builder.publish(spec, publish_targets={"cube": True, "ontology": True})
+
+    assert apply_result["assets"]["ontology"]["relations"][0]["name"] == "student_comment_commenter"
+    assert apply_result["assets"]["ontology"]["actions"][0]["name"] == "student_comment_reported"
+    ontology_service.save_relation.assert_called_once()
+    ontology_service.save_action.assert_called_once()
+    published_types = [call.args[0] for call in ontology_service.publish_entity.call_args_list]
+    assert "relations" in published_types
+    assert "actions" in published_types
+    assert publish_result["published"]["ontology"]["relations"][0]["name"] == "student_comment_commenter"
+    assert publish_result["published"]["ontology"]["actions"][0]["name"] == "student_comment_reported"
 
 
 def test_validate_blocks_metric_when_measure_ref_is_missing():

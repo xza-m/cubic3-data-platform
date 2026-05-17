@@ -190,6 +190,8 @@ POLICY_DECISION_SCHEMA = object_schema(
         "decision": {"type": "string", "description": "策略决策结果"},
         "policy": {"type": "string", "description": "命中的策略名称"},
         "reason": {"type": "string", "description": "决策原因"},
+        "policy_epoch": {"type": "integer", "description": "全局策略纪元，用于 gateway 判断策略新旧"},
+        "execution_permit": {"type": "object", "additionalProperties": True, "description": "权限判定预览上下文，不包含 gateway 可执行凭证或真实 RAM 凭据"},
     }
 )
 
@@ -255,8 +257,6 @@ AGENT_PLAN_RESPONSE_SCHEMA = object_schema(
 QUESTION_REQUEST_SCHEMA = object_schema(
     {
         "question": {"type": "string", "minLength": 1, "description": "自然语言问题"},
-        "viewer_roles": array_schema({"type": "string"}),
-        "principal_context": PRINCIPAL_CONTEXT_SCHEMA,
         "runtime_options": {"type": "object", "additionalProperties": True},
     },
     required=["question"],
@@ -398,8 +398,6 @@ COMPILE_PREVIEW_REQUEST_SCHEMA = object_schema(
         "retrieval_sources": array_schema({"type": "string"}),
         "tool_name": {"type": ["string", "null"], "description": "工具名称"},
         "tool_arguments": {"type": "object", "additionalProperties": True},
-        "viewer_roles": array_schema({"type": "string"}),
-        "principal_context": PRINCIPAL_CONTEXT_SCHEMA,
     }
 )
 

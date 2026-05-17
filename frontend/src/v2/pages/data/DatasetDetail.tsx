@@ -5,9 +5,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Database, ExternalLink, Pencil, RefreshCcw, RotateCw, ScanSearch } from 'lucide-react'
+import { ArrowLeft, Database, ExternalLink, Pencil, RotateCw, ScanSearch } from 'lucide-react'
 import { useDataset, useDatasets, useSyncDatasetSchema, useDatasetProfile, useRefreshDatasetProfile } from '@v2/hooks/datasets'
 import type { Dataset, DatasetField, DatasetProfileColumn } from '@v2/api/datasets'
+import { RefreshButton } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import {
   DatasetDetailContent,
   datasetTabLabel,
@@ -41,7 +43,12 @@ export default function DatasetDetail() {
   const { data, isLoading, isError, error, refetch, isFetching } = useDataset(numericId, true)
   const { data: listData } = useDatasets({ page: 1, page_size: 100 })
   const syncSchema = useSyncDatasetSchema()
-  const { data: profile, isLoading: profileLoading, refetch: refetchProfile } = useDatasetProfile(numericId)
+  const {
+    data: profile,
+    isLoading: profileLoading,
+    isFetching: profileFetching,
+    refetch: refetchProfile,
+  } = useDatasetProfile(numericId)
   const refreshProfile = useRefreshDatasetProfile()
 
   useEffect(() => {
@@ -78,15 +85,13 @@ export default function DatasetDetail() {
         >
           <ArrowLeft size={12} /> {t('datasetDetail.action.back', '返回列表')}
         </button>
-        <button
-          type="button"
+        <RefreshButton
           onClick={() => refetch()}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
-          {t('datasetDetail.action.reload', '重新加载')}
-        </button>
+          loading={isFetching}
+          label={t('datasetDetail.action.reload', '重新加载')}
+          loadingLabel={t('datasetDetail.action.reloading', '重新加载中…')}
+          ariaLabel={t('datasetDetail.action.reload', '重新加载')}
+        />
         {data ? (
           <>
             <button
@@ -107,7 +112,9 @@ export default function DatasetDetail() {
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
             >
               <ScanSearch size={12} className={refreshProfile.isPending ? 'animate-spin' : ''} />
-              {t('datasetDetail.action.refreshProfile', '刷新画像')}
+              {refreshProfile.isPending
+                ? t('datasetDetail.action.refreshingProfile', '画像刷新中…')
+                : t('datasetDetail.action.refreshProfile', '刷新画像')}
             </button>
           </>
         ) : null}
@@ -219,19 +226,12 @@ export default function DatasetDetail() {
   }
   if (isError || !data) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2">
-        <p className="text-xs" style={{ color: 'var(--danger)' }}>
-          {error instanceof Error ? error.message : t('datasetDetail.state.loadFailed', '加载失败')}
-        </p>
-        <button
-          type="button"
-          onClick={() => refetch()}
-          className="rounded-md border px-3 py-1.5 text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-        >
-          {t('datasetDetail.action.retry', '重试')}
-        </button>
-      </div>
+      <RetryState
+        className="flex-1"
+        message={error instanceof Error ? error.message : t('datasetDetail.state.loadFailed', '加载失败')}
+        onRetry={() => refetch()}
+        retryAriaLabel={t('datasetDetail.action.retry', '重试加载数据集')}
+      />
     )
   }
   const tabs = buildTabs()
@@ -250,8 +250,7 @@ export default function DatasetDetail() {
               {syncStatusChip(data.sync_status)}
             </div>
             <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-              <code>{data.dataset_code}</code> · #{data.id} ·{' '}
-              <code>GET /api/v1/data-center/datasets/{data.id}</code>
+              <code>{data.dataset_code}</code> · #{data.id} · {t('datasetDetail.subtitle', '字段、画像与质量信息')}
             </div>
           </div>
         </div>
@@ -282,7 +281,8 @@ export default function DatasetDetail() {
             rowCount={profile?.row_count ?? 0}
             generatedAt={profile?.generated_at ?? null}
             isLoading={profileLoading}
-            onRefresh={() => void refetchProfile()}
+            isRefreshing={profileFetching}
+            onRefresh={() => refetchProfile()}
           />
         )}
         {tab === 'lineage' && <LineageTab item={data} />}
@@ -350,13 +350,15 @@ function ProfileTab({
   rowCount,
   generatedAt,
   isLoading,
+  isRefreshing,
   onRefresh,
 }: {
   columns: DatasetProfileColumn[]
   rowCount: number
   generatedAt: string | null
   isLoading: boolean
-  onRefresh: () => void
+  isRefreshing: boolean
+  onRefresh: () => unknown
 }) {
   if (isLoading) {
     return (
@@ -375,14 +377,13 @@ function ProfileTab({
             ? `  ·  ${t('datasetDetail.profile.rowCount', '共 {n} 行', { n: rowCount.toLocaleString() })}`
             : ''}
         </div>
-        <button
-          type="button"
+        <RefreshButton
           onClick={onRefresh}
-          className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={11} /> {t('datasetDetail.profile.regenerate', '重新生成')}
-        </button>
+          loading={isRefreshing}
+          label={t('datasetDetail.profile.regenerate', '重新生成')}
+          loadingLabel={t('datasetDetail.profile.regenerating', '重新生成中…')}
+          ariaLabel={t('datasetDetail.profile.regenerate', '重新生成')}
+        />
       </div>
 
       {columns.length === 0 ? (

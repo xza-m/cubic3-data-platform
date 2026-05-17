@@ -158,12 +158,14 @@ class SemanticRouterPreviewService:
         policy: Dict[str, Any] | None = None
         target_flags = {"knowledge": False, "cube": False, "tool": False}
         reason: Optional[str] = None
+        analysis_intent = self._extract_analysis_intent(question=question, matched_metric=matched_metric)
 
         if matched_metric is not None:
             if projection_preview is None and primary_entity["entity_type"] == "metric":
                 projection_preview = self._mapper_preview_service.preview(entity_type="metric", entity_name=matched_metric.name)
             execution_preview = self._compiler_preview_service.compile_metric_preview(
                 matched_metric.name,
+                analysis_intent=analysis_intent,
                 viewer_roles=viewer_roles,
                 principal_context=principal_context,
             )
@@ -279,7 +281,6 @@ class SemanticRouterPreviewService:
             action_match_source=action_match_source,
             object_match_source=object_match_source,
         )
-        analysis_intent = self._extract_analysis_intent(question=question, matched_metric=matched_metric)
         execution_targets = self._build_execution_targets(
             question=question,
             targets=targets,

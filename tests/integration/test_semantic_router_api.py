@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from flask import Flask
 
+from app.application.access.identity import AccessIdentityService
 from app.application.execution_compiler.preview_service import ExecutionCompilerPreviewService
 from app.application.execution_compiler.runtime_service import ExecutionCompilerRuntimeService
 from app.application.ontology.policy_guard_service import PolicyGuardService
@@ -16,6 +17,8 @@ from app.domain.ontology.entities import (
     PolicyMetadata,
 )
 from app.domain.semantic.entities import CubeDefinition, DimensionDef, JoinDef, MeasureDef
+from app.extensions import db
+from app.infrastructure.access.repositories import SqlAccessRepository
 from app.infrastructure.ontology.yaml_action_repository import YamlBusinessActionRepository
 from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
 from app.infrastructure.ontology.yaml_metric_repository import YamlBusinessMetricRepository
@@ -27,7 +30,41 @@ from app.interfaces.api.middleware.error_handler import register_error_handlers
 from app.interfaces.api.v1.semantic_router import create_semantic_router_blueprint
 
 
-def _build_client(tmp_path):
+def _install_access_identity(app: Flask, roles: list[str]) -> None:
+    app.config.update(
+        SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    )
+    db.init_app(app)
+    with app.app_context():
+        from app.infrastructure.access.models import (  # noqa: F401
+            AccessApiKeyORM,
+            AccessDelegationEventORM,
+            AccessPrincipalAliasORM,
+            AccessPrincipalORM,
+            AccessRoleBindingORM,
+            AccessServicePrincipalORM,
+        )
+
+        db.create_all()
+        repo = SqlAccessRepository(db.session)
+        repo.upsert_principal(
+            principal_id="test_admin",
+            principal_type="human",
+            idp="internal",
+            tenant_key="local",
+            display_name="Test Admin",
+        )
+        repo.commit()
+        AccessIdentityService(repo).ensure_principal_role_bindings(
+            principal_id="test_admin",
+            roles=roles,
+            source="pytest",
+            created_by="test_admin",
+        )
+
+
+def _build_client(tmp_path, *, access_roles: list[str] | None = None):
     cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
     cube_repo.save(
         CubeDefinition(
@@ -152,6 +189,10 @@ def _build_client(tmp_path):
 
     app = Flask(__name__)
     app.config["TESTING"] = True
+    _install_access_identity(
+        app,
+        access_roles or ["finance", "platform_admin", "data_m1_reader"],
+    )
     app.register_blueprint(create_semantic_router_blueprint(router))
     register_error_handlers(app)
     from tests.conftest import install_default_admin_auth
@@ -204,7 +245,7 @@ def test_semantic_router_api_returns_route_and_plan(tmp_path):
 
 
 def test_semantic_router_api_supports_relation_and_action(tmp_path):
-    client = _build_client(tmp_path)
+    client = _build_client(tmp_path, access_roles=["analyst", "platform_admin"])
 
     relation_resp = client.post("/api/v1/semantic-router/route", json={"question": "分析订单归属客户关系"})
     assert relation_resp.status_code == 200
@@ -221,7 +262,7 @@ def test_semantic_router_api_supports_relation_and_action(tmp_path):
 
     blocked_metric_resp = client.post(
         "/api/v1/semantic-router/route",
-        json={"question": "查看GMV趋势", "viewer_roles": ["analyst"]},
+        json={"question": "查看GMV趋势", "viewer_roles": ["finance"]},
     )
     assert blocked_metric_resp.status_code == 200
     blocked_metric_payload = blocked_metric_resp.get_json()["data"]
@@ -307,6 +348,7 @@ def test_semantic_router_execute_plan_blocks_m3_raw_resource(tmp_path):
     )
     app = Flask(__name__)
     app.config["TESTING"] = True
+    _install_access_identity(app, ["platform_admin", "data_m3_requester"])
     app.register_blueprint(create_semantic_router_blueprint(router))
     register_error_handlers(app)
     from tests.conftest import install_default_admin_auth

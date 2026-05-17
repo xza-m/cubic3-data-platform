@@ -4,9 +4,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Copy, Database, FileCode2, Plus, RefreshCcw, Search, X } from 'lucide-react'
+import { Copy, Database, FileCode2, Search, X } from 'lucide-react'
 import { useDatasets, useDataset } from '@v2/hooks/datasets'
 import type { Dataset } from '@v2/api/datasets'
+import { CreateButton, RefreshButton, Toolbar } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import {
   datasetTabLabel,
   datasetTypeChip,
@@ -63,26 +65,17 @@ export default function Datasets() {
 
   useEffect(() => {
     setTopBarActions(
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
+      <Toolbar>
+        <RefreshButton
           onClick={() => refetch()}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />
-          {t('datasets.action.refresh', '刷新')}
-        </button>
-        <button
-          type="button"
+          loading={isFetching}
+          ariaLabel={t('datasets.action.refreshList', '刷新数据集')}
+        />
+        <CreateButton
+          label={t('datasets.action.register', '注册数据集')}
           onClick={() => navigate('/data-center/datasets/register')}
-          className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
-          style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
-        >
-          <Plus size={12} />
-          {t('datasets.action.register', '注册数据集')}
-        </button>
-      </div>,
+        />
+      </Toolbar>,
     )
     return () => setTopBarActions(null)
   }, [setTopBarActions, refetch, isFetching, navigate])
@@ -90,7 +83,7 @@ export default function Datasets() {
   useEffect(() => {
     setContextPanel({
       title: t('datasets.ctx.title', '数据集'),
-      subtitle: 'GET /api/v1/data-center/datasets',
+      subtitle: t('datasets.ctx.subtitle', '统一查看可建模和可查询的数据资产'),
       body: (
         <div className="space-y-4 px-4 py-4">
           <CtxSection title={t('datasets.ctx.scale', '规模')}>
@@ -118,21 +111,19 @@ export default function Datasets() {
               >
                 + {t('datasets.action.register', '注册数据集')}
               </button>
-              <button
-                type="button"
+              <RefreshButton
                 onClick={() => refetch()}
-                className="flex w-full rounded-md px-2 py-1 text-left"
-                style={{ color: 'var(--text-2)' }}
-              >
-                ↻ {t('datasets.action.refreshList', '刷新列表')}
-              </button>
+                loading={isFetching}
+                label={t('datasets.action.refreshShort', '刷新列表')}
+                ariaLabel={t('datasets.action.refreshList', '刷新数据集')}
+              />
             </div>
           </CtxSection>
         </div>
       ),
     })
     return () => setContextPanel(null)
-  }, [setContextPanel, stats, refetch, navigate])
+  }, [setContextPanel, stats, refetch, isFetching, navigate])
 
   const peekRow = useMemo(
     () => (peekId == null ? null : rows.find((r) => r.id === peekId) ?? null),
@@ -272,9 +263,10 @@ export default function Datasets() {
         {isLoading ? (
           <SkeletonRows />
         ) : isError ? (
-          <ErrorState
+          <RetryState
             message={error instanceof Error ? error.message : t('datasets.error.load', '加载失败')}
             onRetry={() => refetch()}
+            retryAriaLabel={t('datasets.action.retry', '重试加载数据集')}
           />
         ) : rows.length === 0 ? (
           <EmptyState />
@@ -444,15 +436,6 @@ function SkeletonRows() {
           ))}
         </div>
       ))}
-    </div>
-  )
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2">
-      <p className="text-xs" style={{ color: 'var(--danger)' }}>{message}</p>
-      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>{t('datasets.action.retry', '重试')}</button>
     </div>
   )
 }

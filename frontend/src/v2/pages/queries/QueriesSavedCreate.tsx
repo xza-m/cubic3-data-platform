@@ -34,7 +34,7 @@ export default function QueriesSavedCreate() {
             {t('queriesSavedCreate.title', '新建查询')}
           </div>
           <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-            POST /api/v1/queries
+            {t('queriesSavedCreate.subtitle', '保存常用 SQL，后续可在工作台快速复用')}
           </div>
         </div>
       </div>

@@ -26,6 +26,7 @@ class DashboardOverviewService:
     def handle(self, user_id: str) -> dict[str, Any]:
         now = utcnow()
         today_start = datetime(now.year, now.month, now.day, tzinfo=now.tzinfo)
+        query_window_start = now - timedelta(days=7)
         current_week_start = datetime(now.year, now.month, now.day, tzinfo=now.tzinfo) - timedelta(days=now.weekday())
         current_week_start = current_week_start.replace(hour=0, minute=0, second=0, microsecond=0)
         previous_week_start = current_week_start - timedelta(days=7)
@@ -83,13 +84,13 @@ class DashboardOverviewService:
         query_count_week = self.session.execute(
             select(func.count()).select_from(QueryHistory).where(
                 QueryHistory.executed_by == user_id,
-                QueryHistory.executed_at >= current_week_start,
+                QueryHistory.executed_at >= query_window_start,
             )
         ).scalar_one()
         query_success_count = self.session.execute(
             select(func.count()).select_from(QueryHistory).where(
                 QueryHistory.executed_by == user_id,
-                QueryHistory.executed_at >= current_week_start,
+                QueryHistory.executed_at >= query_window_start,
                 QueryHistory.status == 'success',
             )
         ).scalar_one()

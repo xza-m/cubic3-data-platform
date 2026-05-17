@@ -92,7 +92,7 @@ Phase 1 当前已验证的数据中心主链路基线为：
 - 最小统一执行运行时：`/api/v1/execution-compiler/execute` 已打通 `SQL / Retrieval / Tool` 三类最小真实执行，其中 `Tool` 当前只开放只读工具链
 - 语义权限：支持最小权限元数据（内部实现为 `Policy Metadata`）的定义与查询，并将对象 / 动作 / 业务指标的可见性挂接到语义执行层
 - 业务语义工作台首期版本：前端已提供 `/semantic/ontology`，覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模、投影预览、指标联邦追踪，以及业务语义与 `Cube` 的最小双向回看入口
-- 权限产品化收口：`业务语义工作台` 中的权限页已支持 `Policy Impact` 治理影响总览、影响范围说明和真实治理挂点预演，可直接看到 `viewer_roles` 在语义路由与执行预览上的 `allow / blocked` 结果
+- 权限产品化收口：当前已收敛为 Access Principal、权限包 / RoleBinding、DataPolicy 一套主链；语义路由、执行预览和 Agent 入口统一使用服务端解析出的 `PrincipalContext`，不信任请求体角色或 `viewer_roles`
 - 治理执行留痕：`/api/v1/execution-compiler/execute` 现已返回统一 `governance_trace`，`业务语义工作台` 权限页可直接查看最近治理执行结果、命中策略与执行状态
 - 语义路由产品化收口：`业务语义工作台` 中的对象 / 关系 / 动作 / 业务指标页已接入“运行时路由预演”，可直接查看 `route_type`、`planning_mode`、多意图命中结果、planning steps 与 traceability，而无需离开当前语义上下文
 - 运行时执行收口：`业务语义工作台` 的运行时面板现可手动触发 `execute-plan`，直接查看最近执行结果、执行状态、审计记录和执行回溯，不再停留在纯预演阶段
@@ -178,7 +178,7 @@ Phase 1 当前已验证的数据中心主链路基线为：
 - `/api/v1/ontology/<entity>/<name>/history`
 - `/api/v1/governance/audit-traces`
 - `/api/v1/governance/audit-traces/<id>`
-- 执行预览支持按 `viewer_roles` 返回 `allow / blocked`
+- 执行预览支持按 `PrincipalContext` 与服务端 RoleBinding 返回 `allow / blocked`
 - 语义路由支持基于对象 / 动作 / 业务指标的最小语义权限阻断
 
 ## 当前技术架构
@@ -375,7 +375,7 @@ git config core.hooksPath .husky
 
 ### 覆盖率门槛（Round 4 · D+28 校准）
 
-- **后端**：真实水位 `96.49%`（2026-04-22 全量 `pytest tests` 基线，1916 tests passed）。`pytest.ini` 基线 `--cov-fail-under=95`；`scripts/backend_coverage_rules.json` 采用「已达高位 + 防倒退」策略 —— 总阈值 `95%`（现值 - 1.5pp buffer）、`module_threshold = 80%`（防止任何模块严重倒退，当前最低 `infrastructure.users 85.49%`），`core_modules` 列出 20 个核心模块各自按现值向下留 buffer 的下限。谁把这些覆盖率压下去 `make coverage-backend` 就报错。详见 [docs/quality/backend-coverage.md](docs/quality/backend-coverage.md)。
+- **后端**：真实水位 `96.49%`（2026-04-22 全量 `pytest tests` 基线，1916 tests passed）。`pytest.ini` 基线 `--cov-fail-under=95`；`scripts/backend_coverage_rules.json` 采用「已达高位 + 防倒退」策略 —— 总阈值 `95%`（现值 - 1.5pp buffer）、`module_threshold = 80%`（防止任何模块严重倒退），`core_modules` 列出核心模块各自按现值向下留 buffer 的下限。覆盖率基线后续以新鲜 `make coverage-backend` 输出为准。详见 [docs/quality/backend-coverage.md](docs/quality/backend-coverage.md)。
   - **注意**：`coverage.xml` 是 stale artifact；如果没跑过 `make coverage-backend` 或 `PYTHONPATH=. pytest tests`，磁盘上的 `coverage.xml` 可能是只跑部分 suite 的旧快照，会给出误导性的低数字。任何覆盖率分析前请先生成新鲜的全量 `coverage.xml`。
 - **前端**：原先的 90% 总门槛 + 21 个核心页 100% 规则在 v2 cutover 中已随 `src/pages/*` 一起作废（规则里 21 个核心页路径全部不存在）。前端覆盖率守护现在由 `frontend/vitest.config.ts` 的**子树阈值**接管：`src/v2/components/**`、`src/v2/hooks/**`、`src/v2/lib/**` 三个子树各要求 `statements/branches/functions/lines` 均 ≥ `80%`，每次 `make test-frontend` / `npm run test:unit` / pre-push hook 都会卡这个门槛。`make coverage-frontend` 现在只打印退役说明并 skip，`scripts/checks/frontend_coverage_guard.py` 和 `scripts/frontend_coverage_rules.json` 已删除。详见 [docs/quality/frontend-coverage.md](docs/quality/frontend-coverage.md)。
 - **看数字不卡阈值**：`make coverage-report` 会跑一次前后端完整 coverage 并打印数值，用于 sprint 末决定是否把某个模块下限再抬一档。

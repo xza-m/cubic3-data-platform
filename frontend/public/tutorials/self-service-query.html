@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>自助查询入门 | Cubic3 Learn</title>
+    <link rel="stylesheet" href="./tutorial.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="side">
+        <div class="brand"><span class="logo">C3</span><span>Cubic3 Learn</span></div>
+        <div class="nav-title">Start learning</div>
+        <a class="nav-link active" href="./self-service-query.html">自助查询入门</a>
+        <a class="nav-link" href="./semantic-modeling.html">语义建模工作流</a>
+        <a class="nav-link" href="./app-development.html">开发应用与推送</a>
+        <a class="nav-link" href="./access-governance.html">权限治理闭环</a>
+      </aside>
+      <main class="main">
+        <article class="article">
+          <div class="eyebrow">SQL Analytics</div>
+          <h1>自助查询入门</h1>
+          <p class="lead">本教程带你从数据目录选择数据源和表，理解字段信息，编写 SQL，运行查询，并把常用查询保存到“我的查询”。完成后，你可以独立完成一次受控的数据探索。</p>
+          <div class="meta">
+            <span class="pill">15 min</span>
+            <span class="pill">Beginner</span>
+            <span class="pill">查询中心</span>
+          </div>
+
+          <section id="goal" class="section">
+            <div class="section-head">
+              <h2>学习目标</h2>
+              <p>建立查询工作台的基础操作心智。</p>
+            </div>
+            <div class="step">
+              <div class="step-no">1</div>
+              <div>
+                <h3>选择资源</h3>
+                <p>在左侧资源目录中先选择数据源，再选择数据库。表列表会分页展示，悬浮表名可以查看描述，点击表名后查看字段、类型和业务说明。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">2</div>
+              <div>
+                <h3>编写并运行 SQL</h3>
+                <p>把表名填入编辑器，先用小 LIMIT 验证字段和过滤条件，再逐步扩展查询。结果区默认每页 20 条，便于横向扫字段。</p>
+                <pre><code>SELECT *
+FROM df_cb_258187.ads_bi_question_base_stats_df
+WHERE ds = '20260506'
+LIMIT 20;</code></pre>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">3</div>
+              <div>
+                <h3>保存与复用</h3>
+                <p>确认 SQL 可重复执行后保存到“我的查询”。保存后的查询可以直接打开到工作台继续编辑，不应跳转到空白页。</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="checklist" class="section">
+            <div class="section-head">
+              <h2>完成检查</h2>
+              <p>用下面三个信号判断你已经掌握查询工作台。</p>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>能够从目录定位表</h3>
+                <p>知道数据源、数据库和表之间的层级关系，并能查看字段说明。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>能够解释结果</h3>
+                <p>能说明每个查询字段的含义，知道是否需要分区过滤、时间过滤或聚合口径。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>能够保存复用</h3>
+                <p>保存后的 SQL 在“我的查询”里可检索、可打开、可继续编辑。</p>
+              </div>
+            </div>
+          </section>
+
+          <a class="cta" href="/queries">打开查询工作台</a>
+        </article>
+      </main>
+      <aside class="toc">
+        <div class="progress"><span style="width: 25%"></span></div>
+        <h2>自助查询入门</h2>
+        <a href="#goal">学习目标</a>
+        <a href="#checklist">完成检查</a>
+      </aside>
+    </div>
+  </body>
+</html>

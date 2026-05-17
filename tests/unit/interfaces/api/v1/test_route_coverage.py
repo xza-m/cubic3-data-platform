@@ -54,7 +54,7 @@ def _install_admin_auth(client):
     secret = client.application.config.get('JWT_SECRET', 'your-secret-key')
     token = jwt.encode(
         {
-            'user_id': 'admin',
+            'user_id': 'test_admin',
             'user_name': 'Test Admin',
             'roles': ['admin', 'tester'],
             'exp': datetime.now(timezone.utc) + timedelta(hours=1),
@@ -75,6 +75,27 @@ def auth_headers(user_id: str = 'tester', roles: list[str] | None = None) -> dic
     token = jwt.encode(
         {
             'user_id': user_id,
+            'user_name': 'Test User',
+            'roles': roles if roles is not None else ['admin', 'tester'],
+            'exp': datetime.now(timezone.utc) + timedelta(hours=1),
+        },
+        'test-secret',
+        algorithm='HS256',
+    )
+    return {'Authorization': f'Bearer {token}'}
+
+
+def auth_headers_with_principal(
+    *,
+    user_id: str = 'legacy-user',
+    principal_id: str = 'feishu:tenant:on_current',
+    roles: list[str] | None = None,
+) -> dict[str, str]:
+    """生成同时包含 legacy user_id 与新 Principal ID 的测试 Header。"""
+    token = jwt.encode(
+        {
+            'user_id': user_id,
+            'principal_id': principal_id,
             'user_name': 'Test User',
             'roles': roles if roles is not None else ['admin', 'tester'],
             'exp': datetime.now(timezone.utc) + timedelta(hours=1),
@@ -310,6 +331,99 @@ def test_queries_routes_cover_success_and_error_paths(monkeypatch):
         headers=headers,
     )
     assert duplicate_resp.status_code == 400
+
+
+def test_queries_routes_prefer_principal_identity_over_legacy_user_id(monkeypatch):
+    container = MagicMock()
+    monkeypatch.setattr(queries_api, 'get_app_container', lambda: container)
+
+    attach_handler(container, 'execute_query_handler', result={'rows': [[1]], 'columns': ['value']})
+    list_queries_handler = attach_handler(container, 'list_queries_handler', result={'items': [], 'total': 0})
+    create_query_handler = attach_handler(
+        container,
+        'create_query_handler',
+        result=SimpleNamespace(id=1, query_code='q_001', query_name='周报'),
+    )
+    list_folders_handler = attach_handler(container, 'list_folders_handler', result=[])
+    list_histories_handler = attach_handler(container, 'list_histories_handler', result={'items': [], 'total': 0})
+
+    client = build_app(queries_api.bp).test_client()
+    headers = auth_headers_with_principal(
+        user_id='legacy-user-001',
+        principal_id='feishu:tenant:on_current',
+    )
+
+    execute_resp = client.post(
+        '/api/v1/queries/execute',
+        json={'source_id': 7, 'sql_query': 'SELECT 1', 'limit': 50},
+        headers=headers,
+    )
+    assert execute_resp.status_code == 200
+    execute_command = container.execute_query_handler.return_value.handle.call_args.args[0]
+    assert execute_command.executed_by == 'feishu:tenant:on_current'
+
+    list_resp = client.get('/api/v1/queries', headers=headers)
+    assert list_resp.status_code == 200
+    assert list_queries_handler.handle.call_args.kwargs['created_by'] == 'feishu:tenant:on_current'
+
+    create_resp = client.post(
+        '/api/v1/queries',
+        json={'query_name': '周报', 'source_id': 1, 'sql_query': 'SELECT 1'},
+        headers=headers,
+    )
+    assert create_resp.status_code == 201
+    assert create_query_handler.handle.call_args.args[0].created_by == 'feishu:tenant:on_current'
+
+    folders_resp = client.get('/api/v1/queries/folders', headers=headers)
+    assert folders_resp.status_code == 200
+    assert list_folders_handler.handle.call_args.kwargs['created_by'] == 'feishu:tenant:on_current'
+
+    histories_resp = client.get('/api/v1/queries/histories', headers=headers)
+    assert histories_resp.status_code == 200
+    assert list_histories_handler.handle.call_args.kwargs['executed_by'] == 'feishu:tenant:on_current'
+
+
+def test_queries_routes_reject_body_principal_mismatch(monkeypatch):
+    container = MagicMock()
+    monkeypatch.setattr(queries_api, 'get_app_container', lambda: container)
+
+    execute_handler = attach_handler(container, 'execute_query_handler', result={'rows': [[1]], 'columns': ['value']})
+    create_handler = attach_handler(
+        container,
+        'create_query_handler',
+        result=SimpleNamespace(id=1, query_code='q_001', query_name='周报'),
+    )
+
+    client = build_app(queries_api.bp).test_client()
+    headers = auth_headers_with_principal(
+        user_id='legacy-user-001',
+        principal_id='feishu:tenant:on_current',
+    )
+
+    execute_resp = client.post(
+        '/api/v1/queries/execute',
+        json={
+            'source_id': 7,
+            'sql_query': 'SELECT 1',
+            'principal_id': 'feishu:tenant:on_other',
+        },
+        headers=headers,
+    )
+    assert execute_resp.status_code == 403
+    assert execute_handler.handle.call_count == 0
+
+    create_resp = client.post(
+        '/api/v1/queries',
+        json={
+            'query_name': '周报',
+            'source_id': 1,
+            'sql_query': 'SELECT 1',
+            'principal_id': 'feishu:tenant:on_other',
+        },
+        headers=headers,
+    )
+    assert create_resp.status_code == 403
+    assert create_handler.handle.call_count == 0
 
 
 def test_queries_routes_cover_validation_and_exception_paths(monkeypatch):
@@ -882,6 +996,16 @@ def test_sql_lab_async_queue_failure_marks_query_failed(monkeypatch):
 
 def test_auth_routes_cover_login_sso_and_me(monkeypatch):
     monkeypatch.setattr(auth_api, 'generate_token', lambda **kwargs: f"token-for-{kwargs['user_id']}")
+    monkeypatch.setattr(auth_api, '_ensure_internal_principal', lambda username, roles: username)
+
+    class FakeAccessService:
+        def upsert_feishu_principal(self, **kwargs):
+            return SimpleNamespace(principal_id=kwargs['open_id'])
+
+        def ensure_principal_role_bindings(self, **kwargs):
+            return None
+
+    monkeypatch.setattr(auth_api, '_access_service', lambda: FakeAccessService())
     client = build_app(auth_api.bp).test_client()
 
     missing_credentials_resp = client.post('/api/v1/auth/login', json={})

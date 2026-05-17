@@ -10,6 +10,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Chip, Dialog, Input, SkeletonRows, Switch, Table, useToast, type TableColumn } from '@v2/components/ui'
+import { CreateButton } from '@v2/components/CommonControls'
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
 import {
@@ -23,6 +24,7 @@ import type { Subscription, CreateSubscriptionPayload } from '@v2/api/subscripti
 import {
   SubscriptionDetailContent,
 } from '../_shared/subscription-content'
+import { eventTypeLabel } from '../_shared/event-labels'
 
 // ============================================================================
 // 创建 / 编辑表单
@@ -252,7 +254,10 @@ export default function Subscriptions() {
       render: (r) => (
         <button
           type="button"
-          onClick={() => setPeekRow(r)}
+          onClick={(event) => {
+            event.stopPropagation()
+            setPeekRow(r)
+          }}
           className="text-left font-medium hover:underline focus-visible:ring-2"
           style={{ color: 'var(--text-1)' }}
         >
@@ -266,7 +271,9 @@ export default function Subscriptions() {
       render: (r) => (
         <div className="flex flex-wrap gap-1">
           {r.event_types.slice(0, 2).map((et) => (
-            <Chip key={et} tone="violet">{et}</Chip>
+            <Chip key={et} tone="violet">
+              <span title={et}>{eventTypeLabel(et)}</span>
+            </Chip>
           ))}
           {r.event_types.length > 2 && (
             <Chip tone="neutral">+{r.event_types.length - 2}</Chip>
@@ -322,9 +329,6 @@ export default function Subscriptions() {
         style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
       >
         <div>
-          <nav className="mb-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-            {t('nav.config', '配置')} / {t('nav.subscriptions', '订阅')}
-          </nav>
           <h1 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
             {t('subscription.page.title', '订阅')}
           </h1>
@@ -339,13 +343,7 @@ export default function Subscriptions() {
               total: rows.length,
             })}
           </Chip>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
-          >
-            + {t('subscription.action.create', '新建订阅')}
-          </button>
+          <CreateButton label={t('subscription.action.create', '新建订阅')} onClick={openCreate} />
         </div>
       </header>
 
@@ -361,7 +359,8 @@ export default function Subscriptions() {
               rows={rows}
               columns={columns}
               rowKey={(r) => r.id}
-              onRowClick={(r) => navigate(`/config/subscriptions/${r.id}`)}
+              activeKey={peekRow?.id}
+              onRowClick={(r) => setPeekRow(r)}
               emptyText={t('subscription.empty', '暂无订阅，点击「新建订阅」创建')}
             />
           )}
@@ -371,7 +370,9 @@ export default function Subscriptions() {
         {/* TODO: 等待 X-Crosscut PeekPanel 组件 */}
         {peekRow ? (
           <aside
-            className="w-72 shrink-0 border-l"
+            role="complementary"
+            aria-label={t('peek.aria.preview', '行预览')}
+            className="flex w-72 shrink-0 flex-col border-l"
             style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
           >
             <div
@@ -395,7 +396,7 @@ export default function Subscriptions() {
                 ✕
               </button>
             </div>
-            <div className="overflow-auto" style={{ height: 'calc(100% - 45px)' }}>
+            <div className="min-h-0 flex-1 overflow-auto">
               <SubscriptionDetailContent
                 row={peekRow}
                 actions={{
@@ -407,6 +408,15 @@ export default function Subscriptions() {
                   onDelete: () => void handleDelete(peekRow),
                 }}
               />
+            </div>
+            <div className="border-t p-3" style={{ borderColor: 'var(--border)' }}>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary w-full"
+                onClick={() => navigate(`/config/subscriptions/${peekRow.id}`)}
+              >
+                {t('action.view_detail', '查看详情')}
+              </button>
             </div>
           </aside>
         ) : null}

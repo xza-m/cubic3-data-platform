@@ -5,6 +5,7 @@
 //
 // 后端契约：app/interfaces/api/v1/semantic.py
 
+import type { AxiosRequestConfig } from 'axios'
 import { apiClient } from '@v2/api/client'
 
 // ─── 通用 ──────────────────────────────────────────────────────────────────
@@ -19,11 +20,19 @@ interface Envelope<T> {
 const get = <T>(url: string, params?: Record<string, unknown>): Promise<T> =>
   apiClient.get<Envelope<T>>(url, { params }).then((r) => r.data.data)
 
-const post = <T>(url: string, body?: unknown): Promise<T> =>
-  apiClient.post<Envelope<T>>(url, body).then((r) => r.data.data)
+const post = <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> =>
+  apiClient.post<Envelope<T>>(url, body, config).then((r) => r.data.data)
 
 const put = <T>(url: string, body?: unknown): Promise<T> =>
   apiClient.put<Envelope<T>>(url, body).then((r) => r.data.data)
+
+const del = <T>(url: string, body?: unknown): Promise<T> =>
+  apiClient.delete<Envelope<T>>(url, body ? { data: body } : undefined).then((r) => r.data.data)
+
+const patch = <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> =>
+  apiClient.patch<Envelope<T>>(url, body, config).then((r) => r.data.data)
+
+const MODELING_COPILOT_LONG_REQUEST: AxiosRequestConfig = { timeout: 120_000 }
 
 // ─── Cube 类型 ──────────────────────────────────────────────────────────────
 
@@ -60,6 +69,7 @@ export interface CubeSummary {
   status?: string
   fact_table?: string
   source_id?: string | null
+  source_dataset_id?: number | string | null
   source_database?: string | null
   source_schema?: string | null
   // B-back-7 enriched fields (server-computed; do NOT recompute client-side)
@@ -250,6 +260,533 @@ export const applySemanticModelingAgent = (spec: SemanticModelingAgentSpec) =>
 
 export const publishSemanticModelingAgent = (body: SemanticModelingAgentPublishRequest) =>
   post<SemanticModelingAgentPublishResult>('/semantic/modeling-agent/publish', body)
+
+export type SemanticModelingProposalStatus =
+  | 'created'
+  | 'drafted'
+  | 'validated'
+  | 'blocked'
+  | 'approved'
+  | 'applied'
+  | 'published'
+  | 'closed'
+  | string
+
+export interface SemanticModelingProposal {
+  id: string
+  source_mode: 'human_led' | 'agent_led' | string
+  status: SemanticModelingProposalStatus
+  close_reason?: string | null
+  intent?: Record<string, unknown>
+  source_context?: Record<string, unknown>
+  spec?: SemanticModelingAgentSpec | null
+  drafts?: Record<string, unknown>
+  coverage_result?: Record<string, unknown>
+  semantic_diff?: Record<string, unknown>
+  validation_matrix?: Record<string, unknown>
+  review_records?: Array<Record<string, unknown>>
+  publish_result?: Record<string, unknown> | null
+  runtime_consumption_result?: Record<string, unknown>
+  readiness_label?: string
+  approved_spec_hash?: string | null
+  applied_spec_hash?: string | null
+  last_transition_actor?: string | null
+  last_transition_at?: string | null
+  audit_snapshot?: Record<string, unknown>
+  created_at?: string
+  updated_at?: string
+  [key: string]: unknown
+}
+
+export interface SemanticModelingProposalGapView {
+  id: string
+  status: SemanticModelingProposalStatus
+  display_status: string
+  question: {
+    text: string
+    extracted_context: Array<{ key: string; label: string; value: string }>
+  }
+  coverage: {
+    decision: string
+    label: string
+    summary: string
+    reusable_assets: unknown[]
+  }
+  gaps: Array<{
+    id: string
+    type: string
+    severity: 'required' | 'needs_confirmation' | 'optional' | string
+    title: string
+    description: string
+    technical_hint?: string
+    requires_confirmation?: boolean
+  }>
+  patch_plan: Array<{
+    id: string
+    type: string
+    title: string
+    business_name: string
+    technical_name?: string | null
+    description: string
+  }>
+  validation: {
+    summary: string
+    checks: Array<{
+      id: string
+      status: 'passed' | 'failed' | 'needs_confirmation' | string
+      title: string
+      description: string
+      technical_hint?: string
+    }>
+  }
+  technical_change: {
+    changed_objects: Array<{
+      type: string
+      name: string
+      operation: 'create' | 'update' | 'delete' | string
+    }>
+    yaml_diff?: string
+    sql_validation?: string
+    impact_summary?: string[]
+    approval_wording?: string
+  }
+  primary_action: {
+    label: string
+    action: 'draft' | 'validate' | 'approve' | 'apply' | 'publish' | 'inspect_failure' | 'open_query' | 'none' | string
+    disabled: boolean
+    tone: 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | string
+  }
+}
+
+export interface SemanticModelingProposalCreateBody extends SemanticModelingAgentSpecDraftBody {
+  source_mode?: 'human_led' | 'agent_led' | string
+  user_question?: string
+}
+
+export interface SemanticModelingProposalApproveBody {
+  reviewer?: string
+  comment?: string
+  [key: string]: unknown
+}
+
+export interface SemanticModelingProposalPublishRequest {
+  publish_targets?: {
+    cube?: boolean
+    ontology?: boolean
+  }
+}
+
+export interface SemanticModelingProposalCloseRequest {
+  close_reason: 'reused_existing' | 'rejected' | 'abandoned' | string
+  actor?: string
+  reviewer?: string
+  comment?: string
+}
+
+export const createSemanticModelingProposal = (body: SemanticModelingProposalCreateBody) =>
+  post<SemanticModelingProposal>('/semantic/modeling-agent/proposals', body)
+
+export const getSemanticModelingProposal = (proposalId: string) =>
+  get<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}`)
+
+export const getSemanticModelingProposalGapView = (proposalId: string) =>
+  get<SemanticModelingProposalGapView>(`/semantic/modeling-agent/proposals/${proposalId}/gap-view`)
+
+export const draftSemanticModelingProposal = (proposalId: string) =>
+  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/draft`)
+
+export const validateSemanticModelingProposal = (proposalId: string) =>
+  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/validate`)
+
+export const approveSemanticModelingProposal = (
+  proposalId: string,
+  body?: SemanticModelingProposalApproveBody,
+) =>
+  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/approve`, body)
+
+export const applySemanticModelingProposal = (proposalId: string) =>
+  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/apply`)
+
+export const publishSemanticModelingProposal = (
+  proposalId: string,
+  body?: SemanticModelingProposalPublishRequest,
+) =>
+  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/publish`, body)
+
+export const closeSemanticModelingProposal = (
+  proposalId: string,
+  body: SemanticModelingProposalCloseRequest,
+) =>
+  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/close`, body)
+
+export type SemanticModelingCopilotEntryType = 'table_known' | 'business_question' | 'semantic_gap' | string
+
+export interface SemanticModelingCopilotMessage {
+  role: 'user' | 'assistant' | 'system' | string
+  content: string
+  created_at?: string
+}
+
+// ── 结构化 workbench_state 字段：用于对话原生 UI 直接渲染卡片 ──────────────────
+// 字段全部可选 / 兼容未知字段；后端默认形状会满足这些；前端 adapter 仅做投影。
+
+export interface CopilotCanvasObjectItem {
+  id?: string
+  name?: string
+  title?: string
+  status?: string
+  domain?: string
+  description?: string
+  [key: string]: unknown
+}
+
+export interface CopilotCanvasMetricItem {
+  id?: string
+  name?: string
+  title?: string
+  status?: string
+  measure_ref?: string
+  binding_status?: string
+  description?: string
+  [key: string]: unknown
+}
+
+export interface CopilotCanvasDimensionItem {
+  id?: string
+  name?: string
+  title?: string
+  status?: string
+  source?: string
+  [key: string]: unknown
+}
+
+export interface CopilotCanvasBindingItem {
+  id?: string
+  metric?: string
+  measure_ref?: string
+  status?: string
+  score?: number
+  [key: string]: unknown
+}
+
+export interface CopilotCanvasPolicyItem {
+  id?: string
+  name?: string
+  visibility?: string
+  status?: string
+  [key: string]: unknown
+}
+
+export interface CopilotCandidateCard {
+  id?: string
+  name?: string
+  title?: string
+  recommended_value?: unknown
+  score?: number
+  source?: string
+  [key: string]: unknown
+}
+
+export interface CopilotSourceCandidate {
+  id?: string
+  asset_type?: string
+  source_kind?: 'physical_table' | 'dataset' | string
+  source_id?: string | number | null
+  dataset_id?: string | number | null
+  database?: string | null
+  schema?: string | null
+  table?: string | null
+  name?: string | null
+  title?: string | null
+  score?: number
+  confidence?: 'high' | 'medium' | 'low' | string
+  matched_terms?: string[]
+  evidence?: string[]
+  selected?: boolean
+  [key: string]: unknown
+}
+
+export interface CopilotConfirmation {
+  id: string
+  title?: string
+  question?: string
+  explain?: string
+  recommended_value?: unknown
+  recommended_reason?: string
+  blocking?: boolean
+  confirmed?: boolean
+  value?: unknown
+  [key: string]: unknown
+}
+
+export type CopilotEvidenceLevel = 'P0' | 'P1' | 'P2' | 'P3' | string
+
+export interface CopilotEvidenceItem {
+  id?: string
+  type?: string
+  trust_level?: CopilotEvidenceLevel
+  extracted_claim?: string
+  source_uri?: string
+  text?: string
+  [key: string]: unknown
+}
+
+export interface CopilotSandboxPreview {
+  status?: string
+  summary?: string
+  pollutes_official_route?: boolean
+  sample_questions?: string[]
+  [key: string]: unknown
+}
+
+export interface CopilotSourceEvidence {
+  source_table?: Record<string, unknown>
+  fields?: Array<Record<string, unknown>>
+  sample_rows?: Array<Record<string, unknown>>
+  recommendations?: Array<Record<string, unknown>>
+  [key: string]: unknown
+}
+
+export interface CopilotTraceState {
+  events?: Array<Record<string, unknown>>
+  [key: string]: unknown
+}
+
+export interface CopilotPublishGate {
+  state?: string
+  label?: string
+  steps?: Array<Record<string, unknown>>
+  [key: string]: unknown
+}
+
+export interface CopilotPostPublishValidation {
+  status?: string
+  label?: string
+  sample_question?: string | null
+  runtime_route?: string | null
+  result_summary?: string | null
+  [key: string]: unknown
+}
+
+export interface CopilotProposalSummary {
+  id?: string
+  status?: string
+  spec?: unknown
+  runtime_consumption_result?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface CopilotReadiness {
+  canonical_ready?: boolean
+  exploratory_ready?: boolean
+  reasons?: string[]
+  [key: string]: unknown
+}
+
+export interface CopilotToolTrace {
+  tool?: string
+  status?: string
+  summary?: string
+  error?: string
+  [key: string]: unknown
+}
+
+export interface SemanticModelingCopilotWorkbenchState {
+  agent_message?: string
+  semantic_canvas?: {
+    objects?: CopilotCanvasObjectItem[]
+    metrics?: CopilotCanvasMetricItem[]
+    dimensions?: CopilotCanvasDimensionItem[]
+    bindings?: CopilotCanvasBindingItem[]
+    policies?: CopilotCanvasPolicyItem[]
+  }
+  candidate_cards?: CopilotCandidateCard[]
+  source_candidates?: CopilotSourceCandidate[]
+  required_confirmations?: CopilotConfirmation[]
+  evidence_summary?: CopilotEvidenceItem[]
+  validation_summary?: Array<Record<string, unknown>>
+  readiness?: CopilotReadiness
+  suggested_actions?: string[]
+  proposal_summary?: CopilotProposalSummary
+  proposal_patch?: Record<string, unknown>
+  sandbox_preview?: CopilotSandboxPreview
+  source_evidence?: CopilotSourceEvidence
+  trace_state?: CopilotTraceState
+  publish_gate?: CopilotPublishGate
+  post_publish_validation?: CopilotPostPublishValidation
+  save_result?: { status?: string; proposal_id?: string; idempotent?: boolean; [key: string]: unknown }
+  next_steps?: Array<{ id?: string; title?: string; description?: string; href?: string; [key: string]: unknown }>
+  raw_spec?: SemanticModelingAgentSpec | Record<string, unknown>
+  advanced_refs?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface SemanticModelingCopilotSession {
+  id: string
+  user_goal: string
+  entry_type: SemanticModelingCopilotEntryType
+  status: 'active' | 'completed' | 'abandoned' | string
+  principal_id?: string | null
+  title?: string | null
+  conversation?: SemanticModelingCopilotMessage[]
+  working_memory?: Record<string, unknown>
+  current_proposal_id?: string | null
+  workbench_state: SemanticModelingCopilotWorkbenchState
+  tool_traces?: CopilotToolTrace[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SemanticModelingCopilotReview {
+  session_id: string
+  proposal_id?: string | null
+  status: 'drafting' | 'reviewing' | 'blocked' | 'ready_to_save' | 'ready_to_publish' | 'published' | string
+  status_label: string
+  changes: Array<{
+    id: string
+    type: string
+    title: string
+    technical_name?: string | null
+    operation?: string
+    reason?: string
+    impact?: string
+    risk?: string
+    [key: string]: unknown
+  }>
+  blockers: Array<{
+    id: string
+    severity: 'required' | 'needs_confirmation' | 'warning' | string
+    title: string
+    description: string
+    technical_hint?: unknown
+    source?: string
+    [key: string]: unknown
+  }>
+  reason_explanations: Array<{
+    target_id: string
+    question: string
+    answer: string
+    evidence_refs?: string[]
+    [key: string]: unknown
+  }>
+  data_agent_consumption: {
+    state: 'unavailable' | 'draft_only' | 'ready_after_publish' | 'available' | string
+    label: string
+    reasons?: string[]
+  }
+  source_evidence?: CopilotSourceEvidence
+  trace_state?: CopilotTraceState
+  publish_gate?: CopilotPublishGate
+  post_publish_validation?: CopilotPostPublishValidation
+  primary_action: {
+    action: 'generate_spec' | 'save_proposal' | 'publish' | 'none' | string
+    label: string
+    disabled: boolean
+    disabled_reason?: string | null
+  }
+  [key: string]: unknown
+}
+
+export interface SemanticModelingCopilotSessionList {
+  items: SemanticModelingCopilotSession[]
+  total: number
+  limit?: number
+  offset?: number
+}
+
+export interface SemanticModelingCopilotListSessionsParams {
+  status?: string
+  limit?: number
+  offset?: number
+  include_legacy?: boolean
+}
+
+export interface SemanticModelingCopilotCreateSessionBody {
+  user_goal: string
+  entry_type?: SemanticModelingCopilotEntryType
+  table?: string
+  dataset_id?: string
+  miss_trace_id?: string
+  [key: string]: unknown
+}
+
+export interface SemanticModelingCopilotSendMessageBody {
+  message: string
+  [key: string]: unknown
+}
+
+export const createSemanticModelingCopilotSession = (body: SemanticModelingCopilotCreateSessionBody) =>
+  post<SemanticModelingCopilotSession>('/semantic/modeling-copilot/sessions', body)
+
+export const getSemanticModelingCopilotSession = (sessionId: string) =>
+  get<SemanticModelingCopilotSession>(`/semantic/modeling-copilot/sessions/${sessionId}`)
+
+export const getSemanticModelingCopilotReview = (sessionId: string) =>
+  get<SemanticModelingCopilotReview>(`/semantic/modeling-copilot/sessions/${sessionId}/review`)
+
+export const sendSemanticModelingCopilotMessage = (
+  sessionId: string,
+  body: SemanticModelingCopilotSendMessageBody,
+) =>
+  post<SemanticModelingCopilotSession>(
+    `/semantic/modeling-copilot/sessions/${sessionId}/messages`,
+    body,
+    MODELING_COPILOT_LONG_REQUEST,
+  )
+
+export const confirmSemanticModelingCopilotAssumption = (
+  sessionId: string,
+  body: { confirmation_id: string; value?: unknown },
+) =>
+  post<SemanticModelingCopilotSession>(`/semantic/modeling-copilot/sessions/${sessionId}/confirmations`, body)
+
+export const acceptSemanticModelingCopilotCubeDraft = (sessionId: string, body?: Record<string, unknown>) =>
+  post<SemanticModelingCopilotSession>(`/semantic/modeling-copilot/sessions/${sessionId}/accept-cube-draft`, body)
+
+export const previewSemanticModelingCopilotSandbox = (sessionId: string, body?: Record<string, unknown>) =>
+  post<SemanticModelingCopilotSession>(
+    `/semantic/modeling-copilot/sessions/${sessionId}/sandbox`,
+    body,
+    MODELING_COPILOT_LONG_REQUEST,
+  )
+
+export const saveSemanticModelingCopilotProposal = (sessionId: string, body?: Record<string, unknown>) =>
+  post<SemanticModelingCopilotSession>(
+    `/semantic/modeling-copilot/sessions/${sessionId}/save-proposal`,
+    body,
+    MODELING_COPILOT_LONG_REQUEST,
+  )
+
+export const publishSemanticModelingCopilotProposal = (sessionId: string, body?: Record<string, unknown>) =>
+  post<SemanticModelingCopilotSession>(
+    `/semantic/modeling-copilot/sessions/${sessionId}/publish`,
+    body,
+    MODELING_COPILOT_LONG_REQUEST,
+  )
+
+export const patchSemanticModelingCopilotSpec = (sessionId: string, body: Record<string, unknown>) =>
+  patch<SemanticModelingCopilotSession>(
+    `/semantic/modeling-copilot/sessions/${sessionId}/spec`,
+    body,
+    MODELING_COPILOT_LONG_REQUEST,
+  )
+
+export const listSemanticModelingCopilotSessions = (
+  params: SemanticModelingCopilotListSessionsParams = {},
+) => {
+  const query: Record<string, unknown> = {}
+  if (params.status !== undefined) query.status = params.status
+  if (params.limit !== undefined) query.limit = params.limit
+  if (params.offset !== undefined) query.offset = params.offset
+  if (params.include_legacy !== undefined) query.include_legacy = params.include_legacy
+  return get<SemanticModelingCopilotSessionList>('/semantic/modeling-copilot/sessions', query)
+}
+
+export const deleteSemanticModelingCopilotSession = (sessionId: string) =>
+  del<{ deleted: boolean; id: string }>(`/semantic/modeling-copilot/sessions/${sessionId}`)
+
+export const renameSemanticModelingCopilotSession = (sessionId: string, title: string) =>
+  patch<SemanticModelingCopilotSession>(`/semantic/modeling-copilot/sessions/${sessionId}`, { title })
 
 // ─── Domain 类型 ────────────────────────────────────────────────────────────
 

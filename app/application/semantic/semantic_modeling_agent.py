@@ -6,6 +6,9 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
+from app.application.semantic.modeling_spec_repair import repair_modeling_spec
+
 
 class SemanticModelingAgent:
     """从建模源和业务意图编排生成 Cube + Ontology 草稿。
@@ -90,6 +93,11 @@ class SemanticModelingAgent:
             "sample_questions": self._sample_questions(business["subject"], ontology["metrics"]),
             "warnings": self._build_spec_warnings(sensitive_fields, ontology),
         }
+        spec = repair_modeling_spec(
+            spec,
+            user_goal=str(payload.get("user_question") or payload.get("business_subject") or business["subject"]),
+            source_mode=str(payload.get("source_mode") or ""),
+        )
         return {
             "spec": spec,
             "next_actions": {
@@ -245,6 +253,8 @@ class SemanticModelingAgent:
         created["ontology"]["metrics"] = self._save_many("metrics", ontology.get("metrics") or [])
         created["ontology"]["glossary"] = self._save_many("glossary", ontology.get("glossary") or [])
         created["ontology"]["policies"] = self._save_many("policies", ontology.get("policies") or [])
+        created["ontology"]["relations"] = self._save_many("relations", ontology.get("relations") or [])
+        created["ontology"]["actions"] = self._save_many("actions", ontology.get("actions") or [])
 
         return {
             "published": False,
@@ -291,17 +301,58 @@ class SemanticModelingAgent:
         source_kind = str(payload.get("source_kind") or "physical_table").strip()
         if source_kind == "datasource":
             source_kind = "physical_table"
+
+        source_id = payload.get("source_id")
+        dataset_id = payload.get("dataset_id")
+        database = payload.get("database")
+        schema = payload.get("schema")
+        table = payload.get("table")
+        name = payload.get("name")
+        title = payload.get("title")
+        description = payload.get("description")
+
+        def _looks_like_physical_inputs() -> bool:
+            tbl = table
+            if tbl is None or str(tbl).strip() == "":
+                return False
+            tbl_s = str(tbl).strip()
+            if "." in tbl_s:
+                return False
+            return bool(source_id and database)
+
+        # Copilot proposal 常为 business_question，仅带候选全限定表名；须落到 physical_table。
+        if source_kind in {"physical_table", "dataset"}:
+            pass
+        elif _looks_like_physical_inputs():
+            source_kind = "physical_table"
+        else:
+            qualified = self._first_qualified_table_ref(payload)
+            if source_kind in {"business_question", "semantic_gap", "table_known"} and qualified:
+                database, schema, table = CubeModelingSourceService._parse_physical_table(qualified)
+                source_kind = "physical_table"
+                if source_id is None:
+                    source_id = self._cube_modeling_source_service.resolve_default_physical_source_id()
+
         return {
             "source_kind": source_kind,
-            "source_id": payload.get("source_id"),
-            "dataset_id": payload.get("dataset_id"),
-            "database": payload.get("database"),
-            "schema": payload.get("schema"),
-            "table": payload.get("table"),
-            "name": payload.get("name"),
-            "title": payload.get("title"),
-            "description": payload.get("description"),
+            "source_id": source_id,
+            "dataset_id": dataset_id,
+            "database": database,
+            "schema": schema,
+            "table": table,
+            "name": name,
+            "title": title,
+            "description": description,
         }
+
+    @staticmethod
+    def _first_qualified_table_ref(payload: Dict[str, Any]) -> str:
+        """返回形如 catalog.schema.table 或 project.table 的首个限定名（用于 Coerce Copilot payload）。"""
+        for key in ("table", "candidate_table"):
+            ref = str(payload.get(key) or "").strip()
+            if ref and "." in ref:
+                return ref
+        return ""
 
     def _build_business_section(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         subject = str(payload.get("business_subject") or payload.get("subject") or payload.get("title") or "业务对象").strip()
@@ -493,7 +544,15 @@ class SemanticModelingAgent:
         return {"metrics": metric_bindings}
 
     def _publish_ontology(self, ontology: Dict[str, Any], validation: Dict[str, Any]) -> Dict[str, Any]:
-        published = {"objects": [], "properties": [], "metrics": [], "glossary": [], "policies": []}
+        published = {
+            "objects": [],
+            "properties": [],
+            "metrics": [],
+            "glossary": [],
+            "policies": [],
+            "relations": [],
+            "actions": [],
+        }
         object_payload = ontology.get("object")
         if object_payload:
             published["objects"].append(
@@ -504,6 +563,8 @@ class SemanticModelingAgent:
             ("metrics", ontology.get("metrics") or [], "name"),
             ("glossary", ontology.get("glossary") or [], "canonical_name"),
             ("policies", ontology.get("policies") or [], "name"),
+            ("relations", ontology.get("relations") or [], "name"),
+            ("actions", ontology.get("actions") or [], "name"),
         ):
             for item in items:
                 published[entity_type].append(
@@ -522,6 +583,8 @@ class SemanticModelingAgent:
             "metrics": "save_metric",
             "glossary": "save_glossary",
             "policies": "save_policy",
+            "relations": "save_relation",
+            "actions": "save_action",
         }[entity_type]
         save = getattr(self._ontology_service, method_name)
         return [save(payload) for payload in payloads]

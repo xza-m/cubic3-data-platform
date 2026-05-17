@@ -7,10 +7,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ExternalLink, Plus, RefreshCcw, Workflow } from 'lucide-react'
+import { ExternalLink, Workflow } from 'lucide-react'
 import { useExtractionTasks, useExecuteTask } from '@v2/hooks/extraction'
 import type { ExtractionTask } from '@v2/api/extraction'
 import { useToast } from '@v2/components/ui/Toast'
+import {
+  CreateButton,
+  RefreshButton,
+  Toolbar,
+  ToolbarSearch,
+  ToolbarSelect,
+} from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import {
   ExtractionTaskDetailContent,
   taskStatusChip,
@@ -73,14 +81,6 @@ export default function ExtractionTasks() {
     })
   }, [allRows, statusFilter, typeFilter, keyword])
 
-  const stats = useMemo(() => {
-    const total = allRows.length
-    const running = allRows.filter((r) => r.last_run_status === 'running').length
-    const failed  = allRows.filter((r) => r.last_run_status === 'failed').length
-    const active  = allRows.filter((r) => r.is_active).length
-    return { total, running, failed, active }
-  }, [allRows])
-
   useEffect(() => {
     setBreadcrumbs([
       t('extractionTasks.breadcrumb.data', '数据'),
@@ -90,48 +90,38 @@ export default function ExtractionTasks() {
 
   useEffect(() => {
     setTopBarActions(
-      <div className="flex items-center gap-2">
-        <input
+      <Toolbar>
+        <ToolbarSearch
           value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
+          onChange={setKeyword}
           placeholder={t('extractionTasks.search.placeholder', '搜索任务名…')}
-          className="rounded-md border px-3 py-1.5 text-xs"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)', width: 160 }}
+          ariaLabel={t('extractionTasks.search.aria', '搜索提取任务')}
+          width={180}
         />
-        <select
+        <ToolbarSelect
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-md border px-2 py-1.5 text-xs"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
-        >
-          {statusOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <select
+          onChange={setStatusFilter}
+          options={statusOptions()}
+          ariaLabel={t('extractionTasks.filter.status', '筛选任务状态')}
+          width={120}
+        />
+        <ToolbarSelect
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="rounded-md border px-2 py-1.5 text-xs"
-          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
-        >
-          {typeOptions().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <button
-          type="button"
+          onChange={setTypeFilter}
+          options={typeOptions()}
+          ariaLabel={t('extractionTasks.filter.type', '筛选任务类型')}
+          width={120}
+        />
+        <RefreshButton
           onClick={() => refetch()}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
-          {t('extractionTasks.action.refresh', '刷新')}
-        </button>
-        <button
-          type="button"
+          loading={isFetching}
+          ariaLabel={t('extractionTasks.action.refreshList', '刷新提取任务')}
+        />
+        <CreateButton
+          label={t('extractionTasks.action.create', '新建任务')}
           onClick={() => navigate('/extraction/tasks/new')}
-          className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
-          style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
-        >
-          <Plus size={12} /> {t('extractionTasks.action.create', '新建任务')}
-        </button>
-      </div>,
+        />
+      </Toolbar>,
     )
     return () => setTopBarActions(null)
   }, [setTopBarActions, refetch, isFetching, navigate, keyword, statusFilter, typeFilter])
@@ -220,41 +210,9 @@ export default function ExtractionTasks() {
       return () => setContextPanel(null)
     }
 
-    setContextPanel({
-      title: (
-        <div className="flex items-center gap-1.5">
-          <Workflow size={12} style={{ color: 'var(--text-3)' }} />
-          {t('extractionTasks.context.title', '提取任务')}
-        </div>
-      ),
-      subtitle: t('extractionTasks.context.overview', '任务列表概览'),
-      body: (
-        <div className="space-y-4 px-4 py-4">
-          <section>
-            <CtxLabel>{t('extractionTasks.context.scale', '规模')}</CtxLabel>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <StatCard label={t('extractionTasks.stats.total', '总计')} value={stats.total} />
-              <StatCard label={t('extractionTasks.stats.active', '启用')} value={stats.active} tone="success" />
-              <StatCard label={t('extractionTasks.stats.running', '运行中')} value={stats.running} tone={stats.running ? 'accent' : 'neutral'} />
-              <StatCard label={t('extractionTasks.stats.failed', '失败')} value={stats.failed} tone={stats.failed ? 'danger' : 'neutral'} />
-            </div>
-          </section>
-          <section>
-            <CtxLabel>{t('extractionTasks.context.shortcuts', '快捷操作')}</CtxLabel>
-            <div className="mt-2 space-y-1.5 text-xs">
-              <button type="button" onClick={() => navigate('/extraction/tasks/new')} className="flex w-full rounded-md px-2 py-1 text-left" style={{ color: 'var(--text-2)' }}>
-                + {t('extractionTasks.action.create', '新建任务')}
-              </button>
-              <button type="button" onClick={() => navigate('/extraction/runs')} className="flex w-full rounded-md px-2 py-1 text-left" style={{ color: 'var(--text-2)' }}>
-                {t('extractionTasks.action.viewRuns', '查看执行记录')}
-              </button>
-            </div>
-          </section>
-        </div>
-      ),
-    })
+    setContextPanel(null)
     return () => setContextPanel(null)
-  }, [executePendingId, handleExecute, navigate, openInTab, selectedRow, setContextPanel, stats])
+  }, [executePendingId, handleExecute, openInTab, selectedRow, setContextPanel])
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
@@ -266,9 +224,10 @@ export default function ExtractionTasks() {
 
       <div className="relative flex-1 overflow-hidden">
         {isLoading ? <SkeletonRows /> : isError ? (
-          <ErrorState
+          <RetryState
             message={error instanceof Error ? error.message : t('extractionTasks.state.loadFailed', '加载失败')}
             onRetry={() => refetch()}
+            retryAriaLabel={t('extractionTasks.action.retry', '重试加载提取任务')}
           />
         ) : rows.length === 0 ? (
           <EmptyState />
@@ -350,20 +309,6 @@ function TaskTable({
   )
 }
 
-function CtxLabel({ children }: { children: React.ReactNode }) {
-  return <div className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>{children}</div>
-}
-
-function StatCard({ label, value, tone = 'neutral' }: { label: React.ReactNode; value: number; tone?: string }) {
-  const color = tone === 'success' ? 'var(--success)' : tone === 'danger' ? 'var(--danger)' : tone === 'accent' ? 'var(--accent)' : 'var(--text-1)'
-  return (
-    <div className="rounded-md border px-2 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
-      <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>{label}</div>
-      <div className="text-base font-semibold tabular-nums" style={{ color }}>{value}</div>
-    </div>
-  )
-}
-
 function SkeletonRows() {
   return (
     <div className="space-y-px">
@@ -374,17 +319,6 @@ function SkeletonRows() {
           ))}
         </div>
       ))}
-    </div>
-  )
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-2">
-      <p className="text-xs" style={{ color: 'var(--danger)' }}>{message}</p>
-      <button type="button" onClick={onRetry} className="rounded-md border px-3 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
-        {t('extractionTasks.action.retry', '重试')}
-      </button>
     </div>
   )
 }

@@ -6,8 +6,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ExternalLink, Play, RefreshCcw, Trash2 } from 'lucide-react'
+import { ArrowLeft, Edit3, ExternalLink, PauseCircle, Play, PlayCircle, Trash2 } from 'lucide-react'
 import { Chip, Dialog, Input, Skeleton, Switch, useToast } from '@v2/components/ui'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { RefreshButton } from '@v2/components/CommonControls'
 import { t } from '@v2/i18n'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import {
@@ -23,6 +25,7 @@ import {
   SubscriptionDetailContent,
   SubscriptionContextBody,
 } from '../_shared/subscription-content'
+import { eventTypeLabel } from '../_shared/event-labels'
 
 // TODO: 等待 X-Crosscut 提供 useAppShell 布局 hook —— 当前用 document.title 占位
 // import { useAppShell } from '@v2/layout/AppShell'
@@ -49,6 +52,7 @@ export default function SubscriptionDetail() {
   const {
     data: historyData,
     isLoading: historyLoading,
+    isFetching: historyFetching,
     refetch: refetchHistory,
   } = useSubscriptionHistory(numericId)
 
@@ -173,53 +177,36 @@ export default function SubscriptionDetail() {
               </p>
             </div>
             {/* 顶栏操作（Tabs 移到 header 底部） */}
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
+            <div className="flex shrink-0 items-center gap-1.5">
+              <ActionIconButton
+                label={t('subscription.action.triggerFull', '立即触发此订阅')}
+                icon={Play}
+                variant="primary"
                 onClick={handleTrigger}
-                className="inline-flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
-                aria-label={t('subscription.action.triggerShort', '触发')}
-              >
-                <Play size={11} aria-hidden />
-                {t('subscription.action.triggerShort', '触发')}
-              </button>
-              <button
-                type="button"
+              />
+              <ActionIconButton
+                label={subscription.enabled ? t('subscription.action.pause', '停用') : t('subscription.action.enable', '启用')}
+                icon={subscription.enabled ? PauseCircle : PlayCircle}
+                loading={updateMutation.isPending}
                 onClick={() => void handleToggle()}
-                disabled={updateMutation.isPending}
-                className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                {subscription.enabled
-                  ? t('subscription.action.pause', '停用')
-                  : t('subscription.action.enable', '启用')}
-              </button>
-              <button
-                type="button"
+              />
+              <ActionIconButton
+                label={t('subscription.action.viewChannel', '查看渠道')}
+                icon={ExternalLink}
                 onClick={() => navigate(`/config/channels/${subscription.channel_id}`)}
-                className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                <ExternalLink size={11} aria-hidden />
-                {t('subscription.action.channelShort', '渠道')}
-              </button>
-              <button
-                type="button"
+              />
+              <ActionIconButton
+                label={t('common.edit', '编辑')}
+                icon={Edit3}
                 onClick={() => setEditing(true)}
-                className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                {t('common.edit', '编辑')}
-              </button>
-              <button
-                type="button"
+              />
+              <ActionIconButton
+                label={t('common.delete', '删除')}
+                icon={Trash2}
+                variant="danger"
+                loading={deleteMutation.isPending}
                 onClick={() => void handleDelete()}
-                disabled={deleteMutation.isPending}
-                className="inline-flex items-center gap-1 rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/20"
-              >
-                <Trash2 size={11} aria-hidden />
-                {t('common.delete', '删除')}
-              </button>
+              />
             </div>
           </div>
         </header>
@@ -261,7 +248,8 @@ export default function SubscriptionDetail() {
               items={historyData?.items ?? []}
               total={historyData?.total ?? 0}
               isLoading={historyLoading}
-              onRefresh={() => void refetchHistory()}
+              isRefreshing={historyFetching}
+              onRefresh={() => refetchHistory()}
             />
           )}
         </div>
@@ -416,12 +404,14 @@ function HistoryTab({
   items,
   total,
   isLoading,
+  isRefreshing,
   onRefresh,
 }: {
   items: SubscriptionHistoryItem[]
   total: number
   isLoading: boolean
-  onRefresh: () => void
+  isRefreshing: boolean
+  onRefresh: () => unknown
 }) {
   if (isLoading) {
     return (
@@ -437,14 +427,11 @@ function HistoryTab({
         <span className="text-xs" style={{ color: 'var(--text-3)' }}>
           {t('subscriptionDetail.history.count', '共 {n} 条记录', { n: total })}
         </span>
-        <button
-          type="button"
+        <RefreshButton
           onClick={onRefresh}
-          className="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs"
-          style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-        >
-          <RefreshCcw size={11} /> {t('action.refresh', '刷新')}
-        </button>
+          loading={isRefreshing}
+          ariaLabel={t('subscriptionDetail.history.refresh', '刷新触发历史')}
+        />
       </div>
 
       {items.length === 0 ? (
@@ -482,7 +469,7 @@ function HistoryTab({
                     <HistoryStatusChip status={item.status} />
                   </td>
                   <td className="px-3 py-2" style={{ color: 'var(--text-3)' }}>
-                    {item.event_type ?? '—'}
+                    <span title={item.event_type ?? undefined}>{eventTypeLabel(item.event_type)}</span>
                   </td>
                   <td className="max-w-xs truncate px-3 py-2" style={{ color: 'var(--text-2)' }}>
                     {item.message ?? '—'}

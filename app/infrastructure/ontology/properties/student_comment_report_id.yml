@@ -1,0 +1,8 @@
+name: student_comment_report_id
+title: 举报记录ID，举报事实主键
+object_name: student_comment
+property_type: number
+description: 举报记录ID，举报事实主键
+aliases:
+- report_id
+status: active

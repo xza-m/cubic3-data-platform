@@ -44,13 +44,6 @@ def _register_all_models():
     from app.domain.entities.app_execution import AppExecution               # noqa
     from app.domain.entities.config.channel import Channel                   # noqa
     from app.domain.entities.config.subscription import Subscription         # noqa
-    from app.domain.entities.user_preferences import UserPreferences         # noqa  B-back-1
-    from app.infrastructure.users.models import (                                # noqa  W4.D-2
-        UserORM,
-        RoleORM,
-        UserRoleORM,
-        UserPasswordORM,
-    )
     from app.infrastructure.governance.models import GovernanceAuditTraceORM  # noqa
     from app.infrastructure.query_execution.models import (  # noqa
         QueryExecutionJobORM,

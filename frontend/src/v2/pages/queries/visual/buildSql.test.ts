@@ -94,6 +94,10 @@ describe('quoteTable', () => {
     expect(quoteTable('public.orders')).toBe('public.orders')
     expect(quoteTable('my schema.orders')).toBe('"my schema".orders')
   })
+  it('project.schema.table 不丢失末段表名', () => {
+    expect(quoteTable('dw.public.orders')).toBe('dw.public.orders')
+    expect(quoteTable('dw.my schema.orders')).toBe('dw."my schema".orders')
+  })
 })
 
 describe('literalFor', () => {
