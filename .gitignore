@@ -17,6 +17,8 @@ lib/
 !frontend/src/lib/**
 !frontend/src/legacy/lib/
 !frontend/src/legacy/lib/**
+!frontend/src/v2/lib/
+!frontend/src/v2/lib/**
 lib64/
 parts/
 sdist/
