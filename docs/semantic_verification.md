@@ -17,7 +17,7 @@ last_reviewed: 2026-05-05
 4. 层 4：浏览器关键路径烟测
 
 ## 服务就绪要求
-执行浏览器烟测前，确保以下服务可用：
+执行领域创建 / 发布浏览器烟测前，确保以下服务可用：
 
 - 前端开发服务：`http://127.0.0.1:3000`
 - 后端 API 与代理已刷新到最新代码
@@ -57,9 +57,10 @@ make smoke-semantic
 Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-layout` 目标已经移除。当前 v2 浏览器覆盖分为两类：
 
 - 默认前端 smoke：`make smoke-frontend`，底层为 `npm run e2e:smoke`，覆盖 v2 cutover 的低副作用关键路径。
-- 语义专项 smoke：`make smoke-semantic`，覆盖领域创建、领域发布与 Cube 草稿三条真实链路。
+- 语义专项 smoke：`make smoke-semantic`，覆盖领域创建、领域发布两条有状态真实链路，以及 P34 Modeling Copilot 对话闭环。
 - 建模助手 Agent 专项：`make test-modeling-agent`，覆盖 `spec-draft -> draft-from-spec -> validate -> agent-ready-check -> apply -> publish` 的后端最小链路、`Domain context-preview` 上下文预览，以及 `/semantic/modeling-agent/new` 顶层任务流。
-- Agent-first Runtime 专项：后端单测覆盖 `/api/v1/agent/semantic/plan` 固定 `runtime_mode=official`、official 只命中 active Ontology、Glossary canonical entity 必须 active、Mapper 稳定 Binding 输出、stale measure 与非 active Cube 编译阻断。
+- Agent-first Runtime 专项：后端单测覆盖 `/api/v1/agent/semantic/plan` 固定 `runtime_mode=official`、official 只命中 active Ontology、Glossary canonical entity 必须 active、Mapper 稳定 Binding 输出、stale measure 与非 active Cube 编译阻断；学生评论真实资产回归覆盖 `Ontology -> Binding -> QueryDSL -> SQL`，要求“最近 N 天”时间过滤和“按学校汇总”维度分组进入最终 SQL。
+- Modeling Copilot 后端回归：`tests/unit/application/semantic/test_source_candidate_recall_service.py` 覆盖学生评论查询优先召回 `dwd_interaction_comment_reports_df`，避免被 `view_student_answer_analysis` 这类答题视图抢占；`tests/unit/application/semantic/test_modeling_copilot_service.py` 覆盖历史坏样本的确认来源、spec repair、保存 Proposal 和发布前校验阻塞解释。
 
 补充的 mock 型 v2 E2E 用例位于 `frontend/tests/e2e-v2/`，包括：
 
@@ -67,24 +68,27 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - `p25-domain-catalog-smoke.spec.ts`：Domain 目录首屏。
 - `p26-ontology-workbench-smoke.spec.ts`：`/semantic/ontology` 工作台结构。
 - `p29-legacy-redirect-smoke.spec.ts`：语义旧入口重定向。
+- `p34-modeling-agent-smoke.spec.ts`：Modeling Copilot 从业务问题到口径确认、Spec 编辑、应用语义、确认发布的闭环；同时覆盖没有可复用 Cube 时的候选来源确认 -> 确定性生成 Spec 分支。
 
 底层 `make smoke-semantic` 会继续执行：
 
 1. `npm run e2e:domain-smoke`
 2. `npm run e2e:domain-publish-smoke`
-3. `npm run e2e:cube-draft-smoke`
+3. `npm run e2e:modeling-agent-smoke`
 
 ## 状态契约
 
-`make smoke-semantic` 不是默认仓库 smoke，而是语义专项、有状态 smoke：
+`make smoke-semantic` 不是默认仓库 smoke，而是语义专项 smoke：
 
-- 会创建或更新草稿、测试数据和语义资产
-- 依赖前端开发服务、最新后端代码和可写语义目录
+- `domain-smoke` / `domain-publish-smoke` 会创建或更新草稿、测试数据和语义资产
+- `domain-smoke` / `domain-publish-smoke` 依赖前端开发服务、最新后端代码和可写语义目录
 - 依赖真实后端 JWT：默认用 `DOMAIN_SMOKE_USERNAME` / `DOMAIN_SMOKE_PASSWORD`
   登录 `/api/v1/auth/login` 获取；也可显式设置 `DOMAIN_SMOKE_AUTH_TOKEN`
 - 默认使用 `http://127.0.0.1:3102` 作为临时前端端口，避免占用日常开发的
   `3000`；如需复用已有前端服务，可设置 `SEMANTIC_SMOKE_USE_EXISTING_SERVER=1`
-- 不承诺 hermetic，也不保证对工作区和数据零副作用
+- `modeling-agent-smoke` 使用 `frontend/tests/e2e-v2/p34-modeling-agent-smoke.spec.ts` 的 Playwright mock API 闭环，默认由 v2 Playwright 配置启动临时 Vite 服务，不写入后端或语义目录
+- 发布前需要真实后端证据时，可显式运行 `npm run e2e:modeling-agent-smoke:live`；该入口会创建 session、保存 Proposal 并发布语义资产，不进入默认 smoke
+- 整个入口不承诺 hermetic，也不保证领域 smoke 对工作区和数据零副作用
 - 只应在语义关键路径改动时作为交付门禁运行
 
 如果你需要可回收结果，优先在独立测试环境、临时数据空间或可清理本地环境中执行。
@@ -102,13 +106,25 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - 发布业务上下文 YAML
 - 校验状态变为 `active`
 
-### 3. `cube-draft-smoke`
-- 打开业务语义 / Cube 草稿链路
-- 从物理表结构中选择表
-- 生成 Cube 草稿
-- 保存为 Draft Cube，并按当前 v2 路由进入对应语义开发上下文
+### 3. `modeling-agent-smoke`
+- 打开 `/semantic/modeling-agent/new`
+- 从“查询最近 7 天学生评论数，按学校汇总”业务问题进入 Copilot 对话流
+- 校验已有语义资产召回、口径确认、Spec 编辑、应用语义、确认发布和发布后验收提示
+- 校验没有可复用 Cube 时的候选来源确认与确定性生成 Spec 分支；学生评论候选源应稳定落到 `df_cb_258187.dwd_interaction_comment_reports_df`
 
-注意：`frontend/tests/e2e/cube_draft_smoke.py` 当前仍以 `/semantic/workbench?cube=...` 作为草稿后续上下文；该路径在 v2 中是诊断工作台。后续应把该 smoke 对齐到 Cube 创建/编辑真实页面，或明确把它降级为诊断链路验证。
+legacy `frontend/tests/e2e/cube_draft_smoke.py` 不再作为语义专项交付门禁。它仍可保留为诊断页手工回归参考，但不再代表当前 Modeling Copilot 产品闭环。
+
+### 发布前 live 补证
+
+`npm run e2e:modeling-agent-smoke:live` 使用 `frontend/tests/e2e-v2/p34-modeling-agent-live.spec.ts` 走真实后端：
+
+- 登录真实后端并创建 Modeling Copilot session
+- 发送学生评论业务问题；默认会在问题中显式带上 `df_cb_258187.dwd_interaction_comment_reports_df`，避免候选召回误选其它学生相关数据源
+- 若已有 Cube 可复用则要求 trace 命中 `deterministic.fast_path`，若当前环境只召回候选来源则先确认评论事实表来源再要求 `generate_semantic_draft`
+- 依次执行接受 Cube 草稿、沙盒预演、保存 Proposal、发布语义
+- 打开真实 session 页面确认发布态可见
+
+该入口有状态、有写入，不纳入默认 `make smoke-semantic`；建议只在发布前、语义后端契约变更或需要证明真实链路时运行。
 
 ## 说明
 - 浏览器烟测使用 `playwright-cli`

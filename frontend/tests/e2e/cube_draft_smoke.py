@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+# LEGACY DIAGNOSTIC ONLY:
+# 该 smoke 已从 `make smoke-semantic` 交付门禁下线。它仍可用于手工验证
+# `/semantic/workbench` 诊断页的旧 Cube 草稿链路，但不代表当前 Modeling
+# Copilot 产品闭环。当前交付门禁见 `frontend/tests/e2e-v2/p34-modeling-agent-smoke.spec.ts`。
+
 import sys
 import time
 

@@ -13,7 +13,8 @@
 
 | 能力 | v2 承接 |
 |---|---|
-| Cube 草稿链路 | `frontend/tests/e2e/cube_draft_smoke.py`（`make smoke-semantic` 调用）|
+| Modeling Copilot 闭环 | `frontend/tests/e2e-v2/p34-modeling-agent-smoke.spec.ts`（`make smoke-semantic` 第三段调用）|
+| Modeling Copilot 真实后端补证 | `frontend/tests/e2e-v2/p34-modeling-agent-live.spec.ts`（`npm run e2e:modeling-agent-smoke:live`，发布前 opt-in）|
 | Domain 创建 | `frontend/tests/e2e/domain_creation_smoke.py` |
 | Domain 发布 | `frontend/tests/e2e/domain_publish_smoke.py` + `frontend/tests/e2e-v2/p07-domain-publish.spec.ts` |
 | Ontology 操作 | `p04-ontology-object-validation`、`p05-ontology-metric-dryrun`、`p06-ontology-relations`、`p19-ontology-object-search` |
