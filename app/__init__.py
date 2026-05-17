@@ -47,6 +47,7 @@ from .interfaces.api.v1.semantic_router import create_semantic_router_blueprint
 from .interfaces.api.v1.execution_compiler import create_execution_compiler_blueprint
 from .interfaces.api.v1.governance import create_governance_blueprint
 from .interfaces.api.v1.agent import create_agent_blueprint
+from .interfaces.api.v1.query_execution import create_query_execution_blueprint
 from .interfaces.api.v1.scheduled_queries import bp as scheduled_queries_v1_bp
 
 from .infrastructure.scheduler import init_jobs
@@ -110,6 +111,11 @@ def create_app(role: str = "web") -> Flask:
     from .domain.entities.user_preferences import UserPreferences  # noqa  B-back-1
     from .infrastructure.users.models import UserORM, RoleORM, UserRoleORM, UserPasswordORM  # noqa  W4.D-2
     from .infrastructure.governance.models import GovernanceAuditTraceORM  # noqa
+    from .infrastructure.query_execution.models import (  # noqa
+        QueryExecutionJobORM,
+        QueryExecutionEventORM,
+        QueryResultObjectORM,
+    )
 
     # 注册执行器（worker 执行任务时需要）
     from .executors import register_all_executors
@@ -181,6 +187,11 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_agent_blueprint(
             container.agent_plan_handler(),
+            container.agent_semantic_execute_service(),
+        ))
+        app.register_blueprint(create_query_execution_blueprint(
+            container.query_submission_service(),
+            container.query_result_service(),
         ))
         app.register_blueprint(create_governance_blueprint(
             container.ontology_audit_trace_repository(),

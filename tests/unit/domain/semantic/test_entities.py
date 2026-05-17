@@ -8,7 +8,6 @@ from app.domain.semantic.entities import (
     DefaultFilterDef,
     DimensionDef,
     DomainDefinition,
-    DomainJoinDef,
     FilterDef,
     JoinDef,
     MeasureDef,
@@ -273,36 +272,23 @@ class TestQueryDSL:
 
 class TestDomainEntities:
 
-    def test_domain_join_is_legacy_inert_field(self):
-        join = DomainJoinDef(
-            name="student_to_orders",
-            source_cube="student",
-            target_cube="orders",
-            source_field="student_id",
-            target_field="student_id",
-            cardinality="1:N",
-        )
-
-        assert join.aggregation_strategy == "none"
-
-    def test_domain_definition_normalizes_id_and_accepts_legacy_joins(self):
+    def test_domain_definition_normalizes_id_and_excludes_join_semantics(self):
         domain = DomainDefinition(
             code="learning",
             name="学习域",
             cubes=["student", "orders"],
-            joins=[
-                {
-                    "name": "student_orders",
-                    "source_cube": "student",
-                    "target_cube": "orders",
-                    "source_field": "student_id",
-                    "target_field": "student_id",
-                    "cardinality": "N:1",
-                }
-            ],
         )
         assert domain.id == "learning"
-        assert domain.joins[0].name == "student_orders"
+        assert "joins" not in domain.model_dump()
+
+    def test_domain_definition_rejects_join_field(self):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            DomainDefinition(
+                code="learning",
+                name="学习域",
+                cubes=["student", "orders"],
+                joins=[],
+            )
 
     def test_domain_definition_accepts_context_fields_without_join_truth(self):
         domain = DomainDefinition(
@@ -323,7 +309,6 @@ class TestDomainEntities:
         )
 
         assert domain.id == "comment_governance"
-        assert domain.joins == []
         assert domain.ontology_refs["objects"] == ["student_comment"]
         assert domain.default_context["time_dimension"] == "comment_time"
         assert domain.agent_hints["priority_terms"] == ["评论", "举报", "审核"]
@@ -335,23 +320,6 @@ class TestDomainEntities:
                 name="学习域",
                 cubes=["student", "student"],
             )
-
-    def test_domain_definition_does_not_validate_legacy_join_edges(self):
-        duplicate_join = {
-            "name": "student_orders",
-            "source_cube": "student",
-            "target_cube": "orders",
-            "source_field": "student_id",
-            "target_field": "student_id",
-        }
-        domain = DomainDefinition(
-            code="learning",
-            name="学习域",
-            cubes=["student", "orders"],
-            joins=[duplicate_join, {**duplicate_join, "name": "student_orders_2"}],
-        )
-
-        assert [join.name for join in domain.joins] == ["student_orders", "student_orders_2"]
 
     def test_catalog_definition_defaults(self):
         catalog = CatalogDefinition(code="learning", name="学习分析")

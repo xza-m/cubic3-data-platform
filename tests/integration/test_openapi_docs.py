@@ -37,6 +37,21 @@ def test_openapi_json_exposes_agent_ready_contracts(client):
             "side_effect": "none",
             "risk": "low",
         },
+        ("/api/v1/agent/semantic/execute", "post"): {
+            "operationId": "AgentSemanticExecute",
+            "side_effect": "execute",
+            "risk": "high",
+        },
+        ("/api/v1/query-execution/jobs", "post"): {
+            "operationId": "QueryExecutionJobSubmit",
+            "side_effect": "execute",
+            "risk": "high",
+        },
+        ("/api/v1/query-execution/jobs/{query_id}", "get"): {
+            "operationId": "QueryExecutionJobGet",
+            "side_effect": "none",
+            "risk": "medium",
+        },
     }
 
     for (path, method), expected in core_operations.items():
@@ -73,3 +88,30 @@ def test_openapi_agent_plan_is_stable_official_runtime_contract(client):
     data_schema = _response_data_schema(agent_operation)
     properties = data_schema["properties"]
     assert {"runtime_mode", "business_intent", "projection_result", "resolved_bindings", "semantic_trace"} <= set(properties)
+
+
+def test_openapi_agent_execute_and_query_execution_are_stable_contracts(client):
+    response = client.get("/api/docs/openapi.json")
+    assert response.status_code == 200
+    spec = response.get_json()
+
+    execute_operation = spec["paths"]["/api/v1/agent/semantic/execute"]["post"]
+    assert execute_operation["operationId"] == "AgentSemanticExecute"
+    assert execute_operation["x-agent-contract-status"] == "stable"
+    assert execute_operation["x-side-effect"] == "execute"
+    assert execute_operation["x-agent-risk"] == "high"
+    assert execute_operation["x-requires-confirmation"] is False
+    assert "真实查询执行任务" in execute_operation["description"]
+    execute_properties = _response_data_schema(execute_operation)["properties"]
+    assert {"status", "query_id", "poll_url", "result_url", "semantic_trace"} <= set(execute_properties)
+
+    submit_operation = spec["paths"]["/api/v1/query-execution/jobs"]["post"]
+    assert submit_operation["operationId"] == "QueryExecutionJobSubmit"
+    assert submit_operation["x-side-effect"] == "execute"
+    submit_properties = _response_data_schema(submit_operation)["properties"]
+    assert {"query_id", "poll_url", "result_url", "trace_id"} <= set(submit_properties)
+
+    job_operation = spec["paths"]["/api/v1/query-execution/jobs/{query_id}"]["get"]
+    assert job_operation["operationId"] == "QueryExecutionJobGet"
+    job_properties = _response_data_schema(job_operation)["properties"]
+    assert {"query_id", "status", "route_type", "sql_hash"} <= set(job_properties)

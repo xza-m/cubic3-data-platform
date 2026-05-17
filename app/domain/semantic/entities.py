@@ -5,7 +5,7 @@ import hashlib
 import re
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ──────────────────────────────────────────────
@@ -226,6 +226,7 @@ class TimeDimensionDef(BaseModel):
 
 
 class QueryDSL(BaseModel):
+    dsl_version: Literal["v1"] = "v1"
     measures: List[str] = Field(default_factory=list)
     dimensions: List[str] = Field(default_factory=list)
     filters: List[FilterDef] = Field(default_factory=list)
@@ -238,33 +239,6 @@ class QueryDSL(BaseModel):
     domain_code: Optional[str] = None
 
 
-# ──────────────────────────────────────────────
-# Domain / 业务上下文与资产组织
-# ──────────────────────────────────────────────
-
-class DomainJoinDef(BaseModel):
-    """历史 Domain YAML 兼容字段。
-
-    Domain 已收窄为业务上下文和资产组织对象，不再承载 Join 语义。
-    关系执行语义归 Cube.joins，业务关系语义归 Ontology。
-    """
-
-    name: str
-    source_cube: str
-    target_cube: str
-    source_field: str
-    target_field: str
-    join_type: Literal["left", "inner", "right", "full"] = "left"
-    cardinality: Literal["1:1", "N:1", "1:N"] = "N:1"
-    aggregation_strategy: Literal[
-        "none",
-        "aggregate_before_join",
-        "latest_snapshot",
-        "distinct_on_target",
-    ] = "none"
-    description: Optional[str] = None
-
-
 class CatalogDefinition(BaseModel):
     code: str
     name: str
@@ -274,6 +248,8 @@ class CatalogDefinition(BaseModel):
 
 
 class DomainDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: Optional[str] = None
     code: str
     name: str
@@ -282,7 +258,6 @@ class DomainDefinition(BaseModel):
     status: Literal["draft", "active", "archived"] = "draft"
     owner: Optional[str] = None
     cubes: List[str] = Field(default_factory=list)
-    joins: List[DomainJoinDef] = Field(default_factory=list)
     ontology_refs: Dict[str, Any] = Field(default_factory=dict)
     default_context: Dict[str, Any] = Field(default_factory=dict)
     agent_hints: Dict[str, Any] = Field(default_factory=dict)

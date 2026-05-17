@@ -157,7 +157,6 @@ class DomainCanvasService:
             "active_cube_count": 0,
             "draft_cube_count": 0,
             "deprecated_cube_count": 0,
-            "join_count": 0,
             "dangling_cube_count": 0,
         }
         for cube_name in domain.cubes:

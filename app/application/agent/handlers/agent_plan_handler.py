@@ -91,6 +91,8 @@ class AgentPlanHandler:
             retrieval_sources=target.get("retrieval_sources"),
             tool_name=target.get("tool_name"),
             tool_arguments=target.get("tool_arguments"),
+            analysis_intent=target.get("analysis_intent"),
+            query_dsl=target.get("query_dsl"),
             principal_context=principal_context,
             viewer_roles=viewer_roles,
         )
@@ -146,7 +148,7 @@ class AgentPlanHandler:
             "semantic_trace": semantic_trace,
             "runtime_options": runtime_options,
             "explain": {
-                "agent_plan_handler": "应用层编排器，仅串联 principal、policy、router、compiler 与 ticket preview",
-                "ticket": "Phase 1 只生成 preview_only ticket，不可执行",
+                "agent_plan_handler": "应用层编排器，生成 official Runtime 规划、Binding、编译目标与治理材料",
+                "ticket": "/semantic/plan 只返回 preview_only ticket；真实执行由 /semantic/execute 生成可审计查询任务",
             },
         }

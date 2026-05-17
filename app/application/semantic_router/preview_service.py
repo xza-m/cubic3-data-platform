@@ -279,12 +279,14 @@ class SemanticRouterPreviewService:
             action_match_source=action_match_source,
             object_match_source=object_match_source,
         )
+        analysis_intent = self._extract_analysis_intent(question=question, matched_metric=matched_metric)
         execution_targets = self._build_execution_targets(
             question=question,
             targets=targets,
             matched_metric=matched_metric,
             matched_action=matched_action,
             matched_object=effective_matched_object,
+            analysis_intent=analysis_intent,
         )
         projection_result = self._projection_result_from_preview(projection_preview)
         business_intent = {
@@ -292,6 +294,7 @@ class SemanticRouterPreviewService:
             "targets": targets,
             "matched_entities": matched_entities,
             "primary_match": primary_entity,
+            "analysis_intent": analysis_intent,
         }
 
         return {
@@ -490,6 +493,8 @@ class SemanticRouterPreviewService:
                 retrieval_sources=target.get("retrieval_sources"),
                 tool_name=target.get("tool_name"),
                 tool_arguments=target.get("tool_arguments"),
+                analysis_intent=target.get("analysis_intent"),
+                query_dsl=target.get("query_dsl"),
                 viewer_roles=viewer_roles or [],
                 principal_context=principal_context,
             )
@@ -705,7 +710,9 @@ class SemanticRouterPreviewService:
         matched_metric: Optional[BusinessMetric],
         matched_action: Optional[BusinessAction],
         matched_object: Optional[BusinessObject],
+        analysis_intent: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
+        analysis_intent = analysis_intent or {}
         execution_targets: List[Dict[str, Any]] = []
         if "cube" in targets and matched_metric is not None:
             execution_targets.append(
@@ -713,6 +720,7 @@ class SemanticRouterPreviewService:
                     "target_key": f"metric:{matched_metric.name}:sql",
                     "target_type": "sql",
                     "metric_name": matched_metric.name,
+                    "analysis_intent": analysis_intent,
                     "reason": "业务指标映射到可执行 Measure",
                 }
             )
@@ -756,6 +764,42 @@ class SemanticRouterPreviewService:
                     }
                 )
         return execution_targets
+
+    @staticmethod
+    def _extract_analysis_intent(*, question: str, matched_metric: Optional[BusinessMetric]) -> Dict[str, Any]:
+        intent: Dict[str, Any] = {
+            "dimension_terms": [],
+            "filters": [],
+            "segments": [],
+        }
+        dimension_terms: list[str] = []
+        for pattern in (r"按(.+?)(?:汇总|统计|分组|分布|排行|排名)", r"各(.+?)(?:的|学生|评论|数量|数|情况)"):
+            for match in re.finditer(pattern, question):
+                term = match.group(1).strip()
+                term = re.sub(r"^(个|每个)", "", term)
+                if term and term not in dimension_terms:
+                    dimension_terms.append(term)
+        if "学校" in question and not any("学校" in term for term in dimension_terms):
+            dimension_terms.append("学校")
+        if dimension_terms:
+            intent["dimension_terms"] = dimension_terms
+
+        recent_days = re.search(r"最近\s*(\d+)\s*天", question)
+        if recent_days:
+            intent["time_window"] = {
+                "type": "last_n_days",
+                "n": int(recent_days.group(1)),
+            }
+
+        if matched_metric is not None and (dimension_terms or any(token in question for token in ("排行", "排名", "top", "Top", "TOP"))):
+            intent["order_by"] = [
+                {
+                    "term": matched_metric.title or matched_metric.name,
+                    "direction": "desc",
+                }
+            ]
+            intent["limit"] = 100
+        return intent
 
     def _match_metric(self, question: str, runtime_mode: str | None = None) -> Tuple[Optional[BusinessMetric], Optional[str]]:
         runtime_mode = self._normalize_runtime_mode(runtime_mode)

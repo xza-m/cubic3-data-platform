@@ -2,6 +2,8 @@
 依赖注入容器
 使用 dependency-injector 管理应用依赖
 """
+import os
+
 from dependency_injector import containers, providers
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -174,6 +176,15 @@ from app.application.query.handlers.query_export_handlers import (
 )
 from app.application.query.services.query_export_service import QueryExportService
 from app.infrastructure.repositories.query_export_repository import QueryExportRepository
+from app.application.query_execution.agent_execute_service import AgentSemanticExecuteService
+from app.application.query_execution.result_service import QueryResultService
+from app.application.query_execution.sql_guard import SqlGuard
+from app.application.query_execution.submission_service import QuerySubmissionService
+from app.application.query_execution.ticket_service import ExecutionTicketService
+from app.application.query_execution.worker_service import QueryExecutionWorkerService
+from app.infrastructure.query_execution.adapters.maxcompute_adapter import DataSourceWarehouseExecutionAdapter
+from app.infrastructure.query_execution.repositories import QueryExecutionRepository
+from app.infrastructure.query_execution.result_store import LocalSpoolResultStore
 from app.application.query.handlers.template_handlers import (
     ListTemplatesHandler,
     CreateTemplateHandler,
@@ -627,6 +638,61 @@ class Container(containers.DeclarativeContainer):
         access_policy_service=access_policy_service,
         router_service=semantic_router_preview_service,
         compiler_service=execution_compiler_preview_service,
+    )
+
+    query_execution_repository = providers.Factory(
+        QueryExecutionRepository,
+        session=db_session,
+    )
+
+    query_execution_sql_guard = providers.Singleton(
+        SqlGuard,
+        default_limit=config.query_execution.default_limit,
+    )
+
+    query_execution_ticket_service = providers.Singleton(
+        ExecutionTicketService,
+        default_ttl_seconds=config.query_execution.ticket_ttl_seconds,
+    )
+
+    query_execution_result_store = providers.Singleton(
+        LocalSpoolResultStore,
+        spool_dir=config.query_execution.spool_dir,
+        max_preview_rows=config.query_execution.max_preview_rows,
+        max_result_bytes=config.query_execution.max_result_bytes,
+    )
+
+    query_submission_service = providers.Factory(
+        QuerySubmissionService,
+        repository=query_execution_repository,
+        sql_guard=query_execution_sql_guard,
+        ticket_service=query_execution_ticket_service,
+    )
+
+    query_result_service = providers.Factory(
+        QueryResultService,
+        repository=query_execution_repository,
+    )
+
+    query_execution_adapter = providers.Factory(
+        DataSourceWarehouseExecutionAdapter,
+        datasource_repository=datasource_repository,
+    )
+
+    query_execution_worker_service = providers.Factory(
+        QueryExecutionWorkerService,
+        repository=query_execution_repository,
+        ticket_service=query_execution_ticket_service,
+        adapter=query_execution_adapter,
+        result_store=query_execution_result_store,
+        lease_seconds=config.query_execution.lease_seconds,
+        max_submit_attempts=config.query_execution.max_submit_attempts,
+    )
+
+    agent_semantic_execute_service = providers.Factory(
+        AgentSemanticExecuteService,
+        plan_handler=agent_plan_handler,
+        submission_service=query_submission_service,
     )
 
     semantic_modeling_agent = providers.Singleton(
@@ -1179,6 +1245,15 @@ def init_container(app: Flask) -> Container:
             'api_base': app.config.get('LLM_API_BASE', 'https://api.openai.com/v1'),
             'model': app.config.get('LLM_MODEL', 'gpt-4o-mini'),
             'timeout': app.config.get('LLM_TIMEOUT', 60)
+        },
+        'query_execution': {
+            'spool_dir': os.getenv('QUERY_EXECUTION_SPOOL_DIR', app.config.get('QUERY_EXECUTION_SPOOL_DIR', 'instance/query_execution_results')),
+            'default_limit': int(os.getenv('QUERY_EXECUTION_DEFAULT_LIMIT', app.config.get('QUERY_EXECUTION_DEFAULT_LIMIT', 50000))),
+            'max_preview_rows': int(os.getenv('QUERY_EXECUTION_MAX_PREVIEW_ROWS', app.config.get('QUERY_EXECUTION_MAX_PREVIEW_ROWS', 1000))),
+            'max_result_bytes': int(os.getenv('QUERY_EXECUTION_MAX_RESULT_BYTES', app.config.get('QUERY_EXECUTION_MAX_RESULT_BYTES', 500 * 1024 * 1024))),
+            'ticket_ttl_seconds': int(os.getenv('QUERY_EXECUTION_TICKET_TTL_SECONDS', app.config.get('QUERY_EXECUTION_TICKET_TTL_SECONDS', 300))),
+            'lease_seconds': int(os.getenv('QUERY_EXECUTION_LEASE_SECONDS', app.config.get('QUERY_EXECUTION_LEASE_SECONDS', 300))),
+            'max_submit_attempts': int(os.getenv('QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS', app.config.get('QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS', 3))),
         }
     })
     

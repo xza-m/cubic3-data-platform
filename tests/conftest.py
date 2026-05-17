@@ -52,6 +52,11 @@ def _register_all_models():
         UserPasswordORM,
     )
     from app.infrastructure.governance.models import GovernanceAuditTraceORM  # noqa
+    from app.infrastructure.query_execution.models import (  # noqa
+        QueryExecutionJobORM,
+        QueryExecutionEventORM,
+        QueryResultObjectORM,
+    )
     from app.domain.queries.scheduled_query import ScheduledQuery            # noqa  B-back-8
     from app.domain.queries.scheduled_query_run import ScheduledQueryRun    # noqa  B-back-8
     from app.domain.semantic.diagnose_run import DiagnoseRun                 # noqa  B-back-9
@@ -131,12 +136,20 @@ def app():
 
     with flask_app.app_context():
         db.create_all()
+        try:
+            db.metadata.create_all(bind=flask_app.container.db_engine())
+        except Exception:
+            pass
         yield flask_app
         db.session.remove()
         db.drop_all()
         if hasattr(flask_app, 'container'):
             try:
                 flask_app.container.db_scoped_session().remove()
+            except Exception:
+                pass
+            try:
+                db.metadata.drop_all(bind=flask_app.container.db_engine())
             except Exception:
                 pass
             try:

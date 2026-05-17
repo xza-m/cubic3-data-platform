@@ -503,8 +503,9 @@ def test_execution_compiler_preview_covers_error_and_source_sql_paths(tmp_path):
 
     source_sql_preview = service.compile_metric_preview("gmv_source_sql")
     assert source_sql_preview["status"] == "ready"
-    assert "FROM (\nSELECT * FROM dwd.orders_snapshot\n) AS orders_sql" in source_sql_preview["pseudo_sql"]
-    assert "FROM (\nSELECT * FROM dwd.orders_snapshot\n) AS orders_sql" in source_sql_preview["execution_request"]["sql_query"]
+    assert "FROM (\nSELECT * FROM dwd.orders_snapshot\n) orders_sql" in source_sql_preview["pseudo_sql"]
+    assert "FROM (\nSELECT * FROM dwd.orders_snapshot\n) orders_sql" in source_sql_preview["execution_request"]["sql_query"]
+    assert source_sql_preview["traceability"]["compiler"]["source"] == "query_compiler"
 
     retrieval_preview = service.compile_retrieval_preview(
         retrieval_query="  解释订单口径  ",

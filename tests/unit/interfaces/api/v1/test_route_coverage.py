@@ -1425,7 +1425,6 @@ def test_semantic_routes_cover_file_management_schema_sync_and_error_paths(tmp_p
             'name: 学习域',
             'cubes:',
             '  - orders',
-            'joins: []',
         ]),
         encoding='utf-8',
     )
@@ -1495,7 +1494,7 @@ def test_semantic_routes_cover_file_management_schema_sync_and_error_paths(tmp_p
 
     write_resp = client.put(
         '/api/v1/semantic/files/domains/learning',
-        json={'content': 'code: learning\nname: 学习域\ncubes:\n  - orders\njoins: []\n'},
+        json={'content': 'code: learning\nname: 学习域\ncubes:\n  - orders\n'},
     )
     assert write_resp.status_code == 200
     semantic_service.invalidate_cache.assert_called()
@@ -1745,7 +1744,6 @@ def test_semantic_routes_cover_error_and_validation_variants(monkeypatch, tmp_pa
     domain_modeling_service.get_domain_detail.side_effect = Exception('missing domain')
     domain_modeling_service.update_domain.side_effect = RuntimeError('domain update exploded')
     domain_modeling_service.add_cube.side_effect = RuntimeError('add cube exploded')
-    domain_modeling_service.add_join.side_effect = RuntimeError('add join exploded')
     domain_modeling_service.publish_domain.side_effect = RuntimeError('publish domain exploded')
     domain_modeling_service.validate_domain.return_value = [{'level': 'ok', 'message': 'domain ok'}]
 
@@ -1798,7 +1796,6 @@ def test_semantic_routes_cover_error_and_validation_variants(monkeypatch, tmp_pa
     assert client.put('/api/v1/semantic/domains/learning', json={'name': '学习域'}).status_code == 400
     assert client.get('/api/v1/semantic/domains/learning/canvas').status_code == 404
     assert client.post('/api/v1/semantic/domains/learning/cubes', json={'cube_name': 'orders'}).status_code == 400
-    assert client.post('/api/v1/semantic/domains/learning/joins', json={'source_cube': 'a'}).status_code == 400
     assert client.post('/api/v1/semantic/domains/learning/publish', json={'cubes': ['orders']}).status_code == 400
 
     assert client.post('/api/v1/semantic/views/private_view/materialize', json={'source_id': 1}).status_code == 400
@@ -1826,7 +1823,7 @@ def test_semantic_routes_cover_error_and_validation_variants(monkeypatch, tmp_pa
 
     validate_domain = client.post(
         '/api/v1/semantic/files/domains/learning/validate',
-        json={'content': 'code: learning\nname: 学习域\ncubes:\n  - orders\njoins: []\n'},
+        json={'content': 'code: learning\nname: 学习域\ncubes:\n  - orders\n'},
     )
     assert validate_domain.status_code == 200
     assert validate_domain.get_json()['data']['valid'] is True
@@ -1947,14 +1944,6 @@ def test_semantic_routes_cover_remaining_success_and_not_found_branches():
 
     add_cube_resp = client.post('/api/v1/semantic/domains/learning/cubes', json={'cube_name': 'orders'})
     assert add_cube_resp.status_code == 200
-
-    add_join_resp = client.post(
-        '/api/v1/semantic/domains/learning/joins',
-        json={'source_cube': 'orders', 'target_cube': 'students'},
-    )
-    assert add_join_resp.status_code == 400
-    assert '不再维护 Join' in add_join_resp.get_json()['message']
-    domain_modeling_service.add_join.assert_not_called()
 
 
 def test_feishu_routes_cover_events_p2p_admin_and_card_actions(monkeypatch):

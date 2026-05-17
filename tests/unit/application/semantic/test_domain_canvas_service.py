@@ -78,7 +78,6 @@ def test_get_canvas_returns_nodes_edges_and_library():
         name="学业域",
         catalog_code="learning",
         cubes=["answer_records"],
-        joins=[],
     )
     service = DomainCanvasService(
         domain_repo=_DomainRepo([domain]),
@@ -110,7 +109,6 @@ def test_get_canvas_handles_missing_domain_and_registry_failures():
         name="学业域",
         catalog_code=None,
         cubes=["answer_records", "ghost"],
-        joins=[],
     )
     cube = _cube("answer_records")
     cube.status = "deprecated"
@@ -136,19 +134,6 @@ def test_get_canvas_includes_registry_summaries_without_domain_edges():
         name="学业域",
         catalog_code="learning",
         cubes=["answer_records", "student"],
-        joins=[
-            {
-                "name": "answer_to_student",
-                "source_cube": "answer_records",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-                "description": "答题关联学生",
-            }
-        ],
     )
     registry = _RegistryRepo(
         {
@@ -176,7 +161,6 @@ def test_get_canvas_uses_default_catalog_name_for_blank_catalog_code():
         name="学业域",
         catalog_code="  ",
         cubes=["answer_records"],
-        joins=[],
     )
     service = DomainCanvasService(
         domain_repo=_DomainRepo([domain]),
@@ -196,25 +180,12 @@ def test_get_canvas_includes_governance_summary_and_related_domain_projections()
             name="学业域",
             catalog_code="learning",
             cubes=["orders", "users"],
-            joins=[
-                {
-                    "name": "orders_to_users",
-                    "source_cube": "orders",
-                    "target_cube": "users",
-                    "source_field": "user_id",
-                    "target_field": "id",
-                    "join_type": "left",
-                    "cardinality": "N:1",
-                    "aggregation_strategy": "none",
-                }
-            ],
         ),
         DomainDefinition(
             code="teaching",
             name="教学域",
             catalog_code="learning",
             cubes=["orders"],
-            joins=[],
         ),
     ]
     orders = _cube("orders")
@@ -236,7 +207,6 @@ def test_get_canvas_includes_governance_summary_and_related_domain_projections()
         "active_cube_count": 1,
         "draft_cube_count": 1,
         "deprecated_cube_count": 0,
-        "join_count": 0,
         "dangling_cube_count": 0,
     }
     assert orders_node["related_domain_ids"] == ["academic", "teaching"]
@@ -257,7 +227,6 @@ def test_domain_canvas_projection_index_deduplicates_duplicate_cube_refs():
             "name": "学业域",
             "catalog_code": "learning",
             "cubes": ["orders", "orders"],
-            "joins": [],
         },
     )()
     service = DomainCanvasService(

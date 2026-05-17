@@ -62,7 +62,6 @@ class DomainModelingService:
                     "status": domain.status,
                     "owner": domain.owner,
                     "cube_count": len(domain.cubes),
-                    "join_count": 0,
                     "state_summary": summary,
                 }
             )
@@ -156,7 +155,6 @@ class DomainModelingService:
     def get_domain_detail(self, domain_id: str) -> Dict[str, Any]:
         domain = self.get_domain(domain_id)
         payload = domain.model_dump(mode="json")
-        payload["joins"] = []
         return {
             **payload,
             **{
@@ -220,6 +218,7 @@ class DomainModelingService:
         }
 
     def create_domain(self, payload: Dict[str, Any]) -> DomainDefinition:
+        self._reject_join_payload(payload)
         name = str(payload.get("name", "")).strip()
         if not name:
             raise ApplicationException("创建领域失败: 必须提供领域名称")
@@ -233,7 +232,6 @@ class DomainModelingService:
             owner=payload.get("owner"),
             status="draft",
             cubes=[],
-            joins=[],
         )
         if self._domain_repo.get(domain.id or domain.code) or self._domain_repo.get_by_code(domain.code):
             raise ApplicationException(f"领域已存在: {domain.code}")
@@ -242,6 +240,7 @@ class DomainModelingService:
         return domain
 
     def update_domain(self, domain_id: str, payload: Dict[str, Any]) -> DomainDefinition:
+        self._reject_join_payload(payload)
         existing = self._find_domain(domain_id)
         merged = existing.model_dump(mode="json")
         merged.update(payload)
@@ -249,7 +248,6 @@ class DomainModelingService:
         merged["id"] = existing.id or existing.code
         merged["catalog_code"] = self._resolve_catalog_code_from_payload(payload, existing=existing)
         merged["cubes"] = self._normalize_domain_cubes(merged.get("cubes") or [])
-        merged["joins"] = []
         if not payload.get("status"):
             merged["status"] = existing.status
         domain = DomainDefinition(**merged)
@@ -273,13 +271,11 @@ class DomainModelingService:
         domain_id: str,
         *,
         cubes: Optional[List[str]] = None,
-        joins: Optional[List[Dict[str, Any]]] = None,
     ) -> DomainDefinition:
         existing = self._find_domain(domain_id)
         merged = existing.model_dump(mode="json")
         if cubes is not None:
             merged["cubes"] = cubes
-        merged["joins"] = []
         duplicate_cubes = self._find_duplicate_domain_cubes(merged.get("cubes") or [])
         if duplicate_cubes:
             raise ApplicationException(
@@ -311,11 +307,6 @@ class DomainModelingService:
             raise ApplicationException(f"未找到 Cube: {cube_name}")
         cubes = self._normalize_domain_cubes([*domain.cubes, cube_name])
         return self.publish_domain(domain_id, cubes=cubes)
-
-    def add_join(self, domain_id: str, payload: Dict[str, Any]) -> DomainDefinition:
-        raise ApplicationException(
-            "Domain 已收窄为业务上下文和资产组织对象，不再维护 Join；请在 Cube 技术语义或 Ontology 业务关系中建模"
-        )
 
     def validate_domain(self, domain: DomainDefinition) -> List[Dict[str, Any]]:
         diagnostics: List[Dict[str, Any]] = []
@@ -414,7 +405,6 @@ class DomainModelingService:
             return
         try:
             payload = domain.model_dump(mode="json", exclude_none=True)
-            payload["joins"] = []
             digest = hashlib.sha1(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
             fingerprint = self._build_domain_fingerprint(domain)
             self._registry_repo.upsert(
@@ -464,7 +454,6 @@ class DomainModelingService:
             "active_cube_count": 0,
             "draft_cube_count": 0,
             "deprecated_cube_count": 0,
-            "join_count": 0,
             "dangling_cube_count": 0,
         }
         for cube_name in domain.cubes:
@@ -479,6 +468,13 @@ class DomainModelingService:
             elif cube.status in {"deprecated", "archived"}:
                 summary["deprecated_cube_count"] += 1
         return summary
+
+    @staticmethod
+    def _reject_join_payload(payload: Dict[str, Any]) -> None:
+        if "joins" in payload:
+            raise ApplicationException(
+                "Domain 只作为业务上下文和资产组织，不再接受 joins；执行 Join 请在 Cube.joins 建模，业务关系请在 Ontology Relation 建模"
+            )
 
     def _normalize_domain_cubes(self, cubes: list[str]) -> list[str]:
         normalized: list[str] = []
