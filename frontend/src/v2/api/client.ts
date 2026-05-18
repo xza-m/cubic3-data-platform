@@ -140,9 +140,9 @@ function parseFixtureBody(data: unknown): Record<string, unknown> {
 }
 
 function browserE2eFixtureData(method: string, path: string, body: Record<string, unknown>): unknown {
-  if (method === 'GET' && path === '/users/me/preferences') {
+  if (method === 'GET' && path === '/access/me/preferences') {
     return {
-      user_id: 1,
+      principal_id: 'internal:test:test_admin',
       theme: 'light',
       default_landing: '/dashboard',
       list_page_size: 50,

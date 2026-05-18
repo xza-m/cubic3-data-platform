@@ -127,9 +127,8 @@ test('V01 /dashboard 视觉基线 @visual', async ({ page }) => {
   await freezeClock(page, FROZEN_NOW_ISO)
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
-  // Dashboard hook reads `res.data` directly (NOT enveloped).
-  await mockJsonRoute(page, '**/api/v1/dashboard/overview', dashboardOverview)
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/dashboard/overview', envelope(dashboardOverview))
 
   await gotoV2(page, '/dashboard')
 
@@ -148,7 +147,7 @@ test('V02 /data-center/datasources 视觉基线 @visual', async ({ page }) => {
   await freezeClock(page, FROZEN_NOW_ISO)
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources/types', envelope(dsFx.types))
   // Match both `?page=...` query strings and a bare URL.
   await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
@@ -208,7 +207,7 @@ test('V03 /semantic/cubes 视觉基线 @visual', async ({ page }) => {
   await freezeClock(page, FROZEN_NOW_ISO)
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/semantic/cubes**', envelope(cubesList))
 
   await gotoV2(page, '/semantic/cubes')
@@ -226,7 +225,7 @@ test('V04 /semantic/ontology/objects 视觉基线 @visual', async ({ page }) => 
   await freezeClock(page, FROZEN_NOW_ISO)
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/ontology/objects', envelope(ontoFx.objects))
   await mockJsonRoute(page, '**/api/v1/ontology/objects/student', envelope(ontoFx.object_detail))
 
@@ -244,7 +243,7 @@ test('V05 /settings 视觉基线 @visual', async ({ page }) => {
   await freezeClock(page, FROZEN_NOW_ISO)
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
 
   await gotoV2(page, '/settings')
 

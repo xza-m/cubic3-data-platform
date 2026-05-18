@@ -150,6 +150,14 @@ def create_semantic_blueprint(
             return True
         return any(normalized in str(item.get(field) or "").lower() for field in fields)
 
+    def _contains_domain_join_payload(body):
+        return isinstance(body, dict) and "joins" in body
+
+    def _domain_join_payload_error():
+        return error(
+            "Domain 只作为业务上下文和资产组织，不再接受 joins；执行 Join 请在 Cube.joins 建模，业务关系请在 Ontology Relation 建模"
+        )
+
     def _build_list_payload(items, key, *, default_page_size=20):
         total = len(items)
         pagination_requested = request.args.get("page") is not None or request.args.get("page_size") is not None
@@ -490,6 +498,8 @@ def create_semantic_blueprint(
     @require_admin
     def create_domain():
         body = request.get_json(silent=True) or {}
+        if _contains_domain_join_payload(body):
+            return _domain_join_payload_error()
         try:
             domain = domain_modeling_service.create_domain(body)
         except Exception as exc:
@@ -509,6 +519,8 @@ def create_semantic_blueprint(
     @require_admin
     def update_domain(domain_id):
         body = request.get_json(silent=True) or {}
+        if _contains_domain_join_payload(body):
+            return _domain_join_payload_error()
         try:
             domain = domain_modeling_service.update_domain(domain_id, body)
         except Exception as exc:
@@ -546,18 +558,12 @@ def create_semantic_blueprint(
             return error(f"添加 Cube 失败: {str(exc)}")
         return success(data=domain_modeling_service.get_domain_detail(domain.id or domain.code))
 
-    @bp.route('/domains/<domain_id>/joins', methods=['POST'])
-    @require_admin
-    def add_join_to_domain(domain_id):
-        return error(
-            "Domain 已收窄为业务上下文和资产组织对象，不再维护 Join；"
-            "请在 Cube 技术语义或 Ontology 业务关系中建模"
-        )
-
     @bp.route('/domains/<domain_id>/publish', methods=['POST'])
     @require_admin
     def publish_domain(domain_id):
         body = request.get_json(silent=True) or {}
+        if _contains_domain_join_payload(body):
+            return _domain_join_payload_error()
 
         history_service = _resolve_domain_publish_history_service()
         prev_snapshot: Optional[Dict[str, Any]] = None

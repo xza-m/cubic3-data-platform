@@ -1,0 +1,6 @@
+term: 学生评论
+canonical_name: student_comment
+entry_type: object
+aliases: []
+description: 学生评论在问数场景中的标准业务称谓。
+status: active

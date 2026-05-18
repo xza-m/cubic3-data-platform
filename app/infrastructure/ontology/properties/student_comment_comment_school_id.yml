@@ -1,0 +1,8 @@
+name: student_comment_comment_school_id
+title: 被举报内容发布者学校ID
+object_name: student_comment
+property_type: number
+description: 被举报内容发布者学校ID
+aliases:
+- comment_school_id
+status: active

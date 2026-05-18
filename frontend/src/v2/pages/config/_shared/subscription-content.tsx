@@ -9,11 +9,14 @@
 //   后端使用 event_types(数组) / app_instance_id / channel_id / delivery_config 代替。
 
 import type { ReactNode } from 'react'
-import { Play } from 'lucide-react'
+import { Edit3, ExternalLink, PauseCircle, Play, PlayCircle, Trash2 } from 'lucide-react'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { IdentityName } from '@v2/components/IdentityName'
 import { Chip } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import type { Subscription } from '@v2/api/subscriptions'
+import { eventTypeLabel } from './event-labels'
 
 // ============================================================================
 // Tab label
@@ -64,54 +67,43 @@ export function SubscriptionDetailContent({
   return (
     <div className="space-y-4 px-4 py-4 text-xs">
       {hasActions ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ActionIconButton
+            label={t('subscription.action.triggerFull', '立即触发此订阅')}
+            icon={Play}
+            variant="primary"
             onClick={actions?.onTrigger}
-            className="inline-flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2"
-            aria-label={t('subscription.action.trigger', '立即触发此订阅')}
-          >
-            <Play size={11} aria-hidden />
-            {t('subscription.action.trigger', '立即触发')}
-          </button>
-          <button
-            type="button"
+          />
+          <ActionIconButton
+            label={
+              row.enabled
+                ? t('subscription.action.pause', '暂停')
+                : t('subscription.action.enable', '启用')
+            }
+            icon={row.enabled ? PauseCircle : PlayCircle}
             onClick={actions?.onToggle}
-            className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-            style={{ borderColor: 'var(--border)' }}
-          >
-            {row.enabled
-              ? t('subscription.action.pause', '暂停')
-              : t('subscription.action.enable', '启用')}
-          </button>
+          />
           {actions?.onJumpChannel ? (
-            <button
-              type="button"
+            <ActionIconButton
+              label={t('subscription.action.viewChannel', '查看渠道')}
+              icon={ExternalLink}
               onClick={actions.onJumpChannel}
-              className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-              style={{ borderColor: 'var(--border)' }}
-            >
-              {t('subscription.action.viewChannel', '查看渠道')}
-            </button>
+            />
           ) : null}
           {actions?.onEdit ? (
-            <button
-              type="button"
+            <ActionIconButton
+              label={t('common.edit', '编辑')}
+              icon={Edit3}
               onClick={actions.onEdit}
-              className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-              style={{ borderColor: 'var(--border)' }}
-            >
-              {t('common.edit', '编辑')}
-            </button>
+            />
           ) : null}
           {actions?.onDelete ? (
-            <button
-              type="button"
+            <ActionIconButton
+              label={t('common.delete', '删除')}
+              icon={Trash2}
+              variant="danger"
               onClick={actions.onDelete}
-              className="rounded-md border border-transparent px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 focus-visible:ring-2 dark:text-red-400 dark:hover:bg-red-900/20"
-            >
-              {t('common.delete', '删除')}
-            </button>
+            />
           ) : null}
         </div>
       ) : null}
@@ -143,7 +135,10 @@ export function SubscriptionDetailContent({
               : <code>#{row.channel_id}</code>
           }
         />
-        <DetailRow label={t('common.createdBy', '创建人')} value={row.created_by ?? '—'} />
+        <DetailRow
+          label={t('common.createdBy', '创建人')}
+          value={<IdentityName value={row.created_by} displayName={row.created_by_display_name} />}
+        />
         <DetailRow label={t('common.updatedAt', '更新时间')} value={fmtRelative(row.updated_at)} />
         <DetailRow label={t('common.createdAt', '创建时间')} value={fmtDateTime(row.created_at)} />
       </DetailSection>
@@ -158,7 +153,9 @@ export function SubscriptionDetailContent({
         {row.event_types.length > 0 ? (
           <div className="flex flex-wrap gap-1">
             {row.event_types.map((et) => (
-              <Chip key={et} tone="violet">{et}</Chip>
+              <Chip key={et} tone="violet">
+                <span title={et}>{eventTypeLabel(et)}</span>
+              </Chip>
             ))}
           </div>
         ) : (
@@ -226,7 +223,11 @@ export function SubscriptionContextBody({
         </div>
         <div className="mt-2 flex flex-wrap gap-1">
           {row.event_types.length > 0
-            ? row.event_types.map((et) => <Chip key={et} tone="violet">{et}</Chip>)
+            ? row.event_types.map((et) => (
+                <Chip key={et} tone="violet">
+                  <span title={et}>{eventTypeLabel(et)}</span>
+                </Chip>
+              ))
             : <span style={{ color: 'var(--text-3)' }}>—</span>}
         </div>
       </section>

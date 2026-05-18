@@ -110,7 +110,7 @@ def _cube(name: str, status: str = "active") -> CubeDefinition:
     )
 
 
-def test_publish_domain_ignores_join_payload_and_keeps_context_only():
+def test_publish_domain_keeps_context_asset_scope_only():
     service = DomainModelingService(
         domain_repo=_InMemoryDomainRepo(),
         catalog_repo=_InMemoryCatalogRepo(),
@@ -118,25 +118,10 @@ def test_publish_domain_ignores_join_payload_and_keeps_context_only():
     )
     domain = service.create_domain({"name": "商业域"})
 
-    published = service.publish_domain(
-        domain.id or domain.code,
-        cubes=["orders", "order_items"],
-        joins=[
-            {
-                "name": "orders_to_items",
-                "source_cube": "orders",
-                "target_cube": "order_items",
-                "source_field": "id",
-                "target_field": "order_id",
-                "join_type": "left",
-                "cardinality": "1:N",
-                "aggregation_strategy": "none",
-            }
-        ],
-    )
+    published = service.publish_domain(domain.id or domain.code, cubes=["orders", "order_items"])
 
     assert published.cubes == ["orders", "order_items"]
-    assert published.joins == []
+    assert "joins" not in published.model_dump()
 
 
 def test_validate_domain_checks_cube_assets_only():
@@ -151,28 +136,6 @@ def test_validate_domain_checks_cube_assets_only():
         name="学业域",
         status="draft",
         cubes=["a", "b"],
-        joins=[
-            {
-                "name": "a_to_b",
-                "source_cube": "a",
-                "target_cube": "b",
-                "source_field": "id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            },
-            {
-                "name": "b_to_a",
-                "source_cube": "b",
-                "target_cube": "a",
-                "source_field": "id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            },
-        ],
     )
 
     diagnostics = service.validate_domain(domain)
@@ -233,7 +196,22 @@ def test_create_domain_generates_code_and_draft_status():
     assert domain.id == domain.code
     assert domain.catalog_code == "default"
     assert domain.cubes == []
-    assert domain.joins == []
+    assert "joins" not in domain.model_dump()
+
+
+def test_domain_modeling_rejects_join_payload():
+    service = DomainModelingService(
+        domain_repo=_InMemoryDomainRepo(),
+        catalog_repo=_InMemoryCatalogRepo(),
+        cube_repo=_InMemoryCubeRepo([_cube("orders")]),
+    )
+
+    with pytest.raises(ApplicationException, match="不再接受 joins"):
+        service.create_domain({"name": "答题分析", "joins": []})
+
+    domain = service.create_domain({"name": "答题分析"})
+    with pytest.raises(ApplicationException, match="不再接受 joins"):
+        service.update_domain(domain.id or domain.code, {"joins": []})
 
 
 def test_list_catalogs_groups_domains_and_assigns_default_catalog():
@@ -311,7 +289,6 @@ def test_create_domain_rejects_duplicate_generated_code():
         name="学习分析",
         status="draft",
         cubes=[],
-        joins=[],
     )
     domain_repo.save(existing)
     service = DomainModelingService(
@@ -365,22 +342,7 @@ def test_publish_domain_activates_domain():
     )
     domain = service.create_domain({"name": "学业分析"})
 
-    published = service.publish_domain(
-        domain.id or domain.code,
-        cubes=["orders", "student"],
-        joins=[
-            {
-                "name": "orders_to_student",
-                "source_cube": "orders",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            }
-        ],
-    )
+    published = service.publish_domain(domain.id or domain.code, cubes=["orders", "student"])
 
     assert published.status == "active"
 
@@ -393,22 +355,7 @@ def test_publish_domain_rejects_duplicate_fingerprint():
         cube_repo=_InMemoryCubeRepo([_cube("orders"), _cube("student")]),
     )
     existing = service.create_domain({"name": "现有领域"})
-    service.publish_domain(
-        existing.id or existing.code,
-        cubes=["orders", "student"],
-        joins=[
-            {
-                "name": "orders_to_student",
-                "source_cube": "orders",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            }
-        ],
-    )
+    service.publish_domain(existing.id or existing.code, cubes=["orders", "student"])
 
     duplicate = service.create_domain({"name": "重复领域"})
 
@@ -416,18 +363,6 @@ def test_publish_domain_rejects_duplicate_fingerprint():
         service.publish_domain(
             duplicate.id or duplicate.code,
             cubes=["student", "orders"],
-            joins=[
-                {
-                    "name": "another_name",
-                    "source_cube": "orders",
-                    "target_cube": "student",
-                    "source_field": "student_id",
-                    "target_field": "id",
-                    "join_type": "left",
-                    "cardinality": "N:1",
-                    "aggregation_strategy": "none",
-                }
-            ],
         )
 
 
@@ -494,7 +429,6 @@ def test_get_domain_detail_falls_back_to_default_catalog_and_registry_summary():
         catalog_code="ghost",
         status="draft",
         cubes=[],
-        joins=[],
     )
     domain_repo.save(domain)
     registry = _RegistryRepo(
@@ -518,7 +452,7 @@ def test_get_domain_detail_falls_back_to_default_catalog_and_registry_summary():
     assert detail["state_summary"]["publish_status"] == "draft"
 
 
-def test_add_cube_dedups_and_add_join_is_rejected():
+def test_add_cube_dedups_for_context_assets_only():
     service = DomainModelingService(
         domain_repo=_InMemoryDomainRepo(),
         catalog_repo=_InMemoryCatalogRepo(),
@@ -533,21 +467,6 @@ def test_add_cube_dedups_and_add_join_is_rejected():
     same_domain = service.add_cube(published.id or published.code, "orders")
     assert same_domain.cubes == ["orders", "student"]
 
-    with pytest.raises(ApplicationException, match="不再维护 Join"):
-        service.add_join(
-            published.id or published.code,
-            {
-                "name": "orders_to_student",
-                "source_cube": "orders",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            },
-        )
-
 
 def test_validate_domain_reports_missing_cube_without_join_diagnostics():
     service = DomainModelingService(
@@ -561,20 +480,7 @@ def test_validate_domain_reports_missing_cube_without_join_diagnostics():
         name="错误领域",
         status="draft",
         cubes=["orders", "ghost"],
-        joins=[
-            {
-                "name": "orders_to_student",
-                "source_cube": "orders",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            }
-        ],
     )
-    domain.joins.append(domain.joins[0].model_copy(update={"name": "orders_to_student_duplicate"}))
 
     diagnostics = service.validate_domain(domain)
     kinds = {item["kind"] for item in diagnostics}
@@ -613,7 +519,7 @@ def test_generate_unique_codes_append_suffixes():
     domain_repo = _InMemoryDomainRepo()
     base_domain_code = generate_domain_code("学习分析")
     domain_repo.save(
-        DomainDefinition(id=base_domain_code, code=base_domain_code, name="学习分析", status="draft", cubes=[], joins=[])
+        DomainDefinition(id=base_domain_code, code=base_domain_code, name="学习分析", status="draft", cubes=[])
     )
     base_catalog_code = generate_catalog_code("教学")
     catalog_repo = _InMemoryCatalogRepo([CatalogDefinition(code=base_catalog_code, name="教学")])
@@ -679,23 +585,8 @@ def test_publish_domain_reports_validation_errors_and_summary_recovers_missing_r
     )
     domain = service.create_domain({"name": "学业分析"})
 
-    published = service.publish_domain(
-        domain.id or domain.code,
-        cubes=["orders"],
-        joins=[
-            {
-                "name": "orders_to_student",
-                "source_cube": "orders",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            }
-        ],
-    )
-    assert published.joins == []
+    published = service.publish_domain(domain.id or domain.code, cubes=["orders"])
+    assert published.cubes == ["orders"]
 
     registry.entries[("domain", domain.id or domain.code)] = _RegistryEntry({"sync_status": "warn", "publish_status": "draft"})
     assert service._build_state_summary(domain)["publish_status"] == "draft"
@@ -794,18 +685,6 @@ def test_get_domain_detail_includes_governance_summary():
         domain.id or domain.code,
         {
             "cubes": ["orders", "users", "archive_orders", "ghost"],
-            "joins": [
-                {
-                    "name": "orders_to_users",
-                    "source_cube": "orders",
-                    "target_cube": "users",
-                    "source_field": "user_id",
-                    "target_field": "id",
-                    "join_type": "left",
-                    "cardinality": "N:1",
-                    "aggregation_strategy": "none",
-                }
-            ],
         },
     )
 
@@ -816,6 +695,5 @@ def test_get_domain_detail_includes_governance_summary():
         "active_cube_count": 1,
         "draft_cube_count": 1,
         "deprecated_cube_count": 1,
-        "join_count": 0,
         "dangling_cube_count": 1,
     }

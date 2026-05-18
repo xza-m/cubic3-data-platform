@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>语义建模工作流 | Cubic3 Learn</title>
+    <link rel="stylesheet" href="./tutorial.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="side">
+        <div class="brand"><span class="logo">C3</span><span>Cubic3 Learn</span></div>
+        <div class="nav-title">Start learning</div>
+        <a class="nav-link" href="./self-service-query.html">自助查询入门</a>
+        <a class="nav-link active" href="./semantic-modeling.html">语义建模工作流</a>
+        <a class="nav-link" href="./app-development.html">开发应用与推送</a>
+        <a class="nav-link" href="./access-governance.html">权限治理闭环</a>
+      </aside>
+      <main class="main">
+        <article class="article">
+          <div class="eyebrow">Semantic Layer</div>
+          <h1>语义建模工作流</h1>
+          <p class="lead">语义建模把“业务问题”沉淀为 Agent 可消费的 Cube、本体对象、指标和绑定关系。Copilot 负责生成草稿，建模人员负责确认字段、口径和发布范围。</p>
+          <div class="meta">
+            <span class="pill">25 min</span>
+            <span class="pill">Intermediate</span>
+            <span class="pill">语义中心</span>
+          </div>
+
+          <section id="flow" class="section">
+            <div class="section-head">
+              <h2>推荐流程</h2>
+              <p>从自然语言问题开始，但最终落到可校验、可发布的 spec。</p>
+            </div>
+            <div class="step">
+              <div class="step-no">1</div>
+              <div>
+                <h3>描述业务问题</h3>
+                <p>输入业务方真正想问的问题，例如“最近 7 天学生评论数按学校汇总”。系统会抽取主题、候选指标、候选维度和可能的源表。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">2</div>
+              <div>
+                <h3>编辑建模草稿</h3>
+                <p>在工作台中确认 Cube 来源、维度表、指标 SQL、本体对象和业务指标绑定。不要把不确定口径直接发布给 Agent。</p>
+                <pre><code>cube:
+  name: student_comment_cube
+  source: dwd_interaction_comment_reports_df
+  measures:
+    - name: comment_total_count
+      sql: count(distinct comment_id)
+ontology:
+  business_metric: student_comment_total_count
+  measure_ref: student_comment_cube.comment_total_count</code></pre>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">3</div>
+              <div>
+                <h3>校验并发布</h3>
+                <p>发布前至少通过结构校验、指标绑定校验、Agent ready 校验。存在阻断项时，下一步必须给出可执行补齐方案，而不是只展示空建议。</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="quality" class="section">
+            <div class="section-head">
+              <h2>质量标准</h2>
+              <p>建模是否可用，关键看 Agent 是否能稳定解释和执行。</p>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>字段含义可解释</h3>
+                <p>每个维度、指标和筛选字段都有业务名、类型和必要说明。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>口径可追溯</h3>
+                <p>指标公式、粒度、时间字段和物理表来源能在技术详情里完整追踪。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>发布后可消费</h3>
+                <p>Cube 和 Ontology 均为 active，Data Agent 可以基于语义层回答问题。</p>
+              </div>
+            </div>
+          </section>
+
+          <div class="note">建议先从一个高频业务问题建起最小可用语义，再逐步扩展维度和指标。不要一次性把整张宽表都包装成语义模型。</div>
+          <a class="cta" href="/semantic/modeling-agent/new">打开建模助手</a>
+        </article>
+      </main>
+      <aside class="toc">
+        <div class="progress"><span style="width: 50%"></span></div>
+        <h2>语义建模工作流</h2>
+        <a href="#flow">推荐流程</a>
+        <a href="#quality">质量标准</a>
+      </aside>
+    </div>
+  </body>
+</html>

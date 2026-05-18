@@ -1,0 +1,8 @@
+name: student_comment_comment_review_status
+title: 被举报内容审核状态
+object_name: student_comment
+property_type: number
+description: 被举报内容审核状态
+aliases:
+- comment_review_status
+status: active

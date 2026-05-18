@@ -2,6 +2,8 @@
 依赖注入容器
 使用 dependency-injector 管理应用依赖
 """
+import os
+
 from dependency_injector import containers, providers
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
@@ -30,6 +32,31 @@ def _create_engine_smart(database_url: str, **pg_kwargs):
             poolclass=StaticPool,
         )
     return create_engine(database_url, **pg_kwargs)
+
+
+def _modeling_session_repository(store: str, session, sessions_dir: str):
+    """按环境选择 Copilot 会话仓储。
+
+    生产默认 SQL；YAML 仅用于本地开发、fixture 或迁移前兼容。
+    """
+
+    normalized = (store or "sql").strip().lower()
+    if normalized == "yaml":
+        return YamlModelingAgentSessionRepository(sessions_dir)
+    if normalized == "sql":
+        return SqlModelingAgentSessionRepository(session)
+    raise ValueError(f"unsupported semantic modeling copilot store: {store}")
+
+
+def _modeling_proposal_repository(store: str, session, proposals_dir: str):
+    """按环境选择 Copilot Proposal 仓储。"""
+
+    normalized = (store or "sql").strip().lower()
+    if normalized == "yaml":
+        return YamlModelingProposalRepository(proposals_dir)
+    if normalized == "sql":
+        return SqlModelingProposalRepository(session)
+    raise ValueError(f"unsupported semantic modeling copilot store: {store}")
 
 
 # Infrastructure
@@ -105,6 +132,12 @@ from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
+from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
+from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
+from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
+from app.application.semantic.modeling_proposal_service import ModelingProposalService
+from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
+from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
 from app.application.semantic.semantic_query_service import SemanticQueryService
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
@@ -121,6 +154,18 @@ from app.application.governance.access import AccessPolicyDecisionService, Princ
 from app.infrastructure.semantic.yaml_catalog_repository import YamlCatalogRepository
 from app.infrastructure.semantic.yaml_cube_repository import YamlCubeRepository
 from app.infrastructure.semantic.yaml_domain_repository import YamlDomainRepository
+from app.infrastructure.semantic.yaml_modeling_agent_session_repository import (
+    YamlModelingAgentSessionRepository,
+)
+from app.infrastructure.semantic.yaml_modeling_proposal_repository import (
+    YamlModelingProposalRepository,
+)
+from app.infrastructure.semantic.sql_modeling_agent_session_repository import (
+    SqlModelingAgentSessionRepository,
+)
+from app.infrastructure.semantic.sql_modeling_proposal_repository import (
+    SqlModelingProposalRepository,
+)
 from app.infrastructure.semantic.yaml_view_repository import YamlViewRepository
 from app.infrastructure.semantic.yaml_recipe_repository import YamlRecipeRepository
 from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
@@ -131,7 +176,7 @@ from app.infrastructure.ontology.yaml_object_repository import YamlBusinessObjec
 from app.infrastructure.ontology.yaml_policy_repository import YamlPolicyMetadataRepository
 from app.infrastructure.ontology.yaml_property_repository import YamlBusinessPropertyRepository
 from app.infrastructure.ontology.yaml_relation_repository import YamlBusinessRelationRepository
-from app.infrastructure.governance.repositories import SqlGovernanceAuditTraceRepository
+from app.infrastructure.governance.repositories import SqlAccessGovernanceRepository, SqlGovernanceAuditTraceRepository
 
 # Infrastructure - Conversation Repositories
 from app.infrastructure.repositories.conversation_repository import ConversationRepository, MessageRepository
@@ -174,6 +219,15 @@ from app.application.query.handlers.query_export_handlers import (
 )
 from app.application.query.services.query_export_service import QueryExportService
 from app.infrastructure.repositories.query_export_repository import QueryExportRepository
+from app.application.query_execution.agent_execute_service import AgentSemanticExecuteService
+from app.application.query_execution.result_service import QueryResultService
+from app.application.query_execution.sql_guard import SqlGuard
+from app.application.query_execution.submission_service import QuerySubmissionService
+from app.application.query_execution.ticket_service import ExecutionTicketService
+from app.application.query_execution.worker_service import QueryExecutionWorkerService
+from app.infrastructure.query_execution.adapters.maxcompute_adapter import DataSourceWarehouseExecutionAdapter
+from app.infrastructure.query_execution.repositories import QueryExecutionRepository
+from app.infrastructure.query_execution.result_store import LocalSpoolResultStore
 from app.application.query.handlers.template_handlers import (
     ListTemplatesHandler,
     CreateTemplateHandler,
@@ -182,12 +236,6 @@ from app.application.query.handlers.template_handlers import (
     DeleteTemplateHandler,
     UseTemplateHandler,
 )
-
-from app.application.users.user_service import UserService
-from app.application.users.role_service import RoleService
-from app.infrastructure.users.password import BcryptHasher
-from app.infrastructure.users.repositories import SqlRoleRepository, SqlUserRepository
-
 
 class Container(containers.DeclarativeContainer):
     """
@@ -379,6 +427,11 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    access_governance_repository = providers.Factory(
+        SqlAccessGovernanceRepository,
+        session=db_session,
+    )
+
     metric_semantics_service = providers.Singleton(MetricSemanticsService)
 
     semantic_registry_repository = providers.Factory(
@@ -547,7 +600,10 @@ class Container(containers.DeclarativeContainer):
 
     principal_resolver = providers.Singleton(PrincipalResolver)
 
-    access_policy_service = providers.Singleton(AccessPolicyDecisionService)
+    access_policy_service = providers.Singleton(
+        AccessPolicyDecisionService,
+        policy_repository=access_governance_repository,
+    )
 
     semantic_mapper_preview_service = providers.Singleton(
         SemanticMapperPreviewService,
@@ -629,6 +685,61 @@ class Container(containers.DeclarativeContainer):
         compiler_service=execution_compiler_preview_service,
     )
 
+    query_execution_repository = providers.Factory(
+        QueryExecutionRepository,
+        session=db_session,
+    )
+
+    query_execution_sql_guard = providers.Singleton(
+        SqlGuard,
+        default_limit=config.query_execution.default_limit,
+    )
+
+    query_execution_ticket_service = providers.Singleton(
+        ExecutionTicketService,
+        default_ttl_seconds=config.query_execution.ticket_ttl_seconds,
+    )
+
+    query_execution_result_store = providers.Singleton(
+        LocalSpoolResultStore,
+        spool_dir=config.query_execution.spool_dir,
+        max_preview_rows=config.query_execution.max_preview_rows,
+        max_result_bytes=config.query_execution.max_result_bytes,
+    )
+
+    query_submission_service = providers.Factory(
+        QuerySubmissionService,
+        repository=query_execution_repository,
+        sql_guard=query_execution_sql_guard,
+        ticket_service=query_execution_ticket_service,
+    )
+
+    query_result_service = providers.Factory(
+        QueryResultService,
+        repository=query_execution_repository,
+    )
+
+    query_execution_adapter = providers.Factory(
+        DataSourceWarehouseExecutionAdapter,
+        datasource_repository=datasource_repository,
+    )
+
+    query_execution_worker_service = providers.Factory(
+        QueryExecutionWorkerService,
+        repository=query_execution_repository,
+        ticket_service=query_execution_ticket_service,
+        adapter=query_execution_adapter,
+        result_store=query_execution_result_store,
+        lease_seconds=config.query_execution.lease_seconds,
+        max_submit_attempts=config.query_execution.max_submit_attempts,
+    )
+
+    agent_semantic_execute_service = providers.Factory(
+        AgentSemanticExecuteService,
+        plan_handler=agent_plan_handler,
+        submission_service=query_submission_service,
+    )
+
     semantic_modeling_agent = providers.Singleton(
         SemanticModelingAgent,
         cube_modeling_source_service=cube_modeling_source_service,
@@ -636,6 +747,59 @@ class Container(containers.DeclarativeContainer):
         ontology_service=ontology_definition_service,
         mapper_service=semantic_mapper_preview_service,
         agent_plan_handler=agent_plan_handler,
+    )
+
+    semantic_modeling_copilot_readiness_checker = providers.Singleton(
+        PublishReadinessChecker,
+    )
+
+    semantic_modeling_source_recall_service = providers.Factory(
+        SourceCandidateRecallService,
+        datasource_repository=datasource_repository,
+        table_cache_service=table_cache_service,
+        dataset_repository=dataset_repository,
+    )
+
+    semantic_modeling_copilot_tools = providers.Singleton(
+        ModelingToolRegistry,
+        builder=semantic_modeling_agent,
+        readiness_checker=semantic_modeling_copilot_readiness_checker,
+        source_candidate_recall_service=semantic_modeling_source_recall_service,
+    )
+
+    semantic_modeling_agent_session_repository = providers.Singleton(
+        _modeling_session_repository,
+        store=config.semantic_modeling.copilot_store,
+        session=db_session,
+        sessions_dir=_os.path.join(_semantic_base, "modeling_agent_sessions"),
+    )
+
+    semantic_modeling_proposal_repository = providers.Singleton(
+        _modeling_proposal_repository,
+        store=config.semantic_modeling.copilot_store,
+        session=db_session,
+        proposals_dir=_os.path.join(_semantic_base, "modeling_proposals"),
+    )
+
+    semantic_modeling_proposal_service = providers.Singleton(
+        ModelingProposalService,
+        repository=semantic_modeling_proposal_repository,
+        builder=semantic_modeling_agent,
+        readiness_checker=semantic_modeling_copilot_readiness_checker,
+    )
+
+    semantic_modeling_copilot_runtime = providers.Singleton(
+        OpenAIAgentsSdkAdapter,
+        enable_sdk=providers.Callable(lambda api_key: bool(api_key), config.llm.api_key),
+        model=config.llm.model,
+    )
+
+    semantic_modeling_copilot = providers.Singleton(
+        SemanticModelingCopilotService,
+        session_repository=semantic_modeling_agent_session_repository,
+        runtime=semantic_modeling_copilot_runtime,
+        tools=semantic_modeling_copilot_tools,
+        proposal_service=semantic_modeling_proposal_service,
     )
     
     execute_sql_preview_handler = providers.Factory(
@@ -1097,36 +1261,6 @@ class Container(containers.DeclarativeContainer):
         subscription_repository=subscription_repository,
     )
 
-    # ========================================================================
-    # 应用层 - 用户/角色（W4.D-2）
-    # ========================================================================
-
-    user_repository = providers.Factory(
-        SqlUserRepository,
-        session=db_session,
-    )
-
-    role_repository = providers.Factory(
-        SqlRoleRepository,
-        session=db_session,
-    )
-
-    password_hasher = providers.Singleton(BcryptHasher)
-
-    user_service = providers.Factory(
-        UserService,
-        user_repo=user_repository,
-        role_repo=role_repository,
-        password_hasher=password_hasher,
-    )
-
-    role_service = providers.Factory(
-        RoleService,
-        role_repo=role_repository,
-    )
-
-
-
 def init_container(app: Flask) -> Container:
     """
     初始化依赖注入容器
@@ -1179,6 +1313,18 @@ def init_container(app: Flask) -> Container:
             'api_base': app.config.get('LLM_API_BASE', 'https://api.openai.com/v1'),
             'model': app.config.get('LLM_MODEL', 'gpt-4o-mini'),
             'timeout': app.config.get('LLM_TIMEOUT', 60)
+        },
+        'query_execution': {
+            'spool_dir': os.getenv('QUERY_EXECUTION_SPOOL_DIR', app.config.get('QUERY_EXECUTION_SPOOL_DIR', 'instance/query_execution_results')),
+            'default_limit': int(os.getenv('QUERY_EXECUTION_DEFAULT_LIMIT', app.config.get('QUERY_EXECUTION_DEFAULT_LIMIT', 50000))),
+            'max_preview_rows': int(os.getenv('QUERY_EXECUTION_MAX_PREVIEW_ROWS', app.config.get('QUERY_EXECUTION_MAX_PREVIEW_ROWS', 1000))),
+            'max_result_bytes': int(os.getenv('QUERY_EXECUTION_MAX_RESULT_BYTES', app.config.get('QUERY_EXECUTION_MAX_RESULT_BYTES', 500 * 1024 * 1024))),
+            'ticket_ttl_seconds': int(os.getenv('QUERY_EXECUTION_TICKET_TTL_SECONDS', app.config.get('QUERY_EXECUTION_TICKET_TTL_SECONDS', 300))),
+            'lease_seconds': int(os.getenv('QUERY_EXECUTION_LEASE_SECONDS', app.config.get('QUERY_EXECUTION_LEASE_SECONDS', 300))),
+            'max_submit_attempts': int(os.getenv('QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS', app.config.get('QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS', 3))),
+        },
+        'semantic_modeling': {
+            'copilot_store': app.config.get('SEMANTIC_MODELING_COPILOT_STORE', 'sql'),
         }
     })
     

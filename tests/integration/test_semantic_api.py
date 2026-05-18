@@ -256,7 +256,6 @@ def mock_domain_modeling_service():
             "catalog_name": "学习分析",
             "status": "draft",
             "cube_count": 1,
-            "join_count": 0,
             "state_summary": {"status": "draft"},
         }
     ]
@@ -282,7 +281,6 @@ def mock_domain_modeling_service():
         "catalog_name": "学习分析",
         "status": "draft",
         "cubes": ["orders"],
-        "joins": [],
         "state_summary": {"status": "draft"},
     }
     active_domain = {
@@ -310,7 +308,6 @@ def mock_domain_modeling_service():
     }))
     service.delete_catalog.return_value = None
     service.add_cube.return_value = domain
-    service.add_join.return_value = domain
     published = MagicMock()
     published.model_dump.return_value = active_domain
     service.publish_domain.return_value = published
@@ -506,12 +503,11 @@ class TestDomainsEndpoint:
             "name": "学业域",
             "status": "active",
             "cubes": ["orders"],
-            "joins": [],
             "state_summary": {"status": "active"},
         }
         resp = semantic_client.post(
             "/api/v1/semantic/domains/academic/publish",
-            json={"cubes": ["orders"], "joins": []},
+            json={"cubes": ["orders"]},
         )
         assert resp.status_code == 200
         assert resp.get_json()["data"]["status"] == "active"
@@ -524,7 +520,7 @@ class TestDomainsEndpoint:
         mock_domain_modeling_service.publish_domain.side_effect = Exception("领域发布失败: 当前资产范围与领域 'academic' 完全重复")
         resp = semantic_client.post(
             "/api/v1/semantic/domains/academic/publish",
-            json={"cubes": ["orders"], "joins": []},
+            json={"cubes": ["orders"]},
         )
         assert resp.status_code == 400
         assert "资产范围" in resp.get_json()["message"]

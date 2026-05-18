@@ -1,0 +1,8 @@
+name: student_comment_comment_class_name
+title: 被举报内容发布者班级名称
+object_name: student_comment
+property_type: string
+description: 被举报内容发布者班级名称
+aliases:
+- comment_class_name
+status: active

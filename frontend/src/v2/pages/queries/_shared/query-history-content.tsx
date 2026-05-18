@@ -4,8 +4,11 @@
 // 查询历史详情内容组件 —— Peek panel 与 L3 Detail 共用。
 
 import type { ReactNode } from 'react'
+import { Download, RotateCcw } from 'lucide-react'
 import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
 import type { QueryHistoryItem } from '@v2/api/queries'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { IdentityName } from '@v2/components/IdentityName'
 import { t } from '@v2/i18n'
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -64,25 +67,21 @@ export function QueryHistoryDetailContent({
   return (
     <div className="space-y-4 px-4 py-4 text-xs">
       {(actions?.onReplay || actions?.onDownload) && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {actions.onReplay && (
-            <button
-              type="button"
+            <ActionIconButton
+              label={t('queryHistory.action.replay', '在工作台重跑')}
+              icon={RotateCcw}
+              variant="primary"
               onClick={actions.onReplay}
-              className="rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
-            >
-              {t('queryHistory.action.replay', '在工作台重跑')}
-            </button>
+            />
           )}
           {actions.onDownload && (
-            <button
-              type="button"
+            <ActionIconButton
+              label={t('queryHistory.action.download', '下载结果')}
+              icon={Download}
               onClick={actions.onDownload}
-              className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-[color:var(--bg-hover)]"
-              style={{ borderColor: 'var(--border)' }}
-            >
-              {t('queryHistory.action.download', '下载结果')}
-            </button>
+            />
           )}
         </div>
       )}
@@ -91,7 +90,10 @@ export function QueryHistoryDetailContent({
         <Row label={t('queryHistory.field.id', '编号')}       value={<code>#{row.id}</code>} />
         <Row label={t('queryHistory.field.status', '状态')}   value={statusChip(row.status)} />
         <Row label={t('queryHistory.field.source', '数据源')} value={row.source_name ? <code>{row.source_name}</code> : '—'} />
-        <Row label={t('queryHistory.field.executor', '执行人')} value={row.executed_by} />
+        <Row
+          label={t('queryHistory.field.executor', '执行人')}
+          value={<IdentityName value={row.executed_by} displayName={row.executed_by_display_name} />}
+        />
         <Row label={t('queryHistory.field.executedAt', '执行时间')} value={fmtDateTime(row.executed_at)} />
         <Row
           label={t('queryHistory.field.duration', '耗时')}
@@ -166,7 +168,10 @@ export function QueryHistoryContextBody({
             }
           />
           <Pair label={t('queryHistory.field.rowCount', '行数')} value={row.row_count != null ? fmtNum(row.row_count) : '—'} />
-          <Pair label={t('queryHistory.field.executor', '执行人')} value={row.executed_by} />
+          <Pair
+            label={t('queryHistory.field.executor', '执行人')}
+            value={<IdentityName value={row.executed_by} displayName={row.executed_by_display_name} />}
+          />
           <Pair label={t('queryHistory.field.time', '时间')} value={fmtRelative(row.executed_at)} />
         </dl>
       </section>

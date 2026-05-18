@@ -52,7 +52,7 @@ class AgentPlanHandler:
                 runtime_options=normalized_runtime_options,
             )
 
-        plan = self._router_service.plan(
+        plan = self._plan_with_router(
             question=normalized_question,
             principal_context=principal.to_dict(),
             viewer_roles=principal.roles,
@@ -87,10 +87,13 @@ class AgentPlanHandler:
         preview = self._compiler_service.compile_preview(
             target_type=str(target.get("target_type") or ""),
             metric_name=target.get("metric_name"),
+            question=target.get("question"),
             retrieval_query=target.get("retrieval_query"),
             retrieval_sources=target.get("retrieval_sources"),
             tool_name=target.get("tool_name"),
             tool_arguments=target.get("tool_arguments"),
+            analysis_intent=target.get("analysis_intent"),
+            query_dsl=target.get("query_dsl"),
             principal_context=principal_context,
             viewer_roles=viewer_roles,
         )
@@ -98,6 +101,30 @@ class AgentPlanHandler:
             "target": target,
             **preview,
         }
+
+    def _plan_with_router(
+        self,
+        *,
+        question: str,
+        principal_context: dict[str, Any],
+        viewer_roles: list[str],
+        runtime_mode: str,
+    ) -> dict[str, Any]:
+        try:
+            return self._router_service.plan(
+                question=question,
+                principal_context=principal_context,
+                viewer_roles=viewer_roles,
+                runtime_mode=runtime_mode,
+            )
+        except TypeError as exc:
+            if "viewer_roles" not in str(exc):
+                raise
+            return self._router_service.plan(
+                question=question,
+                principal_context=principal_context,
+                runtime_mode=runtime_mode,
+            )
 
     @staticmethod
     def _build_response(
@@ -146,7 +173,7 @@ class AgentPlanHandler:
             "semantic_trace": semantic_trace,
             "runtime_options": runtime_options,
             "explain": {
-                "agent_plan_handler": "应用层编排器，仅串联 principal、policy、router、compiler 与 ticket preview",
-                "ticket": "Phase 1 只生成 preview_only ticket，不可执行",
+                "agent_plan_handler": "应用层编排器，生成 official Runtime 规划、Binding、编译目标与治理材料",
+                "ticket": "/semantic/plan 只返回 preview_only ticket；真实执行由 /semantic/execute 生成可审计查询任务",
             },
         }

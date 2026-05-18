@@ -63,7 +63,7 @@ test('S01 /login 登录页可达 @smoke', async ({ page }) => {
 test('S02 /dashboard 加载首屏 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/dashboard/overview', dashboardOverview)
 
   await gotoV2(page, '/dashboard')
@@ -78,7 +78,7 @@ test('S02 /dashboard 加载首屏 @smoke', async ({ page }) => {
 test('S03 /data-center/datasources 列表渲染 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources/types', envelope(dsFx.types))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources', envelope(dsFx.list))
@@ -93,7 +93,7 @@ test('S03 /data-center/datasources 列表渲染 @smoke', async ({ page }) => {
 test('S04 /semantic/ontology/objects 列表渲染 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/ontology/objects', envelope(ontFx.objects))
 
   await gotoV2(page, '/semantic/ontology/objects')
@@ -109,7 +109,7 @@ test('S04 /semantic/ontology/objects 列表渲染 @smoke', async ({ page }) => {
 test('S05 /queries/my 与 /queries/scheduled 不提供重复空状态入口 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(
     page,
     '**/api/v1/queries**',
@@ -133,7 +133,7 @@ test('S05 /queries/my 与 /queries/scheduled 不提供重复空状态入口 @smo
 test('S06 /semantic/ontology/metrics 试运行入口 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/ontology/metrics**', envelope(ontFx.metrics))
   await mockJsonRoute(page, '**/api/v1/semantic/ontology/metrics**', envelope(ontFx.metrics))
 

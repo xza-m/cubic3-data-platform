@@ -1,0 +1,8 @@
+name: student_comment_comment_obj_id
+title: 评论主题对象ID
+object_name: student_comment
+property_type: number
+description: 评论主题对象ID
+aliases:
+- comment_obj_id
+status: active

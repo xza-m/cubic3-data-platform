@@ -4,16 +4,34 @@
 // 接 GET /api/v1/queries/histories
 
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Filter } from 'lucide-react'
+import { useNavigate, type NavigateFunction } from 'react-router-dom'
+import { ExternalLink, Filter, X } from 'lucide-react'
 import { useQueryHistories } from '@v2/hooks/queries'
 import { fmtNum, fmtRelative } from '@v2/lib/format'
 import type { QueryHistoryItem } from '@v2/api/queries'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { RetryState } from '@v2/components/LoadState'
+import { IdentityName } from '@v2/components/IdentityName'
 import {
   QueryHistoryDetailContent,
   statusChip,
 } from './_shared/query-history-content'
+import { openQueryWorkbenchWithPrefill } from './_shared/workbench-prefill'
 import { t } from '@v2/i18n'
+
+function openHistoryInWorkbench(row: QueryHistoryItem, navigate: NavigateFunction) {
+  openQueryWorkbenchWithPrefill(
+    {
+      sql: row.sql_query,
+      source_id: row.source_id,
+      origin: 'query_history',
+      history_id: row.id,
+      principal_id: row.executed_by,
+      principal_display_name: row.executed_by_display_name ?? undefined,
+    },
+    navigate,
+  )
+}
 
 function statusOptions() {
   return [
@@ -67,7 +85,7 @@ export default function QueryHistory() {
               {t('queryHistoryList.title', '查询历史')}
             </div>
             <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-              GET /api/v1/queries/histories
+              {t('queryHistoryList.subtitle', '追踪最近执行、状态和结果，支持回到工作台复查')}
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -100,17 +118,11 @@ export default function QueryHistory() {
           {isLoading ? (
             <SkeletonRows />
           ) : isError ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2">
-              <span className="text-xs text-red-500">{t('queryHistoryList.error.load', '加载失败')}</span>
-              <button
-                type="button"
-                onClick={() => void refetch()}
-                className="text-xs underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                {t('queryHistoryList.action.retry', '重试')}
-              </button>
-            </div>
+            <RetryState
+              message={t('queryHistoryList.error.load', '加载失败')}
+              onRetry={() => refetch()}
+              retryAriaLabel={t('queryHistoryList.action.retry', '重试加载查询历史')}
+            />
           ) : rows.length === 0 ? (
             <div className="flex h-full items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
               {t('queryHistoryList.empty', '暂无查询历史')}
@@ -156,7 +168,9 @@ export default function QueryHistory() {
                     <Td>
                       <code style={{ color: 'var(--text-3)' }}>{row.source_name ?? '—'}</code>
                     </Td>
-                    <Td>{row.executed_by}</Td>
+                    <Td>
+                      <IdentityName value={row.executed_by} displayName={row.executed_by_display_name} />
+                    </Td>
                     <Td>
                       <span style={{ color: 'var(--text-3)' }}>{fmtRelative(row.executed_at)}</span>
                     </Td>
@@ -228,28 +242,23 @@ export default function QueryHistory() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button
-                type="button"
+              <ActionIconButton
+                label={t('queryHistoryList.action.detail', '详情')}
+                icon={ExternalLink}
                 onClick={() => navigate(`/queries/history/${peekRow.id}`)}
-                className="rounded px-2 py-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-                style={{ color: 'var(--accent)' }}
-              >
-                {t('queryHistoryList.action.detail', '详情')}
-              </button>
-              <button
-                type="button"
+              />
+              <ActionIconButton
+                label={t('common.close', '关闭')}
+                icon={X}
+                variant="ghost"
                 onClick={() => setPeekRow(null)}
-                className="rounded p-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-                style={{ color: 'var(--text-3)' }}
-              >
-                ✕
-              </button>
+              />
             </div>
           </div>
           <QueryHistoryDetailContent
             row={peekRow}
             actions={{
-              onReplay: () => navigate('/queries/console'),
+              onReplay: () => openHistoryInWorkbench(peekRow, navigate),
             }}
           />
         </aside>

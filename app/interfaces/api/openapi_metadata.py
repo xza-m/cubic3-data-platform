@@ -25,6 +25,9 @@ CONTRACT_REQUIRED_OPERATIONS = (
     ("/api/v1/semantic-router/route", "post"),
     ("/api/v1/execution-compiler/compile-preview", "post"),
     ("/api/v1/governance/audit-traces", "get"),
+    ("/api/v1/agent/semantic/execute", "post"),
+    ("/api/v1/query-execution/jobs", "post"),
+    ("/api/v1/query-execution/jobs/{query_id}", "get"),
 )
 
 _EXTRA_OPERATION_METADATA: dict[tuple[str, str], dict[str, Any]] = {}
@@ -187,6 +190,8 @@ POLICY_DECISION_SCHEMA = object_schema(
         "decision": {"type": "string", "description": "策略决策结果"},
         "policy": {"type": "string", "description": "命中的策略名称"},
         "reason": {"type": "string", "description": "决策原因"},
+        "policy_epoch": {"type": "integer", "description": "全局策略纪元，用于 gateway 判断策略新旧"},
+        "execution_permit": {"type": "object", "additionalProperties": True, "description": "权限判定预览上下文，不包含 gateway 可执行凭证或真实 RAM 凭据"},
     }
 )
 
@@ -252,11 +257,132 @@ AGENT_PLAN_RESPONSE_SCHEMA = object_schema(
 QUESTION_REQUEST_SCHEMA = object_schema(
     {
         "question": {"type": "string", "minLength": 1, "description": "自然语言问题"},
-        "viewer_roles": array_schema({"type": "string"}),
-        "principal_context": PRINCIPAL_CONTEXT_SCHEMA,
         "runtime_options": {"type": "object", "additionalProperties": True},
     },
     required=["question"],
+)
+
+AGENT_EXECUTE_REQUEST_SCHEMA = object_schema(
+    {
+        "question": {"type": "string", "minLength": 1, "description": "自然语言问题"},
+        "viewer_roles": array_schema({"type": "string"}),
+        "principal_context": PRINCIPAL_CONTEXT_SCHEMA,
+        "runtime_options": {"type": "object", "additionalProperties": True},
+        "idempotency_key": {"type": ["string", "null"], "description": "幂等键；不传时由服务端按语义计划生成"},
+    },
+    required=["question"],
+)
+
+AGENT_EXECUTE_RESPONSE_SCHEMA = object_schema(
+    {
+        "status": {"type": "string", "description": "执行提交状态或阻断状态"},
+        "semantic_plan_id": {"type": ["string", "null"], "description": "语义规划 ID"},
+        "query_id": {"type": ["string", "null"], "description": "查询执行任务 ID"},
+        "poll_url": {"type": ["string", "null"], "description": "查询任务状态轮询 URL"},
+        "result_url": {"type": ["string", "null"], "description": "查询结果读取 URL"},
+        "policy_decision": POLICY_DECISION_SCHEMA,
+        "approval_material": {"type": ["object", "null"], "additionalProperties": True},
+        "semantic_trace": {"type": "object", "additionalProperties": True, "description": "业务语义、Binding、编译、治理和执行回溯"},
+    }
+)
+
+QUERY_EXECUTION_SUBMIT_REQUEST_SCHEMA = object_schema(
+    {
+        "source_id": {"type": "integer", "minimum": 1, "description": "数据源 ID"},
+        "sql_query": {"type": "string", "minLength": 1, "description": "待执行 SQL"},
+        "route_type": {"type": "string", "default": "manual_sql", "description": "提交来源类型"},
+        "semantic_plan_id": {"type": ["string", "null"], "description": "语义规划 ID"},
+        "resource_set": {"type": ["object", "array"], "additionalProperties": True},
+        "sql_hash": {"type": ["string", "null"], "description": "调用方已计算的 SQL 哈希；缺省时服务端计算"},
+        "data_level": {"type": "string", "default": "M1", "description": "数据分级"},
+        "project_name": {"type": ["string", "null"], "description": "数仓项目名"},
+        "governance_snapshot": {"type": ["object", "null"], "additionalProperties": True},
+        "idempotency_key": {"type": ["string", "null"], "description": "客户端幂等键"},
+        "result_mode": {"type": "string", "default": "preview", "description": "结果模式"},
+    },
+    required=["source_id", "sql_query"],
+)
+
+QUERY_EXECUTION_SUBMIT_RESPONSE_SCHEMA = object_schema(
+    {
+        "query_id": {"type": "string", "description": "查询执行任务 ID"},
+        "status": {"type": "string", "description": "任务状态"},
+        "poll_url": {"type": "string", "description": "状态轮询 URL"},
+        "result_url": {"type": "string", "description": "结果读取 URL"},
+        "trace_id": {"type": "string", "description": "执行链路追踪 ID"},
+    },
+    required=["query_id", "status", "poll_url", "result_url", "trace_id"],
+)
+
+QUERY_EXECUTION_JOB_SCHEMA = object_schema(
+    {
+        "id": {"type": "string", "description": "查询执行任务 ID，兼容旧字段"},
+        "query_id": {"type": "string", "description": "查询执行任务 ID"},
+        "trace_id": {"type": "string", "description": "执行链路追踪 ID"},
+        "principal_id": {"type": "string", "description": "调用主体 ID"},
+        "route_type": {"type": "string", "description": "提交来源类型"},
+        "semantic_plan_id": {"type": ["string", "null"], "description": "语义规划 ID"},
+        "source_id": {"type": "integer", "description": "数据源 ID"},
+        "project_name": {"type": ["string", "null"], "description": "数仓项目名"},
+        "logical_sql": {"type": "string", "description": "逻辑 SQL"},
+        "validated_sql": {"type": "string", "description": "最终执行 SQL"},
+        "sql_hash": {"type": "string", "description": "SQL 哈希"},
+        "resource_set": {"type": ["object", "array"], "additionalProperties": True},
+        "data_level": {"type": "string", "description": "数据分级"},
+        "status": {"type": "string", "description": "任务状态"},
+        "engine_query_id": {"type": ["string", "null"], "description": "执行引擎查询 ID"},
+        "cancel_requested": {"type": "boolean", "description": "是否已请求取消"},
+        "error_code": {"type": ["string", "null"], "description": "错误码"},
+        "error_message": {"type": ["string", "null"], "description": "错误信息"},
+        "created_at": {"type": ["string", "null"], "format": "date-time"},
+        "updated_at": {"type": ["string", "null"], "format": "date-time"},
+        "finished_at": {"type": ["string", "null"], "format": "date-time"},
+    },
+    required=["query_id", "status", "route_type", "sql_hash"],
+)
+
+QUERY_EXECUTION_EVENTS_SCHEMA = object_schema(
+    {
+        "items": array_schema(
+            object_schema(
+                {
+                    "id": {"type": "integer"},
+                    "query_id": {"type": "string"},
+                    "event_type": {"type": "string"},
+                    "from_status": {"type": ["string", "null"]},
+                    "to_status": {"type": ["string", "null"]},
+                    "payload": {"type": "object", "additionalProperties": True},
+                    "created_at": {"type": ["string", "null"], "format": "date-time"},
+                }
+            )
+        )
+    },
+    required=["items"],
+)
+
+QUERY_EXECUTION_RESULT_SCHEMA = object_schema(
+    {
+        "query_id": {"type": "string"},
+        "status": {"type": "string"},
+        "storage_type": {"type": "string"},
+        "content_type": {"type": "string"},
+        "row_count": {"type": "integer"},
+        "byte_size": {"type": "integer"},
+        "sha256": {"type": "string"},
+        "preview": {"type": "object", "additionalProperties": True},
+        "expires_at": {"type": ["string", "null"], "format": "date-time"},
+        "ready_at": {"type": ["string", "null"], "format": "date-time"},
+    },
+    required=["query_id", "status", "storage_type"],
+)
+
+QUERY_EXECUTION_CANCEL_SCHEMA = object_schema(
+    {
+        "query_id": {"type": "string"},
+        "status": {"type": "string"},
+        "cancel_requested": {"type": "boolean"},
+    },
+    required=["query_id", "status", "cancel_requested"],
 )
 
 COMPILE_PREVIEW_REQUEST_SCHEMA = object_schema(
@@ -272,8 +398,6 @@ COMPILE_PREVIEW_REQUEST_SCHEMA = object_schema(
         "retrieval_sources": array_schema({"type": "string"}),
         "tool_name": {"type": ["string", "null"], "description": "工具名称"},
         "tool_arguments": {"type": "object", "additionalProperties": True},
-        "viewer_roles": array_schema({"type": "string"}),
-        "principal_context": PRINCIPAL_CONTEXT_SCHEMA,
     }
 )
 
@@ -383,6 +507,96 @@ OPENAPI_OPERATION_METADATA: dict[tuple[str, str], dict[str, Any]] = {
             risk="medium",
             requires_confirmation=False,
             permission_scope="agent:semantic-plan:preview",
+            contract_status="stable",
+        ),
+    },
+    ("/api/v1/agent/semantic/execute", "post"): {
+        "operationId": "AgentSemanticExecute",
+        "summary": "Agent-first 语义执行",
+        "description": "正式 Agent Runtime 执行入口：固定 official 模式，先命中已发布 Ontology，再绑定 active Cube，生成执行票据并提交真实查询执行任务。",
+        "requestBody": request_body_schema(AGENT_EXECUTE_REQUEST_SCHEMA),
+        "responses": {"200": json_response(AGENT_EXECUTE_RESPONSE_SCHEMA), **standard_error_responses()},
+        **agent_extensions(
+            safe=True,
+            side_effect="execute",
+            risk="high",
+            requires_confirmation=False,
+            permission_scope="agent:semantic-execute:execute",
+            contract_status="stable",
+        ),
+    },
+    ("/api/v1/query-execution/jobs", "post"): {
+        "operationId": "QueryExecutionJobSubmit",
+        "summary": "提交查询执行任务",
+        "description": "提交已治理的 SQL 查询任务。Agent Runtime 正式执行路径必须携带治理快照和执行票据；数据开发手工 SQL 仍需通过只读 SQL Guard。",
+        "requestBody": request_body_schema(QUERY_EXECUTION_SUBMIT_REQUEST_SCHEMA),
+        "responses": {
+            "200": json_response(QUERY_EXECUTION_SUBMIT_RESPONSE_SCHEMA),
+            "201": json_response(QUERY_EXECUTION_SUBMIT_RESPONSE_SCHEMA, description="任务已创建"),
+            **standard_error_responses(),
+        },
+        **agent_extensions(
+            safe=True,
+            side_effect="execute",
+            risk="high",
+            requires_confirmation=False,
+            permission_scope="query-execution:jobs:create",
+            contract_status="stable",
+        ),
+    },
+    ("/api/v1/query-execution/jobs/{query_id}", "get"): {
+        "operationId": "QueryExecutionJobGet",
+        "summary": "查询执行任务状态",
+        "description": "读取当前主体可见的查询执行任务状态、SQL 哈希、资源集合和错误信息。",
+        "responses": {"200": json_response(QUERY_EXECUTION_JOB_SCHEMA), **standard_error_responses()},
+        **agent_extensions(
+            safe=True,
+            side_effect="none",
+            risk="medium",
+            requires_confirmation=False,
+            permission_scope="query-execution:jobs:read",
+            contract_status="stable",
+        ),
+    },
+    ("/api/v1/query-execution/jobs/{query_id}/events", "get"): {
+        "operationId": "QueryExecutionJobEventsList",
+        "summary": "查询执行事件列表",
+        "description": "读取查询执行任务的状态转换和关键执行事件，用于 Agent trace 与人工排障。",
+        "responses": {"200": json_response(QUERY_EXECUTION_EVENTS_SCHEMA), **standard_error_responses()},
+        **agent_extensions(
+            safe=True,
+            side_effect="none",
+            risk="medium",
+            requires_confirmation=False,
+            permission_scope="query-execution:jobs:read",
+            contract_status="stable",
+        ),
+    },
+    ("/api/v1/query-execution/jobs/{query_id}/results", "get"): {
+        "operationId": "QueryExecutionJobResultGet",
+        "summary": "查询执行结果元数据",
+        "description": "读取查询结果对象元数据与预览，不直接暴露本地 spool 物理路径。",
+        "responses": {"200": json_response(QUERY_EXECUTION_RESULT_SCHEMA), **standard_error_responses()},
+        **agent_extensions(
+            safe=True,
+            side_effect="none",
+            risk="medium",
+            requires_confirmation=False,
+            permission_scope="query-execution:results:read",
+            contract_status="stable",
+        ),
+    },
+    ("/api/v1/query-execution/jobs/{query_id}/cancel", "post"): {
+        "operationId": "QueryExecutionJobCancel",
+        "summary": "取消查询执行任务",
+        "description": "请求取消尚未终止的查询执行任务；Worker 会在执行循环中下沉 cancel 到执行引擎。",
+        "responses": {"200": json_response(QUERY_EXECUTION_CANCEL_SCHEMA), "409": error_response("任务当前状态不可取消"), **standard_error_responses()},
+        **agent_extensions(
+            safe=True,
+            side_effect="execute",
+            risk="medium",
+            requires_confirmation=False,
+            permission_scope="query-execution:jobs:cancel",
             contract_status="stable",
         ),
     },

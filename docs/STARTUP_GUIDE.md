@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-05-06
 ---
 
 # 项目启动指南
@@ -120,10 +120,17 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 python run_worker.py
 ```
 
+#### 终端 4：查询执行 Worker（可选）
+
+```bash
+python -m app.workers.query_execution_worker
+```
+
 说明：
 
 - Web 进程会自动启动 `APScheduler`
 - `python run_worker.py` 负责消费 RQ 队列中的目录同步、数据集同步等长耗时任务
+- 查询执行 Worker 负责消费 PostgreSQL `query_execution_jobs`，执行前复核 `ExecutionTicketSnapshot`，支持 lease 续租、过期恢复、取消下沉和可重试提交，并把结果写入共享 `QUERY_EXECUTION_SPOOL_DIR`
 
 ### 模式 C：Docker 后端 + 本地前端
 
@@ -144,11 +151,17 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 
 ## 4. 数据库与迁移
 
+生产首次上线前，Alembic 历史已 squash 为单一初始化版本：
+
+- 当前唯一 revision：`0001_initial_schema`
+- 用途：从空 PostgreSQL 创建当前完整 schema
+- 约束：生产还未执行旧开发阶段 revision 时才能使用该初始化历史；若某个环境已经记录旧 revision，需要先备份并执行 `flask --app wsgi.py db stamp 0001_initial_schema` 的受控演练，再接入后续新增迁移
+
 ### Docker 模式
 
 后端容器启动时会自动尝试：
 
-1. 初始化迁移目录（若不存在）
+1. 执行当前 Alembic 初始化 / 增量迁移
 2. 执行 `flask --app wsgi.py db upgrade`
 3. 启动 Gunicorn
 
@@ -179,6 +192,20 @@ python run_worker.py
 - 会加载 `create_app(role="worker")`
 - 与当前后端依赖装配保持一致
 - 负责执行目录同步、数据集元数据刷新等后台任务
+
+### 查询执行 Worker
+
+```bash
+python -m app.workers.query_execution_worker
+```
+
+特点：
+
+- 不依赖 Redis/RQ，从 PostgreSQL job queue claim 查询任务
+- 执行面只消费已编译 SQL 和 `ExecutionTicketSnapshot`，不读取 Ontology / Cube YAML
+- 需要与 Web 进程共享 `QUERY_EXECUTION_SPOOL_DIR`，默认 `instance/query_execution_results`
+- 生产参数：`QUERY_EXECUTION_LEASE_SECONDS` 默认 300 秒，`QUERY_WORKER_IDLE_SLEEP_SECONDS` 默认 2 秒，`QUERY_RESULT_CLEANUP_INTERVAL_SECONDS` 默认 300 秒，`QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS` 默认 3 次
+- 每轮 Worker 会定期扫描过期 READY 结果，删除本地 spool 文件并把 result object 标记为 `EXPIRED`
 
 ### Shell 脚本 Worker
 
@@ -245,6 +272,7 @@ make test-integration
 
 ```bash
 make verify-semantic
+make test-query-execution
 make smoke-semantic
 ```
 

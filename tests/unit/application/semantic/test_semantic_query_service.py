@@ -115,18 +115,6 @@ def test_domain_context_does_not_inject_join_semantics():
         name="学业域",
         status="active",
         cubes=["answer_records", "student"],
-        joins=[
-            {
-                "name": "answer_to_student",
-                "source_cube": "answer_records",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            }
-        ],
     )
     service = SemanticQueryService(
         cube_repo=_CubeRepo([_cube("answer_records"), _cube("student")]),
@@ -149,18 +137,6 @@ def test_multi_cube_query_rejects_non_active_domain():
         name="学业域",
         status="draft",
         cubes=["answer_records", "student"],
-        joins=[
-            {
-                "name": "answer_to_student",
-                "source_cube": "answer_records",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            }
-        ],
     )
     service = SemanticQueryService(
         cube_repo=_CubeRepo([_cube("answer_records"), _cube("student")]),
@@ -233,7 +209,6 @@ def test_compile_query_rejects_cross_source_and_missing_domain_membership():
         name="学业域",
         status="active",
         cubes=["answer_records"],
-        joins=[],
     )
     service = SemanticQueryService(
         cube_repo=_CubeRepo([answer_cube, student_cube]),
@@ -279,18 +254,6 @@ def test_build_domain_scoped_join_graph_rejects_missing_cube():
         name="学业域",
         status="active",
         cubes=["answer_records", "student"],
-        joins=[
-            {
-                "name": "answer_to_student",
-                "source_cube": "answer_records",
-                "target_cube": "student",
-                "source_field": "student_id",
-                "target_field": "id",
-                "join_type": "left",
-                "cardinality": "N:1",
-                "aggregation_strategy": "none",
-            }
-        ],
     )
     service = SemanticQueryService(cube_repo=_CubeRepo([_cube("answer_records")]))
 

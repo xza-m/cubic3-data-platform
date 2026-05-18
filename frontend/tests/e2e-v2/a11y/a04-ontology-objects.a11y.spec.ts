@@ -18,7 +18,7 @@ import prefFx from '../fixtures/preferences.json' with { type: 'json' }
 test.beforeEach(async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/ontology/objects', envelope(ontoFx.objects))
   await mockJsonRoute(page, '**/api/v1/ontology/objects/student', envelope(ontoFx.object_detail))
 })

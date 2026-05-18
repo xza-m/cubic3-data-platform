@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-13
 ---
 
 # 技术栈与架构说明
@@ -113,12 +113,14 @@ app/
 │   ├── dataset/
 │   ├── extraction/
 │   ├── query/
+│   ├── query_execution/
 │   ├── conversation/
 │   ├── semantic/
 │   └── services/
 ├── domain/               # 领域层
 │   ├── entities/
 │   ├── events/
+│   ├── query_execution/
 │   ├── ports/
 │   ├── semantic/
 │   └── services/
@@ -127,6 +129,7 @@ app/
 │   ├── repositories/
 │   ├── cache/
 │   ├── tasks/
+│   ├── query_execution/
 │   ├── semantic/
 │   └── events/
 ├── interfaces/api/       # API 层
@@ -179,15 +182,20 @@ app/
   - `execute` 会附带统一 `governance_trace` 与 `audit_trace_id`，记录命中策略、角色、目标与执行状态
 - `语义权限（内部实现为 Policy Metadata）`
   - 支持对象 / 动作 / 业务指标的最小语义权限声明
-  - 语义路由与执行预览可基于 `viewer_roles` 返回 `allow / blocked`
+  - 语义路由与执行预览基于服务端解析出的 `PrincipalContext` 和 RoleBinding 返回 `allow / blocked`
   - `Policy Impact` 可汇总受影响分析实体、治理挂点状态与当前问题清单
 - `Agent-ready Access Governance`
   - `/api/v1/agent/semantic/plan` 已固定为 Agent-first Runtime 入口，API 层和 `AgentPlanHandler` 统一注入 `runtime_mode=official`
   - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`：先做业务语义命中，再通过 Binding 编译到 Cube 执行目标；诊断类 `/semantic-router/*` 仍保留 preview 能力
-  - `viewer_roles` 仍兼容，但 API 层统一归一为 `PrincipalContext`
+  - Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；正式 `/api/v1/agent/semantic/plan` 不信任请求体角色、JWT 角色声明和 `viewer_roles`，诊断类 preview API 仅可用 `viewer_roles` 做沙盒预演
   - `Semantic Mapper` 稳定输出 `projection_result / resolved_bindings / binding_status / binding_issues`，只做只读 Binding，不定义第三套 mapping 真相源
-  - `Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
-  - Phase 1 只生成 `TicketPreview`，`enforcement=preview_only`，不作为 gateway 执行凭证
+  - `Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；运行时 SQL 必须由 `QueryDSL -> QueryCompiler` 生成，基础维度分组与时间过滤不能绕开 DSL；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
+  - `/api/v1/agent/semantic/plan` 只生成 `TicketPreview`，`enforcement=preview_only`，不作为 gateway 执行凭证
+  - `/api/v1/agent/semantic/execute` 在 `allow` 决策下生成 `ExecutionTicketSnapshot` 并提交带 `QueryDSL v1` 治理快照的 `query_execution_jobs`；`approval_required / deny` 不创建 job
+  - `Query Execution Worker` 只读取 job、ticket snapshot、`governance_snapshot.query_dsl`、DataSource 和已编译 SQL，不读取 Ontology / Cube YAML，也不做语义决策；执行态支持 lease 续租、过期恢复、取消下沉、可重试提交和续租失败停止处理
+  - 查询结果写入 `query_result_objects` 与共享 spool 目录；Web API 通过 `/api/v1/query-execution/jobs/<query_id>` 提供状态、事件、结果和取消能力
+  - SQL Lab 保留为数据开发人员使用的同步异构数据源查询工具面，不强制迁入 `ExecutionTicketSnapshot + async job` 协议
+  - 权限职责边界固定为 data-platform 负责 `Principal / PermissionPackage / RoleBinding / DataPolicy / PolicyDecision / GatewayAccessContextPreview`，`dw-query-gateway` 负责接收可信 `GatewayAccessContext`、SQL guard 与 `CredentialBinding`，MaxCompute 负责 RAM / ACL 物理兜底；data-platform 不保存真实 RAM 凭据；gateway 到 MaxCompute 的落地方案见 `docs/architecture/access-gateway-maxcompute-ram.md`
   - `/semantic-router/execute-plan` 与 `/execution-compiler/execute` 已补 M3/raw/ODS 拦截，返回 `require_approval` 且不真实执行
   - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 查询
 - `建模助手 Agent`
@@ -207,7 +215,7 @@ app/
 - `语义工作台` 可从 Cube 标题区回看来源业务对象
 - stale / impact 告警已在 `业务语义工作台` 收口为可定位的实体提示
 - `业务语义工作台` 的对象 / 关系 / 动作 / 业务指标页已接入运行时路由预演，可直接展示 `route_type`、`planning_mode`、多意图命中结果、planning steps 与 traceability
-- `业务语义工作台` 的权限页已支持影响范围说明和真实治理挂点预演，可直接展示 `viewer_roles` 在语义路由与执行预览上的 `allow / blocked` 结果与原因
+- `业务语义工作台` 的权限页已支持影响范围说明和真实治理挂点预演，可直接展示服务端 `PrincipalContext` 与 RoleBinding 在语义路由、执行预览上的 `allow / blocked` 结果与原因
 - `业务语义工作台` 的权限页已接入 `Policy Impact` 治理影响总览，可集中查看受影响的 Cube / Measure / Event Cube、治理挂点状态与当前问题列表
 - `业务语义工作台` 的业务指标页与权限页已接入统一执行预览，可直接查看编译产物、Bindings、Traceability 与执行计划
 - `业务语义工作台` 的权限页已接入“最近治理执行结果”卡片，可直接查看真实执行下的 `governance_trace`、命中策略与执行状态
@@ -304,6 +312,7 @@ frontend/src/
 - `/api/v1/semantic-router`
 - `/api/v1/execution-compiler`
 - `/api/v1/agent`
+- `/api/v1/query-execution`
 - `/api/v1/apps`
 - `/api/v1/app-instances`
 - `/api/v1/app-executions`
@@ -327,6 +336,8 @@ frontend/src/
   - `/api/v1/semantic-router/*`：最小语义路由、执行路径规划与回溯预览
   - `/api/v1/execution-compiler/*`：统一的 SQL / Retrieval / Tool 执行预览、计划预览与最小运行时执行
   - `/api/v1/agent/semantic/plan`：Agent-first official Runtime 主入口，返回 `runtime_mode / business_intent / projection_result / resolved_bindings / compiled_targets / policy_decision / semantic_trace` 与 preview-only ticket
+  - `/api/v1/agent/semantic/execute`：Agent-first 查询执行入口，生成受治理的 async query execution job
+  - `/api/v1/query-execution/*`：统一查询执行面，提供 job 状态、事件、结果和取消能力
 - `/api/v1/semantic/modeling-agent/*`：建模助手 Agent 的构建期接口，负责从事实表和业务意图生成、校验、Agent-ready 检查、保存并按范围发布 Cube + Ontology 草稿；不被正式 Agent 运行时直接读取
 - `/api/v1/semantic/domains/<domain_id>/context-preview`：Domain 业务上下文预览接口，只返回候选范围和 Agent 沙盒提示，不作为执行时 Join 或指标真相源
 - `/semantic/ontology`：业务语义工作台前端首期版本，已覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模与投影预览
@@ -365,25 +376,34 @@ frontend/src/
 与 Phase 6 直接相关的已实现接口包括：
 
 - `/api/v1/ontology/policies`
-- `/api/v1/semantic-router/route`：支持按 `viewer_roles` 做对象 / 动作 / 业务指标的最小权限阻断
-- `/api/v1/execution-compiler/compile-preview`：支持按 `viewer_roles` 返回 `allow / blocked`
+- `/api/v1/semantic-router/route`：支持按 `PrincipalContext` 做对象 / 动作 / 业务指标的最小权限阻断
+- `/api/v1/execution-compiler/compile-preview`：支持按 `PrincipalContext` 返回 `allow / blocked`
 
 与 Agent-ready Phase 1 直接相关的已实现接口包括：
 
 - `/api/v1/agent/semantic/plan`
+- `/api/v1/agent/semantic/execute`
+- `/api/v1/query-execution/jobs/<query_id>`
 - `/api/v1/semantic-router/execute-plan`：命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
 - `/api/v1/execution-compiler/execute`：命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
 - `/api/v1/governance/audit-traces`：支持按 `principal_id / semantic_plan_id / sql_hash / decision / route_type / policy` 查询
 
 ## 7. 语义层落地方式
 
-语义层不只是一组接口，还包含仓库内的 YAML 定义与运行时服务：
+语义层不只是一组接口，还包含仓库内的 YAML 定义、SQL 构建期状态与运行时服务：
 
 - `app/infrastructure/semantic/catalogs/`
 - `app/infrastructure/semantic/cubes/`
 - `app/infrastructure/semantic/domains/`
 - `app/infrastructure/semantic/views/`
 - `app/infrastructure/semantic/recipes/`
+
+建模 Copilot 的 session 与 Proposal 是构建期协作状态，生产默认写入 PostgreSQL，而不是写入本地 YAML：
+
+- `semantic_modeling_agent_sessions`
+- `semantic_modeling_proposals`
+- `SEMANTIC_MODELING_COPILOT_STORE=sql` 为默认生产路径
+- `SEMANTIC_MODELING_COPILOT_STORE=yaml` 仅用于本地开发、fixture 或迁移前诊断
 
 当前内置语义内容偏教育/学习分析场景，例如：
 

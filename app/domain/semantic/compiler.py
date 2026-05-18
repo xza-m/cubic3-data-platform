@@ -60,6 +60,8 @@ _RAW_OPS = {
     "endsWith":    lambda f, v: f"{f} LIKE '%{_esc(v[0])}'",
 }
 
+_RESTRICTED_FIELD_TAGS = {"restricted", "private", "sensitive", "pii", "personal", "privacy"}
+
 
 def _esc(val: str) -> str:
     """转义 SQL LIKE 通配符"""
@@ -90,6 +92,7 @@ class QueryCompiler:
         cubes = self._load_cubes(cube_names)
         primary = self._determine_primary(dsl, cubes)
         self._validate_cube_contracts(cubes)
+        self._validate_requested_field_visibility(dsl, cubes)
 
         if dsl.join_path and len(dsl.join_path) >= 2:
             join_edges = self._graph.find_path_through(dsl.join_path)
@@ -128,12 +131,10 @@ class QueryCompiler:
                 col_type = "string" if dim.type == "string" else "datetime"
                 expr = self._dialect.apply_granularity(raw_col, td.granularity, col_type)
                 alias = f"{dim_ref}__{td.granularity}"
+                select_parts.append(f"  {expr} AS `{alias}`")
+                group_by_parts.append(f"`{alias}`")
             else:
                 expr = raw_col
-                alias = self._ref_alias(dim_ref)
-
-            select_parts.append(f"  {expr} AS `{alias}`")
-            group_by_parts.append(f"`{alias}`")
 
             if td.date_range and len(td.date_range) >= 2:
                 part = cube.partition
@@ -213,7 +214,7 @@ class QueryCompiler:
             order_by_parts.append(f"`{alias}` {direction.upper()}")
 
         # ── 组装 SQL ──
-        from_clause = f"{self._source_relation(primary)} {primary.name}"
+        from_clause = self._aliased_source_relation(primary)
         join_clauses: List[str] = []
         for edge in join_edges:
             target_cube = cubes[edge.target]
@@ -227,7 +228,7 @@ class QueryCompiler:
             on_parts = [self._resolve_join_sql(edge.join_def.sql, edge.source, cubes)]
             on_parts.extend(join_on_parts.get(edge.target, []))
             on_expr = " AND ".join(on_parts)
-            join_clauses.append(f"  {jt} {self._source_relation(target_cube)} {target_cube.name} ON {on_expr}")
+            join_clauses.append(f"  {jt} {self._aliased_source_relation(target_cube)} ON {on_expr}")
 
         limit_val = dsl.limit or self._dialect.default_limit()
 
@@ -307,6 +308,12 @@ class QueryCompiler:
                 source_sql = source_sql[:-1].rstrip()
             return f"(\n{source_sql}\n)"
         return cube.table
+
+    @classmethod
+    def _aliased_source_relation(cls, cube: CubeDefinition) -> str:
+        relation = cls._source_relation(cube)
+        separator = " AS " if relation.startswith("(") else " "
+        return f"{relation}{separator}{cube.name}"
 
     @staticmethod
     def _parse_ref(ref: str) -> Tuple[str, str]:
@@ -402,6 +409,73 @@ class QueryCompiler:
                 raise CompilationError(
                     f"Measure '{ref}' is marked non_additive and cannot be queried with grouped dimensions or time buckets"
                 )
+
+    def _validate_requested_field_visibility(
+        self,
+        dsl: QueryDSL,
+        cubes: Dict[str, CubeDefinition],
+    ) -> None:
+        """Agent-first Runtime 默认不允许 DSL 直接投影或过滤 restricted 字段。"""
+        for ref in dsl.measures:
+            self._raise_if_restricted_measure(ref, cubes)
+        for ref in dsl.dimensions:
+            self._raise_if_restricted_dimension(ref, cubes)
+        for filt in dsl.filters:
+            self._raise_if_restricted_dimension(filt.target, cubes)
+        for td in dsl.time_dimensions:
+            self._raise_if_restricted_dimension(td.dimension, cubes)
+        for pair in dsl.order:
+            if not pair:
+                continue
+            ref = pair[0]
+            if not self._raise_if_restricted_measure(ref, cubes, missing_ok=True):
+                self._raise_if_restricted_dimension(ref, cubes, missing_ok=True)
+
+    def _raise_if_restricted_dimension(
+        self,
+        ref: str,
+        cubes: Dict[str, CubeDefinition],
+        *,
+        missing_ok: bool = False,
+    ) -> bool:
+        cube_name, dim_name = self._parse_ref(ref)
+        cube = cubes.get(cube_name)
+        if cube is None or dim_name not in cube.dimensions:
+            if missing_ok:
+                return False
+            return False
+        dim = cube.dimensions[dim_name]
+        tag = self._first_restricted_tag(dim.tags)
+        if tag:
+            raise CompilationError(f"Field '{ref}' is tagged restricted ({tag}) and cannot be used in QueryDSL")
+        return True
+
+    def _raise_if_restricted_measure(
+        self,
+        ref: str,
+        cubes: Dict[str, CubeDefinition],
+        *,
+        missing_ok: bool = False,
+    ) -> bool:
+        cube_name, measure_name = self._parse_ref(ref)
+        cube = cubes.get(cube_name)
+        if cube is None or measure_name not in cube.measures:
+            if missing_ok:
+                return False
+            return False
+        measure = cube.measures[measure_name]
+        tag = self._first_restricted_tag(measure.tags)
+        if tag:
+            raise CompilationError(f"Field '{ref}' is tagged restricted ({tag}) and cannot be used in QueryDSL")
+        return True
+
+    @staticmethod
+    def _first_restricted_tag(tags: List[str]) -> str | None:
+        for tag in tags or []:
+            normalized = str(tag or "").strip().lower()
+            if normalized in _RESTRICTED_FIELD_TAGS:
+                return normalized
+        return None
 
     def _validate_time_range(self, cube: CubeDefinition, date_range: List[str]) -> None:
         if cube.partition is None or cube.partition.max_range_days <= 0 or len(date_range) < 2:

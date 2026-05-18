@@ -5,8 +5,8 @@
 // 接 DELETE /api/v1/queries/:id  POST /api/v1/queries/:id/favorite
 
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Star } from 'lucide-react'
+import { useNavigate, type NavigateFunction } from 'react-router-dom'
+import { ExternalLink, Star, Trash2, X } from 'lucide-react'
 import {
   useSavedQueries,
   useDeleteSavedQuery,
@@ -14,8 +14,27 @@ import {
 } from '@v2/hooks/queries'
 import { fmtNum, fmtRelative } from '@v2/lib/format'
 import type { SavedQuery } from '@v2/api/queries'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { RetryState } from '@v2/components/LoadState'
+import { IdentityName } from '@v2/components/IdentityName'
 import { SavedQueryDetailContent } from './_shared/saved-query-content'
+import { openQueryWorkbenchWithPrefill } from './_shared/workbench-prefill'
 import { t } from '@v2/i18n'
+
+function openSavedQueryInWorkbench(row: SavedQuery, navigate: NavigateFunction) {
+  openQueryWorkbenchWithPrefill(
+    {
+      sql: row.sql_query,
+      source_id: row.source_id,
+      origin: 'saved_query',
+      query_id: row.id,
+      query_name: row.query_name,
+      principal_id: row.created_by,
+      principal_display_name: row.created_by_display_name ?? undefined,
+    },
+    navigate,
+  )
+}
 
 export default function QueriesSaved() {
   const navigate = useNavigate()
@@ -66,7 +85,7 @@ export default function QueriesSaved() {
               {t('queries.saved.title', '已保存查询')}
             </div>
             <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-              GET /api/v1/queries
+              {t('queries.saved.subtitle', '收藏常用 SQL，快速回到工作台继续分析')}
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -98,17 +117,11 @@ export default function QueriesSaved() {
           {isLoading ? (
             <SkeletonRows />
           ) : isError ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2">
-              <span className="text-xs text-red-500">{t('queries.saved.error.load', '加载失败')}</span>
-              <button
-                type="button"
-                onClick={() => void refetch()}
-                className="text-xs underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                {t('queries.saved.action.retry', '重试')}
-              </button>
-            </div>
+            <RetryState
+              message={t('queries.saved.error.load', '加载失败')}
+              onRetry={() => refetch()}
+              retryAriaLabel={t('queries.saved.action.retry', '重试加载已保存查询')}
+            />
           ) : rows.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-3">
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>
@@ -171,7 +184,9 @@ export default function QueriesSaved() {
                     <Td>
                       <code style={{ color: 'var(--text-3)' }}>{row.query_code}</code>
                     </Td>
-                    <Td>{row.created_by}</Td>
+                    <Td>
+                      <IdentityName value={row.created_by} displayName={row.created_by_display_name} />
+                    </Td>
                     <Td>
                       <div className="flex flex-wrap gap-1">
                         {row.tags?.map((t) => (
@@ -211,27 +226,23 @@ export default function QueriesSaved() {
                     </Td>
                     <Td>
                       <div className="flex items-center gap-1">
-                        <button
-                          type="button"
+                        <ActionIconButton
+                          label={t('queries.saved.action.detail', '详情')}
+                          icon={ExternalLink}
                           onClick={(e) => {
                             e.stopPropagation()
                             navigate(`/queries/my/${row.id}`)
                           }}
-                          className="rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-                          style={{ color: 'var(--accent)' }}
-                        >
-                          {t('queries.saved.action.detail', '详情')}
-                        </button>
-                        <button
-                          type="button"
+                        />
+                        <ActionIconButton
+                          label={t('queries.saved.action.delete', '删除')}
+                          icon={Trash2}
+                          variant="danger"
                           onClick={(e) => {
                             e.stopPropagation()
                             void handleDelete(row)
                           }}
-                          className="rounded px-1.5 py-0.5 text-xs text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          {t('queries.saved.action.delete', '删除')}
-                        </button>
+                        />
                       </div>
                     </Td>
                   </tr>
@@ -297,28 +308,23 @@ export default function QueriesSaved() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button
-                type="button"
+              <ActionIconButton
+                label={t('queries.saved.action.detail', '详情')}
+                icon={ExternalLink}
                 onClick={() => navigate(`/queries/my/${peekRow.id}`)}
-                className="rounded px-2 py-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-                style={{ color: 'var(--accent)' }}
-              >
-                {t('queries.saved.action.detail', '详情')}
-              </button>
-              <button
-                type="button"
+              />
+              <ActionIconButton
+                label={t('common.close', '关闭')}
+                icon={X}
+                variant="ghost"
                 onClick={() => setPeekRow(null)}
-                className="rounded p-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-                style={{ color: 'var(--text-3)' }}
-              >
-                ✕
-              </button>
+              />
             </div>
           </div>
           <SavedQueryDetailContent
             row={peekRow}
             actions={{
-              onOpen: () => navigate('/queries/console'),
+              onOpen: () => openSavedQueryInWorkbench(peekRow, navigate),
               onEdit: () => navigate(`/queries/my/${peekRow.id}`),
               onDelete: () => void handleDelete(peekRow),
               onToggleFavorite: () => void favMut.mutateAsync(peekRow.id),

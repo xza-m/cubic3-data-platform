@@ -52,9 +52,8 @@ const dashboardOverview = {
 test.beforeEach(async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await mockJsonRoute(page, '**/api/v1/users/me/preferences', envelope(prefFx.default))
-  // Dashboard hook returns `res.data` directly (not enveloped). See Dashboard.tsx::getDashboardOverview.
-  await mockJsonRoute(page, '**/api/v1/dashboard/overview', dashboardOverview)
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, '**/api/v1/dashboard/overview', envelope(dashboardOverview))
 })
 
 test('A01 Dashboard 无严重 a11y 违规 @a11y', async ({ page }) => {

@@ -8,12 +8,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  ExternalLink,
   PlayCircle,
   PauseCircle,
   Plus,
   Play,
   Trash2,
+  X,
 } from 'lucide-react'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { RetryState } from '@v2/components/LoadState'
 import {
   useScheduledQueries,
   useScheduledQueryRuns,
@@ -134,7 +138,7 @@ export default function QueriesScheduled() {
               {t('queries.scheduled.page.title', '调度查询')}
             </div>
             <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-              GET /api/v1/queries/scheduled · APScheduler in-process
+              {t('queries.scheduled.page.subtitle', '管理按周期自动执行的保存查询')}
             </div>
           </div>
           <button
@@ -150,19 +154,11 @@ export default function QueriesScheduled() {
           {isLoading ? (
             <SkeletonRows />
           ) : isError ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2">
-              <span className="text-xs text-red-500">
-                {t('queries.scheduled.state.loadFailed', '加载失败')}
-              </span>
-              <button
-                type="button"
-                onClick={() => void refetch()}
-                className="text-xs underline"
-                style={{ color: 'var(--accent)' }}
-              >
-                {t('queries.scheduled.action.retry', '重试')}
-              </button>
-            </div>
+            <RetryState
+              message={t('queries.scheduled.state.loadFailed', '加载失败')}
+              onRetry={() => refetch()}
+              retryAriaLabel={t('queries.scheduled.action.retry', '重试加载调度查询')}
+            />
           ) : rows.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center">
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>
@@ -245,35 +241,28 @@ export default function QueriesScheduled() {
                     </Td>
                     <Td onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => void handleTrigger(row)}
-                          disabled={triggerMut.isPending || !row.enabled}
-                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)] disabled:opacity-40"
-                          style={{ color: 'var(--accent)' }}
-                          title={
+                        <ActionIconButton
+                          label={
                             row.enabled
                               ? t('queries.scheduled.tooltip.triggerNow', '立即手动触发一次')
                               : t('queries.scheduled.tooltip.triggerDisabled', '禁用状态下无法触发')
                           }
-                        >
-                          <Play size={11} /> {t('queries.scheduled.action.trigger', '触发')}
-                        </button>
-                        <button
-                          type="button"
+                          icon={Play}
+                          variant="primary"
+                          onClick={() => void handleTrigger(row)}
+                          disabled={triggerMut.isPending || !row.enabled}
+                        />
+                        <ActionIconButton
+                          label={t('queries.scheduled.action.detail', '详情')}
+                          icon={ExternalLink}
                           onClick={() => navigate(`/queries/scheduled/${row.id}`)}
-                          className="rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-                          style={{ color: 'var(--text-2)' }}
-                        >
-                          {t('queries.scheduled.action.detail', '详情')}
-                        </button>
-                        <button
-                          type="button"
+                        />
+                        <ActionIconButton
+                          label={t('queries.scheduled.action.delete', '删除')}
+                          icon={Trash2}
+                          variant="danger"
                           onClick={() => void handleDelete(row)}
-                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          <Trash2 size={11} />
-                        </button>
+                        />
                       </div>
                     </Td>
                   </tr>
@@ -363,22 +352,17 @@ function PeekPanel({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
+          <ActionIconButton
+            label={t('queries.scheduled.action.detail', '详情')}
+            icon={ExternalLink}
             onClick={onOpen}
-            className="rounded px-2 py-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-            style={{ color: 'var(--accent)' }}
-          >
-            {t('queries.scheduled.action.detail', '详情')}
-          </button>
-          <button
-            type="button"
+          />
+          <ActionIconButton
+            label={t('common.close', '关闭')}
+            icon={X}
+            variant="ghost"
             onClick={onClose}
-            className="rounded p-1 text-xs transition-colors hover:bg-[color:var(--bg-hover)]"
-            style={{ color: 'var(--text-3)' }}
-          >
-            ✕
-          </button>
+          />
         </div>
       </div>
 

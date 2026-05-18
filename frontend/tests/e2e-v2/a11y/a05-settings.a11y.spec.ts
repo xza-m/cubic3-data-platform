@@ -16,7 +16,7 @@ import prefFx from '../fixtures/preferences.json' with { type: 'json' }
 test.beforeEach(async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
-  await page.route('**/api/v1/users/me/preferences', async (route) => {
+  await page.route('**/api/v1/access/me/preferences', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',

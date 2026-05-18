@@ -6,8 +6,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, CheckCircle, Send, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle, Edit3, Power, PowerOff, Send, Trash2, XCircle } from 'lucide-react'
 import { Chip, Dialog, Input, Skeleton, Switch, useToast } from '@v2/components/ui'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
 import {
@@ -159,25 +160,30 @@ export default function ChannelDetail() {
               </p>
             </div>
             {/* 顶栏操作 */}
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="rounded-md border px-3 py-1.5 text-xs transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                {t('common.edit', '编辑')}
-              </button>
-              {/* P12: 测试发送 — POST /api/v1/channels/:id/test */}
-              <button
-                type="button"
+            <div className="flex shrink-0 items-center gap-1.5">
+              <ActionIconButton
+                label={t('channel.action.sendTest', '发送测试消息')}
+                icon={Send}
+                variant="primary"
+                loading={testMutation.isPending}
                 onClick={() => void handleTest()}
-                disabled={testMutation.isPending}
-                className="inline-flex items-center gap-1 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus-visible:ring-2 disabled:opacity-50"
-              >
-                <Send size={11} aria-hidden />
-                {testMutation.isPending ? t('common.testing', '测试中…') : t('channel.action.test', '发送测试')}
-              </button>
+              />
+              <ActionIconButton
+                label={channel.enabled ? t('channel.action.disable', '禁用') : t('channel.action.enable', '启用')}
+                icon={channel.enabled ? PowerOff : Power}
+                onClick={() => void handleToggle()}
+              />
+              <ActionIconButton
+                label={t('common.edit', '编辑')}
+                icon={Edit3}
+                onClick={() => setEditing(true)}
+              />
+              <ActionIconButton
+                label={t('common.delete', '删除')}
+                icon={Trash2}
+                variant="danger"
+                onClick={() => void handleDelete()}
+              />
             </div>
           </div>
         </header>
@@ -187,15 +193,7 @@ export default function ChannelDetail() {
           {testResult && (
             <TestResultBanner result={testResult} onClose={() => setTestResult(null)} />
           )}
-          <ChannelDetailContent
-            row={channel}
-            actions={{
-              onTest: () => void handleTest(),
-              onToggle: () => void handleToggle(),
-              onEdit: () => setEditing(true),
-              onDelete: () => void handleDelete(),
-            }}
-          />
+          <ChannelDetailContent row={channel} />
         </div>
       </div>
 

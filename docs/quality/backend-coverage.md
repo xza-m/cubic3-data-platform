@@ -18,7 +18,7 @@ last_reviewed: 2026-04-22
 >
 > - **总覆盖率 96.49%**（1916 passed, 0 failed）
 > - 15 个模块 100%，绝大多数 >= 95%
-> - 最低模块：`infrastructure.users 85.49%`、`application.services 87.36%`、`domain.users 90.40%`
+> - 当时最低模块包含部分历史模块和 `application.services 87.36%`。当前覆盖率口径以新鲜 `make coverage-backend` 输出为准。
 >
 > **规则调整（相比 2026-03-25 快照）**：
 >

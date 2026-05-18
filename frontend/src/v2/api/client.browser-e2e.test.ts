@@ -5,7 +5,7 @@ describe('browser E2E fixture client', () => {
   it('serves modeling-agent shell and task APIs without a live backend', async () => {
     const client = createApiClient('/api/v1', { browserE2eFixtures: true })
 
-    const prefs = await client.get('/users/me/preferences')
+    const prefs = await client.get('/access/me/preferences')
     expect(prefs.data.data.default_landing).toBe('/dashboard')
 
     const specDraft = await client.post('/semantic/modeling-agent/spec-draft', {

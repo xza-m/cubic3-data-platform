@@ -2,14 +2,14 @@
 // 按钮级权限门控：<Can action="datasource.delete">{children}</Can>
 // 无权限时：子元素 disabled + tooltip 说明原因。
 //
-// TODO(round-2): wire usePermissions() to GET /api/v1/users/me/permissions
+// TODO(access): wire usePermissions() to Access Principal role bindings.
 import { type ReactNode, cloneElement, isValidElement } from 'react'
 import { Tooltip } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 
 // 权限 hook 占位：当前始终返回 ['*'] 表示有所有权限
 function usePermissions(): string[] {
-  // TODO(round-2): replace with real permissions from /api/v1/users/me/permissions
+  // TODO(access): replace with real Access Principal permissions.
   return ['*']
 }
 

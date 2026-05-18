@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>开发应用与推送 | Cubic3 Learn</title>
+    <link rel="stylesheet" href="./tutorial.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="side">
+        <div class="brand"><span class="logo">C3</span><span>Cubic3 Learn</span></div>
+        <div class="nav-title">Start learning</div>
+        <a class="nav-link" href="./self-service-query.html">自助查询入门</a>
+        <a class="nav-link" href="./semantic-modeling.html">语义建模工作流</a>
+        <a class="nav-link active" href="./app-development.html">开发应用与推送</a>
+        <a class="nav-link" href="./access-governance.html">权限治理闭环</a>
+      </aside>
+      <main class="main">
+        <article class="article">
+          <div class="eyebrow">Apps</div>
+          <h1>开发应用与推送</h1>
+          <p class="lead">应用中心把语义分析能力封装成可运营的实例，例如飞书问答、数据集卡片推送、异常监控和日报周报。这里关注实例创建、渠道连接、订阅触发和执行监控。</p>
+          <div class="meta">
+            <span class="pill">20 min</span>
+            <span class="pill">Beginner</span>
+            <span class="pill">应用中心</span>
+          </div>
+
+          <section id="lifecycle" class="section">
+            <div class="section-head">
+              <h2>应用生命周期</h2>
+              <p>从应用定义到执行结果，所有页面的跳转和右侧上下文都应保持一致。</p>
+            </div>
+            <div class="step">
+              <div class="step-no">1</div>
+              <div>
+                <h3>选择应用模板</h3>
+                <p>在应用市场中选择模板。卡片应等高排列，类别、状态和实例数都能快速扫描。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">2</div>
+              <div>
+                <h3>创建应用实例</h3>
+                <p>实例负责保存具体配置，例如数据集、推送目标、执行方式和负责人。点击实例时在当前上下文打开详情，不跳出模块壳层。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">3</div>
+              <div>
+                <h3>配置渠道和订阅</h3>
+                <p>渠道承载飞书、钉钉、邮件或 Webhook 连接；订阅定义什么时候触发、触发什么实例、推到哪里。</p>
+                <pre><code>{
+  "method": "POST",
+  "url": "https://open.feishu.cn/open-apis/bot/v2/hook/...",
+  "retry": { "max_attempts": 3 }
+}</code></pre>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">4</div>
+              <div>
+                <h3>监控执行记录</h3>
+                <p>执行监控必须保留应用侧边栏，列表分页展示。点击记录时右侧展示摘要，详情按钮仍在应用模块内跳转。</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="ops" class="section">
+            <div class="section-head">
+              <h2>上线前检查</h2>
+              <p>应用不是只跑通一次，还要可追踪、可重试、可审计。</p>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>配置可读</h3>
+                <p>实例详情中能直接看到关键配置，不需要跳到多个页面拼上下文。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>失败可定位</h3>
+                <p>最近状态、执行 ID、耗时和错误信息都能在执行记录中找到。</p>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-no">✓</div>
+              <div>
+                <h3>入口一致</h3>
+                <p>应用列表、应用实例、执行监控、渠道和订阅都使用一致的列表加上下文详情模式。</p>
+              </div>
+            </div>
+          </section>
+
+          <a class="cta" href="/apps">打开应用中心</a>
+        </article>
+      </main>
+      <aside class="toc">
+        <div class="progress"><span style="width: 75%"></span></div>
+        <h2>开发应用与推送</h2>
+        <a href="#lifecycle">应用生命周期</a>
+        <a href="#ops">上线前检查</a>
+      </aside>
+    </div>
+  </body>
+</html>

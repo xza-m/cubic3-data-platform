@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-05-06
 ---
 
 # 快速开始
@@ -129,6 +129,14 @@ Worker 负责消费 RQ 队列中的长耗时任务，包括：
 - 数据集元数据刷新
 - 其他异步提取 / 应用执行任务
 
+如需消费 Agent 语义执行或统一查询执行面提交的查询任务，另开一个查询执行 Worker：
+
+```bash
+python -m app.workers.query_execution_worker
+```
+
+该 Worker 不消费 Redis/RQ，而是从 PostgreSQL `query_execution_jobs` claim 任务，支持 lease 续租、过期恢复、取消下沉、可重试提交和过期结果清理。Web 与查询执行 Worker 必须共享 `QUERY_EXECUTION_SPOOL_DIR`（默认 `instance/query_execution_results`），用于读取持久化后的查询结果。常用生产参数包括 `QUERY_EXECUTION_LEASE_SECONDS`、`QUERY_WORKER_IDLE_SLEEP_SECONDS`、`QUERY_RESULT_CLEANUP_INTERVAL_SECONDS` 和 `QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS`。
+
 ## 4. 常用校验命令
 
 ```bash
@@ -166,6 +174,7 @@ make verify-docs
 
 # 语义中心专项校验
 make verify-semantic
+make test-query-execution
 make smoke-semantic
 
 # 可选：coverage 专项验证

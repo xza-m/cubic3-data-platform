@@ -2,13 +2,13 @@
 // 路由级权限门控：<RouteGuard required="role:semantic.editor">...</RouteGuard>
 // 无权跳 /forbidden。
 //
-// TODO(round-2): wire usePermissions() to GET /api/v1/users/me/permissions
+// TODO(access): wire usePermissions() to Access Principal role bindings.
 import { type ReactNode } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 
 // 权限 hook 占位：当前始终返回 ['*'] 表示有所有权限
 function usePermissions(): string[] {
-  // TODO(round-2): replace with real permissions from /api/v1/users/me/permissions
+  // TODO(access): replace with real Access Principal permissions.
   return ['*']
 }
 

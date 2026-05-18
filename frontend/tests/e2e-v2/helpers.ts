@@ -70,7 +70,8 @@ export function envelope<T>(data: T): { code: number; message: string; data: T }
 /**
  * Default catch-all for unmocked /api/v1/** GETs so an accidental network call
  * doesn't fail with ECONNREFUSED noise — it returns an empty success envelope.
- * Specs should override specific routes BEFORE calling `installApiCatchAll`.
+ * Playwright gives newer matching route handlers priority, so specs generally
+ * install this catch-all before registering specific route mocks.
  */
 export async function installApiCatchAll(page: Page): Promise<void> {
   await page.route('**/api/v1/**', async (route: Route) => {

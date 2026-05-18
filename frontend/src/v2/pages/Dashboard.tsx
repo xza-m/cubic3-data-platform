@@ -5,18 +5,21 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
   ArrowUpRight,
+  BookOpen,
   Brain,
-  CheckCircle2,
+  Code2,
   Database,
   Plus,
-  RefreshCcw,
   Search,
+  ShieldCheck,
   Sparkles,
   Table2,
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react'
-import { Button, Card, CardBody, CardHead, Chip, Skeleton, SkeletonRows } from '@v2/components/ui'
+import { Card, CardBody, CardHead, Chip, Skeleton, SkeletonRows } from '@v2/components/ui'
+import { RefreshButton } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
 import { useAppShell } from '@v2/layout/AppShell'
 import { apiClient } from '@v2/api/client'
 import { t } from '@v2/i18n'
@@ -69,8 +72,48 @@ const formatNumber = (n: number | null | undefined): string => {
 
 const formatPercent = (v: number | null | undefined): string => {
   if (v == null) return '—'
-  return `${Math.round(v)}%`
+  return `${Math.round(normalizePercent(v))}%`
 }
+
+const normalizePercent = (v: number): number => {
+  if (v > 0 && v <= 1) return v * 100
+  return v
+}
+
+const learningModules = [
+  {
+    title: '自助查询入门',
+    subtitle: '从数据目录选择表，编写 SQL，运行并保存查询',
+    href: '/tutorials/self-service-query.html',
+    icon: Search,
+    level: 'Beginner',
+    tone: 'var(--accent)',
+  },
+  {
+    title: '语义建模工作流',
+    subtitle: '用业务问题生成 Cube 与本体草稿，校验后发布给 Agent',
+    href: '/tutorials/semantic-modeling.html',
+    icon: Brain,
+    level: 'Intermediate',
+    tone: '#7c3aed',
+  },
+  {
+    title: '开发应用与推送',
+    subtitle: '配置应用实例、渠道、订阅和执行监控闭环',
+    href: '/tutorials/app-development.html',
+    icon: Code2,
+    level: 'Beginner',
+    tone: '#0f766e',
+  },
+  {
+    title: '权限治理闭环',
+    subtitle: '给成员配置平台角色和数据访问权限，校验审计链路',
+    href: '/tutorials/access-governance.html',
+    icon: ShieldCheck,
+    level: 'Admin',
+    tone: '#b91c1c',
+  },
+]
 
 const statusChip = (status: RecentQuery['status']) => {
   switch (status) {
@@ -117,10 +160,11 @@ export default function Dashboard() {
   useEffect(() => {
     setBreadcrumbs([t('nav.dashboard', '总览')])
     setTopBarActions(
-      <Button size="sm" variant="ghost" onClick={() => refetch()}>
-        <RefreshCcw size={12} className={isFetching ? 'animate-spin' : ''} />{' '}
-        {t('action.refresh', '刷新')}
-      </Button>,
+      <RefreshButton
+        onClick={() => refetch()}
+        loading={isFetching}
+        ariaLabel={t('dashboard.action.refresh', '刷新总览')}
+      />,
     )
     return () => setTopBarActions(null)
   }, [setBreadcrumbs, setTopBarActions, refetch, isFetching])
@@ -150,10 +194,10 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Link to="/queries" className="btn btn-primary">
+              <Link to="/queries" className="btn btn-sm btn-primary">
                 <Search size={12} /> {t('dashboard.cta.query', '打开查询工作台')}
               </Link>
-              <Link to="/semantic/ontology" className="btn btn-ghost">
+              <Link to="/semantic/ontology" className="btn btn-sm btn-ghost">
                 <ArrowUpRight size={12} /> {t('dashboard.cta.semantic', '本体工作台')}
               </Link>
             </div>
@@ -189,10 +233,37 @@ export default function Dashboard() {
             label={t('kpi.queries.today', '今日查询')}
             value={stats?.today_query_count}
             trend={trends?.query_count_week}
-            trendLabel={t('kpi.queries.week', '本周累计')}
+            trendLabel={t('kpi.queries.week', '近 7 日累计')}
             loading={isLoading}
           />
         </div>
+
+        <Card>
+          <CardHead
+            title={<h2 className="flex items-center gap-2 text-[13px] font-semibold text-1"><BookOpen size={14} /> Start learning</h2>}
+            subtitle="按真实工作流学习查询、建模、应用和权限治理，每个教程都是可独立打开的静态指南。"
+          />
+          <CardBody className="!p-0">
+            <div className="grid grid-cols-1 divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0" style={{ borderColor: 'var(--border)' }}>
+              <div>
+                <div className="border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-3" style={{ borderColor: 'var(--border)' }}>
+                  Courses
+                </div>
+                {learningModules.slice(0, 2).map((item) => (
+                  <LearningRow key={item.href} item={item} />
+                ))}
+              </div>
+              <div>
+                <div className="border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-3" style={{ borderColor: 'var(--border)' }}>
+                  Interactive demos
+                </div>
+                {learningModules.slice(2).map((item) => (
+                  <LearningRow key={item.href} item={item} />
+                ))}
+              </div>
+            </div>
+          </CardBody>
+        </Card>
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Card className="lg:col-span-2">
@@ -204,9 +275,11 @@ export default function Dashboard() {
               {isLoading ? (
                 <SkeletonRows rows={5} columns={4} />
               ) : isError ? (
-                <ErrorState
+                <RetryState
+                  className="px-4 py-8"
                   message={error instanceof Error ? error.message : t('error.load', '加载失败')}
                   onRetry={() => refetch()}
+                  retryAriaLabel={t('dashboard.action.retry', '重试加载总览')}
                 />
               ) : recent.length === 0 ? (
                 <div className="px-4 py-10 text-center text-[12px] text-3">
@@ -252,9 +325,10 @@ export default function Dashboard() {
                   loading={isLoading}
                 />
                 <HealthBar
-                  label={t('health.query', '查询成功率')}
+                  label={t('health.query', '近 7 日查询成功率')}
                   value={health?.query_success_rate}
                   loading={isLoading}
+                  emptyText={t('health.query.empty', '暂无近 7 日执行记录')}
                 />
               </div>
               <div className="mt-5 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
@@ -310,14 +384,57 @@ function KpiCard({ icon: Icon, label, value, trend, trendLabel, loading }: KpiCa
   )
 }
 
+interface LearningRowProps {
+  item: {
+    title: string
+    subtitle: string
+    href: string
+    icon: LucideIcon
+    level: string
+    tone: string
+  }
+}
+
+function LearningRow({ item }: LearningRowProps) {
+  const Icon = item.icon
+  return (
+    <a
+      href={item.href}
+      className="group flex items-center gap-3 border-b px-4 py-4 transition-colors last:border-b-0 hover:bg-[color:var(--bg-hover)]"
+      style={{ borderColor: 'var(--border)' }}
+    >
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white"
+        style={{ background: item.tone }}
+        aria-hidden
+      >
+        <Icon size={17} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-[13px] font-semibold text-1">{item.title}</span>
+          <Chip tone="neutral" className="shrink-0">{item.level}</Chip>
+        </span>
+        <span className="mt-1 block truncate text-[12px] text-3">{item.subtitle}</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-2 text-[11px] text-3">
+        教程
+        <ArrowUpRight size={12} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+      </span>
+    </a>
+  )
+}
+
 interface HealthBarProps {
   label: string
   value: number | null | undefined
   loading?: boolean
+  emptyText?: string
 }
 
-function HealthBar({ label, value, loading }: HealthBarProps) {
-  const pct = value == null ? 0 : Math.max(0, Math.min(100, value))
+function HealthBar({ label, value, loading, emptyText }: HealthBarProps) {
+  const hasValue = value != null
+  const pct = hasValue ? Math.max(0, Math.min(100, normalizePercent(value))) : 0
   const tone =
     pct >= 95 ? 'var(--success)' : pct >= 80 ? 'var(--warning)' : 'var(--danger)'
   return (
@@ -333,6 +450,9 @@ function HealthBar({ label, value, loading }: HealthBarProps) {
           aria-hidden
         />
       </div>
+      {!loading && !hasValue && emptyText ? (
+        <div className="mt-1 text-[11px] text-3">{emptyText}</div>
+      ) : null}
     </div>
   )
 }
@@ -350,17 +470,5 @@ function QuickLink({ to, icon: Icon, label }: QuickLinkProps) {
       <span className="flex-1 truncate">{label}</span>
       <ArrowUpRight size={12} className="text-3" />
     </Link>
-  )
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="px-4 py-8 text-center">
-      <CheckCircle2 size={20} className="mx-auto text-[color:var(--danger)]" />
-      <div className="mt-2 text-[12px] text-1">{message}</div>
-      <Button className="mt-3" size="sm" onClick={onRetry}>
-        {t('action.retry', '重试')}
-      </Button>
-    </div>
   )
 }

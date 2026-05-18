@@ -70,7 +70,7 @@ Phase 2 同时固定对象落点：`Cube` 是分析执行真相源，`Ontology` 
 - `/semantic/modeling-agent/new` 是建模助手 Agent 顶层任务流，不归属 `/semantic/cubes/new`
 - `Domain.cubes[]` / 业务上下文资产画布只作为 `Cube <-> Domain` 资产归属和候选范围事实；`Cube.domain_id` 只允许作为兼容投影字段存在
 - Domain 不作为指标、关系、动作或 Join 的第三套真相源；正式业务语义以 `Ontology` 为准，分析执行以 `Cube` 为准
-- 业务上下文资产画布不再维护关系边；执行 Join 只在 `Cube.joins` 中建模，业务关系只在 `Ontology BusinessRelation` 中建模
+- 业务上下文资产画布不再维护关系边，Domain 数据模型、YAML 与 API 不再保留 `joins` / `join_count`；执行 Join 只在 `Cube.joins` 中建模，业务关系只在 `Ontology BusinessRelation` 中建模
 - `View`、`Recipe` 的展示和操作优先作为详情、预览或工具挂载点处理
 - Phase 2 不引入“同一领域重复实例化同一个 Cube 且使用不同 Join 条件”的高级建模能力
 - 如果未来确实要新增一级页面，必须证明现有页面模型无法承接

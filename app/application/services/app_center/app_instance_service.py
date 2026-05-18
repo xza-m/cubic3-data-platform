@@ -12,6 +12,8 @@ from app.infrastructure.repositories.app_instance_repository import AppInstanceR
 from app.infrastructure.repositories.app_definition_repository import AppDefinitionRepository
 from app.shared.exceptions import ValidationError, NotFoundError, AuthorizationError
 
+APP_INSTANCE_ADMIN_ROLES = {'admin', 'platform_admin'}
+
 
 class AppInstanceService:
     """应用实例服务"""
@@ -291,10 +293,50 @@ class AppInstanceService:
         if not instance:
             raise NotFoundError(f"实例 {instance_id} 不存在")
         
-        if not instance.is_owned_by(user, roles=roles):
+        if not self._can_manage_instance(instance, user, roles=roles):
             raise AuthorizationError("无权限操作此实例")
         
         return instance
+
+    def _can_manage_instance(
+        self,
+        instance: AppInstance,
+        user: str,
+        roles: Optional[List[str]] = None,
+    ) -> bool:
+        """判断当前用户是否可管理实例，兼容旧飞书 open_id owner。"""
+        if set(roles or []) & APP_INSTANCE_ADMIN_ROLES:
+            return True
+        if instance.is_owned_by(user, roles=roles):
+            return True
+        return self._owner_matches_principal_alias(
+            owner=str(instance.owner or ""),
+            principal_id=str(user or ""),
+        )
+
+    def _owner_matches_principal_alias(self, owner: str, principal_id: str) -> bool:
+        """兼容 owner 仍保存为飞书 open_id/union_id 的历史实例。"""
+        if not owner or not principal_id or owner == 'system':
+            return False
+        if owner == principal_id:
+            return True
+        if owner.startswith(('ou_', 'on_')) and principal_id.endswith(f":{owner}"):
+            return True
+
+        for alias in self._list_owner_aliases(owner):
+            if str(getattr(alias, 'external_id', '')) == owner and str(getattr(alias, 'principal_id', '')) == principal_id:
+                return True
+        return False
+
+    def _list_owner_aliases(self, owner: str) -> List[Any]:
+        """从 access alias 表读取旧外部 ID 对应的 Principal。"""
+        try:
+            from app.extensions import db
+            from app.infrastructure.access.repositories import SqlAccessRepository
+
+            return SqlAccessRepository(db.session).list_aliases_by_external_ids([owner])
+        except Exception:
+            return []
     
     def _validate_trigger_on_event_config(self, config: Dict[str, Any]) -> List[str]:
         """

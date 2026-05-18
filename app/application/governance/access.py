@@ -2,16 +2,16 @@
 
 本模块位于应用层，承担单体内横切治理策略的最小实现：
 
-- 将旧的 ``viewer_roles`` 兼容输入归一成 ``PrincipalContext``；
+- 将认证后的可信身份投影归一成 ``PrincipalContext``；
 - 在编译后根据资源集合推导 M0-M3 数据层级；
-- 为 Phase 1 生成不可执行的 ``TicketPreview``；
-- 为后续 gateway 校验提供稳定的 logical SQL hash 规则。
+- 为 Phase 1 生成不可执行的权限判定预览；
+- 为后续独立 gateway 消费提供稳定的 access context 与 logical SQL hash 规则。
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import hashlib
 import re
+from dataclasses import dataclass, field
 from typing import Any, Iterable, Literal, Optional
 
 
@@ -65,8 +65,11 @@ class PrincipalContext:
     """统一后的请求主体上下文。"""
 
     principal_id: str
+    principal_type: str = "human"
     display_name: Optional[str] = None
     roles: list[str] = field(default_factory=list)
+    platform_roles: list[str] = field(default_factory=list)
+    data_roles: list[str] = field(default_factory=list)
     groups: list[str] = field(default_factory=list)
     departments: list[str] = field(default_factory=list)
     source: str = "anonymous"
@@ -76,8 +79,11 @@ class PrincipalContext:
     def to_dict(self) -> dict[str, Any]:
         return {
             "principal_id": self.principal_id,
+            "principal_type": self.principal_type,
             "display_name": self.display_name,
             "roles": list(self.roles),
+            "platform_roles": list(self.platform_roles),
+            "data_roles": list(self.data_roles),
             "groups": list(self.groups),
             "departments": list(self.departments),
             "source": self.source,
@@ -102,16 +108,19 @@ class PolicyDecisionResult:
     effective_column_scope: dict[str, Any] = field(default_factory=dict)
     execution_profile: dict[str, Any] = field(default_factory=dict)
     requires_approval: bool = False
+    governance_required: bool = False
     approval_available: bool = False
     required_roles: list[str] = field(default_factory=list)
     suggestions: list[dict[str, Any]] = field(default_factory=list)
     safe_alternatives: list[dict[str, Any]] = field(default_factory=list)
     decision_type: str = "preview"
     policy_version: str = "phase1-preview"
+    policy_epoch: int = 1
     ticket_preview: dict[str, Any] = field(default_factory=dict)
+    execution_permit: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "decision": self.decision,
             "effect": self.decision,
             "reason": self.reason,
@@ -122,47 +131,49 @@ class PolicyDecisionResult:
             "data_level": self.effective_data_level,
             "resource_set": dict(self.resource_set),
             "sql_hashes": list(self.sql_hashes),
-            "effective_row_scope": dict(self.effective_row_scope),
-            "effective_column_scope": dict(self.effective_column_scope),
             "execution_profile": dict(self.execution_profile),
             "requires_approval": self.requires_approval,
+            "governance_required": self.governance_required,
             "approval_available": self.approval_available,
             "required_roles": list(self.required_roles),
             "suggestions": [dict(item) for item in self.suggestions],
             "safe_alternatives": [dict(item) for item in self.safe_alternatives],
             "decision_type": self.decision_type,
             "policy_version": self.policy_version,
+            "policy_epoch": int(self.policy_epoch or 1),
+            "execution_permit": dict(self.execution_permit),
         }
+        if self.effective_row_scope:
+            payload["effective_row_scope"] = dict(self.effective_row_scope)
+        if self.effective_column_scope:
+            payload["effective_column_scope"] = dict(self.effective_column_scope)
+        return payload
 
 
 class PrincipalResolver:
-    """将 API 入参和认证上下文归一为 PrincipalContext。"""
+    """将可信身份上下文归一为 PrincipalContext。
+
+    新权限体系不再信任请求体中的 viewer_roles / roles / permissions；
+    角色只应来自服务端解析后的 principal_context。
+    """
 
     def resolve(
         self,
         *,
         principal_context: Optional[dict[str, Any]],
-        viewer_roles: Optional[list[str]],
-        authenticated_user: Optional[dict[str, Any]],
+        viewer_roles: Optional[list[str]] = None,
+        authenticated_user: Optional[dict[str, Any]] = None,
     ) -> PrincipalContext:
         auth = authenticated_user or {}
         incoming = principal_context or {}
-        roles = _dedupe(
-            [
-                *(auth.get("roles") or []),
-                *(incoming.get("roles") or []),
-                *(viewer_roles or []),
-            ]
-        )
+        roles = _dedupe(incoming.get("roles") or [])
         principal_id = str(
             incoming.get("principal_id")
             or incoming.get("user_id")
             or auth.get("user_id")
             or "anonymous"
         )
-        if viewer_roles and not principal_context:
-            source = "viewer_roles_compat"
-        elif principal_context:
+        if principal_context:
             source = str(incoming.get("source") or "principal_context")
         elif authenticated_user:
             source = "authenticated_user"
@@ -170,8 +181,11 @@ class PrincipalResolver:
             source = "anonymous"
         return PrincipalContext(
             principal_id=principal_id,
+            principal_type=str(incoming.get("principal_type") or auth.get("principal_type") or "human"),
             display_name=incoming.get("display_name") or auth.get("user_name"),
             roles=roles,
+            platform_roles=[role for role in roles if not str(role).startswith("data_")],
+            data_roles=[role for role in roles if str(role).startswith("data_")],
             groups=_dedupe(incoming.get("groups") or []),
             departments=_dedupe(incoming.get("departments") or []),
             source=source,
@@ -207,8 +221,10 @@ def infer_data_level_for_resource(resource: str) -> DataLevel:
         return "M3"
     if name.startswith("dwd.") or table_name.startswith("dwd_"):
         return "M2"
-    if name.startswith(("dws.", "ads.", "dim.")) or table_name.startswith(("dws_", "ads_", "dim_")):
+    if name.startswith("dws.") or table_name.startswith("dws_"):
         return "M1"
+    if name.startswith(("dim.", "ads.")) or table_name.startswith(("dim_", "ads_")):
+        return "M0"
     return "M1"
 
 
@@ -366,8 +382,62 @@ def _normalize_resource_set(compiled_targets: list[dict[str, Any]]) -> dict[str,
     }
 
 
+def _resource_set_physical(resource_set: dict[str, Any]) -> list[dict[str, Any]]:
+    return [dict(item) for item in (resource_set.get("physical") or []) if isinstance(item, dict)]
+
+
+def _repository_current_policy_epoch(policy_repository: Any | None) -> int:
+    if policy_repository is None or not hasattr(policy_repository, "current_policy_epoch"):
+        return 1
+    return int(policy_repository.current_policy_epoch() or 1)
+
+
+def _policy_epoch(policy: Any) -> int:
+    return int(getattr(policy, "policy_epoch", None) or 1)
+
+
+def _execution_constraints(execution_profile: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "max_rows": execution_profile.get("max_rows"),
+        "timeout_seconds": execution_profile.get("timeout_seconds"),
+        "export_allowed": bool(execution_profile.get("export_allowed", False)),
+        "requires_strong_audit": bool(execution_profile.get("requires_strong_audit", False)),
+        "allowed_operations": list(execution_profile.get("allowed_operations") or []),
+    }
+
+
+def _build_access_context_preview(
+    *,
+    principal: PrincipalContext,
+    data_level: DataLevel,
+    resource_set: dict[str, Any],
+    sql_hashes: list[str],
+    execution_profile: dict[str, Any],
+    policy_version: str,
+    policy_epoch: int,
+) -> dict[str, Any]:
+    return {
+        "schema": "GatewayAccessContextPreview.v1",
+        "principal_id": principal.principal_id,
+        "actor_type": principal.actor_type,
+        "actor_id": principal.actor_id or principal.principal_id,
+        "policy_version": policy_version,
+        "policy_epoch": int(policy_epoch or 1),
+        "execution_profile_code": str(execution_profile.get("profile_code") or ""),
+        "resource_set_physical": _resource_set_physical(resource_set),
+        "sql_hashes": list(sql_hashes),
+        "sql_hash_scope": "compiler_logical_sql",
+        "constraints": _execution_constraints(execution_profile),
+        "data_level": data_level,
+        "enforcement": "control_plane_only",
+    }
+
+
 class AccessPolicyDecisionService:
     """Phase 1 最小数据访问策略服务。"""
+
+    def __init__(self, policy_repository: Any | None = None) -> None:
+        self._policy_repository = policy_repository
 
     def pre_route(self, *, principal: PrincipalContext) -> PolicyDecisionResult:
         if principal.principal_id == "anonymous":
@@ -396,6 +466,12 @@ class AccessPolicyDecisionService:
         compiled_targets: list[dict[str, Any]],
         approval_id: Optional[str] = None,
     ) -> PolicyDecisionResult:
+        if self._policy_repository is not None:
+            return self._post_compile_with_repository(
+                principal=principal,
+                compiled_targets=compiled_targets,
+                approval_id=approval_id,
+            )
         data_level = infer_data_level_for_targets(compiled_targets)
         if data_level != "M0" and "platform_admin" in principal.roles and not _has_any_data_role(principal.roles):
             required_role = _required_role_for_data_level(data_level)
@@ -447,6 +523,270 @@ class AccessPolicyDecisionService:
             data_level=data_level,
             compiled_targets=compiled_targets,
             approval_id=approval_id,
+        )
+
+    def _post_compile_with_repository(
+        self,
+        *,
+        principal: PrincipalContext,
+        compiled_targets: list[dict[str, Any]],
+        approval_id: Optional[str] = None,
+    ) -> PolicyDecisionResult:
+        data_level = infer_data_level_for_targets(compiled_targets)
+        resource_set = _normalize_resource_set(compiled_targets)
+        sql_hashes = _dedupe(
+            target.get("sql_hash")
+            for target in compiled_targets
+            if target.get("sql_hash")
+        )
+        roles = list(principal.roles or [])
+        if data_level != "M0" and "platform_admin" in roles and not _has_any_data_role(roles):
+            policy_epoch = _repository_current_policy_epoch(self._policy_repository)
+            result = self._repository_decision(
+                principal=principal,
+                decision="deny",
+                reason="平台管理员不自动拥有数据访问权限",
+                reason_code="platform_admin_without_data_role",
+                data_level=data_level,
+                resource_set=resource_set,
+                sql_hashes=sql_hashes,
+                matched_policies=[
+                    {
+                        "policy_code": "platform_admin_without_data_role",
+                        "effect": "deny",
+                        "data_level": data_level,
+                    }
+                ],
+                required_roles=[_required_role_for_data_level(data_level)],
+                policy_epoch=policy_epoch,
+            )
+            self._persist_decision(result)
+            return result
+
+        if data_level == "M3":
+            policy_epoch = _repository_current_policy_epoch(self._policy_repository)
+            result = self._repository_decision(
+                principal=principal,
+                decision="deny",
+                reason="M3/raw data 默认不可直接消费，请治理为 M2 受控资产",
+                reason_code="m3_governance_required",
+                data_level=data_level,
+                resource_set=resource_set,
+                sql_hashes=sql_hashes,
+                matched_policies=[
+                    {
+                        "policy_code": "m3_raw_block",
+                        "effect": "deny",
+                        "data_level": "M3",
+                        "policy_version": "v1",
+                    }
+                ],
+                governance_required=True,
+                required_roles=["governance_admin"],
+                policy_epoch=policy_epoch,
+                safe_alternatives=[
+                    {
+                        "type": "rewrite_query",
+                        "label": "改查 DWS/ADS 聚合指标",
+                        "target_data_level": "M1",
+                    },
+                    {
+                        "type": "govern_data_asset",
+                        "label": "治理为 M2 受控明细或脱敏视图",
+                        "target_data_level": "M2",
+                    },
+                ],
+            )
+            self._persist_decision(result)
+            return result
+
+        policies = list(self._policy_repository.list_policy_domains(status="active"))
+        matching = [
+            policy
+            for policy in policies
+            if policy.matches(
+                principal_roles=roles,
+                data_level=data_level,
+                action="query",
+                resource_set=resource_set,
+            )
+        ]
+        deny_policy = next((policy for policy in matching if policy.effect == "deny"), None)
+        if deny_policy is not None:
+            result = self._repository_decision(
+                principal=principal,
+                decision="deny",
+                reason=deny_policy.reason or "命中阻断规则",
+                reason_code="data_policy_denied",
+                data_level=data_level,
+                resource_set=resource_set,
+                sql_hashes=sql_hashes,
+                matched_policies=[deny_policy.to_dict()],
+                policy_version=deny_policy.policy_version,
+                policy_epoch=_policy_epoch(deny_policy),
+            )
+            self._persist_decision(result)
+            return result
+
+        allow_policy = next((policy for policy in matching if policy.effect == "allow"), None)
+        if allow_policy is None:
+            policy_epoch = _repository_current_policy_epoch(self._policy_repository)
+            result = self._repository_decision(
+                principal=principal,
+                decision="deny",
+                reason="未命中可用数据访问权限或访问规则",
+                reason_code="data_policy_not_matched",
+                data_level=data_level,
+                resource_set=resource_set,
+                sql_hashes=sql_hashes,
+                matched_policies=[],
+                policy_epoch=policy_epoch,
+                required_roles=[_required_role_for_data_level(data_level)],
+                safe_alternatives=[
+                    {
+                        "type": "assign_permission_package",
+                        "label": "分配对应数据访问权限",
+                        "role": _required_role_for_data_level(data_level),
+                    }
+                ],
+            )
+            self._persist_decision(result)
+            return result
+
+        profile = None
+        if allow_policy.execution_profile_code:
+            profile = self._policy_repository.get_execution_profile(allow_policy.execution_profile_code)
+        if profile is None or profile.status != "active":
+            result = self._repository_decision(
+                principal=principal,
+                decision="deny",
+                reason="访问规则缺少可用执行方式",
+                reason_code="execution_profile_missing",
+                data_level=data_level,
+                resource_set=resource_set,
+                sql_hashes=sql_hashes,
+                matched_policies=[allow_policy.to_dict()],
+                policy_version=allow_policy.policy_version,
+                policy_epoch=_policy_epoch(allow_policy),
+            )
+            self._persist_decision(result)
+            return result
+
+        execution_profile = _execution_profile_from_orm(profile)
+        result = self._repository_decision(
+            principal=principal,
+            decision="allow",
+            reason="命中数据访问权限与默认访问规则",
+            reason_code="data_policy_allowed",
+            data_level=data_level,
+            resource_set=resource_set,
+            sql_hashes=sql_hashes,
+            matched_policies=[allow_policy.to_dict()],
+            execution_profile=execution_profile,
+            policy_version=allow_policy.policy_version,
+            policy_epoch=_policy_epoch(allow_policy),
+            execution_permit={
+                "mode": "policy_decision_preview",
+                "profile_code": execution_profile.get("profile_code"),
+                "enforcement": "control_plane_only",
+            },
+        )
+        self._persist_decision(result)
+        return result
+
+    def _repository_decision(
+        self,
+        *,
+        principal: PrincipalContext,
+        decision: Decision,
+        reason: str,
+        reason_code: str,
+        data_level: DataLevel,
+        resource_set: dict[str, Any],
+        sql_hashes: list[str],
+        matched_policies: list[dict[str, Any]],
+        execution_profile: dict[str, Any] | None = None,
+        policy_version: str = "v1",
+        policy_epoch: int = 1,
+        governance_required: bool = False,
+        required_roles: list[str] | None = None,
+        suggestions: list[dict[str, Any]] | None = None,
+        safe_alternatives: list[dict[str, Any]] | None = None,
+        execution_permit: dict[str, Any] | None = None,
+    ) -> PolicyDecisionResult:
+        permit = dict(execution_permit or {"mode": "not_issued", "reason_code": reason_code})
+        if decision == "allow" and execution_profile:
+            permit.setdefault("mode", "policy_decision_preview")
+            permit.setdefault("enforcement", "control_plane_only")
+            permit["access_context_preview"] = _build_access_context_preview(
+                principal=principal,
+                data_level=data_level,
+                resource_set=resource_set,
+                sql_hashes=sql_hashes,
+                execution_profile=execution_profile,
+                policy_version=policy_version,
+                policy_epoch=policy_epoch,
+            )
+        ticket_preview = {
+            "type": "ticket_preview",
+            "enforcement": "policy_decision_only",
+            "principal_id": principal.principal_id,
+            "actor_type": principal.actor_type,
+            "actor_id": principal.actor_id or principal.principal_id,
+            "data_level": data_level,
+            "resource_set_physical": _resource_set_physical(resource_set),
+            "sql_hashes": sql_hashes,
+            "sql_hash_scope": "compiler_logical_sql",
+            "execution_profile": execution_profile or {},
+            "execution_profile_code": (execution_profile or {}).get("profile_code"),
+            "decision_type": "inline",
+            "policy_version": policy_version,
+            "policy_epoch": int(policy_epoch or 1),
+            "note": "当前为权限判定预览，不是 gateway 可执行凭证",
+        }
+        return PolicyDecisionResult(
+            decision=decision,
+            reason=reason,
+            reason_code=reason_code,
+            message=reason,
+            effective_data_level=data_level,
+            matched_policies=matched_policies,
+            resource_set=resource_set,
+            sql_hashes=sql_hashes,
+            execution_profile=execution_profile or {},
+            requires_approval=False,
+            governance_required=governance_required,
+            approval_available=False,
+            required_roles=list(required_roles or []),
+            suggestions=[dict(item) for item in (suggestions or [])],
+            safe_alternatives=[dict(item) for item in (safe_alternatives or [])],
+            decision_type="inline",
+            policy_version=policy_version,
+            policy_epoch=policy_epoch,
+            ticket_preview=ticket_preview,
+            execution_permit=permit,
+        )
+
+    def _persist_decision(self, result: PolicyDecisionResult) -> None:
+        if self._policy_repository is None:
+            return
+        self._policy_repository.save_policy_decision(
+            {
+                "principal_id": result.ticket_preview.get("principal_id") or "anonymous",
+                "actor_id": result.ticket_preview.get("actor_id"),
+                "decision": result.decision,
+                "reason_code": result.reason_code,
+                "reason": result.reason,
+                "data_level": result.effective_data_level,
+                "resource_set": result.resource_set,
+                "sql_hashes": result.sql_hashes,
+                "matched_policies": result.matched_policies,
+                "execution_profile_code": result.execution_profile.get("profile_code"),
+                "policy_version": result.policy_version,
+                "policy_epoch": result.policy_epoch,
+                "decision_type": result.decision_type,
+                "governance_required": result.governance_required,
+            }
         )
 
     def _build_decision(
@@ -520,6 +860,7 @@ class AccessPolicyDecisionService:
             suggestions=suggestions,
             safe_alternatives=safe_alternatives,
             policy_version="phase1-preview",
+            policy_epoch=1,
             ticket_preview=ticket_preview,
         )
 
@@ -532,3 +873,19 @@ def _allowed_layers(data_level: DataLevel) -> list[str]:
     if data_level == "M2":
         return ["dim", "dwd", "dws", "ads"]
     return ["ods", "raw"]
+
+
+def _execution_profile_from_orm(row: Any) -> dict[str, Any]:
+    return {
+        "profile_code": row.profile_code,
+        "name": row.name,
+        "description": row.description,
+        "credential_mode": row.credential_mode,
+        "data_level": row.data_level,
+        "allowed_operations": list(row.allowed_operations or []),
+        "max_rows": row.max_rows,
+        "timeout_seconds": row.timeout_seconds,
+        "export_allowed": bool(row.export_allowed),
+        "requires_strong_audit": bool(row.requires_strong_audit),
+        "status": row.status,
+    }

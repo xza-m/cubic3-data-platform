@@ -50,9 +50,7 @@ last_reviewed: 2026-04-25
 | `/executions` | `apps/executions/Executions.tsx` | `/api/v1/app-executions` | 已接线 |
 | `/config/channels` | `config/channels/Channels.tsx` | `/api/v1/channels` | 已接线 |
 | `/config/subscriptions` | `config/subscriptions/Subscriptions.tsx` | `/api/v1/subscriptions` | 已接线 |
-| `/config/users` | `config/users/Users.tsx` | `/api/v1/users` | 已接线 |
-| `/config/roles` | `config/roles/Roles.tsx` | `/api/v1/roles`、`/api/v1/permissions` | 已接线 |
-| `/settings` | `settings/Settings.tsx` | `/api/v1/users/me/preferences` | 已接线 |
+| `/settings` | `settings/Settings.tsx` | `/api/v1/access/me/preferences` | 已接线 |
 | `/semantic/ontology` | `semantic/ontology/Workbench.tsx` | `/api/v1/ontology/workbench/*` | 已接线 |
 | `/semantic/ontology/objects` | `semantic/ontology/Objects.tsx` | `/api/v1/ontology/objects` | 已接线 |
 | `/semantic/ontology/objects/:name` | `semantic/ontology/ObjectDetail.tsx` | `/api/v1/ontology/objects/<name>` | 已接线 |
@@ -99,14 +97,15 @@ last_reviewed: 2026-04-25
 | 提取调度保存方法不一致 | `updateTaskSchedule` 使用 `PATCH /extraction/tasks/<id>`；后端 `extraction.py` 当前只支持 `PUT /tasks/<id>`。 | 二选一：前端改为复用 `updateTask` 的 `PUT`，或后端增加 `PATCH` 语义。推荐前端改 `PUT`，保持 KISS。 |
 | `/data-chat` 占位 | 后端 `conversations` 主链已存在，并已接入语义路由尝试；v2 前端路由仍是 Placeholder。 | 若本期要恢复智能问数 UI，应创建 v2 DataChat 页面并接 `/api/v1/conversations`；否则文档继续标注为占位。 |
 | `/extraction/config` 占位 | v2 已有任务列表、详情和创建页，独立配置入口没有真实页面。 | 若产品仍需要独立配置工作台，补页面；否则从主导航弱化或移除该入口。 |
-| Cube 草稿 smoke 仍依赖旧语义上下文 | `frontend/tests/e2e/cube_draft_smoke.py` 当前仍以 `/semantic/workbench?cube=...` 进入草稿后续上下文；该路径在 v2 中是诊断工作台。 | 后续二选一：把 smoke 对齐到 Cube 创建/编辑真实页面，或为诊断页明确保留该调试入口。推荐前者，避免测试继续绑定诊断路由。 |
+| Cube 草稿 smoke 已从交付门禁下线 | `frontend/tests/e2e/cube_draft_smoke.py` 仍可作为诊断页手工回归参考，但不再由 `make smoke-semantic` 调用；当前语义专项第三段由 `frontend/tests/e2e-v2/p34-modeling-agent-smoke.spec.ts` 承接 Modeling Copilot 闭环。 | 保留为诊断参考即可；不要再把它解读为当前 Cube 编辑页或 Modeling Copilot 的产品闭环契约。 |
 
 ## 5. 测试覆盖
 
 - v2 Playwright 套件位于 `frontend/tests/e2e-v2/`，覆盖 P1-P31、smoke、a11y 和 visual。
 - v2 smoke 入口是 `npm run e2e:smoke`，仓库封装为 `make smoke-frontend`。
-- 语义专项真实烟测仍由 `make smoke-semantic` 调用 `frontend/tests/e2e/domain_creation_smoke.py`、`domain_publish_smoke.py` 和 `cube_draft_smoke.py`。
-- 其中 `cube_draft_smoke.py` 仍需后续重新对齐 v2 Cube 草稿页面；在完成前，它代表诊断链路覆盖，不应被解读为 Cube 编辑页的完整契约测试。
+- 语义专项烟测由 `make smoke-semantic` 调用 `frontend/tests/e2e/domain_creation_smoke.py`、`domain_publish_smoke.py` 和 `frontend/tests/e2e-v2/p34-modeling-agent-smoke.spec.ts`。
+- Modeling Copilot 真实后端补证入口是 `npm run e2e:modeling-agent-smoke:live`，它会写入真实 session / Proposal / 发布资产，只在发布前或后端契约变更时显式运行。
+- `cube_draft_smoke.py` 已从语义专项交付门禁下线；如果后续继续保留，只代表 `/semantic/workbench` 诊断链路的手工参考。
 - `make test-regression-*` 与 `make semantic-layout` 已随 legacy 清理退役，不再作为当前验证入口。
 
 ## 6. 后续维护规则

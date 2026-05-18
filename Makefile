@@ -9,6 +9,12 @@ DOMAIN_SMOKE_BASE_URL ?= http://127.0.0.1:3102
 VERIFY_FILES ?=
 VERIFY_BASE ?=
 VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(VERIFY_FILES)),,--worktree))
+SEMANTIC_PREFLIGHT_OBJECT ?= StudentComment
+SEMANTIC_PREFLIGHT_METRIC ?= comment_count
+SEMANTIC_PREFLIGHT_CUBE ?= student_comment_cube
+SEMANTIC_PREFLIGHT_MEASURE ?= comment_count
+SEMANTIC_PREFLIGHT_TABLE ?= df_cb_258187.dwd_interaction_comment_reports_df
+AGENT_RUNTIME_LIVE_QUESTION ?= 查询最近7天学生评论数，按学校汇总
 
 .PHONY: \
 	help \
@@ -29,6 +35,9 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	review \
 	verify-semantic \
 	test-agent-runtime \
+	test-query-execution \
+	preflight-agent-runtime \
+	live-agent-runtime \
 	test-modeling-agent \
 	smoke-semantic \
 	docs-health \
@@ -55,6 +64,7 @@ VERIFY_CONTEXT := $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(strip $(V
 	test-integration-frontend \
 	smoke-backend \
 	smoke-frontend \
+	smoke-access \
 	smoke-observability \
 	coverage \
 	coverage-backend \
@@ -80,6 +90,9 @@ help:
 	@printf '  %-26s %s\n' 'make review' '审阅前总入口（verify + docs-health + docs-impact）'
 	@printf '  %-26s %s\n' 'make verify-semantic' '语义中心专项总入口（共享层 + 语义 smoke）'
 	@printf '  %-26s %s\n' 'make test-agent-runtime' 'Agent-first Runtime official 链路测试'
+	@printf '  %-26s %s\n' 'make test-query-execution' '统一查询执行面最小链路测试'
+	@printf '  %-26s %s\n' 'make preflight-agent-runtime' '真实环境 Agent Runtime 语义资产预检（不并入默认 verify）'
+	@printf '  %-26s %s\n' 'make live-agent-runtime' '真实 MaxCompute 执行验收（opt-in，不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Agent 与 Domain 上下文最小链路测试'
 	@printf '  %-26s %s\n' 'make smoke-semantic' '语义中心关键路径运行验证'
 	@printf '  %-26s %s\n' 'make coverage' 'coverage 聚合入口（backend + frontend，可选，不并入默认四层）'
@@ -102,6 +115,7 @@ help:
 	@printf '  %-26s %s\n' 'make test-frontend' '前端自动化测试聚合'
 	@printf '  %-26s %s\n' 'make smoke-backend' '后端关键 API smoke'
 	@printf '  %-26s %s\n' 'make smoke-frontend' '前端平台壳层 smoke（== local-smoke）'
+	@printf '  %-26s %s\n' 'make smoke-access' '权限体系产品闭环 smoke（Principal / API Key / DataPolicy / Agent）'
 	@printf '  %-26s %s\n' 'make docs-health' '文档健康检查'
 	@printf '%s\n' ''
 	@printf '%s\n' '本地闸门（GitLab CI 未就位时的替代入口）:'
@@ -204,15 +218,19 @@ smoke-frontend:
 	@printf '%s\n' '[layer4][frontend] 运行前端 v2 cutover smoke (Round 3 W6.A · scripts/cutover/deploy.sh 走该 6/6 用例)'
 	cd $(FRONTEND_DIR) && $(NPM) run e2e:smoke
 
+smoke-access:
+	@printf '%s\n' '[layer4][access] 运行权限体系产品闭环 smoke'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov tests/integration/access
+
 smoke-observability:
 	@printf '%s\n' '[layer4][observability] skip: 当前仓库未配置统一可观测阈值校验'
 
 smoke-semantic:
-	@printf '%s\n' '[contract][semantic-smoke] 需要前端开发服务、最新后端代码和可写语义目录；该 smoke 会创建或更新草稿/测试资产，不属于默认 repo smoke'
+	@printf '%s\n' '[contract][semantic-smoke] 领域 smoke 需要前端开发服务、最新后端代码和可写语义目录；Modeling Copilot smoke 使用 v2 Playwright mock 闭环；不属于默认 repo smoke'
 	@printf '%s\n' '[layer4][semantic] 运行语义中心关键路径 smoke'
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-smoke
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-publish-smoke
-	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:cube-draft-smoke
+	cd $(FRONTEND_DIR) && $(NPM) run e2e:modeling-agent-smoke
 
 verify: lint typecheck test smoke
 
@@ -266,7 +284,9 @@ test-modeling-agent:
 		tests/unit/application/semantic/test_domain_modeling_service.py::test_domain_context_preview_returns_candidate_scope_without_join_truth \
 		tests/integration/test_semantic_api.py::TestDomainsEndpoint::test_domain_context_preview_returns_candidate_scope \
 		tests/unit/application/semantic/test_semantic_modeling_agent.py \
-		tests/integration/test_semantic_modeling_agent_api.py
+		tests/integration/test_semantic_modeling_agent_api.py \
+		tests/unit/application/semantic/test_modeling_copilot_service.py \
+		tests/integration/test_semantic_modeling_copilot_api.py
 	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx
 
 test-agent-runtime:
@@ -275,10 +295,36 @@ test-agent-runtime:
 		tests/unit/application/semantic_router/test_preview_service.py::test_official_runtime_only_matches_active_ontology_and_glossary_targets \
 		tests/unit/application/semantic_router/test_preview_service.py::test_router_routes_metric_and_alias_to_cube \
 		tests/unit/application/execution_compiler/test_execution_compiler_preview_service.py \
+		tests/unit/application/agent/test_runtime_preflight_service.py \
 		tests/unit/application/test_agent_plan_handler.py::test_agent_plan_handler_orchestrates_semantic_plan_and_ticket_preview \
 		tests/integration/test_agent_semantic_api.py::test_agent_semantic_plan_api_returns_preview_only_ticket
 
-verify-semantic: test-agent-runtime test-modeling-agent verify-backend verify-frontend smoke-semantic
+test-query-execution:
+	@printf '%s\n' '[layer3][query-execution] 运行统一查询执行面最小链路测试'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
+		tests/unit/domain/query_execution/test_entities.py \
+		tests/unit/application/query_execution \
+		tests/unit/infrastructure/query_execution \
+		tests/integration/query_execution
+
+preflight-agent-runtime:
+	@printf '%s\n' '[preflight][agent-runtime] 检查真实环境 active Ontology + active Cube 资产绑定'
+	PYTHONPATH=. $(PYTHON) scripts/checks/semantic_runtime_preflight.py \
+		--object-name "$(SEMANTIC_PREFLIGHT_OBJECT)" \
+		--metric-name "$(SEMANTIC_PREFLIGHT_METRIC)" \
+		--cube-name "$(SEMANTIC_PREFLIGHT_CUBE)" \
+		--measure-name "$(SEMANTIC_PREFLIGHT_MEASURE)" \
+		--expected-table "$(SEMANTIC_PREFLIGHT_TABLE)"
+
+live-agent-runtime:
+	@printf '%s\n' '[acceptance][agent-runtime] 运行真实 MaxCompute Agent-first Runtime 验收（opt-in）'
+	PYTHONPATH=. $(PYTHON) scripts/checks/agent_runtime_live_acceptance.py \
+		--question "$(AGENT_RUNTIME_LIVE_QUESTION)" \
+		--expected-table "$(SEMANTIC_PREFLIGHT_TABLE)" \
+		--expected-metric "$(SEMANTIC_PREFLIGHT_METRIC)" \
+		--expected-dimension "school_name"
+
+verify-semantic: test-agent-runtime test-query-execution test-modeling-agent verify-backend verify-frontend smoke-semantic
 
 coverage: coverage-backend coverage-frontend
 

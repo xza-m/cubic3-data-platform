@@ -6,8 +6,7 @@
 // 与 QueryConsole 的关系：
 //   - 本页面生成 SQL，调 POST /api/v1/queries/execute 就地展示。
 //   - 若用户希望切到手写模式，"在查询控制台打开"会通过 sessionStorage
-//     `v2:queryVisual:pendingPrefill` 透传 SQL + source_id，QueryConsole 的
-//     useEffect 在 mount 时读取并回填（读完即清）。
+//     与 route state 透传 SQL + source_id，QueryConsole 在 mount 时读取并回填。
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -22,9 +21,13 @@ import { FilterPanel } from './FilterPanel'
 import { SqlPreview } from './SqlPreview'
 import { buildSql } from './buildSql'
 import { emptyDraft, type QueryDraft } from './types'
+import {
+  openQueryWorkbenchWithPrefill,
+  V2_QUERY_WORKBENCH_PREFILL_KEY,
+} from '../_shared/workbench-prefill'
 
-/** sessionStorage key — 与 QueryConsole 约定；读完即清。 */
-export const V2_QUERY_VISUAL_PREFILL_KEY = 'v2:queryVisual:pendingPrefill'
+/** 兼容旧测试/调用名；真实 key 统一维护在 workbench-prefill。 */
+export const V2_QUERY_VISUAL_PREFILL_KEY = V2_QUERY_WORKBENCH_PREFILL_KEY
 
 export default function QueryVisual() {
   const navigate = useNavigate()
@@ -103,20 +106,14 @@ export default function QueryVisual() {
 
   const handleOpenInConsole = () => {
     if (!dataset) return
-    try {
-      sessionStorage.setItem(
-        V2_QUERY_VISUAL_PREFILL_KEY,
-        JSON.stringify({
-          sql: sqlResult.sql,
-          source_id: dataset.source_id ?? null,
-          origin: 'visual',
-          created_at: Date.now(),
-        }),
-      )
-    } catch {
-      // sessionStorage 不可用则放弃，直接跳转（用户可在 console 手动粘贴）
-    }
-    navigate('/queries')
+    openQueryWorkbenchWithPrefill(
+      {
+        sql: sqlResult.sql,
+        source_id: dataset.source_id ?? null,
+        origin: 'visual',
+      },
+      navigate,
+    )
   }
 
   const handleExport = async () => {

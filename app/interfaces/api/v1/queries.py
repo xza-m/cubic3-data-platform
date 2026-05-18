@@ -1,11 +1,14 @@
-"""
-查询中心 REST API
-"""
+"""查询中心 REST API。"""
+import hashlib
 import os
+import re
+from typing import Any
 
-from flask import Blueprint, request, g, send_file, abort
+from flask import Blueprint, request, g, send_file, abort, current_app, jsonify
 from pydantic import ValidationError
 from app.di.utils import get_app_container
+from app.application.access.identity import RoleBindingResolver
+from app.application.governance.access import AccessPolicyDecisionService, PrincipalResolver, canonical_sql_hash
 from app.interfaces.api.middleware.auth import require_auth
 from app.application.query.commands.execute_query import ExecuteQueryCommand
 from app.application.query.commands.create_query import CreateQueryCommand
@@ -32,6 +35,10 @@ from app.shared.exceptions import (
     QuotaExceededError,
     ValidationError as AppValidationError,
 )
+from app.extensions import db
+from app.infrastructure.access.repositories import SqlAccessRepository
+from app.infrastructure.gateway.telemetry_client import GatewayQueryClient, GatewayQueryError
+from app.infrastructure.governance.repositories import SqlAccessGovernanceRepository
 from app.shared.response import success, created, error, not_found, server_error
 from app.shared.utils.logger import get_logger
 
@@ -40,8 +47,193 @@ bp = Blueprint('queries', __name__, url_prefix='/api/v1/queries')
 
 
 def get_current_user():
-    """获取当前用户"""
-    return g.get('user_id', 'admin')
+    """获取当前权限主体。
+
+    查询记录的负责人 / 执行人属于授权事实，优先写入新的 Principal ID；
+    旧 JWT 只有 user_id 时再兼容回退。
+    """
+    return g.get('principal_id') or g.get('user_id', 'admin')
+
+
+def _principal_id_from_request(requested_principal_id: str | None = None) -> str:
+    """解析本次请求的有效 Principal。
+
+    查询工作台可以携带 prefill 中的 principal_id 作为显式主体意图；
+    后端只接受它与认证主体一致，避免通过请求体代执行其他 Principal。
+    """
+    current_principal_id = str(get_current_user())
+    requested = str(requested_principal_id or "").strip()
+    if requested and requested != current_principal_id:
+        raise AuthorizationError("请求主体与当前认证主体不一致，不能代执行其他 Principal")
+    return current_principal_id
+
+
+def _gateway_query_enabled() -> bool:
+    return bool(current_app.config.get("QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN"))
+
+
+def _gateway_query_client() -> GatewayQueryClient:
+    base_url = current_app.config.get("QUERY_GATEWAY_BASE_URL") or "http://dw-query-gateway:8000"
+    token = current_app.config.get("QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN")
+    timeout = int(current_app.config.get("QUERY_GATEWAY_TIMEOUT_SECONDS") or 5)
+    if not token:
+        raise GatewayQueryError("未配置 QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN")
+    return GatewayQueryClient(
+        base_url=base_url,
+        platform_service_token=token,
+        timeout_seconds=timeout,
+    )
+
+
+def _request_principal(requested_principal_id: str | None = None):
+    principal_id = _principal_id_from_request(requested_principal_id)
+    jwt_roles = list(getattr(g, "user_roles", []) or [])
+    binding_roles: list[str] = []
+    try:
+        bound = RoleBindingResolver(SqlAccessRepository(db.session)).resolve_principal_context(
+            principal_id=principal_id,
+            actor_id=principal_id,
+            actor_type="human",
+            source="query_execute",
+        )
+        binding_roles = list(bound.roles or [])
+    except Exception:
+        logger.debug("查询执行解析 access role binding 失败，回退 JWT roles", exc_info=True)
+    roles = _dedupe([*jwt_roles, *binding_roles])
+    return PrincipalResolver().resolve(
+        principal_context={
+            "principal_id": principal_id,
+            "display_name": getattr(g, "user_name", None),
+            "roles": roles,
+            "actor_type": "human",
+            "actor_id": principal_id,
+            "source": "query_execute",
+        },
+        authenticated_user=None,
+    )
+
+
+def _dedupe(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def _resource_refs_from_sql(sql: str, *, source_id: int) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for match in re.finditer(r"\b(?:FROM|JOIN)\s+([`\"A-Za-z0-9_.]+)", sql or "", flags=re.IGNORECASE):
+        token = match.group(1).strip().strip("`\"")
+        if not token or token.startswith("("):
+            continue
+        parts = [part.strip("`\"") for part in token.split(".") if part.strip("`\"")]
+        if not parts:
+            continue
+        table = parts[-1]
+        project = parts[-2] if len(parts) >= 2 else ""
+        key = (project.lower(), table.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        refs.append(
+            {
+                "data_source_id": str(source_id),
+                "engine": "maxcompute",
+                "project": project,
+                "schema": "",
+                "table": table,
+                "columns": [],
+            }
+        )
+    return refs
+
+
+def _compiled_targets_for_query(schema: ExecuteQueryRequest) -> list[dict[str, Any]]:
+    return [
+        {
+            "target_type": "sql",
+            "logical_sql": schema.sql_query,
+            "sql_hash": canonical_sql_hash(schema.sql_query),
+            "resource_set": {
+                "physical": _resource_refs_from_sql(schema.sql_query, source_id=schema.source_id),
+            },
+            "execution_request": {"source_id": schema.source_id},
+        }
+    ]
+
+
+def _decision_id(principal_id: str, sql_hashes: list[str], policy_epoch: int) -> str:
+    raw = f"{principal_id}|{policy_epoch}|{','.join(sql_hashes)}"
+    return f"pd_{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _gateway_access_context_from_decision(decision) -> dict[str, Any]:
+    preview = dict((decision.execution_permit or {}).get("access_context_preview") or {})
+    sql_hashes = list(preview.get("sql_hashes") or decision.sql_hashes or [])
+    return {
+        "schema": "GatewayAccessContext.v1",
+        "principal_id": preview.get("principal_id") or decision.ticket_preview.get("principal_id"),
+        "actor_type": preview.get("actor_type") or "human",
+        "actor_id": preview.get("actor_id") or preview.get("principal_id"),
+        "policy_decision_id": _decision_id(
+            str(preview.get("principal_id") or decision.ticket_preview.get("principal_id") or "anonymous"),
+            sql_hashes,
+            int(preview.get("policy_epoch") or decision.policy_epoch or 1),
+        ),
+        "policy_version": preview.get("policy_version") or decision.policy_version,
+        "policy_epoch": int(preview.get("policy_epoch") or decision.policy_epoch or 1),
+        "execution_profile_code": preview.get("execution_profile_code") or decision.execution_profile.get("profile_code"),
+        "data_level": preview.get("data_level") or decision.effective_data_level,
+        "resource_set_physical": list(preview.get("resource_set_physical") or []),
+        "sql_hashes": sql_hashes,
+        "constraints": dict(preview.get("constraints") or {}),
+    }
+
+
+def _policy_denied_response(decision):
+    return jsonify(
+        {
+            "code": -1,
+            "message": decision.message,
+            "data": {"policy_decision": decision.to_dict()},
+            "trace_id": getattr(g, "request_id", None) or getattr(g, "trace_id", None),
+        }
+    ), 400
+
+
+def _execute_via_gateway(schema: ExecuteQueryRequest):
+    principal = _request_principal(schema.principal_id)
+    repository = SqlAccessGovernanceRepository(db.session)
+    decision = AccessPolicyDecisionService(policy_repository=repository).post_compile(
+        principal=principal,
+        compiled_targets=_compiled_targets_for_query(schema),
+    )
+    if decision.decision != "allow":
+        return _policy_denied_response(decision)
+
+    access_context = _gateway_access_context_from_decision(decision)
+    gateway_result = _gateway_query_client().execute_sql(
+        sql=schema.sql_query,
+        access_context=access_context,
+        wait_for_completion=False,
+    )
+    return success(
+        data={
+            "gateway_query_id": gateway_result.get("query_id"),
+            "query_id": gateway_result.get("query_id"),
+            "status": gateway_result.get("status"),
+            "completed": gateway_result.get("completed"),
+            "poll_url": gateway_result.get("poll_url"),
+            "result_url": gateway_result.get("result_url"),
+            "policy_decision": decision.to_dict(),
+        }
+    )
 
 
 # ============================================================================
@@ -54,12 +246,15 @@ def execute_query():
     """执行查询（核心端点）"""
     try:
         schema = ExecuteQueryRequest(**request.json)
+        if _gateway_query_enabled():
+            return _execute_via_gateway(schema)
+        executed_by = _principal_id_from_request(schema.principal_id)
         command = ExecuteQueryCommand(
             source_id=schema.source_id,
             sql_query=schema.sql_query,
             query_id=schema.query_id,
             limit=schema.limit,
-            executed_by=get_current_user()
+            executed_by=executed_by
         )
         container = get_app_container()
         handler = container.execute_query_handler()
@@ -67,8 +262,12 @@ def execute_query():
         return success(data=result)
     except ValidationError as e:
         return error(message=f'请求参数错误: {e.errors()}') if hasattr(e, 'errors') else error(message=str(e))
+    except AuthorizationError as e:
+        return error(message=str(e), status=403)
     except ApplicationException as e:
         return error(message=str(e))
+    except GatewayQueryError as e:
+        return error(message=str(e), status=502)
     except Exception as e:
         logger.error(f"Execute query failed: {str(e)}", exc_info=True)
         return server_error(message=f'执行失败: {str(e)}')
@@ -105,6 +304,7 @@ def create_query():
     """保存查询"""
     try:
         schema = CreateQueryRequest(**request.json)
+        created_by = _principal_id_from_request(schema.principal_id)
         command = CreateQueryCommand(
             query_name=schema.query_name,
             source_id=schema.source_id,
@@ -113,7 +313,7 @@ def create_query():
             folder_id=schema.folder_id,
             tags=schema.tags,
             is_favorite=schema.is_favorite,
-            created_by=get_current_user()
+            created_by=created_by
         )
         container = get_app_container()
         handler = container.create_query_handler()
@@ -125,6 +325,8 @@ def create_query():
         })
     except ValidationError as e:
         return error(message=f'请求参数错误: {e.errors()}')
+    except AuthorizationError as e:
+        return error(message=str(e), status=403)
     except (AppValidationError, ApplicationException) as e:
         return error(message=str(e))
     except Exception as e:

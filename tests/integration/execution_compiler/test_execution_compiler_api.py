@@ -21,15 +21,53 @@ import jwt
 import pytest
 from flask import Flask
 
+from app.application.access.identity import AccessIdentityService
+from app.extensions import db
+from app.infrastructure.access.repositories import SqlAccessRepository
 from app.interfaces.api.middleware.error_handler import register_error_handlers
 from app.interfaces.api.v1.execution_compiler import create_execution_compiler_blueprint
 
 BASE = "/api/v1/execution-compiler"
 
 
+def _install_access_identity(flask_app: Flask) -> None:
+    flask_app.config.update(
+        SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    )
+    db.init_app(flask_app)
+    with flask_app.app_context():
+        from app.infrastructure.access.models import (  # noqa: F401
+            AccessApiKeyORM,
+            AccessDelegationEventORM,
+            AccessPrincipalAliasORM,
+            AccessPrincipalORM,
+            AccessRoleBindingORM,
+            AccessServicePrincipalORM,
+        )
+
+        db.create_all()
+        repo = SqlAccessRepository(db.session)
+        repo.upsert_principal(
+            principal_id="test_admin",
+            principal_type="human",
+            idp="internal",
+            tenant_key="local",
+            display_name="Test Admin",
+        )
+        repo.commit()
+        AccessIdentityService(repo).ensure_principal_role_bindings(
+            principal_id="test_admin",
+            roles=["platform_admin", "data_m1_reader"],
+            source="pytest",
+            created_by="test_admin",
+        )
+
+
 def _build_client(preview_service: MagicMock, runtime_service=None):
     flask_app = Flask(__name__)
     flask_app.config["TESTING"] = True
+    _install_access_identity(flask_app)
     bp = create_execution_compiler_blueprint(preview_service, runtime_service=runtime_service)
     flask_app.register_blueprint(bp)
     register_error_handlers(flask_app)

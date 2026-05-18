@@ -9,8 +9,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Boxes, GitMerge, LayoutGrid, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react'
+import { Boxes, GitMerge, LayoutGrid, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button, Chip, Skeleton } from '@v2/components/ui'
+import { RefreshButton } from '@v2/components/CommonControls'
 import { useAppShell } from '@v2/layout/AppShell'
 import { ContextRow, ContextSection } from '@v2/layout/Inspector'
 import { t } from '@v2/i18n'
@@ -107,15 +108,11 @@ export default function RelationCanvas() {
         >
           <LayoutGrid size={12} /> {t('canvas.resetLayout', '重置布局')}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
+        <RefreshButton
           onClick={() => graphQuery.refetch()}
-          disabled={graphQuery.isFetching}
-        >
-          <RefreshCw size={12} className={graphQuery.isFetching ? 'animate-spin' : ''} />
-          {t('action.refresh', '刷新')}
-        </Button>
+          loading={graphQuery.isFetching}
+          ariaLabel={t('canvas.action.refresh', '刷新关系画布')}
+        />
         <Button size="sm" variant="ghost" onClick={() => setScale((s) => Math.min(s + 0.2, 2))}>
           <ZoomIn size={12} />
         </Button>

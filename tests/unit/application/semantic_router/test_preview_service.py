@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from app.application.execution_compiler.preview_service import ExecutionCompilerPreviewService
 from app.application.execution_compiler.runtime_service import ExecutionCompilerRuntimeService
 from app.application.ontology.policy_guard_service import PolicyGuardService
@@ -214,6 +216,100 @@ def test_official_runtime_only_matches_active_ontology_and_glossary_targets(tmp_
     preview_route = service.route(question="查看草稿成交额趋势", runtime_mode="preview")
     assert preview_route["runtime_mode"] == "preview"
     assert preview_route["business_intent"]["primary_match"]["name"] == "draft_gmv"
+
+
+def test_official_runtime_extracts_analysis_slots_and_compiles_query_dsl(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    cube_repo.save(
+        CubeDefinition(
+            name="student_comment_cube",
+            title="学生评论",
+            table="df_cb_258187.dwd_interaction_comment_reports_df",
+            source_id=1,
+            source_database="df_cb_258187",
+            dimensions={
+                "comment_id": DimensionDef(title="评论ID", type="string", sql="{CUBE}.comment_id"),
+                "school_name": DimensionDef(
+                    title="学校名称",
+                    type="string",
+                    sql="{CUBE}.comment_school_name",
+                    synonyms=["学校"],
+                ),
+                "ds": DimensionDef(title="分区日期", type="time", sql="{CUBE}.ds"),
+            },
+            measures={
+                "comment_count": MeasureDef(
+                    title="评论数",
+                    type="number",
+                    sql="COUNT(DISTINCT {CUBE}.comment_id)",
+                    certified=True,
+                )
+            },
+            partition={"field": "ds", "type": "date", "format": "yyyyMMdd", "max_range_days": 30},
+        )
+    )
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+    object_repo.save(BusinessObject(name="StudentComment", title="学生评论", status="active"))
+    metric_repo.save(
+        BusinessMetric(
+            name="comment_count",
+            title="评论数",
+            object_name="StudentComment",
+            semantic_formula="按评论ID去重统计评论数量",
+            measure_refs=["student_comment_cube.comment_count"],
+            aliases=["学生评论数"],
+            status="active",
+        )
+    )
+
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+
+    result = service.execute_plan_preview(
+        question="查询最近7天学生评论数，按学校汇总",
+        runtime_mode="official",
+        viewer_roles=["ops_readonly"],
+    )
+
+    target = result["execution_targets"][0]
+    preview = result["compiled_targets"][0]["preview"]
+    anchor = date.today()
+    start = anchor - timedelta(days=6)
+    assert target["analysis_intent"]["dimension_terms"] == ["学校"]
+    assert target["analysis_intent"]["time_window"]["type"] == "last_n_days"
+    assert target["analysis_intent"]["time_window"]["n"] == 7
+    assert preview["query_dsl"]["measures"] == ["student_comment_cube.comment_count"]
+    assert preview["query_dsl"]["dimensions"] == ["student_comment_cube.school_name"]
+    assert preview["query_dsl"]["time_dimensions"] == [
+        {
+            "dimension": "student_comment_cube.ds",
+            "date_range": [start.strftime("%Y-%m-%d"), anchor.strftime("%Y-%m-%d")],
+        }
+    ]
+    assert "GROUP BY `student_comment_cube__school_name`" in preview["logical_sql"]
+    assert "COUNT(DISTINCT student_comment_cube.comment_id)" in preview["logical_sql"]
 
 
 def test_router_supports_hybrid_and_blocked_paths(tmp_path):

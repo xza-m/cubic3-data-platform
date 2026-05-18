@@ -1,8 +1,8 @@
 // frontend/src/v2/api/userPreferences.ts
 //
-// 用户偏好 API 层（B-back-1 / P21）
-// GET  /api/v1/users/me/preferences
-// PUT  /api/v1/users/me/preferences（部分 merge）
+// Access Principal 偏好 API 层。
+// GET  /api/v1/access/me/preferences
+// PUT  /api/v1/access/me/preferences（部分 merge）
 
 import { apiClient } from './client'
 
@@ -12,7 +12,7 @@ export type ThemePreference = 'light' | 'dark' | 'system'
 export type TableDensity = 'comfortable' | 'compact'
 
 export interface UserPreferences {
-  user_id: number
+  principal_id: string
   theme: ThemePreference
   default_landing: string
   list_page_size: number
@@ -28,11 +28,11 @@ export type UserPreferencesPatch = Partial<
 // ── API 函数 ──────────────────────────────────────────────────────────────────
 
 export async function getMyPreferences(): Promise<UserPreferences> {
-  const resp = await apiClient.get('/users/me/preferences')
+  const resp = await apiClient.get('/access/me/preferences')
   return resp.data.data
 }
 
 export async function putMyPreferences(patch: UserPreferencesPatch): Promise<UserPreferences> {
-  const resp = await apiClient.put('/users/me/preferences', patch)
+  const resp = await apiClient.put('/access/me/preferences', patch)
   return resp.data.data
 }

@@ -1,0 +1,8 @@
+name: student_comment_comment_level
+title: 被举报评论层级
+object_name: student_comment
+property_type: number
+description: 被举报评论层级
+aliases:
+- comment_level
+status: active

@@ -91,7 +91,6 @@ def test_yaml_domain_repository_roundtrip(tmp_path):
         name="学业分析域",
         catalog_code="learning",
         cubes=["answer_records", "student"],
-        joins=[],
     )
 
     repo.save(domain)
@@ -111,7 +110,6 @@ def test_yaml_domain_repository_handles_id_lookup_reload_and_delete_edges(tmp_pa
         name="学业分析域",
         catalog_code="learning",
         cubes=["answer_records"],
-        joins=[],
     )
     repo.save(domain)
 
@@ -124,7 +122,6 @@ def test_yaml_domain_repository_handles_id_lookup_reload_and_delete_edges(tmp_pa
         name="教学域",
         catalog_code="learning",
         cubes=[],
-        joins=[],
     )
     repo.save(updated_domain)
     repo.reload()
@@ -145,7 +142,6 @@ def test_yaml_domain_repository_ignores_runtime_debug_fixtures(tmp_path):
                 "name": "学业分析域",
                 "catalog_code": "learning",
                 "cubes": ["answer_records"],
-                "joins": [],
             },
             allow_unicode=True,
             sort_keys=False,
@@ -159,7 +155,6 @@ def test_yaml_domain_repository_ignores_runtime_debug_fixtures(tmp_path):
                 "name": "调试域",
                 "catalog_code": "learning",
                 "cubes": [],
-                "joins": [],
             },
             allow_unicode=True,
             sort_keys=False,
@@ -181,7 +176,6 @@ def test_yaml_domain_repository_keeps_saved_runtime_domain_until_process_restart
         name="Playwright 领域草稿 1777776402",
         catalog_code="default",
         cubes=[],
-        joins=[],
     )
 
     repo.save(runtime_domain)

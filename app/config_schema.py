@@ -113,6 +113,29 @@ class LLMConfig(BaseModel):
         return v
 
 
+class QueryGatewayConfig(BaseModel):
+    """查询网关配置。"""
+
+    base_url: str = Field(default="http://dw-query-gateway:8000", description="dw-query-gateway 基础 URL")
+    platform_service_token: str = Field(default="", description="data-platform 调用 gateway 的服务令牌")
+    timeout_seconds: int = Field(default=5, ge=1, le=60, description="网关请求超时时间（秒）")
+
+
+class SemanticModelingConfig(BaseModel):
+    """语义建模 Copilot 配置。"""
+
+    copilot_store: str = Field(default="sql", description="Copilot 会话/Proposal 仓储：sql 或 yaml")
+    semantic_dir: str = Field(default="app/infrastructure/semantic", description="本地语义 YAML 根目录")
+
+    @field_validator('copilot_store')
+    @classmethod
+    def validate_copilot_store(cls, v: str) -> str:
+        value = (v or "").strip().lower()
+        if value not in {"sql", "yaml"}:
+            raise ValueError("SEMANTIC_MODELING_COPILOT_STORE 仅支持 sql 或 yaml")
+        return value
+
+
 class FileConfig(BaseModel):
     """文件上传配置"""
     upload_folder: str = Field(default="instance/uploads", description="上传文件夹路径")
@@ -134,6 +157,8 @@ class AppConfig(BaseModel):
     feishu: FeishuConfig = Field(default_factory=FeishuConfig)
     oss: OSSConfig = Field(default_factory=OSSConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    query_gateway: QueryGatewayConfig = Field(default_factory=QueryGatewayConfig)
+    semantic_modeling: SemanticModelingConfig = Field(default_factory=SemanticModelingConfig)
     
     # 文件配置
     file: FileConfig = Field(default_factory=FileConfig)
@@ -216,6 +241,15 @@ class AppConfig(BaseModel):
                 model=os.getenv('LLM_MODEL', 'gpt-4o-mini'),
                 timeout=int(os.getenv('LLM_TIMEOUT', '60'))
             ),
+            query_gateway=QueryGatewayConfig(
+                base_url=os.getenv('QUERY_GATEWAY_BASE_URL', 'http://dw-query-gateway:8000'),
+                platform_service_token=os.getenv('QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN', ''),
+                timeout_seconds=int(os.getenv('QUERY_GATEWAY_TIMEOUT_SECONDS', '5')),
+            ),
+            semantic_modeling=SemanticModelingConfig(
+                copilot_store=os.getenv('SEMANTIC_MODELING_COPILOT_STORE', 'sql'),
+                semantic_dir=os.getenv('SEMANTIC_DIR', 'app/infrastructure/semantic'),
+            ),
             file=FileConfig(
                 upload_folder=os.getenv('UPLOAD_FOLDER', 'instance/uploads'),
                 max_content_length=int(os.getenv('MAX_CONTENT_LENGTH', str(50 * 1024 * 1024))),
@@ -280,6 +314,15 @@ class AppConfig(BaseModel):
             'LLM_API_BASE': self.llm.api_base,
             'LLM_MODEL': self.llm.model,
             'LLM_TIMEOUT': self.llm.timeout,
+
+            # 查询网关
+            'QUERY_GATEWAY_BASE_URL': self.query_gateway.base_url,
+            'QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN': self.query_gateway.platform_service_token,
+            'QUERY_GATEWAY_TIMEOUT_SECONDS': self.query_gateway.timeout_seconds,
+
+            # 语义建模 Copilot
+            'SEMANTIC_MODELING_COPILOT_STORE': self.semantic_modeling.copilot_store,
+            'SEMANTIC_DIR': self.semantic_modeling.semantic_dir,
             
             # 文件
             'UPLOAD_FOLDER': self.file.upload_folder,

@@ -11,6 +11,7 @@ class ExecuteQueryRequest(BaseModel):
     sql_query: str = Field(..., min_length=1, description="SQL查询")
     query_id: Optional[int] = Field(None, description="查询ID（临时查询不需要）")
     limit: Optional[int] = Field(1000, ge=1, le=10000, description="结果行数限制")
+    principal_id: Optional[str] = Field(None, description="显式查询主体ID，必须与认证主体一致")
 
 
 class CreateQueryRequest(BaseModel):
@@ -22,6 +23,7 @@ class CreateQueryRequest(BaseModel):
     folder_id: Optional[int] = Field(None, description="文件夹ID")
     tags: Optional[List[str]] = Field(default_factory=list, description="标签")
     is_favorite: bool = Field(False, description="是否收藏")
+    principal_id: Optional[str] = Field(None, description="显式保存主体ID，必须与认证主体一致")
 
 
 class UpdateQueryRequest(BaseModel):

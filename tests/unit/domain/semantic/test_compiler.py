@@ -202,6 +202,12 @@ class TestJoinGraph:
 
 class TestCompilerBasic:
 
+    def test_query_dsl_carries_runtime_contract_version(self):
+        dsl = QueryDSL(measures=["answer_records.total_count"])
+
+        assert dsl.dsl_version == "v1"
+        assert dsl.model_dump(mode="json", exclude_none=True)["dsl_version"] == "v1"
+
     def test_single_cube_simple_count(self, compiler):
         """TC-01: 单 Cube 单指标"""
         dsl = QueryDSL(measures=["answer_records.total_count"])
@@ -219,6 +225,33 @@ class TestCompilerBasic:
         result = compiler.compile(dsl)
         assert "answer_records.subject_name" in result.sql
 
+    def test_restricted_dimension_cannot_be_selected(self):
+        cube = _make_cube(
+            "student_comment_cube",
+            "dwd.student_comment",
+            dims={
+                "comment_id": DimensionDef(title="评论ID", type="string", sql="{CUBE}.comment_id"),
+                "comment_content": DimensionDef(
+                    title="评论内容",
+                    type="string",
+                    sql="{CUBE}.comment_content",
+                    tags=["restricted"],
+                ),
+            },
+            measures={
+                "comment_count": MeasureDef(title="评论数", type="count", sql="{CUBE}.comment_id"),
+            },
+        )
+        compiler = QueryCompiler(JoinGraph([cube]))
+
+        with pytest.raises(CompilationError, match="restricted"):
+            compiler.compile(
+                QueryDSL(
+                    measures=["student_comment_cube.comment_count"],
+                    dimensions=["student_comment_cube.comment_content"],
+                )
+            )
+
     def test_source_relation_trims_source_sql_trailing_semicolon(self, compiler):
         cube = _make_cube("source_cube", "ods.source_cube").model_copy(
             update={"source_sql": "SELECT * FROM ods.source_cube;   "}
@@ -226,6 +259,11 @@ class TestCompilerBasic:
 
         assert compiler._source_relation(cube) == "(\nSELECT * FROM ods.source_cube\n)"
         assert compiler._source_relation(_make_cube("table_cube", "ods.table_cube")) == "ods.table_cube"
+
+        result = QueryCompiler(JoinGraph([cube])).compile(
+            QueryDSL(measures=["source_cube.cnt"])
+        )
+        assert "FROM (\nSELECT * FROM ods.source_cube\n) AS source_cube" in result.sql
 
     def test_filter_equals(self, compiler):
         """TC-05: 等值过滤"""
@@ -381,6 +419,8 @@ class TestCompilerTimeDimension:
         result = compiler.compile(dsl)
         assert "answer_date >= '20260221'" in result.sql
         assert "answer_date <= '20260227'" in result.sql
+        assert "answer_records.answer_date AS `answer_records__answer_date`" not in result.sql
+        assert "GROUP BY `answer_records__answer_date`" not in result.sql
 
     def test_time_granularity_day(self, compiler):
         """TC-10: 日粒度"""

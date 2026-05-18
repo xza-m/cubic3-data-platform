@@ -15,9 +15,10 @@ import {
   PauseCircle,
   Play,
   Trash2,
-  RefreshCw,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { RefreshButton } from '@v2/components/CommonControls'
 import {
   useScheduledQuery,
   useScheduledQueryRuns,
@@ -169,56 +170,42 @@ export default function QueriesScheduledDetail() {
         >
           <ArrowLeft size={12} /> {t('queriesScheduledDetail.action.back', '返回列表')}
         </button>
-        <button
-          type="button"
-          onClick={() => setEditing((v) => !v)}
-          className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
-          style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-        >
-          <Edit2 size={12} />{' '}
-          {editing
-            ? t('queriesScheduledDetail.action.cancelEdit', '取消编辑')
-            : t('queriesScheduledDetail.action.edit', '编辑')}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleToggle()}
-          disabled={enableMut.isPending || disableMut.isPending}
-          className="flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs hover:bg-[color:var(--bg-hover)]"
-          style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-        >
-          {row.enabled ? (
-            <>
-              <PauseCircle size={12} style={{ color: 'var(--success)' }} />{' '}
-              {t('queriesScheduledDetail.action.disable', '禁用')}
-            </>
-          ) : (
-            <>
-              <PlayCircle size={12} /> {t('queriesScheduledDetail.action.enable', '启用')}
-            </>
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleTrigger()}
-          disabled={triggerMut.isPending || !row.enabled}
-          className="flex items-center gap-1.5 rounded-md bg-[color:var(--accent)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-          title={
-            row.enabled
-              ? t('queriesScheduledDetail.tooltip.triggerNow', '立即手动触发一次')
-              : t('queriesScheduledDetail.tooltip.triggerDisabled', '禁用状态下无法触发')
-          }
-        >
-          <Play size={12} /> {t('queriesScheduledDetail.action.triggerNow', '立即触发')}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleDelete()}
-          disabled={deleteMut.isPending}
-          className="ml-auto flex items-center gap-1.5 rounded border border-red-300 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-        >
-          <Trash2 size={12} /> {t('queriesScheduledDetail.action.delete', '删除')}
-        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <ActionIconButton
+            label={
+              editing
+                ? t('queriesScheduledDetail.action.cancelEdit', '取消编辑')
+                : t('queriesScheduledDetail.action.edit', '编辑')
+            }
+            icon={Edit2}
+            onClick={() => setEditing((v) => !v)}
+          />
+          <ActionIconButton
+            label={row.enabled ? t('queriesScheduledDetail.action.disable', '禁用') : t('queriesScheduledDetail.action.enable', '启用')}
+            icon={row.enabled ? PauseCircle : PlayCircle}
+            loading={enableMut.isPending || disableMut.isPending}
+            onClick={() => void handleToggle()}
+          />
+          <ActionIconButton
+            label={
+              row.enabled
+                ? t('queriesScheduledDetail.tooltip.triggerNow', '立即手动触发一次')
+                : t('queriesScheduledDetail.tooltip.triggerDisabled', '禁用状态下无法触发')
+            }
+            icon={Play}
+            variant="primary"
+            disabled={!row.enabled}
+            loading={triggerMut.isPending}
+            onClick={() => void handleTrigger()}
+          />
+          <ActionIconButton
+            label={t('queriesScheduledDetail.action.delete', '删除')}
+            icon={Trash2}
+            variant="danger"
+            loading={deleteMut.isPending}
+            onClick={() => void handleDelete()}
+          />
+        </div>
       </div>
 
       <header
@@ -418,7 +405,7 @@ function SqlTab({ row }: { row: ScheduledQuery }) {
 
 function RunsTab({ queryId }: { queryId: number }) {
   const [page, setPage] = useState(1)
-  const { data, isLoading, isError, refetch } = useScheduledQueryRuns(queryId, {
+  const { data, isLoading, isError, isFetching, refetch } = useScheduledQueryRuns(queryId, {
     page,
     page_size: 20,
   })
@@ -435,14 +422,13 @@ function RunsTab({ queryId }: { queryId: number }) {
         <span>
           {t('queriesScheduledDetail.runs.total', '共 {n} 次执行', { n: fmtNum(total) })}
         </span>
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          className="ml-auto flex items-center gap-1 rounded px-2 py-1 hover:bg-[color:var(--bg-hover)]"
-          style={{ color: 'var(--text-2)' }}
-        >
-          <RefreshCw size={11} /> {t('queriesScheduledDetail.action.refresh', '刷新')}
-        </button>
+        <div className="ml-auto">
+          <RefreshButton
+            onClick={() => refetch()}
+            loading={isFetching}
+            ariaLabel={t('queriesScheduledDetail.runs.refresh', '刷新执行历史')}
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">

@@ -1,0 +1,8 @@
+name: student_comment_parent_content
+title: 父级评论内容，敏感字段，仅限内部审核分析使用
+object_name: student_comment
+property_type: string
+description: 父级评论内容，敏感字段，仅限内部审核分析使用
+aliases:
+- parent_content
+status: active

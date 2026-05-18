@@ -44,14 +44,16 @@ def _register_all_models():
     from app.domain.entities.app_execution import AppExecution               # noqa
     from app.domain.entities.config.channel import Channel                   # noqa
     from app.domain.entities.config.subscription import Subscription         # noqa
-    from app.domain.entities.user_preferences import UserPreferences         # noqa  B-back-1
-    from app.infrastructure.users.models import (                                # noqa  W4.D-2
-        UserORM,
-        RoleORM,
-        UserRoleORM,
-        UserPasswordORM,
-    )
     from app.infrastructure.governance.models import GovernanceAuditTraceORM  # noqa
+    from app.infrastructure.query_execution.models import (  # noqa
+        QueryExecutionJobORM,
+        QueryExecutionEventORM,
+        QueryResultObjectORM,
+    )
+    from app.infrastructure.semantic.models import (  # noqa
+        SemanticModelingAgentSessionORM,
+        SemanticModelingProposalORM,
+    )
     from app.domain.queries.scheduled_query import ScheduledQuery            # noqa  B-back-8
     from app.domain.queries.scheduled_query_run import ScheduledQueryRun    # noqa  B-back-8
     from app.domain.semantic.diagnose_run import DiagnoseRun                 # noqa  B-back-9
@@ -131,12 +133,20 @@ def app():
 
     with flask_app.app_context():
         db.create_all()
+        try:
+            db.metadata.create_all(bind=flask_app.container.db_engine())
+        except Exception:
+            pass
         yield flask_app
         db.session.remove()
         db.drop_all()
         if hasattr(flask_app, 'container'):
             try:
                 flask_app.container.db_scoped_session().remove()
+            except Exception:
+                pass
+            try:
+                db.metadata.drop_all(bind=flask_app.container.db_engine())
             except Exception:
                 pass
             try:

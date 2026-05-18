@@ -14,7 +14,6 @@ import {
   Grid3x3,
   LayoutList,
   Plus,
-  RefreshCcw,
   Search,
   Sparkles,
   GitBranch,
@@ -22,6 +21,7 @@ import {
 } from 'lucide-react'
 // 等待 X-Crosscut：@v2/components/ui
 import { Button, Card, CardBody, Chip, Input, Select } from '@v2/components/ui'
+import { RefreshButton } from '@v2/components/CommonControls'
 // 等待 X-Crosscut：@v2/components/PeekPanel
 import { PeekPanel } from '@v2/components/PeekPanel'
 import { ListPagination } from '@v2/components/ListPagination'
@@ -96,9 +96,11 @@ export default function Cubes() {
   useEffect(() => {
     setTopBarActions(
       <>
-        <Button size="sm" variant="ghost" onClick={() => cubeListQuery.refetch()}>
-          <RefreshCcw size={12} /> {t('action.refresh', '刷新')}
-        </Button>
+        <RefreshButton
+          onClick={() => cubeListQuery.refetch()}
+          loading={cubeListQuery.isFetching}
+          ariaLabel={t('cube.action.refresh', '刷新 Cube 列表')}
+        />
         <Button size="sm" variant="primary" onClick={() => navigate('/semantic/cubes/new')}>
           <Plus size={12} /> {t('cube.create', '新建 Cube')}
         </Button>
@@ -140,7 +142,7 @@ export default function Cubes() {
                 size="sm"
                 variant="ghost"
                 className="justify-start w-full"
-                onClick={() => navigate('/semantic/devtools')}
+                onClick={() => navigate('/semantic/workbench')}
               >
                 <Sparkles size={12} /> {t('nav.devtools', '语义诊断')}
               </Button>
@@ -374,7 +376,7 @@ function CubePeek({
           actions={{
             onOpenDesigner: () => { navigate(`/semantic/cubes/${cube.name}/edit`); onClose() },
             onJumpOntology: () => { navigate('/semantic/ontology/objects'); onClose() },
-            onRunDiagnose: () => { navigate('/semantic/devtools'); onClose() },
+            onRunDiagnose: () => { navigate('/semantic/workbench'); onClose() },
           }}
         />
       ) : null}
@@ -422,7 +424,11 @@ function PipelineHero({
           title="Cube"
           subtitle={t('cube.layer.semantic', '数据语义层')}
           tone="violet"
-          stats={t('cube.heroStats', `${cubeTotal} 个 · 已上线 ${active} · 草稿 ${draft}`)}
+          stats={t(
+            'cube.heroStats',
+            '{cubeTotal} 个 · 已上线 {active} · 草稿 {draft}',
+            { cubeTotal, active, draft },
+          )}
           highlighted
         />
         <PipelineNode

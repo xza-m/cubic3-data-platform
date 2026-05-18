@@ -61,6 +61,10 @@ with `VITE_AUTH_BYPASS=1`. This makes
 `frontend/src/v2/pages/ProtectedRoute.tsx` render the protected outlet
 unconditionally, so specs do not need to drive a real login flow.
 
+When validating against an already running Docker or production-like shell,
+set `V2_E2E_EXTERNAL_SERVER=1` and `V2_E2E_BASE_URL=<url>` so Playwright does
+not launch the dev server.
+
 As a belt-and-braces measure, `prepareV2Page()` also plants
 `sessionStorage.v2.access_token` so the bypass flag is not strictly
 required if you want to point this suite at a different server.
