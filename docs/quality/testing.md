@@ -67,6 +67,7 @@ last_reviewed: 2026-05-05
 - 先用 `make verify-detect` 查看当前变更命中的规则与推荐目标
 - 需要直接执行时用 `make verify-changed`
 - 先按改动范围选择对应 `make verify-*`
+- 涉及 `migrations/versions/` 的改动，至少补跑 `make verify-alembic` 和一个空库 `flask --app wsgi.py db upgrade` 演练；生产初始化历史要求以 `0001_initial_schema` 作为唯一 root，旧开发阶段 revision 不再进入生产迁移图
 - 涉及跨端交互、共享契约、关键链路或无法确定影响面时，再升级到 `make verify`
 - `make review` 只用于准备评审时，执行仓库级 `make verify`，并补文档健康检查与文档影响检查
 

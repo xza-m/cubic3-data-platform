@@ -99,7 +99,7 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 
 - 前端或 Nginx 的入口端口可访问
 - 后端健康检查可访问
-- 数据库迁移已执行到最新
+- 数据库迁移已执行到最新；首次空库应从 `0001_initial_schema` 初始化，已有库应确认 `alembic_version` 已受控对齐到当前 head
 - Redis / PostgreSQL 已就绪
 - 当前代理目标和你实际要调试的后端实例一致
 

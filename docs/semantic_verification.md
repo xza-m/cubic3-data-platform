@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-05-05
+last_reviewed: 2026-05-18
 ---
 
 # 语义中心固定验证流程
@@ -62,7 +62,12 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - 建模助手 Agent 专项：`make test-modeling-agent`，覆盖 `spec-draft -> draft-from-spec -> validate -> agent-ready-check -> apply -> publish` 的后端最小链路、`Domain context-preview` 上下文预览，以及 `/semantic/modeling-agent/new` 顶层任务流。
 - Agent-first Runtime 专项：后端单测覆盖 `/api/v1/agent/semantic/plan` 固定 `runtime_mode=official`、official 只命中 active Ontology、Glossary canonical entity 必须 active、Mapper 稳定 Binding 输出、stale measure 与非 active Cube 编译阻断；学生评论真实资产回归覆盖 `Ontology -> Binding -> QueryDSL -> SQL`，要求“最近 N 天”时间过滤和“按学校汇总”维度分组进入最终 SQL。
 - 统一查询执行面专项：`make test-query-execution` 覆盖 QueryExecution 领域实体、提交服务、仓储、结果对象和集成 API，确保 `/api/v1/agent/semantic/execute` 能进入统一执行面而不是停在 preview-only。
-- Modeling Copilot 后端回归：`tests/unit/application/semantic/test_source_candidate_recall_service.py` 覆盖学生评论查询优先召回 `dwd_interaction_comment_reports_df`，避免被 `view_student_answer_analysis` 这类答题视图抢占；`tests/unit/application/semantic/test_modeling_copilot_service.py` 覆盖历史坏样本的确认来源、spec repair、保存 Proposal 和发布前校验阻塞解释。
+- Modeling Copilot 后端回归：
+  - `tests/unit/test_semantic_modeling_copilot_registration.py` 覆盖 DI 注册、关键 route health 和 fail-fast，避免生产启动成功但 Copilot API 静默缺失。
+  - `tests/unit/infrastructure/semantic/test_sql_modeling_copilot_repositories.py` 覆盖 SQL session / Proposal 仓储；`SEMANTIC_MODELING_COPILOT_STORE=sql` 是生产默认，`yaml` 仅用于 local / fixture。
+  - `tests/unit/application/semantic/test_source_candidate_recall_service.py` 覆盖配置化 source scoring；学生评论查询优先召回 `dwd_interaction_comment_reports_df`，避免被 `view_student_answer_analysis` 这类答题视图抢占，同时用非学生评论规则证明新增领域不需要改通用召回服务。
+  - `tests/unit/application/semantic/test_modeling_copilot_service.py` 覆盖历史坏样本的确认来源、spec repair、保存 Proposal 和发布前校验阻塞解释。
+  - `tests/integration/test_semantic_modeling_copilot_api.py` 覆盖 not found / validation / LLM required / internal error 的结构化错误码。
 
 补充的 mock 型 v2 E2E 用例位于 `frontend/tests/e2e-v2/`，包括：
 
@@ -90,6 +95,7 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
   `3000`；如需复用已有前端服务，可设置 `SEMANTIC_SMOKE_USE_EXISTING_SERVER=1`
 - `modeling-agent-smoke` 使用 `frontend/tests/e2e-v2/p34-modeling-agent-smoke.spec.ts` 的 Playwright mock API 闭环，默认由 v2 Playwright 配置启动临时 Vite 服务，不写入后端或语义目录
 - 发布前需要真实后端证据时，可显式运行 `npm run e2e:modeling-agent-smoke:live`；该入口会创建 session、保存 Proposal 并发布语义资产，不进入默认 smoke
+- 真实后端运行时默认使用 SQL 仓储保存 Copilot session / Proposal；未执行当前 Alembic 初始化 / 增量迁移时不要运行 live smoke。生产首次上线空库应从 `0001_initial_schema` 初始化；需要本地 YAML 夹具时显式设置 `SEMANTIC_MODELING_COPILOT_STORE=yaml`
 - 真实 Agent Runtime 补证可按需运行 `make preflight-agent-runtime` 和 `make live-agent-runtime`：前者只检查 active Ontology / Cube / Measure 绑定，后者会提交真实 MaxCompute 执行验收
 - 整个入口不承诺 hermetic，也不保证领域 smoke 对工作区和数据零副作用
 - 只应在语义关键路径改动时作为交付门禁运行

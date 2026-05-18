@@ -151,11 +151,17 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 
 ## 4. 数据库与迁移
 
+生产首次上线前，Alembic 历史已 squash 为单一初始化版本：
+
+- 当前唯一 revision：`0001_initial_schema`
+- 用途：从空 PostgreSQL 创建当前完整 schema
+- 约束：生产还未执行旧开发阶段 revision 时才能使用该初始化历史；若某个环境已经记录旧 revision，需要先备份并执行 `flask --app wsgi.py db stamp 0001_initial_schema` 的受控演练，再接入后续新增迁移
+
 ### Docker 模式
 
 后端容器启动时会自动尝试：
 
-1. 初始化迁移目录（若不存在）
+1. 执行当前 Alembic 初始化 / 增量迁移
 2. 执行 `flask --app wsgi.py db upgrade`
 3. 启动 Gunicorn
 
