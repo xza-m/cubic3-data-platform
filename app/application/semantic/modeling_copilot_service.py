@@ -8,28 +8,14 @@ from uuid import uuid4
 from app.application.semantic.modeling_copilot_runtime import AgentRunResult, LLMRequiredError, ModelingAgentRuntimePort
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_spec_repair import has_reviewable_spec, repair_modeling_spec
+from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
+from app.application.semantic.source_candidate_scoring import SourceCandidateScoringConfig
 from app.domain.semantic.modeling_agent_session import AgentSession
 from app.domain.semantic.ports.modeling_agent_session_repository import IModelingAgentSessionRepository
 
 
 class SemanticModelingCopilotService:
     """Session-first 的语义建模 Copilot 主控层。"""
-
-    _STUDENT_COMMENT_SOURCE = {
-        "id": "canonical:student_comment:dwd_interaction_comment_reports_df",
-        "asset_type": "table",
-        "source_kind": "physical_table",
-        "source_id": 1,
-        "database": "df_cb_258187",
-        "schema": None,
-        "table": "dwd_interaction_comment_reports_df",
-        "name": "df_cb_258187.dwd_interaction_comment_reports_df",
-        "title": "学生评论举报明细事实表",
-        "confidence": "high",
-        "score": 0.99,
-        "matched_terms": ["student_comment_domain"],
-        "evidence": ["学生评论场景固定使用评论/举报事实 DWD，避免落到答题分析视图"],
-    }
 
     def __init__(
         self,
@@ -38,11 +24,13 @@ class SemanticModelingCopilotService:
         runtime: ModelingAgentRuntimePort,
         tools: ModelingToolRegistry,
         proposal_service: Any,
+        source_scoring_config: Optional[SourceCandidateScoringConfig] = None,
     ):
         self._sessions = session_repository
         self._runtime = runtime
         self._tools = tools
         self._proposal_service = proposal_service
+        self._source_scoring_config = source_scoring_config or SourceCandidateScoringConfig.default()
 
     def create_session(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         user_goal = str(
@@ -610,7 +598,7 @@ class SemanticModelingCopilotService:
         if candidate is None:
             return "我还没有可确认的数据来源候选。请先告诉我源表/数据集，或重新让 Copilot 检索候选来源。"
 
-        candidate = self._repair_student_comment_source_candidate(session.user_goal, candidate, candidates)
+        candidate = self._repair_source_candidate_by_rules(session.user_goal, candidate, candidates)
         source_payload = self._source_payload_from_candidate(candidate)
         if not source_payload:
             return "这个候选来源缺少 source_id、database 或 table，暂时不能生成 spec。请换一个来源或补充完整表名。"
@@ -667,70 +655,35 @@ class SemanticModelingCopilotService:
             items.insert(0, {**selected, "selected": True})
         return items
 
-    def _repair_student_comment_source_candidate(
+    def _repair_source_candidate_by_rules(
         self,
         user_goal: str,
         candidate: Dict[str, Any],
         candidates: list[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        if not self._is_student_comment_goal(user_goal):
+        terms = SourceCandidateRecallService._query_terms(user_goal)
+        rules = self._source_scoring_config.matching_rules(user_goal, terms)
+        if not rules:
             return candidate
-        if self._candidate_matches_student_comment_source(candidate):
-            return candidate
-        for item in candidates:
-            if self._candidate_matches_student_comment_source(item):
-                return item
-        return {
-            **self._STUDENT_COMMENT_SOURCE,
-            "supersedes_candidate": candidate.get("id") or candidate.get("name"),
-        }
+        for rule in rules:
+            if rule.matches_positive_source(self._candidate_text(candidate)):
+                return candidate
+            for item in candidates:
+                if rule.matches_positive_source(self._candidate_text(item)):
+                    return item
+            if rule.canonical_candidate:
+                return {
+                    **deepcopy(dict(rule.canonical_candidate)),
+                    "supersedes_candidate": candidate.get("id") or candidate.get("name"),
+                }
+        return candidate
 
     @staticmethod
-    def _is_student_comment_goal(user_goal: str) -> bool:
-        text = (user_goal or "").lower()
-        return (
-            ("学生" in user_goal and "评论" in user_goal)
-            or "学生评论" in user_goal
-            or "student_comment" in text
-            or ("student" in text and "comment" in text)
-        )
-
-    @staticmethod
-    def _candidate_matches_student_comment_source(candidate: Dict[str, Any]) -> bool:
-        text = " ".join(
+    def _candidate_text(candidate: Dict[str, Any]) -> str:
+        return " ".join(
             str(candidate.get(key) or "")
             for key in ("id", "name", "title", "table", "description")
         ).lower()
-        return any(
-            token in text
-            for token in (
-                "dwd_interaction_comment_reports_df",
-                "student_comment",
-                "comment_reports",
-                "interaction_comment",
-                "评论举报",
-                "学生评论",
-            )
-        )
-
-    @staticmethod
-    def _candidate_looks_like_student_answer_source(candidate: Dict[str, Any]) -> bool:
-        text = " ".join(
-            str(candidate.get(key) or "")
-            for key in ("id", "name", "title", "table", "description")
-        ).lower()
-        return any(
-            token in text
-            for token in (
-                "view_student_answer_analysis",
-                "student_answer",
-                "answer_records",
-                "answer_action",
-                "答题",
-                "正确率",
-                "耗时",
-            )
-        )
 
     def _explain_blocker_for_chat(self, session: AgentSession, message: str) -> str:
         state = session.workbench_state or {}

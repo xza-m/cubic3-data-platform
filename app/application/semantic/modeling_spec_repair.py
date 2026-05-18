@@ -2,7 +2,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any, Dict, Iterable, Optional
+
+from app.application.semantic.source_candidate_scoring import (
+    SourceCandidateScoringConfig,
+    SourceCandidateScoringRule,
+)
 
 
 def has_reviewable_spec(value: Any) -> bool:
@@ -19,6 +25,7 @@ def repair_modeling_spec(
     *,
     user_goal: str = "",
     source_mode: str = "",
+    source_scoring_config: Optional[SourceCandidateScoringConfig] = None,
 ) -> Dict[str, Any]:
     """补齐 Agent-led 建模链路进入 Proposal / Runtime 前的最小合同。
 
@@ -33,8 +40,13 @@ def repair_modeling_spec(
         return repaired
 
     repaired.setdefault("spec_version", "v1")
-    if _should_force_student_comment_canonical(repaired, user_goal):
-        _apply_student_comment_canonical_spec(repaired)
+    canonical_rule = _canonical_rule_for_spec(
+        repaired,
+        user_goal,
+        source_scoring_config or SourceCandidateScoringConfig.default(),
+    )
+    if canonical_rule is not None:
+        _apply_canonical_rule_spec(repaired, canonical_rule)
         cube = repaired["cube"]
     cube_name = str(cube.get("name") or cube.get("table") or "semantic_cube")
     cube["name"] = cube_name
@@ -290,9 +302,12 @@ def _subject_from_goal(user_goal: str) -> str:
     return ""
 
 
-def _should_force_student_comment_canonical(spec: Dict[str, Any], user_goal: str) -> bool:
-    if not _is_student_comment_goal(user_goal):
-        return False
+def _canonical_rule_for_spec(
+    spec: Dict[str, Any],
+    user_goal: str,
+    scoring_config: SourceCandidateScoringConfig,
+) -> Optional[SourceCandidateScoringRule]:
+    terms = _query_terms(user_goal)
     haystack = " ".join(
         str(value or "")
         for value in (
@@ -302,94 +317,42 @@ def _should_force_student_comment_canonical(spec: Dict[str, Any], user_goal: str
             ((spec.get("source") or {}).get("table") if isinstance(spec.get("source"), dict) else ""),
         )
     ).lower()
-    if "dwd_interaction_comment_reports_df" in haystack:
-        return False
-    return any(
-        token in haystack
-        for token in (
-            "view_student_answer_analysis",
-            "student_answer",
-            "answer_records",
-            "answer_action",
-        )
-    )
+    for rule in scoring_config.matching_rules(user_goal, terms):
+        if not rule.canonical_spec:
+            continue
+        if rule.matches_canonical_source(haystack):
+            continue
+        if rule.matches_negative_source(haystack):
+            return rule
+    return None
 
 
-def _is_student_comment_goal(user_goal: str) -> bool:
-    text = (user_goal or "").lower()
-    return (
-        ("学生" in user_goal and "评论" in user_goal)
-        or "学生评论" in user_goal
-        or "student_comment" in text
-        or ("student" in text and "comment" in text)
-    )
-
-
-def _apply_student_comment_canonical_spec(spec: Dict[str, Any]) -> None:
-    table = "dwd_interaction_comment_reports_df"
-    database = "df_cb_258187"
-    spec["source"] = {
-        "source_kind": "physical_table",
-        "source_id": 1,
-        "database": database,
-        "schema": None,
-        "table": table,
-    }
+def _apply_canonical_rule_spec(spec: Dict[str, Any], rule: SourceCandidateScoringRule) -> None:
+    canonical = deepcopy(dict(rule.canonical_spec or {}))
+    if not canonical:
+        return
+    old_cube = spec.get("cube") if isinstance(spec.get("cube"), dict) else {}
+    if isinstance(canonical.get("source"), dict):
+        spec["source"] = canonical["source"]
+    canonical_business = canonical.get("business") if isinstance(canonical.get("business"), dict) else {}
     business = spec.setdefault("business", {})
     if isinstance(business, dict):
-        business["subject"] = business.get("subject") or "学生评论"
-        business["sensitivity_level"] = business.get("sensitivity_level") or "restricted"
-    spec["cube"] = {
-        "name": table,
-        "title": "学生评论",
-        "description": "互动域-学生笔记/评论举报事实表",
-        "table": table,
-        "source": f"{database}.{table}",
-        "source_id": 1,
-        "source_database": database,
-        "data_source": "maxcompute",
-        "status": (spec.get("cube") or {}).get("status") or "draft",
-        "grain": "report_id",
-        "entity_key": "report_id",
-        "dimensions": {
-            "comment_school_id": {
-                "title": "被举报内容发布者学校ID",
-                "type": "number",
-                "sql": "`comment_school_id`",
-                "primary_key": False,
-            },
-            "comment_school_name": {
-                "title": "被举报内容发布者学校名称",
-                "type": "string",
-                "sql": "`comment_school_name`",
-                "primary_key": False,
-            },
-            "comment_published_at": {
-                "title": "被举报内容发布时间",
-                "type": "time",
-                "sql": "`comment_published_at`",
-                "primary_key": False,
-            },
-            "report_id": {
-                "title": "举报ID",
-                "type": "number",
-                "sql": "`report_id`",
-                "primary_key": True,
-            },
-        },
-        "measures": {
-            "total_count": {
-                "title": "学生评论数",
-                "type": "count",
-                "sql": "COUNT(`report_id`)",
-                "description": "按举报记录统计学生评论数。",
-                "source_data_type": "count",
-                "certified": True,
-                "non_additive": False,
-            }
-        },
-        "default_time_dimension": "comment_published_at",
-    }
+        for key, value in canonical_business.items():
+            business[key] = business.get(key) or value
+    canonical_cube = canonical.get("cube") if isinstance(canonical.get("cube"), dict) else None
+    if canonical_cube:
+        cube = deepcopy(canonical_cube)
+        cube["status"] = old_cube.get("status") or cube.get("status") or "draft"
+        spec["cube"] = cube
+
+
+def _query_terms(query: str) -> list[str]:
+    text = (query or "").strip()
+    if not text:
+        return []
+    lowered = text.lower()
+    terms = re.findall(r"[a-zA-Z][a-zA-Z0-9_]*|\d+|[\u4e00-\u9fff]{2,}", lowered)
+    return sorted({term.strip().lower() for term in terms if term.strip()})
 
 
 def _object_name(subject: str, cube_name: str) -> str:

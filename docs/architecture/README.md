@@ -94,6 +94,8 @@ last_reviewed: 2026-05-13
     - `SemanticModelingAgentSpec` 只作为构建期输入、确认材料和审计快照；正式 Agent 规划仍只消费已发布 Ontology，分析执行仍以 Cube 为真相源
     - `/semantic/modeling-agent/new` 的 Copilot 体验采用 Chat-first 结构：中间 Chat 始终是注意力中心，右侧 Artifact 面板按需展示 `Review / Spec / Source / Preview / Trace`，生成的 Proposal Review 不阻断对话流；当前五个 artifact 均已接入产品化主链路
     - `/api/v1/semantic/modeling-copilot/sessions/<session_id>/review` 是建模助手的只读 artifact 投影，用于展示候选变更、阻塞项、原因解释、源表证据、Trace 回放、Publish Gate 和发布后验收；它不引入第二套语义资产模型，正式真相仍是已发布 Cube、Ontology、Binding 与 Policy
+    - Modeling Copilot session / Proposal 是构建期协作状态，生产默认通过 `SEMANTIC_MODELING_COPILOT_STORE=sql` 写入 PostgreSQL；YAML 仓储只保留为 local / fixture adapter
+    - 候选源召回的领域加分、相邻域扣分、canonical source / spec 修复均由 `SourceCandidateScoringConfig` 规则承载，新增领域优先补元数据规则，不在通用召回服务里继续写业务 if
     - `save_proposal` 只接受已生成或已编辑的 `raw_spec`，业务问题不能直接绕过 spec 校验进入 Proposal 草稿，避免旧 `business_question` source kind 误入治理发布链；Agent-led spec 会在保存 / 校验前确定性补齐 measure、grain、time_dimension、additivity、binding_status、policy 和最小证据包
     - Chat 内"使用推荐 / 接受 Cube 草稿 / 解释阻塞项"是确定性状态动作，不调用 LLM；自由业务问题和新意图理解仍进入 LLM Runtime
     - `/api/v1/semantic/domains/<domain_id>/context-preview` 将 Domain 收窄为业务主题、候选资产、默认上下文和 Agent 提示预览；Domain 不作为指标、关系、动作或 Join 的第三套真相源，业务上下文资产画布也不再维护关系边

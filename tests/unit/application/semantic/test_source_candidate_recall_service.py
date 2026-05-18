@@ -1,5 +1,9 @@
 from types import SimpleNamespace
 
+from app.application.semantic.source_candidate_scoring import (
+    SourceCandidateScoringConfig,
+    SourceCandidateScoringRule,
+)
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 
 
@@ -118,3 +122,46 @@ def test_student_comment_query_prefers_comment_reports_dwd_over_broad_answer_vie
         for candidate in candidates
         if candidate["name"] == "view_student_answer_analysis"
     )
+
+
+def test_recall_uses_metadata_scoring_rule_for_new_domain_without_service_code_change():
+    class _OrderTableCache:
+        cached_table_entries = [
+            SimpleNamespace(
+                datasource_id=7,
+                database_name="dw",
+                table_list=[
+                    {"table_name": "dwd_order_df", "comment": "订单交易事实表"},
+                    {"table_name": "dwd_refund_order_df", "comment": "退款订单明细事实表"},
+                ],
+            )
+        ]
+        datasets = []
+
+    service = SourceCandidateRecallService(
+        datasource_repository=_FakeDatasourceRepository(),
+        table_cache_service=_OrderTableCache(),
+        scoring_config=SourceCandidateScoringConfig(
+            rules=[
+                SourceCandidateScoringRule(
+                    rule_id="refund_order",
+                    intent_terms=("退款", "订单"),
+                    positive_source_terms=("dwd_refund_order_df", "退款订单"),
+                    negative_source_terms=("dwd_order_df",),
+                    positive_breakdown_key="refund_order_domain_boost",
+                    negative_breakdown_key="plain_order_domain_penalty",
+                    matched_term="refund_order_domain",
+                    positive_evidence="命中退款订单事实域",
+                    negative_evidence="命中普通订单域，非退款订单事实域",
+                )
+            ]
+        ),
+    )
+
+    result = service.recall("查看最近 30 天退款订单趋势")
+
+    candidates = result["candidates"]
+    assert candidates[0]["table"] == "dwd_refund_order_df"
+    assert candidates[0]["score_breakdown"]["refund_order_domain_boost"] > 0
+    plain_order = next(candidate for candidate in candidates if candidate["table"] == "dwd_order_df")
+    assert plain_order["score_breakdown"]["plain_order_domain_penalty"] < 0

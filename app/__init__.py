@@ -54,6 +54,41 @@ from .infrastructure.scheduler import init_jobs
 from .di.container import init_container, set_container
 
 
+def assert_semantic_modeling_copilot_routes(app: Flask) -> None:
+    """确认建模 Copilot 的生产关键路由已注册。
+
+    该检查用于阻止依赖装配失败后应用继续启动但 Copilot API 消失。
+    """
+
+    required_rules = {
+        "/api/v1/semantic/modeling-copilot/sessions",
+        "/api/v1/semantic/modeling-copilot/sessions/<session_id>/messages",
+        "/api/v1/semantic/modeling-copilot/sessions/<session_id>/publish",
+    }
+    registered_rules = {rule.rule for rule in app.url_map.iter_rules()}
+    missing = sorted(required_rules - registered_rules)
+    if missing:
+        raise RuntimeError(
+            "semantic modeling copilot routes missing: " + ", ".join(missing)
+        )
+
+
+def register_semantic_modeling_copilot_blueprint(app: Flask, container) -> None:
+    """从 DI 容器注册语义建模 Copilot Blueprint，失败时显式阻断启动。"""
+
+    try:
+        app.register_blueprint(
+            create_semantic_modeling_copilot_blueprint(
+                container.semantic_modeling_copilot(),
+            )
+        )
+        assert_semantic_modeling_copilot_routes(app)
+    except Exception as exc:  # pragma: no cover - 调用方测试覆盖异常路径
+        raise RuntimeError(
+            "semantic modeling copilot blueprint registration failed"
+        ) from exc
+
+
 def create_app(role: str = "web") -> Flask:
     """
     Flask App Factory
@@ -126,6 +161,10 @@ def create_app(role: str = "web") -> Flask:
         QueryExecutionJobORM,
         QueryResultObjectORM,
     )
+    from .infrastructure.semantic.models import (  # noqa
+        SemanticModelingAgentSessionORM,
+        SemanticModelingProposalORM,
+    )
 
     # 注册执行器（worker 执行任务时需要）
     from .executors import register_all_executors
@@ -177,55 +216,7 @@ def create_app(role: str = "web") -> Flask:
         app.register_blueprint(create_semantic_modeling_agent_blueprint(
             container.semantic_modeling_agent(),
         ))
-        # 语义建模 Copilot：session-first 对话工作台。
-        # 依赖未在 DI 容器中暴露，这里做最小装配；
-        # publish 链路接真实 ModelingProposalService，确保 Cube + Ontology 一气呵成发布到 active。
-        try:
-            from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
-            from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
-            from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
-            from app.application.semantic.modeling_proposal_service import ModelingProposalService
-            from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
-            from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
-            from app.infrastructure.semantic.yaml_modeling_agent_session_repository import (
-                YamlModelingAgentSessionRepository,
-            )
-            from app.infrastructure.semantic.yaml_modeling_proposal_repository import (
-                YamlModelingProposalRepository,
-            )
-
-            semantic_dir = app.config.get('SEMANTIC_DIR') or 'app/infrastructure/semantic'
-            _session_repo = YamlModelingAgentSessionRepository(f'{semantic_dir}/modeling_agent_sessions')
-            _proposal_repo = YamlModelingProposalRepository(f'{semantic_dir}/modeling_proposals')
-            _runtime = OpenAIAgentsSdkAdapter(
-                enable_sdk=bool(app.config.get('LLM_API_KEY')),
-                model=app.config.get('LLM_MODEL') or 'gpt-4o-mini',
-            )
-            _readiness = PublishReadinessChecker()
-            _source_recall = SourceCandidateRecallService(
-                datasource_repository=container.datasource_repository(),
-                table_cache_service=container.table_cache_service(),
-                dataset_repository=container.dataset_repository(),
-            )
-            _tools = ModelingToolRegistry(
-                builder=container.semantic_modeling_agent(),
-                readiness_checker=_readiness,
-                source_candidate_recall_service=_source_recall,
-            )
-            _proposal_service = ModelingProposalService(
-                repository=_proposal_repo,
-                builder=container.semantic_modeling_agent(),
-                readiness_checker=_readiness,
-            )
-            _copilot_service = SemanticModelingCopilotService(
-                session_repository=_session_repo,
-                runtime=_runtime,
-                tools=_tools,
-                proposal_service=_proposal_service,
-            )
-            app.register_blueprint(create_semantic_modeling_copilot_blueprint(_copilot_service))
-        except Exception as exc:  # pragma: no cover
-            app.logger.warning('semantic modeling copilot blueprint not registered: %s', exc)
+        register_semantic_modeling_copilot_blueprint(app, container)
         app.register_blueprint(create_ontology_blueprint(
             container.ontology_definition_service(),
             container.semantic_mapper_preview_service(),

@@ -390,13 +390,20 @@ frontend/src/
 
 ## 7. 语义层落地方式
 
-语义层不只是一组接口，还包含仓库内的 YAML 定义与运行时服务：
+语义层不只是一组接口，还包含仓库内的 YAML 定义、SQL 构建期状态与运行时服务：
 
 - `app/infrastructure/semantic/catalogs/`
 - `app/infrastructure/semantic/cubes/`
 - `app/infrastructure/semantic/domains/`
 - `app/infrastructure/semantic/views/`
 - `app/infrastructure/semantic/recipes/`
+
+建模 Copilot 的 session 与 Proposal 是构建期协作状态，生产默认写入 PostgreSQL，而不是写入本地 YAML：
+
+- `semantic_modeling_agent_sessions`
+- `semantic_modeling_proposals`
+- `SEMANTIC_MODELING_COPILOT_STORE=sql` 为默认生产路径
+- `SEMANTIC_MODELING_COPILOT_STORE=yaml` 仅用于本地开发、fixture 或迁移前诊断
 
 当前内置语义内容偏教育/学习分析场景，例如：
 

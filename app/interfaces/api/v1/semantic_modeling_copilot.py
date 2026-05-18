@@ -35,6 +35,44 @@ def _principal_id() -> Optional[str]:
     return getattr(g, "principal_id", None)
 
 
+def _copilot_error(operation: str, exc: Exception):
+    """把 Copilot 应用异常映射为可观测的 HTTP 错误。"""
+
+    if isinstance(exc, PermissionError):
+        return error(
+            str(exc),
+            status=403,
+            details={"code": "COPILOT_FORBIDDEN"},
+        )
+    if isinstance(exc, LLMRequiredError):
+        return error(
+            str(exc),
+            status=503,
+            details={"code": "LLM_REQUIRED", "reason": exc.reason},
+        )
+    if isinstance(exc, LookupError) or (
+        isinstance(exc, ValueError) and "not found" in str(exc).lower()
+    ):
+        return error(
+            str(exc),
+            status=404,
+            details={"code": "COPILOT_NOT_FOUND"},
+        )
+    if isinstance(exc, ValueError):
+        return error(
+            str(exc),
+            status=422,
+            details={"code": "COPILOT_VALIDATION_ERROR"},
+        )
+
+    current_app.logger.exception("semantic modeling copilot %s failed", operation)
+    return error(
+        f"{operation}失败",
+        status=500,
+        details={"code": "COPILOT_INTERNAL_ERROR"},
+    )
+
+
 def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
     bp = Blueprint(
         "semantic_modeling_copilot",
@@ -62,7 +100,7 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 include_legacy=include_legacy,
             ))
         except Exception as exc:
-            return error(f"列出建模 Copilot 会话失败: {str(exc)}")
+            return _copilot_error("列出建模 Copilot 会话", exc)
 
     @bp.route("/sessions", methods=["POST"])
     @_require_identity_unless_testing
@@ -74,7 +112,7 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 payload["principal_id"] = principal_id
             return success(data=copilot_service.create_session(payload))
         except Exception as exc:
-            return error(f"创建建模 Copilot 会话失败: {str(exc)}")
+            return _copilot_error("创建建模 Copilot 会话", exc)
 
     @bp.route("/sessions/<session_id>", methods=["GET"])
     @_require_identity_unless_testing
@@ -84,10 +122,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 session_id,
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"获取建模 Copilot 会话失败: {str(exc)}", status=404)
+            return _copilot_error("获取建模 Copilot 会话", exc)
 
     @bp.route("/sessions/<session_id>/review", methods=["GET"])
     @_require_identity_unless_testing
@@ -97,10 +133,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 session_id,
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"获取建模 Copilot Review 失败: {str(exc)}", status=404)
+            return _copilot_error("获取建模 Copilot Review", exc)
 
     @bp.route("/sessions/<session_id>", methods=["DELETE"])
     @_require_identity_unless_testing
@@ -110,10 +144,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 session_id,
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"删除建模 Copilot 会话失败: {str(exc)}")
+            return _copilot_error("删除建模 Copilot 会话", exc)
 
     @bp.route("/sessions/<session_id>", methods=["PATCH"])
     @_require_identity_unless_testing
@@ -124,10 +156,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 _body(),
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"更新建模 Copilot 会话失败: {str(exc)}")
+            return _copilot_error("更新建模 Copilot 会话", exc)
 
     @bp.route("/sessions/<session_id>/messages", methods=["POST"])
     @_require_identity_unless_testing
@@ -138,16 +168,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 _body(),
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
-        except LLMRequiredError as exc:
-            return error(
-                str(exc),
-                status=503,
-                details={"code": "LLM_REQUIRED", "reason": exc.reason},
-            )
         except Exception as exc:
-            return error(f"运行建模 Copilot 失败: {str(exc)}")
+            return _copilot_error("运行建模 Copilot", exc)
 
     @bp.route("/sessions/<session_id>/confirmations", methods=["POST"])
     @_require_identity_unless_testing
@@ -158,10 +180,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 _body(),
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"确认建模口径失败: {str(exc)}")
+            return _copilot_error("确认建模口径", exc)
 
     @bp.route("/sessions/<session_id>/accept-cube-draft", methods=["POST"])
     @_require_identity_unless_testing
@@ -172,10 +192,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 _body(),
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"接受 Cube 草稿失败: {str(exc)}")
+            return _copilot_error("接受 Cube 草稿", exc)
 
     @bp.route("/sessions/<session_id>/sandbox", methods=["POST"])
     @_require_identity_unless_testing
@@ -186,10 +204,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 _body(),
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"运行建模沙盒预演失败: {str(exc)}")
+            return _copilot_error("运行建模沙盒预演", exc)
 
     @bp.route("/sessions/<session_id>/save-proposal", methods=["POST"])
     @_require_identity_unless_testing
@@ -200,10 +216,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 _body(),
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"保存建模 Proposal 失败: {str(exc)}")
+            return _copilot_error("保存建模 Proposal", exc)
 
     @bp.route("/sessions/<session_id>/publish", methods=["POST"])
     @_require_identity_unless_testing
@@ -214,10 +228,8 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 _body(),
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"发布建模语义失败: {str(exc)}")
+            return _copilot_error("发布建模语义", exc)
 
     @bp.route("/sessions/<session_id>/spec", methods=["PATCH"])
     @_require_identity_unless_testing
@@ -228,9 +240,7 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
                 _body(),
                 principal_id=_principal_id(),
             ))
-        except PermissionError as exc:
-            return error(str(exc), status=403)
         except Exception as exc:
-            return error(f"更新建模 spec 失败: {str(exc)}")
+            return _copilot_error("更新建模 spec", exc)
 
     return bp

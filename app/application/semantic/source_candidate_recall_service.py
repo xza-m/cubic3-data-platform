@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from app.domain.entities.dataset import Dataset
 from app.domain.entities.table_cache import DataSourceTableCache
+from app.application.semantic.source_candidate_scoring import SourceCandidateScoringConfig
 
 
 class SourceCandidateRecallService:
@@ -36,10 +37,12 @@ class SourceCandidateRecallService:
         datasource_repository: Any = None,
         table_cache_service: Any = None,
         dataset_repository: Any = None,
+        scoring_config: Optional[SourceCandidateScoringConfig] = None,
     ):
         self._datasource_repository = datasource_repository
         self._table_cache_service = table_cache_service
         self._dataset_repository = dataset_repository
+        self._scoring_config = scoring_config or SourceCandidateScoringConfig.default()
 
     def recall(
         self,
@@ -288,55 +291,53 @@ class SourceCandidateRecallService:
                 score += 0.12
         return min(score, 0.5), sorted(set(matched))
 
-    @classmethod
     def _apply_intent_adjustment(
-        cls,
+        self,
         candidate: Dict[str, Any],
         query: str,
         terms: Sequence[str],
     ) -> Dict[str, Any]:
-        if not cls._has_student_comment_intent(query, terms):
+        rules = self._scoring_config.matching_rules(query, terms)
+        if not rules:
             return candidate
         adjusted = dict(candidate)
-        text = cls._candidate_text(adjusted)
+        text = self._candidate_text(adjusted)
         score = float(adjusted.get("score") or 0)
         breakdown = dict(adjusted.get("score_breakdown") or {})
         evidence = list(adjusted.get("evidence") or [])
         matched_terms = list(adjusted.get("matched_terms") or [])
 
-        if cls._looks_like_student_comment_source(text):
-            boost = 0.16
-            score += boost
-            breakdown["student_comment_domain_boost"] = round(
-                float(breakdown.get("student_comment_domain_boost") or 0) + boost,
-                4,
-            )
-            matched_terms.append("student_comment_domain")
-            evidence.append("命中学生评论/举报事实域")
-        else:
-            penalty = -0.18
-            score += penalty
-            breakdown["student_comment_domain_mismatch_penalty"] = round(
-                float(breakdown.get("student_comment_domain_mismatch_penalty") or 0) + penalty,
-                4,
-            )
+        for rule in rules:
+            if rule.matches_positive_source(text):
+                score += rule.domain_boost
+                breakdown[rule.positive_breakdown_key] = round(
+                    float(breakdown.get(rule.positive_breakdown_key) or 0) + rule.domain_boost,
+                    4,
+                )
+                if rule.matched_term:
+                    matched_terms.append(rule.matched_term)
+                evidence.append(rule.positive_evidence)
+            else:
+                score += rule.mismatch_penalty
+                breakdown[rule.mismatch_breakdown_key] = round(
+                    float(breakdown.get(rule.mismatch_breakdown_key) or 0) + rule.mismatch_penalty,
+                    4,
+                )
 
-        if cls._looks_like_student_answer_source(text):
-            penalty = -0.25
-            score += penalty
-            breakdown["student_answer_domain_penalty"] = round(
-                float(breakdown.get("student_answer_domain_penalty") or 0) + penalty,
-                4,
-            )
-            evidence.append("命中答题分析域，非学生评论事实域")
+            if rule.matches_negative_source(text):
+                score += rule.negative_penalty
+                breakdown[rule.negative_breakdown_key] = round(
+                    float(breakdown.get(rule.negative_breakdown_key) or 0) + rule.negative_penalty,
+                    4,
+                )
+                evidence.append(rule.negative_evidence)
 
-        if "dwd_interaction_comment_reports_df" in text.lower():
-            boost = 0.08
-            score += boost
-            breakdown["canonical_table_boost"] = round(
-                float(breakdown.get("canonical_table_boost") or 0) + boost,
-                4,
-            )
+            if rule.matches_canonical_source(text):
+                score += rule.canonical_boost
+                breakdown[rule.canonical_breakdown_key] = round(
+                    float(breakdown.get(rule.canonical_breakdown_key) or 0) + rule.canonical_boost,
+                    4,
+                )
 
         adjusted["score"] = round(max(0.0, min(0.99, score)), 4)
         adjusted["score_breakdown"] = {
@@ -344,7 +345,7 @@ class SourceCandidateRecallService:
             for key, value in breakdown.items()
             if float(value) != 0
         }
-        adjusted["confidence"] = cls._confidence(adjusted["score"])
+        adjusted["confidence"] = self._confidence(adjusted["score"])
         adjusted["matched_terms"] = sorted({str(item) for item in matched_terms if str(item)})
         adjusted["evidence"] = list(dict.fromkeys(str(item) for item in evidence if str(item)))
         return adjusted
@@ -355,48 +356,6 @@ class SourceCandidateRecallService:
             "source_base": round(source_base, 4),
             "lexical_match": round(lexical_score, 4),
         }
-
-    @staticmethod
-    def _has_student_comment_intent(query: str, terms: Sequence[str]) -> bool:
-        text = (query or "").lower()
-        return (
-            ("学生" in query and "评论" in query)
-            or "学生评论" in query
-            or "student_comment" in text
-            or ("student" in terms and "comment" in terms)
-        )
-
-    @staticmethod
-    def _looks_like_student_comment_source(text: str) -> bool:
-        lowered = (text or "").lower()
-        return any(
-            token in lowered
-            for token in (
-                "dwd_interaction_comment_reports_df",
-                "student_comment",
-                "comment_report",
-                "comment_reports",
-                "interaction_comment",
-                "评论举报",
-                "学生评论",
-            )
-        )
-
-    @staticmethod
-    def _looks_like_student_answer_source(text: str) -> bool:
-        lowered = (text or "").lower()
-        return any(
-            token in lowered
-            for token in (
-                "view_student_answer_analysis",
-                "student_answer",
-                "answer_records",
-                "answer_action",
-                "答题",
-                "正确率",
-                "耗时",
-            )
-        )
 
     @staticmethod
     def _confidence(score: float) -> str:

@@ -34,6 +34,31 @@ def _create_engine_smart(database_url: str, **pg_kwargs):
     return create_engine(database_url, **pg_kwargs)
 
 
+def _modeling_session_repository(store: str, session, sessions_dir: str):
+    """按环境选择 Copilot 会话仓储。
+
+    生产默认 SQL；YAML 仅用于本地开发、fixture 或迁移前兼容。
+    """
+
+    normalized = (store or "sql").strip().lower()
+    if normalized == "yaml":
+        return YamlModelingAgentSessionRepository(sessions_dir)
+    if normalized == "sql":
+        return SqlModelingAgentSessionRepository(session)
+    raise ValueError(f"unsupported semantic modeling copilot store: {store}")
+
+
+def _modeling_proposal_repository(store: str, session, proposals_dir: str):
+    """按环境选择 Copilot Proposal 仓储。"""
+
+    normalized = (store or "sql").strip().lower()
+    if normalized == "yaml":
+        return YamlModelingProposalRepository(proposals_dir)
+    if normalized == "sql":
+        return SqlModelingProposalRepository(session)
+    raise ValueError(f"unsupported semantic modeling copilot store: {store}")
+
+
 # Infrastructure
 from app.infrastructure.repositories.datasource_repository import DatasourceRepository
 from app.infrastructure.repositories.dataset_repository import DatasetRepository
@@ -107,6 +132,12 @@ from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
+from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
+from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
+from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
+from app.application.semantic.modeling_proposal_service import ModelingProposalService
+from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
+from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
 from app.application.semantic.semantic_query_service import SemanticQueryService
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
@@ -123,6 +154,18 @@ from app.application.governance.access import AccessPolicyDecisionService, Princ
 from app.infrastructure.semantic.yaml_catalog_repository import YamlCatalogRepository
 from app.infrastructure.semantic.yaml_cube_repository import YamlCubeRepository
 from app.infrastructure.semantic.yaml_domain_repository import YamlDomainRepository
+from app.infrastructure.semantic.yaml_modeling_agent_session_repository import (
+    YamlModelingAgentSessionRepository,
+)
+from app.infrastructure.semantic.yaml_modeling_proposal_repository import (
+    YamlModelingProposalRepository,
+)
+from app.infrastructure.semantic.sql_modeling_agent_session_repository import (
+    SqlModelingAgentSessionRepository,
+)
+from app.infrastructure.semantic.sql_modeling_proposal_repository import (
+    SqlModelingProposalRepository,
+)
 from app.infrastructure.semantic.yaml_view_repository import YamlViewRepository
 from app.infrastructure.semantic.yaml_recipe_repository import YamlRecipeRepository
 from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
@@ -705,6 +748,59 @@ class Container(containers.DeclarativeContainer):
         mapper_service=semantic_mapper_preview_service,
         agent_plan_handler=agent_plan_handler,
     )
+
+    semantic_modeling_copilot_readiness_checker = providers.Singleton(
+        PublishReadinessChecker,
+    )
+
+    semantic_modeling_source_recall_service = providers.Factory(
+        SourceCandidateRecallService,
+        datasource_repository=datasource_repository,
+        table_cache_service=table_cache_service,
+        dataset_repository=dataset_repository,
+    )
+
+    semantic_modeling_copilot_tools = providers.Singleton(
+        ModelingToolRegistry,
+        builder=semantic_modeling_agent,
+        readiness_checker=semantic_modeling_copilot_readiness_checker,
+        source_candidate_recall_service=semantic_modeling_source_recall_service,
+    )
+
+    semantic_modeling_agent_session_repository = providers.Singleton(
+        _modeling_session_repository,
+        store=config.semantic_modeling.copilot_store,
+        session=db_session,
+        sessions_dir=_os.path.join(_semantic_base, "modeling_agent_sessions"),
+    )
+
+    semantic_modeling_proposal_repository = providers.Singleton(
+        _modeling_proposal_repository,
+        store=config.semantic_modeling.copilot_store,
+        session=db_session,
+        proposals_dir=_os.path.join(_semantic_base, "modeling_proposals"),
+    )
+
+    semantic_modeling_proposal_service = providers.Singleton(
+        ModelingProposalService,
+        repository=semantic_modeling_proposal_repository,
+        builder=semantic_modeling_agent,
+        readiness_checker=semantic_modeling_copilot_readiness_checker,
+    )
+
+    semantic_modeling_copilot_runtime = providers.Singleton(
+        OpenAIAgentsSdkAdapter,
+        enable_sdk=providers.Callable(lambda api_key: bool(api_key), config.llm.api_key),
+        model=config.llm.model,
+    )
+
+    semantic_modeling_copilot = providers.Singleton(
+        SemanticModelingCopilotService,
+        session_repository=semantic_modeling_agent_session_repository,
+        runtime=semantic_modeling_copilot_runtime,
+        tools=semantic_modeling_copilot_tools,
+        proposal_service=semantic_modeling_proposal_service,
+    )
     
     execute_sql_preview_handler = providers.Factory(
         ExecuteSQLPreviewHandler,
@@ -1226,6 +1322,9 @@ def init_container(app: Flask) -> Container:
             'ticket_ttl_seconds': int(os.getenv('QUERY_EXECUTION_TICKET_TTL_SECONDS', app.config.get('QUERY_EXECUTION_TICKET_TTL_SECONDS', 300))),
             'lease_seconds': int(os.getenv('QUERY_EXECUTION_LEASE_SECONDS', app.config.get('QUERY_EXECUTION_LEASE_SECONDS', 300))),
             'max_submit_attempts': int(os.getenv('QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS', app.config.get('QUERY_EXECUTION_MAX_SUBMIT_ATTEMPTS', 3))),
+        },
+        'semantic_modeling': {
+            'copilot_store': app.config.get('SEMANTIC_MODELING_COPILOT_STORE', 'sql'),
         }
     })
     

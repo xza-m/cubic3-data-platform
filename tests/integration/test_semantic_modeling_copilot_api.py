@@ -139,6 +139,19 @@ class _CopilotStub:
         return {"id": session_id, "title": payload.get("title")}
 
 
+class _ErrorMappingStub(_CopilotStub):
+    def get_session(self, session_id, *, principal_id=None):
+        if session_id == "missing":
+            raise LookupError("session not found")
+        return super().get_session(session_id, principal_id=principal_id)
+
+    def update_spec(self, session_id, payload, *, principal_id=None):
+        raise ValueError("spec 缺少 cube")
+
+    def publish_proposal(self, session_id, payload, *, principal_id=None):
+        raise RuntimeError("database unavailable")
+
+
 def _client():
     app = Flask(__name__)
     app.config.update(TESTING=True)
@@ -430,3 +443,28 @@ def test_modeling_copilot_rename_session_updates_title():
     assert resp.status_code == 200
     assert resp.get_json()["data"] == {"id": "s_target", "title": "新标题"}
     assert service.calls[-1][0] == "rename_session"
+
+
+def test_modeling_copilot_api_maps_not_found_validation_and_internal_errors():
+    app = Flask(__name__)
+    app.config.update(TESTING=True)
+    app.register_blueprint(create_semantic_modeling_copilot_blueprint(_ErrorMappingStub()))
+    client = app.test_client()
+
+    missing_resp = client.get("/api/v1/semantic/modeling-copilot/sessions/missing")
+    assert missing_resp.status_code == 404
+    assert missing_resp.get_json()["details"]["code"] == "COPILOT_NOT_FOUND"
+
+    invalid_resp = client.patch(
+        "/api/v1/semantic/modeling-copilot/sessions/session_1/spec",
+        json={"cube": {}},
+    )
+    assert invalid_resp.status_code == 422
+    assert invalid_resp.get_json()["details"]["code"] == "COPILOT_VALIDATION_ERROR"
+
+    internal_resp = client.post(
+        "/api/v1/semantic/modeling-copilot/sessions/session_1/publish",
+        json={},
+    )
+    assert internal_resp.status_code == 500
+    assert internal_resp.get_json()["details"]["code"] == "COPILOT_INTERNAL_ERROR"
