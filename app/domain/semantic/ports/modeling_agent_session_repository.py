@@ -13,7 +13,12 @@ class IModelingAgentSessionRepository(ABC):
         ...
 
     @abstractmethod
-    def save(self, session: AgentSession) -> None:
+    def save(
+        self,
+        session: AgentSession,
+        *,
+        expected_state_version: Optional[int] = None,
+    ) -> None:
         ...
 
     @abstractmethod

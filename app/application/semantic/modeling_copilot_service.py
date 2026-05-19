@@ -10,6 +10,7 @@ from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_spec_repair import has_reviewable_spec, repair_modeling_spec
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 from app.application.semantic.source_candidate_scoring import SourceCandidateScoringConfig
+from app.domain.semantic.copilot_state import CopilotSessionState
 from app.domain.semantic.modeling_agent_session import AgentSession
 from app.domain.semantic.ports.modeling_agent_session_repository import IModelingAgentSessionRepository
 
@@ -31,6 +32,52 @@ class SemanticModelingCopilotService:
         self._tools = tools
         self._proposal_service = proposal_service
         self._source_scoring_config = source_scoring_config or SourceCandidateScoringConfig.default()
+
+    def _save_session(self, session: AgentSession) -> None:
+        previous_state_version = session.state_version
+        self._sync_session_state(session)
+        expected_state_version = (
+            previous_state_version if session.state_version != previous_state_version else None
+        )
+        self._sessions.save(session, expected_state_version=expected_state_version)
+
+    def _sync_session_state(self, session: AgentSession) -> None:
+        next_state = self._derive_session_state(session)
+        if session.state != next_state:
+            session.transition_state(
+                next_state,
+                actor="copilot_service",
+                reason="workbench_state_sync",
+            )
+
+    def _derive_session_state(self, session: AgentSession) -> CopilotSessionState:
+        if session.status == "abandoned":
+            return "abandoned"
+        state = session.workbench_state or {}
+        publish_result = state.get("publish_result")
+        if isinstance(publish_result, dict):
+            if publish_result.get("status") == "published":
+                return "published"
+            if publish_result.get("status") == "failed":
+                return "blocked"
+        advanced_refs = (
+            state.get("advanced_refs") if isinstance(state.get("advanced_refs"), dict) else {}
+        )
+        if session.current_proposal_id or advanced_refs.get("proposal_id"):
+            return "proposal_saved"
+        if state.get("required_confirmations"):
+            return "awaiting_confirmation"
+        raw_spec = state.get("raw_spec") if isinstance(state.get("raw_spec"), dict) else {}
+        if has_reviewable_spec(raw_spec):
+            return "spec_ready"
+        canvas = state.get("semantic_canvas") if isinstance(state.get("semantic_canvas"), dict) else {}
+        if session.conversation and len(session.conversation) > 1:
+            return "analyzing"
+        if state.get("candidate_cards") or any(
+            canvas.get(key) for key in ("objects", "metrics", "bindings", "dimensions")
+        ):
+            return "analyzing"
+        return "created"
 
     def create_session(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         user_goal = str(
@@ -58,7 +105,13 @@ class SemanticModelingCopilotService:
             workbench_state=self._initial_workbench_state(user_goal, entry_type),
         )
         session.add_message(role="user", content=user_goal)
-        self._sessions.save(session)
+        session.record_event(
+            "session_action",
+            actor=principal_id,
+            action="create_session",
+            payload={"entry_type": entry_type},
+        )
+        self._save_session(session)
         return self._dump(session)
 
     def get_session(
@@ -70,7 +123,7 @@ class SemanticModelingCopilotService:
         session = self._require(session_id)
         self._authorize(session, principal_id)
         if self._refresh_session_spec_state(session):
-            self._sessions.save(session)
+            self._save_session(session)
         return self._dump(session)
 
     def get_review(
@@ -87,7 +140,7 @@ class SemanticModelingCopilotService:
         session = self._require(session_id)
         self._authorize(session, principal_id)
         if self._refresh_session_spec_state(session):
-            self._sessions.save(session)
+            self._save_session(session)
         proposal_id = str(
             session.current_proposal_id
             or (session.workbench_state.get("advanced_refs") or {}).get("proposal_id")
@@ -229,7 +282,19 @@ class SemanticModelingCopilotService:
         }
         state["agent_message"] = "已根据你的工作台编辑刷新 spec 与校验结果。"
         session.workbench_state = state
-        self._sessions.save(session)
+        session.record_event(
+            "session_action",
+            actor=principal_id,
+            action="update_spec",
+            payload={
+                "updated_keys": [
+                    key
+                    for key in ("spec", "cube", "ontology", "binding", "policy")
+                    if key in payload
+                ]
+            },
+        )
+        self._save_session(session)
         return self._dump(session)
 
     def publish_proposal(
@@ -302,7 +367,14 @@ class SemanticModelingCopilotService:
         session.workbench_state = state
         session.status = "completed"
         session.add_message(role="assistant", content=state["agent_message"])
-        self._sessions.save(session)
+        session.record_event(
+            "proposal_action",
+            actor=principal_id or str(review_payload.get("approved_by") or "semantic_owner"),
+            action="publish",
+            idempotency_key=f"{proposal_id}:publish",
+            payload={"proposal_id": proposal_id, "status": "published"},
+        )
+        self._save_session(session)
         return self._dump(session)
 
     def _persist_publish_failure(self, session: AgentSession, proposal_id: str, exc: Exception) -> None:
@@ -330,7 +402,14 @@ class SemanticModelingCopilotService:
         session.workbench_state = state
         session.status = "active"
         session.add_message(role="assistant", content=state["agent_message"])
-        self._sessions.save(session)
+        session.record_event(
+            "proposal_action",
+            actor="copilot_service",
+            action="publish_failed",
+            idempotency_key=f"{proposal_id}:publish:{reason['id']}",
+            payload={"proposal_id": proposal_id, "reason": reason["id"]},
+        )
+        self._save_session(session)
 
     def _publish_failure_reason(self, exc: Exception) -> Dict[str, str]:
         message = str(exc)
@@ -387,12 +466,12 @@ class SemanticModelingCopilotService:
         deterministic_reply = self._handle_deterministic_chat_action(session, message, payload)
         if deterministic_reply is not None:
             session.add_message(role="assistant", content=deterministic_reply)
-            self._sessions.save(session)
+            self._save_session(session)
             return self._dump(session)
         source_recall_reply = self._try_source_candidate_recall(session, message, payload)
         if source_recall_reply is not None:
             session.add_message(role="assistant", content=source_recall_reply)
-            self._sessions.save(session)
+            self._save_session(session)
             return self._dump(session)
         result = self._runtime.run(
             session=session,
@@ -402,7 +481,7 @@ class SemanticModelingCopilotService:
         )
         self._apply_agent_result(session, result)
         session.add_message(role="assistant", content=result.message)
-        self._sessions.save(session)
+        self._save_session(session)
         return self._dump(session)
 
     def _handle_deterministic_chat_action(
@@ -764,7 +843,14 @@ class SemanticModelingCopilotService:
             state["suggested_actions"] = ["save_proposal", "run_validation"]
         session.workbench_state = state
         session.add_message(role="assistant", content=state["agent_message"])
-        self._sessions.save(session)
+        session.record_event(
+            "session_action",
+            actor=principal_id,
+            action="confirm",
+            idempotency_key=f"{session.id}:confirm:{confirmation_id}:{session.state_version}",
+            payload={"confirmation_id": confirmation_id},
+        )
+        self._save_session(session)
         return self._dump(session)
 
     def _refresh_session_spec_state(self, session: AgentSession) -> bool:
@@ -1115,7 +1201,14 @@ class SemanticModelingCopilotService:
         state["suggested_actions"] = ["run_validation", "save_proposal"]
         session.workbench_state = state
         session.add_message(role="assistant", content=state["agent_message"])
-        self._sessions.save(session)
+        session.record_event(
+            "session_action",
+            actor=principal_id,
+            action="accept_cube_draft",
+            idempotency_key=f"{session.id}:accept_cube_draft:{session.state_version}",
+            payload={"has_cube": has_cube},
+        )
+        self._save_session(session)
         return self._dump(session)
 
     def sandbox(
@@ -1138,7 +1231,7 @@ class SemanticModelingCopilotService:
         state["agent_message"] = "已完成草稿态沙盒预演，不会污染正式 Data Agent runtime。"
         session.workbench_state = state
         session.add_message(role="assistant", content=state["agent_message"])
-        self._sessions.save(session)
+        self._save_session(session)
         return self._dump(session)
 
     def save_proposal(
@@ -1178,7 +1271,14 @@ class SemanticModelingCopilotService:
             state["agent_message"] = f"Proposal {existing_proposal_id} 已保存，本次没有创建新 Proposal。"
             state["suggested_actions"] = ["inspect_proposal", "run_sandbox", "continue_modeling"]
             session.workbench_state = state
-            self._sessions.save(session)
+            session.record_event(
+                "proposal_action",
+                actor=principal_id,
+                action="save_proposal",
+                idempotency_key=f"{existing_proposal_id}:already_saved",
+                payload={"proposal_id": existing_proposal_id, "status": "already_saved"},
+            )
+            self._save_session(session)
             return self._dump(session)
 
         proposal_patch = dict(state.get("proposal_patch") or {})
@@ -1235,7 +1335,14 @@ class SemanticModelingCopilotService:
         state["suggested_actions"] = ["inspect_proposal", "run_sandbox", "continue_modeling"]
         session.workbench_state = state
         session.add_message(role="assistant", content=state["agent_message"])
-        self._sessions.save(session)
+        session.record_event(
+            "proposal_action",
+            actor=principal_id,
+            action="save_proposal",
+            idempotency_key=f"{proposal_id}:save",
+            payload={"proposal_id": proposal_id, "status": "saved"},
+        )
+        self._save_session(session)
         return self._dump(session)
 
     def _hydrate_session_spec(self, session: AgentSession) -> bool:

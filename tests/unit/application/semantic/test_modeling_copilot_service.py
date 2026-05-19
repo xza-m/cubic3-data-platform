@@ -17,7 +17,7 @@ class _SessionRepository:
     def get(self, session_id: str):
         return self.items.get(session_id)
 
-    def save(self, session: AgentSession) -> None:
+    def save(self, session: AgentSession, *, expected_state_version=None) -> None:
         self.items[session.id] = session
 
     def list(self, principal_id=None, *, limit=50, offset=0, status=None, include_legacy=True):
@@ -255,15 +255,46 @@ def test_copilot_session_turn_updates_workbench_without_publishing():
 
     created = service.create_session({"user_goal": "查询最近7天学生评论数，按学校汇总"})
     assert created["entry_type"] == "business_question"
+    assert created["state"] == "created"
+    assert created["state_version"] == 1
     assert created["workbench_state"]["suggested_actions"] == ["send_goal"]
 
     updated = service.send_message(created["id"], {"message": "按学校汇总，不展示 restricted 字段"})
 
     assert runtime.calls[0][1] == "按学校汇总，不展示 restricted 字段"
+    assert updated["state"] == "awaiting_confirmation"
+    assert updated["state_version"] == 2
+    assert updated["state_history"][-1]["to_state"] == "awaiting_confirmation"
+    assert updated["event_log"][-1]["action"] == "created_to_awaiting_confirmation"
     assert updated["workbench_state"]["semantic_canvas"]["metrics"][0]["name"] == "student_comment_count"
     assert updated["workbench_state"]["required_confirmations"][0]["id"] == "confirm_school_dimension"
     assert updated["tool_traces"][0]["tool"] == "search_cube"
     assert updated.get("current_proposal_id") is None
+
+
+def test_copilot_state_progresses_from_spec_to_saved_and_published():
+    service, _, _, _ = _service()
+
+    created = service.create_session({"user_goal": "查询最近7天学生评论数，按学校汇总"})
+    analyzed = service.send_message(created["id"], {"message": "生成学生评论语义"})
+    confirmed = service.confirm(
+        analyzed["id"],
+        {"confirmation_id": "confirm_school_dimension", "value": "school_id"},
+    )
+    accepted = service.accept_cube_draft(confirmed["id"])
+    saved = service.save_proposal(accepted["id"])
+    published = service.publish_proposal(saved["id"])
+
+    assert analyzed["state"] == "awaiting_confirmation"
+    assert confirmed["state"] == "spec_ready"
+    assert accepted["state"] == "spec_ready"
+    assert saved["state"] == "proposal_saved"
+    assert published["state"] == "published"
+    assert published["status"] == "completed"
+    assert [event["action"] for event in published["event_log"] if event["type"] == "proposal_action"] == [
+        "save_proposal",
+        "publish",
+    ]
 
 
 def test_copilot_accept_cube_draft_is_deterministic_state_action():

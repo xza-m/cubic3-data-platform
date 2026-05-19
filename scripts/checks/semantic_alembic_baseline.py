@@ -15,7 +15,15 @@ from sqlalchemy import create_engine, inspect
 DEFAULT_REQUIRED_SCHEMA: dict[str, dict[str, tuple[str, ...]]] = {
     "alembic_version": {"columns": ("version_num",), "indexes": ()},
     "semantic_modeling_agent_sessions": {
-        "columns": ("id", "principal_id", "status", "payload_json", "version"),
+        "columns": (
+            "id",
+            "principal_id",
+            "status",
+            "state",
+            "state_version",
+            "payload_json",
+            "version",
+        ),
         "indexes": ("idx_semantic_modeling_sessions_principal_updated",),
     },
     "semantic_modeling_proposals": {

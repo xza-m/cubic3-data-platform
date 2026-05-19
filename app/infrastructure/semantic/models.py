@@ -178,6 +178,8 @@ class SemanticModelingAgentSessionORM(db.Model):
     id = Column(String(128), primary_key=True)
     principal_id = Column(String(128), nullable=True)
     status = Column(String(32), nullable=False, default="active")
+    state = Column(String(32), nullable=False, default="created")
+    state_version = Column(Integer, nullable=False, default=1)
     title = Column(String(255), nullable=True)
     payload_json = Column(JsonType, nullable=False, default=dict)
     version = Column(Integer, nullable=False, default=1)

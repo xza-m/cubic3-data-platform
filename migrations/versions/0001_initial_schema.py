@@ -401,6 +401,8 @@ def upgrade() -> None:
     sa.Column('id', sa.String(length=128), nullable=False),
     sa.Column('principal_id', sa.String(length=128), nullable=True),
     sa.Column('status', sa.String(length=32), nullable=False),
+    sa.Column('state', sa.String(length=32), nullable=False),
+    sa.Column('state_version', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=255), nullable=True),
     sa.Column('payload_json', db_types.JsonType(), nullable=False),
     sa.Column('version', sa.Integer(), nullable=False),

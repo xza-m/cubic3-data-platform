@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from app.domain.semantic.modeling_agent_session import AgentSession
+from app.domain.semantic.copilot_state import CopilotStateConflict
 from app.domain.semantic.modeling_proposal import ModelingProposal
 from app.infrastructure.semantic.sql_modeling_agent_session_repository import (
     SqlModelingAgentSessionRepository,
@@ -43,6 +46,36 @@ def test_sql_modeling_agent_session_repository_round_trips_and_filters_by_princi
 
     repo.delete("s_alice")
     assert repo.get("s_alice") is None
+
+
+def test_sql_modeling_agent_session_repository_rejects_stale_state_version(db_session):
+    repo = SqlModelingAgentSessionRepository(db_session)
+    session = AgentSession(
+        id="s_state",
+        user_goal="查询学生评论数",
+        principal_id="alice",
+    )
+    repo.save(session)
+
+    first_writer = repo.get("s_state")
+    second_writer = repo.get("s_state")
+    first_writer.transition_state("spec_ready", actor="alice")
+    first_writer.record_event(
+        "proposal_action",
+        actor="alice",
+        action="save_proposal",
+        payload={"proposal_id": "proposal_1"},
+    )
+    repo.save(first_writer, expected_state_version=1)
+
+    second_writer.transition_state("awaiting_confirmation", actor="alice")
+    with pytest.raises(CopilotStateConflict):
+        repo.save(second_writer, expected_state_version=1)
+
+    loaded = repo.get("s_state")
+    assert loaded.state == "spec_ready"
+    assert loaded.event_log[-1]["action"] == "save_proposal"
+    assert loaded.state_history[-1]["to_state"] == "spec_ready"
 
 
 def test_sql_modeling_proposal_repository_round_trips_payload(db_session):

@@ -353,7 +353,7 @@ B1 是 B2 / B3 的前置基础：
 | Runtime Snapshot | `app/application/semantic/runtime_snapshot_service.py` | 构建 active snapshot，提供 Runtime 只读 manifest |
 | Runtime 仓储端口 | `app/domain/semantic/ports/runtime_snapshot_repository.py` | Runtime 只读接口，禁止 draft / YAML fallback |
 | Copilot 状态 | `app/domain/semantic/copilot_state.py` | 状态枚举、转移表、幂等键、乐观锁错误 |
-| Copilot event log | `app/infrastructure/semantic/sql_modeling_agent_session_repository.py` | 扩展现有 SQL session 仓储，追加 event log 和 state_version |
+| Copilot event log | `app/infrastructure/semantic/sql_modeling_agent_session_repository.py` | 扩展现有 SQL session 仓储，追加 payload 内 event log 和 state_version；后续如审计查询压力上升，再拆独立事件表 |
 | 召回配置 | `app/application/semantic/source_candidate_scoring.py` | 从硬编码 default 逐步演进到 profile 结构，不依赖 session 状态 |
 | 测试夹具 | `tests/support/semantic_fixture_manager.py` | 统一 namespace、创建、追踪、清理测试资产 |
 | 迁移演练 | `scripts/checks/semantic_alembic_baseline.py` | 校验空库 / 存量库 baseline，必要时执行受保护 stamp |
@@ -921,8 +921,8 @@ B1 完成标准：
 
 | ID | 任务 | 状态 | 验收证据 |
 | --- | --- | --- | --- |
-| B2-01 | 重构 Copilot session 为最小状态机，加入 `state_version` 乐观锁 | TODO | state transition unit |
-| B2-02 | 增加 Copilot event log | TODO | repository integration |
+| B2-01 | 重构 Copilot session 为最小状态机，加入 `state_version` 乐观锁 | DONE | `tests/unit/domain/semantic/test_copilot_state.py`、`make test-modeling-agent` |
+| B2-02 | 增加 Copilot event log | DONE | `tests/unit/infrastructure/semantic/test_sql_modeling_copilot_repositories.py`、`make test-modeling-agent` |
 | B2-03 | 增加 proposal action model：确认来源、修改 spec、apply、publish，并定义 apply / publish 幂等语义 | TODO | API integration |
 | B2-04 | 抽象 `MetadataRecallService` | TODO | service unit |
 | B2-05 | 配置化 scoring profile | TODO | config regression |
