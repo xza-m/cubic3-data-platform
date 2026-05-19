@@ -82,7 +82,7 @@ last_reviewed: 2026-05-13
     - `/api/v1/agent/semantic/execute` 作为 Agent-first 查询执行入口，在 `policy_decision=allow` 时生成 `ExecutionTicketSnapshot` 并提交带 `QueryDSL v1` 治理快照的 `query_execution_jobs`；审批或拒绝只返回材料，不创建 job
     - 统一查询执行面由 `QuerySubmissionService / QueryResultService / QueryExecutionWorkerService` 承接，Worker 只校验 ticket snapshot、Agent 语义 job 的 `QueryDSL v1` 快照和执行已编译 SQL，不读取 Ontology 或 Cube 资产；执行态支持 lease 续租、过期恢复、取消下沉、可重试提交和过期结果清理
     - SQL Lab 的定位是数据开发同步查询工具面，可继续服务异构数据源调试；Query Execution 的定位是 Agent / Runtime 受治理执行面
-    - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`；诊断类 `/semantic-router/*` 保留 preview，用于工作台 route / binding / compile / policy / trace 排障
+    - official Runtime 只读取 active SQL runtime snapshot manifest 中的 published `Ontology` 与 published `Cube` `spec`；draft、Proposal 和 YAML 同名资产不得 fallback；诊断类 `/semantic-router/*` 保留 preview，用于工作台 route / binding / compile / policy / trace 排障
     - Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；请求体角色、JWT 角色声明和 `viewer_roles` 不参与授权
     - `Semantic Mapper` 输出稳定 `projection_result / resolved_bindings / binding_status / binding_issues`，`Execution Compiler` 输出 `query_dsl / logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；`QueryDSL v1` 是运行时唯一 SQL 生成输入，restricted 字段显式引用会被编译阻断
     - `/api/v1/semantic-router/execute-plan` 与 `/api/v1/execution-compiler/execute` 命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
@@ -95,6 +95,7 @@ last_reviewed: 2026-05-13
     - `/semantic/modeling-agent/new` 的 Copilot 体验采用 Chat-first 结构：中间 Chat 始终是注意力中心，右侧 Artifact 面板按需展示 `Review / Spec / Source / Preview / Trace`，生成的 Proposal Review 不阻断对话流；当前五个 artifact 均已接入产品化主链路
     - `/api/v1/semantic/modeling-copilot/sessions/<session_id>/review` 是建模助手的只读 artifact 投影，用于展示候选变更、阻塞项、原因解释、源表证据、Trace 回放、Publish Gate 和发布后验收；它不引入第二套语义资产模型，正式真相仍是已发布 Cube、Ontology、Binding 与 Policy
     - Modeling Copilot session / Proposal 是构建期协作状态，生产默认通过 `SEMANTIC_MODELING_COPILOT_STORE=sql` 写入 PostgreSQL；YAML 仓储只保留为 local / fixture adapter
+    - 生产语义资产事实源已切到 SQL Registry / Release / Runtime Snapshot；YAML 仅用于本地 fixture、示例 seed 和调试导出，不做生产双写或离线迁移输入；架构决策见 ADR-010
     - 候选源召回的领域加分、相邻域扣分、canonical source / spec 修复均由 `SourceCandidateScoringConfig` 规则承载，新增领域优先补元数据规则，不在通用召回服务里继续写业务 if
     - `save_proposal` 只接受已生成或已编辑的 `raw_spec`，业务问题不能直接绕过 spec 校验进入 Proposal 草稿，避免旧 `business_question` source kind 误入治理发布链；Agent-led spec 会在保存 / 校验前确定性补齐 measure、grain、time_dimension、additivity、binding_status、policy 和最小证据包
     - Chat 内"使用推荐 / 接受 Cube 草稿 / 解释阻塞项"是确定性状态动作，不调用 LLM；自由业务问题和新意图理解仍进入 LLM Runtime
