@@ -923,7 +923,7 @@ B1 完成标准：
 | --- | --- | --- | --- |
 | B2-01 | 重构 Copilot session 为最小状态机，加入 `state_version` 乐观锁 | DONE | `tests/unit/domain/semantic/test_copilot_state.py`、`make test-modeling-agent` |
 | B2-02 | 增加 Copilot event log | DONE | `tests/unit/infrastructure/semantic/test_sql_modeling_copilot_repositories.py`、`make test-modeling-agent` |
-| B2-03 | 增加 proposal action model：确认来源、修改 spec、apply、publish，并定义 apply / publish 幂等语义 | TODO | API integration |
+| B2-03 | 增加 proposal action model：确认来源、修改 spec、apply、publish，并定义 apply / publish 幂等语义 | IN_PROGRESS | `tests/unit/application/semantic/test_modeling_proposal_service.py` 已覆盖 approve / apply / publish 幂等；确认来源和修改 spec 的 proposal revision 串联待补 |
 | B2-04 | 抽象 `MetadataRecallService` | TODO | service unit |
 | B2-05 | 配置化 scoring profile | TODO | config regression |
 | B2-06 | 增加 recall explainability | TODO | API response test |

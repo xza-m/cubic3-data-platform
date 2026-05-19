@@ -180,6 +180,48 @@ def test_proposal_flow_wraps_existing_builder_and_computes_readiness():
     assert applied["audit_snapshot"]["applied_spec_hash"] == approved["approved_spec_hash"]
 
 
+def test_proposal_approve_is_idempotent_for_same_revision():
+    service = _service()
+    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+
+    first = service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+    second = service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+
+    assert first["approved_spec_hash"] == second["approved_spec_hash"]
+    assert len(second["review_records"]) == 1
+    assert [
+        action["action"]
+        for action in second["action_log"]
+        if action["action"] == "approve"
+    ] == ["approve"]
+
+
+def test_proposal_apply_and_publish_are_idempotent_after_success():
+    builder = _Builder()
+    service = _service(builder)
+    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+    service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+
+    first_apply = service.apply(proposal["id"])
+    second_apply = service.apply(proposal["id"])
+    first_publish = service.publish(proposal["id"], publish_targets={"cube": True, "ontology": False})
+    second_publish = service.publish(proposal["id"], publish_targets={"cube": True, "ontology": False})
+
+    assert first_apply["applied_spec_hash"] == second_apply["applied_spec_hash"]
+    assert first_publish["publish_result"] == second_publish["publish_result"]
+    assert [call[0] for call in builder.calls].count("apply") == 1
+    assert [call[0] for call in builder.calls].count("publish") == 1
+    assert [
+        action["action"]
+        for action in second_publish["action_log"]
+        if action["action"] in {"apply", "publish"}
+    ] == ["apply", "publish"]
+
+
 def test_draft_uses_embedded_spec_skips_create_spec_draft_for_copilot_business_question():
     """Copilot：request_payload 仍为 business_question，但附带完整 embedded_spec 时，
     draft 必须直接使用该 spec，不得再调 create_spec_draft（否则会报不支持的建模源类型）。"""

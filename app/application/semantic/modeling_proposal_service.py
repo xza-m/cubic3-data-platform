@@ -146,24 +146,41 @@ class ModelingProposalService:
 
     def approve(self, proposal_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
+        approved_hash = self._stable_hash(proposal.spec)
+        if proposal.status in {"approved", "applied", "published"}:
+            if (
+                proposal.approved_spec_hash == approved_hash
+                and proposal.approved_proposal_revision_no == proposal.proposal_revision_no
+            ):
+                return self._dump(proposal)
+            raise ValueError("Approved proposal revision does not match current spec")
         if proposal.status != "validated":
             raise ValueError("Proposal must be validated before approved")
         review = dict(payload or {})
         review.setdefault("approved_by", "semantic_owner")
         review.setdefault("review_type", "single_owner")
         proposal.review_records.append(review)
-        approved_hash = self._stable_hash(proposal.spec)
         proposal.audit_snapshot["approved_spec"] = deepcopy(proposal.spec)
         proposal.audit_snapshot["approved_semantic_diff"] = deepcopy(proposal.semantic_diff)
         proposal.audit_snapshot["approved_spec_hash"] = approved_hash
         proposal.approved_spec_hash = approved_hash
+        proposal.approved_proposal_revision_no = proposal.proposal_revision_no
         proposal.status = "approved"
-        self._mark_transition(proposal, actor=str(review.get("approved_by") or "semantic_owner"))
+        actor = str(review.get("approved_by") or "semantic_owner")
+        self._mark_transition(proposal, actor=actor)
+        proposal.record_action(
+            "approve",
+            actor=actor,
+            idempotency_key=self._proposal_action_key(proposal, "approve", approved_hash),
+            payload={"approved_spec_hash": approved_hash},
+        )
         self._repository.save(proposal)
         return self._dump(proposal)
 
     def apply(self, proposal_id: str) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
+        if proposal.status in {"applied", "published"}:
+            return self._dump(proposal)
         if proposal.status != "approved":
             raise ValueError("Proposal must be approved before apply")
         approved_spec = proposal.audit_snapshot.get("approved_spec") or proposal.spec
@@ -178,19 +195,42 @@ class ModelingProposalService:
         proposal.spec = applied_spec
         proposal.applied_spec_hash = applied_hash
         proposal.audit_snapshot["applied_spec_hash"] = applied_hash
+        proposal.applied_proposal_revision_no = proposal.proposal_revision_no
         proposal.status = "applied"
         self._mark_transition(proposal, actor="semantic_bundle_builder")
+        proposal.record_action(
+            "apply",
+            actor="semantic_bundle_builder",
+            idempotency_key=self._proposal_action_key(proposal, "apply", approved_hash),
+            payload={
+                "approved_spec_hash": approved_hash,
+                "applied_spec_hash": applied_hash,
+            },
+        )
         self._repository.save(proposal)
         return self._dump(proposal)
 
     def publish(self, proposal_id: str, publish_targets: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
+        scope_hash = self._stable_hash(publish_targets or {"cube": True, "ontology": False})
+        if proposal.status == "published":
+            existing_scope_hash = proposal.audit_snapshot.get("publish_scope_hash")
+            if existing_scope_hash and existing_scope_hash != scope_hash:
+                raise ValueError("Proposal already published with different publish scope")
+            return self._dump(proposal)
         if proposal.status != "applied":
             raise ValueError("Proposal must be applied before publish")
         result = self._builder.publish(proposal.spec, publish_targets=publish_targets)
         proposal.publish_result = result
+        proposal.audit_snapshot["publish_scope_hash"] = scope_hash
         proposal.status = "published"
         self._mark_transition(proposal, actor="semantic_publisher")
+        proposal.record_action(
+            "publish",
+            actor="semantic_publisher",
+            idempotency_key=self._proposal_action_key(proposal, "publish", scope_hash),
+            payload={"publish_scope_hash": scope_hash},
+        )
         self._repository.save(proposal)
         return self._dump(proposal)
 
@@ -666,6 +706,14 @@ class ModelingProposalService:
         proposal.last_transition_actor = actor
         proposal.last_transition_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
         self._sync_readiness_label(proposal)
+
+    def _proposal_action_key(
+        self,
+        proposal: ModelingProposal,
+        action: str,
+        checksum: str,
+    ) -> str:
+        return f"{proposal.id}:{proposal.proposal_revision_no}:{action}:{checksum}"
 
     def _stable_hash(self, value: Dict[str, Any]) -> str:
         payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
