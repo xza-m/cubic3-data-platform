@@ -420,6 +420,96 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index('idx_semantic_modeling_proposals_status_updated', 'semantic_modeling_proposals', ['status', 'updated_at'], unique=False)
+    op.create_table('semantic_assets',
+    sa.Column('id', sa.String(length=128), nullable=False),
+    sa.Column('namespace', sa.String(length=64), nullable=False),
+    sa.Column('asset_type', sa.String(length=32), nullable=False),
+    sa.Column('asset_key', sa.String(length=255), nullable=False),
+    sa.Column('title', sa.String(length=255), nullable=True),
+    sa.Column('status', sa.String(length=32), nullable=False),
+    sa.Column('current_revision_id', sa.String(length=128), nullable=True),
+    sa.Column('current_release_id', sa.String(length=128), nullable=True),
+    sa.Column('owner_principal_id', sa.String(length=128), nullable=True),
+    sa.Column('source_kind', sa.String(length=32), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('namespace', 'asset_type', 'asset_key', name='uq_semantic_assets_namespace_type_key')
+    )
+    op.create_index('idx_semantic_assets_namespace_status_updated', 'semantic_assets', ['namespace', 'status', 'updated_at'], unique=False)
+    op.create_index('idx_semantic_assets_type_status', 'semantic_assets', ['asset_type', 'status'], unique=False)
+    op.create_table('semantic_asset_revisions',
+    sa.Column('id', sa.String(length=128), nullable=False),
+    sa.Column('asset_id', sa.String(length=128), nullable=False),
+    sa.Column('revision_no', sa.Integer(), nullable=False),
+    sa.Column('revision_status', sa.String(length=32), nullable=False),
+    sa.Column('spec_json', db_types.JsonType(), nullable=False),
+    sa.Column('spec_checksum', sa.String(length=64), nullable=False),
+    sa.Column('change_summary', sa.String(length=512), nullable=True),
+    sa.Column('proposal_id', sa.String(length=128), nullable=True),
+    sa.Column('created_by', sa.String(length=128), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('asset_id', 'revision_no', name='uq_semantic_asset_revisions_asset_revision_no')
+    )
+    op.create_index('idx_semantic_asset_revisions_asset_checksum', 'semantic_asset_revisions', ['asset_id', 'spec_checksum'], unique=False)
+    op.create_index('idx_semantic_asset_revisions_status_created', 'semantic_asset_revisions', ['revision_status', 'created_at'], unique=False)
+    op.create_table('semantic_asset_dependencies',
+    sa.Column('id', sa.String(length=128), nullable=False),
+    sa.Column('asset_revision_id', sa.String(length=128), nullable=False),
+    sa.Column('depends_on_asset_id', sa.String(length=128), nullable=False),
+    sa.Column('depends_on_revision_id', sa.String(length=128), nullable=True),
+    sa.Column('dependency_type', sa.String(length=64), nullable=False),
+    sa.Column('required', sa.Boolean(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('idx_semantic_asset_dependencies_depends_on', 'semantic_asset_dependencies', ['depends_on_asset_id', 'depends_on_revision_id'], unique=False)
+    op.create_index('idx_semantic_asset_dependencies_revision', 'semantic_asset_dependencies', ['asset_revision_id'], unique=False)
+    op.create_table('semantic_releases',
+    sa.Column('id', sa.String(length=128), nullable=False),
+    sa.Column('release_no', sa.Integer(), nullable=False),
+    sa.Column('namespace', sa.String(length=64), nullable=False),
+    sa.Column('status', sa.String(length=32), nullable=False),
+    sa.Column('scope_json', db_types.JsonType(), nullable=False),
+    sa.Column('gate_result_json', db_types.JsonType(), nullable=False),
+    sa.Column('previous_release_id', sa.String(length=128), nullable=True),
+    sa.Column('rollback_of_release_id', sa.String(length=128), nullable=True),
+    sa.Column('idempotency_key', sa.String(length=128), nullable=True),
+    sa.Column('published_by', sa.String(length=128), nullable=True),
+    sa.Column('published_at', sa.DateTime(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('namespace', 'idempotency_key', name='uq_semantic_releases_namespace_idempotency_key'),
+    sa.UniqueConstraint('namespace', 'release_no', name='uq_semantic_releases_namespace_release_no')
+    )
+    op.create_index('idx_semantic_releases_namespace_status_created', 'semantic_releases', ['namespace', 'status', 'created_at'], unique=False)
+    op.create_table('semantic_release_assets',
+    sa.Column('release_id', sa.String(length=128), nullable=False),
+    sa.Column('asset_id', sa.String(length=128), nullable=False),
+    sa.Column('revision_id', sa.String(length=128), nullable=False),
+    sa.Column('asset_type', sa.String(length=32), nullable=False),
+    sa.Column('asset_key', sa.String(length=255), nullable=False),
+    sa.PrimaryKeyConstraint('release_id', 'asset_id')
+    )
+    op.create_index('idx_semantic_release_assets_asset', 'semantic_release_assets', ['asset_id'], unique=False)
+    op.create_index('idx_semantic_release_assets_revision', 'semantic_release_assets', ['revision_id'], unique=False)
+    op.create_table('semantic_runtime_snapshots',
+    sa.Column('id', sa.String(length=128), nullable=False),
+    sa.Column('release_id', sa.String(length=128), nullable=False),
+    sa.Column('namespace', sa.String(length=64), nullable=False),
+    sa.Column('status', sa.String(length=32), nullable=False),
+    sa.Column('asset_manifest_json', db_types.JsonType(), nullable=False),
+    sa.Column('binding_manifest_json', db_types.JsonType(), nullable=False),
+    sa.Column('policy_manifest_json', db_types.JsonType(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('activated_at', sa.DateTime(), nullable=True),
+    sa.Column('superseded_at', sa.DateTime(), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('idx_semantic_runtime_snapshots_namespace_status', 'semantic_runtime_snapshots', ['namespace', 'status'], unique=False)
+    op.create_index('idx_semantic_runtime_snapshots_release', 'semantic_runtime_snapshots', ['release_id'], unique=False)
+    op.create_index('uq_semantic_runtime_snapshots_active_namespace', 'semantic_runtime_snapshots', ['namespace'], unique=True, postgresql_where=sa.text("status = 'active'"), sqlite_where=sa.text("status = 'active'"))
     op.create_table('semantic_registry_entries',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('object_type', sa.String(length=32), nullable=False),
@@ -870,6 +960,24 @@ def downgrade() -> None:
     op.drop_index('idx_access_api_keys_prefix', table_name='access_api_keys')
     op.drop_table('access_api_keys')
     op.drop_table('semantic_registry_entries')
+    op.drop_index('uq_semantic_runtime_snapshots_active_namespace', table_name='semantic_runtime_snapshots')
+    op.drop_index('idx_semantic_runtime_snapshots_release', table_name='semantic_runtime_snapshots')
+    op.drop_index('idx_semantic_runtime_snapshots_namespace_status', table_name='semantic_runtime_snapshots')
+    op.drop_table('semantic_runtime_snapshots')
+    op.drop_index('idx_semantic_release_assets_revision', table_name='semantic_release_assets')
+    op.drop_index('idx_semantic_release_assets_asset', table_name='semantic_release_assets')
+    op.drop_table('semantic_release_assets')
+    op.drop_index('idx_semantic_releases_namespace_status_created', table_name='semantic_releases')
+    op.drop_table('semantic_releases')
+    op.drop_index('idx_semantic_asset_dependencies_revision', table_name='semantic_asset_dependencies')
+    op.drop_index('idx_semantic_asset_dependencies_depends_on', table_name='semantic_asset_dependencies')
+    op.drop_table('semantic_asset_dependencies')
+    op.drop_index('idx_semantic_asset_revisions_status_created', table_name='semantic_asset_revisions')
+    op.drop_index('idx_semantic_asset_revisions_asset_checksum', table_name='semantic_asset_revisions')
+    op.drop_table('semantic_asset_revisions')
+    op.drop_index('idx_semantic_assets_type_status', table_name='semantic_assets')
+    op.drop_index('idx_semantic_assets_namespace_status_updated', table_name='semantic_assets')
+    op.drop_table('semantic_assets')
     op.drop_index('idx_semantic_modeling_proposals_status_updated', table_name='semantic_modeling_proposals')
     op.drop_table('semantic_modeling_proposals')
     op.drop_index('idx_semantic_modeling_sessions_status_updated', table_name='semantic_modeling_agent_sessions')
