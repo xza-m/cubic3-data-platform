@@ -137,9 +137,12 @@ from app.application.semantic.modeling_copilot_service import SemanticModelingCo
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_proposal_service import ModelingProposalService
 from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
+from app.application.semantic.publish_gate_service import PublishGateService
+from app.application.semantic.runtime_snapshot_service import RuntimeSnapshotService
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
 from app.application.semantic.semantic_query_service import SemanticQueryService
+from app.application.semantic.semantic_release_service import SemanticReleaseService
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
 from app.application.semantic.semantic_service import SemanticLayerService
 from app.application.semantic.view_publish_service import ViewPublishService
@@ -166,6 +169,7 @@ from app.infrastructure.semantic.sql_modeling_agent_session_repository import (
 from app.infrastructure.semantic.sql_modeling_proposal_repository import (
     SqlModelingProposalRepository,
 )
+from app.infrastructure.semantic.sql_asset_registry_repository import SqlAssetRegistryRepository
 from app.infrastructure.semantic.yaml_view_repository import YamlViewRepository
 from app.infrastructure.semantic.yaml_recipe_repository import YamlRecipeRepository
 from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
@@ -439,6 +443,26 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    semantic_asset_registry_repository = providers.Factory(
+        SqlAssetRegistryRepository,
+        session=db_session,
+    )
+
+    publish_gate_service = providers.Factory(
+        PublishGateService.production,
+    )
+
+    runtime_snapshot_service = providers.Factory(
+        RuntimeSnapshotService,
+        runtime_snapshot_repository=semantic_asset_registry_repository,
+    )
+
+    semantic_release_service = providers.Factory(
+        SemanticReleaseService,
+        release_repository=semantic_asset_registry_repository,
+        audit_repository=ontology_audit_trace_repository,
+    )
+
     # ========================================================================
     # 仓储
     # ========================================================================
@@ -619,6 +643,7 @@ class Container(containers.DeclarativeContainer):
         ExecutionCompilerPreviewService,
         metric_repository=ontology_metric_repository,
         cube_repository=cube_repository,
+        runtime_snapshot_service=runtime_snapshot_service,
         policy_guard_service=ontology_policy_guard_service,
     )
 
@@ -631,6 +656,7 @@ class Container(containers.DeclarativeContainer):
         action_repository=ontology_action_repository,
         mapper_preview_service=semantic_mapper_preview_service,
         compiler_preview_service=execution_compiler_preview_service,
+        runtime_snapshot_service=runtime_snapshot_service,
         policy_guard_service=ontology_policy_guard_service,
     )
 

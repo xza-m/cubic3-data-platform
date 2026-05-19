@@ -59,7 +59,12 @@ class AgentPlanHandler:
             runtime_mode=normalized_runtime_options["runtime_mode"],
         )
         compiled_targets = [
-            self._compile_target(target, principal_context=principal.to_dict(), viewer_roles=principal.roles)
+            self._compile_target(
+                target,
+                principal_context=principal.to_dict(),
+                viewer_roles=principal.roles,
+                runtime_mode=normalized_runtime_options["runtime_mode"],
+            )
             for target in plan.get("execution_targets", [])
         ]
         post_decision = self._access_policy_service.post_compile(
@@ -83,6 +88,7 @@ class AgentPlanHandler:
         *,
         principal_context: dict[str, Any],
         viewer_roles: list[str],
+        runtime_mode: str,
     ) -> dict[str, Any]:
         preview = self._compiler_service.compile_preview(
             target_type=str(target.get("target_type") or ""),
@@ -96,6 +102,7 @@ class AgentPlanHandler:
             query_dsl=target.get("query_dsl"),
             principal_context=principal_context,
             viewer_roles=viewer_roles,
+            runtime_mode=runtime_mode,
         )
         return {
             "target": target,

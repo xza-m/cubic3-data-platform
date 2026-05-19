@@ -35,6 +35,7 @@ from .interfaces.api.v1.subscriptions import app_instance_subscriptions_bp
 
 # 语义层 API v1
 from .interfaces.api.v1.semantic import create_semantic_blueprint
+from .interfaces.api.v1.semantic_releases import create_semantic_releases_blueprint
 from .interfaces.api.v1.semantic_modeling_agent import create_semantic_modeling_agent_blueprint
 from .interfaces.api.v1.semantic_modeling_copilot import create_semantic_modeling_copilot_blueprint
 from .interfaces.api.v1.ontology import create_ontology_blueprint
@@ -162,8 +163,14 @@ def create_app(role: str = "web") -> Flask:
         QueryResultObjectORM,
     )
     from .infrastructure.semantic.models import (  # noqa
+        SemanticAssetDependencyORM,
+        SemanticAssetORM,
+        SemanticAssetRevisionORM,
         SemanticModelingAgentSessionORM,
         SemanticModelingProposalORM,
+        SemanticReleaseAssetORM,
+        SemanticReleaseORM,
+        SemanticRuntimeSnapshotORM,
     )
 
     # 注册执行器（worker 执行任务时需要）
@@ -215,6 +222,9 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_semantic_modeling_agent_blueprint(
             container.semantic_modeling_agent(),
+        ))
+        app.register_blueprint(create_semantic_releases_blueprint(
+            container.semantic_release_service(),
         ))
         register_semantic_modeling_copilot_blueprint(app, container)
         app.register_blueprint(create_ontology_blueprint(

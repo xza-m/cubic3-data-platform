@@ -149,6 +149,89 @@ def test_compile_metric_uses_query_dsl_for_grouped_recent_window(tmp_path):
     assert preview["traceability"]["compiler"]["source"] == "query_compiler"
 
 
+def test_official_compile_metric_reads_metric_and_cube_from_runtime_snapshot_manifest(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    runtime_manifest = {
+        "ok": True,
+        "snapshot_id": "snap_1",
+        "release_id": "rel_1",
+        "asset_manifest_json": {
+            "schema_version": "semantic-runtime-manifest/v1",
+            "assets": [
+                {
+                    "asset_type": "ontology",
+                    "asset_key": "metric:comment_count",
+                    "revision_id": "rev_metric",
+                    "spec_checksum": "a" * 64,
+                    "status": "published",
+                    "spec": {
+                        "metric": {
+                            "name": "comment_count",
+                            "title": "评论数",
+                            "object_name": "StudentComment",
+                            "semantic_formula": "按评论ID去重统计评论数量",
+                            "measure_refs": ["student_comment_cube.comment_count"],
+                            "status": "active",
+                        }
+                    },
+                },
+                {
+                    "asset_type": "cube",
+                    "asset_key": "student_comment_cube",
+                    "revision_id": "rev_cube",
+                    "spec_checksum": "b" * 64,
+                    "status": "published",
+                    "spec": {
+                        "cube": {
+                            "name": "student_comment_cube",
+                            "title": "学生评论",
+                            "table": "df_cb_258187.dwd_interaction_comment_reports_df",
+                            "source_id": 1,
+                            "source_database": "df_cb_258187",
+                            "dimensions": {
+                                "comment_id": {
+                                    "title": "评论ID",
+                                    "type": "string",
+                                    "sql": "{CUBE}.comment_id",
+                                },
+                                "school_name": {
+                                    "title": "学校名称",
+                                    "type": "string",
+                                    "sql": "{CUBE}.comment_school_name",
+                                    "synonyms": ["学校"],
+                                },
+                            },
+                            "measures": {
+                                "comment_count": {
+                                    "title": "评论数",
+                                    "type": "number",
+                                    "sql": "COUNT(DISTINCT {CUBE}.comment_id)",
+                                    "certified": True,
+                                }
+                            },
+                        }
+                    },
+                },
+            ],
+        },
+    }
+
+    preview = compiler.compile_metric_preview(
+        "comment_count",
+        runtime_mode="official",
+        runtime_manifest=runtime_manifest,
+        analysis_intent={"dimension_terms": ["学校"], "limit": 100},
+    )
+
+    assert preview["status"] == "ready"
+    assert preview["bindings"]["runtime_snapshot_id"] == "snap_1"
+    assert preview["bindings"]["runtime_release_id"] == "rel_1"
+    assert preview["resource_set"]["physical"][0]["table"] == "dwd_interaction_comment_reports_df"
+    assert "comment_school_name" in preview["logical_sql"]
+
+
 def test_compile_metric_uses_query_dsl_for_one_hop_join_dimension(tmp_path):
     cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
     metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))

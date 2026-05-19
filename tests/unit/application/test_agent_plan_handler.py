@@ -22,8 +22,18 @@ class _RouterStub:
 
 
 class _CompilerStub:
-    def compile_preview(self, *, target_type, metric_name=None, principal_context=None, viewer_roles=None, **_):
+    def compile_preview(
+        self,
+        *,
+        target_type,
+        metric_name=None,
+        principal_context=None,
+        viewer_roles=None,
+        runtime_mode=None,
+        **_,
+    ):
         assert principal_context["principal_id"] == "user:finance"
+        assert runtime_mode == "official"
         return {
             "status": "ready",
             "target_type": target_type,

@@ -77,13 +77,15 @@ class SqlGovernanceAuditTraceRepository(IGovernanceAuditTraceRepository):
             ]
         return items
 
-    def save(self, entity: GovernanceAuditTrace) -> None:
+    def save(self, entity: GovernanceAuditTrace, *, commit: bool = True) -> None:
         row = self._session.get(GovernanceAuditTraceORM, entity.id)
         if row is None:
             row = GovernanceAuditTraceORM(id=entity.id)
             self._session.add(row)
         self._apply(row, entity)
-        self._session.commit()
+        self._session.flush()
+        if commit:
+            self._session.commit()
 
     @staticmethod
     def _apply(row: GovernanceAuditTraceORM, entity: GovernanceAuditTrace) -> None:
