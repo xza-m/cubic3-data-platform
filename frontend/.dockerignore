@@ -26,6 +26,13 @@ npm-debug.log*
 # 测试覆盖率
 coverage
 
+# 本地测试与 Playwright 产物（生产 nginx 镜像不需要）
+src/**/*.test.*
+src/**/*.spec.*
+tests
+playwright-report*
+test-results
+
 # 缓存
 .cache
 .eslintcache

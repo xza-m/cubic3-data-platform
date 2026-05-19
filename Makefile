@@ -15,6 +15,11 @@ SEMANTIC_PREFLIGHT_CUBE ?= student_comment_cube
 SEMANTIC_PREFLIGHT_MEASURE ?= comment_count
 SEMANTIC_PREFLIGHT_TABLE ?= df_cb_258187.dwd_interaction_comment_reports_df
 AGENT_RUNTIME_LIVE_QUESTION ?= 查询最近7天学生评论数，按学校汇总
+SEMANTIC_BASELINE_DATABASE_URL ?=
+SEMANTIC_FIXTURE_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)
+SEMANTIC_FIXTURE_NAMESPACE ?=
+SEMANTIC_PROD_LIVE ?= 0
+SEMANTIC_POSTGRES_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)
 
 .PHONY: \
 	help \
@@ -34,12 +39,20 @@ AGENT_RUNTIME_LIVE_QUESTION ?= 查询最近7天学生评论数，按学校汇总
 	verify-changed \
 	review \
 	verify-semantic \
+	verify-semantic-prod \
+	verify-semantic-prod-strict \
+	semantic-prod-env-required \
+	test-semantic-prod-registry \
+	test-semantic-postgres-concurrency \
 	test-agent-runtime \
 	test-query-execution \
 	preflight-agent-runtime \
 	live-agent-runtime \
 	test-modeling-agent \
 	smoke-semantic \
+	smoke-semantic-live \
+	semantic-baseline-dry-run \
+	semantic-fixture-cleanup \
 	docs-health \
 	docs-impact \
 	static \
@@ -89,12 +102,18 @@ help:
 	@printf '  %-26s %s\n' 'make verify-changed' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 执行最低必跑 verify-* 目标'
 	@printf '  %-26s %s\n' 'make review' '审阅前总入口（verify + docs-health + docs-impact）'
 	@printf '  %-26s %s\n' 'make verify-semantic' '语义中心专项总入口（共享层 + 语义 smoke）'
+	@printf '  %-26s %s\n' 'make verify-semantic-prod' '语义平台生产候选闸门（迁移 / nginx build / semantic verify / live opt-in / cleanup）'
+	@printf '  %-26s %s\n' 'make verify-semantic-prod-strict' '语义平台上线前严格闸门（要求预发 DB / live smoke / fixture cleanup / PG 并发）'
+	@printf '  %-26s %s\n' 'make semantic-prod-env-required' '校验严格上线前验证所需环境变量'
+	@printf '  %-26s %s\n' 'make test-semantic-prod-registry' '语义生产化 SQL Registry / Publish Gate / Runtime Snapshot 单元与集成测试'
+	@printf '  %-26s %s\n' 'make test-semantic-postgres-concurrency' '真实 PostgreSQL 发布并发与 active snapshot 约束测试（设置 SEMANTIC_POSTGRES_DATABASE_URL 后执行）'
 	@printf '  %-26s %s\n' 'make test-agent-runtime' 'Agent-first Runtime official 链路测试'
 	@printf '  %-26s %s\n' 'make test-query-execution' '统一查询执行面最小链路测试'
 	@printf '  %-26s %s\n' 'make preflight-agent-runtime' '真实环境 Agent Runtime 语义资产预检（不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make live-agent-runtime' '真实 MaxCompute 执行验收（opt-in，不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Agent 与 Domain 上下文最小链路测试'
 	@printf '  %-26s %s\n' 'make smoke-semantic' '语义中心关键路径运行验证'
+	@printf '  %-26s %s\n' 'make smoke-semantic-live' 'Modeling Copilot live smoke（SEMANTIC_PROD_LIVE=1 时执行）'
 	@printf '  %-26s %s\n' 'make coverage' 'coverage 聚合入口（backend + frontend，可选，不并入默认四层）'
 	@printf '  %-26s %s\n' 'make coverage-backend' '后端完整 pytest 覆盖率 + ratchet 防倒退校验（scripts/backend_coverage_rules.json）'
 	@printf '  %-26s %s\n' 'make coverage-frontend' '已退役 skip；前端守护由 vitest.config.ts 子树阈值承接'
@@ -289,10 +308,36 @@ test-modeling-agent:
 		tests/integration/test_semantic_modeling_copilot_api.py
 	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx
 
+test-semantic-prod-registry:
+	@printf '%s\n' '[layer3][semantic-prod-registry] 运行 SQL Registry / Publish Gate / Release Snapshot 生产化收敛测试'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
+		tests/unit/scripts/test_semantic_prod_env_guard.py \
+		tests/unit/domain/semantic/test_asset_registry.py \
+		tests/unit/infrastructure/semantic/test_sql_asset_registry_repository.py \
+		tests/unit/application/semantic/test_asset_registry_service.py \
+		tests/unit/application/semantic/test_runtime_snapshot_service.py \
+		tests/unit/application/semantic/test_semantic_release_service.py \
+		tests/unit/application/semantic/test_publish_gate_service.py \
+		tests/integration/test_semantic_releases_api.py \
+		tests/integration/semantic/test_semantic_registry_release_flow.py
+
+test-semantic-postgres-concurrency:
+	@if [ -n "$(SEMANTIC_POSTGRES_DATABASE_URL)" ] || [ -n "$(SEMANTIC_BASELINE_DATABASE_URL)" ]; then \
+		printf '%s\n' '[layer3][semantic-prod-postgres] 运行真实 PostgreSQL 并发发布验证'; \
+		SEMANTIC_POSTGRES_DATABASE_URL="$(SEMANTIC_POSTGRES_DATABASE_URL)" \
+		SEMANTIC_BASELINE_DATABASE_URL="$(SEMANTIC_BASELINE_DATABASE_URL)" \
+		PYTHONPATH=. $(PYTHON) -m pytest --no-cov tests/integration/semantic/test_semantic_postgres_concurrency.py; \
+	else \
+		printf '%s\n' '[layer3][semantic-prod-postgres] skip: 未设置 SEMANTIC_POSTGRES_DATABASE_URL 或 SEMANTIC_BASELINE_DATABASE_URL'; \
+	fi
+
 test-agent-runtime:
 	@printf '%s\n' '[layer3][agent-runtime] 运行 Agent-first official Runtime 最小链路测试'
 	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
 		tests/unit/application/semantic_router/test_preview_service.py::test_official_runtime_only_matches_active_ontology_and_glossary_targets \
+		tests/unit/application/semantic_router/test_preview_service.py::test_official_runtime_requires_active_sql_snapshot \
+		tests/unit/application/semantic_router/test_preview_service.py::test_official_runtime_filters_matches_by_snapshot_manifest \
+		tests/unit/application/semantic_router/test_preview_service.py::test_official_runtime_routes_and_compiles_from_snapshot_manifest_without_yaml \
 		tests/unit/application/semantic_router/test_preview_service.py::test_router_routes_metric_and_alias_to_cube \
 		tests/unit/application/execution_compiler/test_execution_compiler_preview_service.py \
 		tests/unit/application/agent/test_runtime_preflight_service.py \
@@ -325,6 +370,55 @@ live-agent-runtime:
 		--expected-dimension "school_name"
 
 verify-semantic: test-agent-runtime test-query-execution test-modeling-agent verify-backend verify-frontend smoke-semantic
+
+semantic-baseline-dry-run:
+	@if [ -n "$(SEMANTIC_BASELINE_DATABASE_URL)" ]; then \
+		printf '%s\n' '[semantic-prod][baseline] 校验存量库 schema fingerprint'; \
+		PYTHONPATH=. $(PYTHON) scripts/checks/semantic_alembic_baseline.py --database-url "$(SEMANTIC_BASELINE_DATABASE_URL)"; \
+	else \
+		printf '%s\n' '[semantic-prod][baseline] skip: 未设置 SEMANTIC_BASELINE_DATABASE_URL，仅执行离线 Alembic 拓扑检查'; \
+	fi
+
+smoke-semantic-live:
+	@if [ "$(SEMANTIC_PROD_LIVE)" = "1" ]; then \
+		printf '%s\n' '[semantic-prod][live] 运行 Modeling Copilot live smoke'; \
+		cd $(FRONTEND_DIR) && $(NPM) run e2e:modeling-agent-smoke:live; \
+	else \
+		printf '%s\n' '[semantic-prod][live] skip: 设置 SEMANTIC_PROD_LIVE=1 后才运行真实 live smoke'; \
+	fi
+
+semantic-fixture-cleanup:
+	@if [ -n "$(SEMANTIC_FIXTURE_NAMESPACE)" ] && [ -n "$(SEMANTIC_FIXTURE_DATABASE_URL)" ]; then \
+		printf '%s\n' '[semantic-prod][cleanup] 清理语义测试 namespace: $(SEMANTIC_FIXTURE_NAMESPACE)'; \
+		PYTHONPATH=. $(PYTHON) scripts/checks/semantic_fixture_cleanup.py \
+			--database-url "$(SEMANTIC_FIXTURE_DATABASE_URL)" \
+			--namespace "$(SEMANTIC_FIXTURE_NAMESPACE)"; \
+	else \
+		printf '%s\n' '[semantic-prod][cleanup] skip: 未设置 SEMANTIC_FIXTURE_NAMESPACE 或 SEMANTIC_FIXTURE_DATABASE_URL，未执行外部清理'; \
+	fi
+
+semantic-prod-env-required:
+	@SEMANTIC_BASELINE_DATABASE_URL="$(SEMANTIC_BASELINE_DATABASE_URL)" \
+	SEMANTIC_FIXTURE_DATABASE_URL="$(SEMANTIC_FIXTURE_DATABASE_URL)" \
+	SEMANTIC_FIXTURE_NAMESPACE="$(SEMANTIC_FIXTURE_NAMESPACE)" \
+	SEMANTIC_PROD_LIVE="$(SEMANTIC_PROD_LIVE)" \
+	SEMANTIC_POSTGRES_DATABASE_URL="$(SEMANTIC_POSTGRES_DATABASE_URL)" \
+	$(PYTHON) scripts/checks/semantic_prod_env_guard.py \
+		--require-baseline \
+		--require-live \
+		--require-fixture \
+		--require-postgres-concurrency
+
+verify-semantic-prod: verify-alembic test-semantic-prod-registry semantic-baseline-dry-run
+	@printf '%s\n' '[semantic-prod] 构建 nginx 生产镜像（v2 build，测试文件不进入 frontend Docker context）'
+	docker compose build nginx
+	$(MAKE) verify-semantic
+	$(MAKE) smoke-semantic-live
+	$(MAKE) semantic-fixture-cleanup
+	@printf '%s\n' '[semantic-prod] PASS'
+
+verify-semantic-prod-strict: semantic-prod-env-required verify-semantic-prod test-semantic-postgres-concurrency
+	@printf '%s\n' '[semantic-prod][strict] PASS'
 
 coverage: coverage-backend coverage-frontend
 
