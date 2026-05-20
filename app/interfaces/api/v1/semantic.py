@@ -52,6 +52,7 @@ def create_semantic_blueprint(
     query_adapter_getter=None,
     view_materialize_service=None,
     cube_listing_service=None,
+    runtime_snapshot_service=None,
 ):
     """Blueprint 工厂：依赖在初始化时注入，便于单元测试时传入 Mock。
 
@@ -177,6 +178,54 @@ def create_semantic_blueprint(
             "page_size": page_size,
             "page_count": page_count,
         }
+
+    @bp.route('/health', methods=['GET'])
+    @require_auth
+    def semantic_health():
+        """语义 Runtime 健康检查"""
+        if runtime_snapshot_service is None:
+            return success(
+                data={
+                    "status": "degraded",
+                    "runtime": {
+                        "manifest_status": "not_configured",
+                        "error_code": "semantic_runtime_snapshot_service_not_configured",
+                    },
+                }
+            )
+        try:
+            manifest = runtime_snapshot_service.get_active_manifest("default")
+        except Exception as exc:
+            logger.exception("semantic_health_check_failed", error=str(exc))
+            return success(
+                data={
+                    "status": "unhealthy",
+                    "runtime": {
+                        "manifest_status": "error",
+                        "error_code": "semantic_runtime_health_check_failed",
+                        "reason": str(exc),
+                    },
+                }
+            )
+
+        runtime_ok = bool(manifest.get("ok"))
+        version_pin = manifest.get("version_pin") or {}
+        asset_trace = manifest.get("asset_trace") or []
+        binding_trace = manifest.get("binding_trace") or {}
+        policy_trace = manifest.get("policy_trace") or {}
+        return success(
+            data={
+                "status": "healthy" if runtime_ok else "unhealthy",
+                "runtime": {
+                    "manifest_status": "ready" if runtime_ok else "blocked",
+                    "error_code": manifest.get("error_code"),
+                    "version_pin": version_pin,
+                    "asset_count": len(asset_trace) if asset_trace else version_pin.get("asset_count", 0),
+                    "binding_count": binding_trace.get("count", 0),
+                    "policy_count": policy_trace.get("count", 0),
+                },
+            }
+        )
 
     # ── B-back-3: lazy-init view_materialize_service ────────────────────────
 

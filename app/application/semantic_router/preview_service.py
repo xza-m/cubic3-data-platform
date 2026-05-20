@@ -721,12 +721,23 @@ class SemanticRouterPreviewService:
     def _runtime_trace(runtime_manifest: dict[str, Any] | None) -> Dict[str, Any]:
         if runtime_manifest is None:
             return {}
-        return {
+        version_pin = runtime_manifest.get("version_pin") or {}
+        trace = {
             "snapshot_id": runtime_manifest.get("snapshot_id"),
             "release_id": runtime_manifest.get("release_id"),
+            "release_no": version_pin.get("release_no"),
             "manifest_status": "ready" if runtime_manifest.get("ok") else "blocked",
             "error_code": runtime_manifest.get("error_code"),
         }
+        if version_pin:
+            trace["version_pin"] = version_pin
+        if runtime_manifest.get("asset_trace") is not None:
+            trace["assets"] = runtime_manifest.get("asset_trace")
+        if runtime_manifest.get("binding_trace") is not None:
+            trace["bindings"] = runtime_manifest.get("binding_trace")
+        if runtime_manifest.get("policy_trace") is not None:
+            trace["policies"] = runtime_manifest.get("policy_trace")
+        return trace
 
     def _blocked_runtime_route(
         self,

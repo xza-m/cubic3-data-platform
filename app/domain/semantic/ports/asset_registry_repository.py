@@ -6,6 +6,7 @@ from typing import Dict, Optional, Protocol
 from app.domain.semantic.asset_registry import (
     RuntimeAsset,
     RuntimeSnapshot,
+    SemanticRelease,
     SemanticAsset,
     SemanticAssetDependency,
     SemanticAssetRevision,
@@ -51,6 +52,9 @@ class IAssetRegistryRepository(Protocol):
 
 class IRuntimeSnapshotRepository(Protocol):
     def get_active_snapshot(self, namespace: str = "default") -> Optional[RuntimeSnapshot]:
+        ...
+
+    def get_release(self, release_id: str) -> Optional[SemanticRelease]:
         ...
 
     def resolve_asset(

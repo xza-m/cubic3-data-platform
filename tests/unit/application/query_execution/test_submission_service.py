@@ -17,6 +17,14 @@ def _service(db_session):
     )
 
 
+def _runtime_version_pin():
+    return {
+        "snapshot_id": "snap_1",
+        "release_id": "rel_1",
+        "release_no": 1,
+    }
+
+
 def test_submission_service_creates_ticketed_job(db_session):
     service = _service(db_session)
 
@@ -33,7 +41,8 @@ def test_submission_service_creates_ticketed_job(db_session):
             "query_dsl": {
                 "dsl_version": "v1",
                 "measures": ["student_comment_cube.comment_count"],
-            }
+            },
+            "runtime_version_pin": _runtime_version_pin(),
         },
     )
 
@@ -92,5 +101,22 @@ def test_submission_service_requires_versioned_query_dsl_for_agent_semantic_jobs
             sql_query="SELECT 1",
             route_type=QueryRouteType.AGENT_SEMANTIC.value,
             resource_set=[],
-            governance_snapshot={"query_dsl": {"measures": ["student_comment_cube.comment_count"]}},
+            governance_snapshot={
+                "query_dsl": {"measures": ["student_comment_cube.comment_count"]},
+                "runtime_version_pin": _runtime_version_pin(),
+            },
+        )
+
+
+def test_submission_service_requires_runtime_version_pin_for_agent_semantic_jobs(db_session):
+    service = _service(db_session)
+
+    with pytest.raises(ValidationError, match="Runtime version pin"):
+        service.submit(
+            principal_id="u1",
+            source_id=1,
+            sql_query="SELECT 1",
+            route_type=QueryRouteType.AGENT_SEMANTIC.value,
+            resource_set=[],
+            governance_snapshot={"query_dsl": {"dsl_version": "v1"}},
         )

@@ -219,6 +219,7 @@ def create_app(role: str = "web") -> Flask:
             dataset_repo=container.dataset_repository(),
             dataset_handler=container.create_dataset_handler(),
             registry_repo=container.semantic_registry_repository(),
+            runtime_snapshot_service=container.runtime_snapshot_service(),
         ))
         app.register_blueprint(create_semantic_modeling_agent_blueprint(
             container.semantic_modeling_agent(),

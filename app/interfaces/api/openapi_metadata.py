@@ -226,6 +226,18 @@ EXECUTION_COMPILE_RESPONSE_SCHEMA = object_schema(
     }
 )
 
+SEMANTIC_HEALTH_RESPONSE_SCHEMA = object_schema(
+    {
+        "status": {"type": "string", "description": "语义 Runtime 健康状态"},
+        "runtime": {
+            "type": "object",
+            "additionalProperties": True,
+            "description": "active snapshot、release version pin、资产和策略计数",
+        },
+    },
+    required=["status", "runtime"],
+)
+
 GOVERNANCE_AUDIT_TRACE_SCHEMA = object_schema(
     {
         "id": {"type": "string", "description": "审计记录 ID"},
@@ -462,6 +474,20 @@ OPENAPI_OPERATION_METADATA: dict[tuple[str, str], dict[str, Any]] = {
             risk="medium",
             requires_confirmation=False,
             permission_scope="execution-compiler:preview",
+        ),
+    },
+    ("/api/v1/semantic/health", "get"): {
+        "operationId": "SemanticRuntimeHealthGet",
+        "summary": "语义 Runtime 健康检查",
+        "description": "只读检查 active Runtime snapshot 是否可用，并返回发布版本钉住、资产数、Binding 数和策略数。",
+        "responses": {"200": json_response(SEMANTIC_HEALTH_RESPONSE_SCHEMA), **standard_error_responses()},
+        **agent_extensions(
+            safe=True,
+            side_effect="none",
+            risk="low",
+            requires_confirmation=False,
+            permission_scope="semantic:health:read",
+            contract_status="stable",
         ),
     },
     ("/api/v1/governance/audit-traces", "get"): {

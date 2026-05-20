@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from app.domain.query_execution.enums import QueryRouteType
+from app.shared.utils.logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class AgentSemanticExecuteService:
@@ -31,6 +35,13 @@ class AgentSemanticExecuteService:
         )
         decision = (plan.get("policy_decision") or {}).get("decision") or (plan.get("policy_decision") or {}).get("effect")
         if decision != "allow":
+            logger.info(
+                "agent_semantic_execute_blocked",
+                metric_event="agent_semantic_execute.blocked",
+                semantic_plan_id=plan.get("semantic_plan_id"),
+                decision=decision,
+                reason=(plan.get("policy_decision") or {}).get("reason"),
+            )
             return {
                 "status": "approval_required" if decision in {"approval_required", "require_approval"} else "blocked",
                 "reason": (plan.get("policy_decision") or {}).get("reason"),
@@ -58,6 +69,16 @@ class AgentSemanticExecuteService:
                 "semantic_trace": plan.get("semantic_trace"),
                 "plan": plan,
             }
+        runtime_trace = self._runtime_trace(plan.get("semantic_trace"))
+        runtime_version_pin = runtime_trace.get("version_pin")
+        if not self._is_versioned_runtime_pin(runtime_version_pin):
+            return {
+                "status": "blocked",
+                "reason": "Agent 语义执行目标缺少 Runtime version pin，无法回溯发布快照",
+                "policy_decision": plan.get("policy_decision"),
+                "semantic_trace": plan.get("semantic_trace"),
+                "plan": plan,
+            }
 
         execution_request = target.get("execution_request") or {}
         principal = plan.get("principal_context") or principal_context or {}
@@ -76,10 +97,27 @@ class AgentSemanticExecuteService:
                 "pre_route_policy_decision": plan.get("pre_route_policy_decision"),
                 "ticket_preview": plan.get("ticket_preview"),
                 "query_dsl": query_dsl,
+                "semantic_trace": plan.get("semantic_trace"),
+                "runtime_version_pin": runtime_version_pin,
+                "runtime_assets": runtime_trace.get("assets") or [],
+                "sql_hash": target.get("sql_hash"),
+                "data_level": target.get("data_level") or "M1",
             },
             policy_decision=decision,
             approval_id=(runtime_options or {}).get("approval_id"),
             idempotency_key=idempotency_key,
+        )
+        logger.info(
+            "agent_semantic_execute_submitted",
+            metric_event="agent_semantic_execute.submitted",
+            semantic_plan_id=plan.get("semantic_plan_id"),
+            query_id=submitted.query_id,
+            trace_id=submitted.trace_id,
+            sql_hash=target.get("sql_hash"),
+            data_level=target.get("data_level") or "M1",
+            runtime_release_id=runtime_version_pin.get("release_id"),
+            runtime_release_no=runtime_version_pin.get("release_no"),
+            runtime_snapshot_id=runtime_version_pin.get("snapshot_id"),
         )
         return {
             **submitted.to_dict(),
@@ -98,3 +136,24 @@ class AgentSemanticExecuteService:
     @staticmethod
     def _is_versioned_query_dsl(value: Any) -> bool:
         return isinstance(value, dict) and value.get("dsl_version") == "v1"
+
+    @staticmethod
+    def _runtime_trace(semantic_trace: Any) -> dict[str, Any]:
+        if not isinstance(semantic_trace, dict):
+            return {}
+        traceability = semantic_trace.get("traceability")
+        if isinstance(traceability, dict):
+            runtime_trace = traceability.get("runtime")
+            if isinstance(runtime_trace, dict):
+                return runtime_trace
+        runtime_trace = semantic_trace.get("runtime")
+        return runtime_trace if isinstance(runtime_trace, dict) else {}
+
+    @staticmethod
+    def _is_versioned_runtime_pin(value: Any) -> bool:
+        return (
+            isinstance(value, dict)
+            and bool(value.get("snapshot_id"))
+            and bool(value.get("release_id"))
+            and value.get("release_no") is not None
+        )

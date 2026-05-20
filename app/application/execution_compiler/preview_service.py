@@ -271,6 +271,43 @@ class ExecutionCompilerPreviewService:
         logical_sql = compiled.sql
         sql_hash = canonical_sql_hash(logical_sql)
         query_dsl_payload = dsl.model_dump(mode="json", exclude_none=True)
+        runtime_trace = runtime_catalog.runtime_trace if runtime_catalog else {}
+        ticket_material = {
+            "target_type": "sql",
+            "resource_set": resource_set,
+            "sql_hash": sql_hash,
+            "data_level": data_level,
+        }
+        if runtime_trace.get("version_pin"):
+            ticket_material["runtime_version_pin"] = runtime_trace["version_pin"]
+        traceability = {
+            "compiler": {
+                "source": "query_compiler",
+                "primary_cube": compiled.primary_cube,
+                "joined_cubes": compiled.joined_cubes,
+            },
+            "business_metric": {
+                "name": metric.name,
+                "title": metric.title,
+                "object_name": metric.object_name,
+                "semantic_formula": metric.semantic_formula,
+            },
+            "analysis_measure": {
+                "measure_ref": measure_ref,
+                "measure_name": measure_name,
+                "measure_title": measure.title,
+                "cube_name": cube.name,
+                "cube_title": cube.title,
+            },
+            "data_source": {
+                "table": cube.table,
+                "source_dataset_id": cube.source_dataset_id,
+                "source_dataset_type": cube.source_dataset_type,
+                "source_database": cube.source_database,
+            },
+        }
+        if runtime_trace:
+            traceability["runtime"] = runtime_trace
         return {
             "status": "ready",
             "target_type": "sql",
@@ -285,12 +322,7 @@ class ExecutionCompilerPreviewService:
             "resource_set": resource_set,
             "data_level": data_level,
             "sql_hash": sql_hash,
-            "ticket_material": {
-                "target_type": "sql",
-                "resource_set": resource_set,
-                "sql_hash": sql_hash,
-                "data_level": data_level,
-            },
+            "ticket_material": ticket_material,
             "bindings": {
                 "metric_name": metric.name,
                 "measure_ref": measure_ref,
@@ -299,32 +331,7 @@ class ExecutionCompilerPreviewService:
                 **(runtime_catalog.binding_metadata if runtime_catalog else {}),
             },
             "policy": policy,
-            "traceability": {
-                "compiler": {
-                    "source": "query_compiler",
-                    "primary_cube": compiled.primary_cube,
-                    "joined_cubes": compiled.joined_cubes,
-                },
-                "business_metric": {
-                    "name": metric.name,
-                    "title": metric.title,
-                    "object_name": metric.object_name,
-                    "semantic_formula": metric.semantic_formula,
-                },
-                "analysis_measure": {
-                    "measure_ref": measure_ref,
-                    "measure_name": measure_name,
-                    "measure_title": measure.title,
-                    "cube_name": cube.name,
-                    "cube_title": cube.title,
-                },
-                "data_source": {
-                    "table": cube.table,
-                    "source_dataset_id": cube.source_dataset_id,
-                    "source_dataset_type": cube.source_dataset_type,
-                    "source_database": cube.source_database,
-                },
-            },
+            "traceability": traceability,
         }
 
     def _build_query_dsl(

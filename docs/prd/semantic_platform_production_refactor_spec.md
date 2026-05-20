@@ -953,16 +953,24 @@ B2 完成标准：
 
 | ID | 任务 | 状态 | 验收证据 |
 | --- | --- | --- | --- |
-| B3-01 | 强化 Runtime snapshot 版本钉住、trace 和发布版本回溯 | TODO | snapshot trace test |
-| B3-02 | 固化 `/agent/semantic/plan` preview-only 契约 | TODO | API contract test |
-| B3-03 | 固化 `/agent/semantic/execute` allow 才创建 job | TODO | allow / deny integration |
-| B3-04 | 增加 runtime trace：资产、binding、SQL、policy、ticket | TODO | trace assertion |
-| B3-05 | 完整覆盖 deny / approval_required / allow | TODO | governance tests |
-| B3-06 | 增加 semantic health endpoint | TODO | health smoke |
-| B3-07 | 增加 audit trace 查询 API 或页面 | TODO | API / UI smoke |
-| B3-08 | 增加运行时指标与结构化日志 | TODO | log / metrics check |
-| B3-09 | 将 live smoke 和 golden case 纳入生产候选验证 | TODO | verify-semantic-prod |
-| B3-10 | 更新上线 checklist、回滚手册和运维 runbook | TODO | docs review |
+| B3-01 | 强化 Runtime snapshot 版本钉住、trace 和发布版本回溯 | DONE | `tests/unit/application/semantic/test_runtime_snapshot_service.py::test_runtime_snapshot_service_returns_version_pin_and_asset_trace` |
+| B3-02 | 固化 `/agent/semantic/plan` preview-only 契约 | DONE | `tests/integration/test_agent_semantic_api.py::test_agent_semantic_plan_api_returns_preview_only_ticket` 断言无 `query_id/poll_url/result_url` |
+| B3-03 | 固化 `/agent/semantic/execute` allow 才创建 job | DONE | `tests/unit/application/query_execution/test_agent_execute_service.py` 覆盖 allow / deny / approval_required；`tests/integration/query_execution/test_agent_runtime_e2e.py` 覆盖真实 job 创建 |
+| B3-04 | 增加 runtime trace：资产、binding、SQL、policy、ticket | DONE | Runtime manifest 暴露 `version_pin/asset_trace`；compiler 写入 `ticket_material.runtime_version_pin`；Agent execute / QueryExecution 持久化 `semantic_trace/runtime_version_pin/sql_hash` 并由 Worker 复核 |
+| B3-05 | 完整覆盖 deny / approval_required / allow | DONE | `test_agent_execute_service_returns_blocked_without_job_for_deny`、`test_agent_execute_service_returns_approval_material_without_job`、`test_agent_execute_service_submits_first_ready_sql_target` |
+| B3-06 | 增加 semantic health endpoint | DONE | `GET /api/v1/semantic/health`；`tests/integration/test_semantic_api.py::test_semantic_health_returns_runtime_snapshot_version_pin` 与 OpenAPI contract 覆盖 |
+| B3-07 | 增加 audit trace 查询 API 或页面 | DONE | 复用 `GET /api/v1/governance/audit-traces` / `<trace_id>`，支持 `semantic_plan_id/sql_hash/route_type/principal_id` 过滤；已有 governance API 与 OpenAPI contract 覆盖 |
+| B3-08 | 增加运行时指标与结构化日志 | DONE | Agent execute 输出 `agent_semantic_execute.submitted/blocked` 结构化 `metric_event`；semantic health 暴露 runtime asset / binding / policy 计数 |
+| B3-09 | 将 live smoke 和 golden case 纳入生产候选验证 | DONE | `verify-semantic-prod` 串联 `verify-semantic`（含学生评论 golden case / P34 mock）与 `smoke-semantic-live` opt-in；strict gate 要求 `SEMANTIC_PROD_LIVE=1` |
+| B3-10 | 更新上线 checklist、回滚手册和运维 runbook | DONE | `docs/semantic_verification.md` 补充 Runtime health、trace、audit、结构化日志与生产候选验证说明 |
+
+B3 阶段收敛状态（2026-05-20）：
+
+- Runtime snapshot 已形成发布版本钉住：`version_pin` 记录 namespace、snapshot、release、release_no、rollback 指向和 asset revision 列表；`asset_trace` 去掉完整 spec，仅保留运行时诊断所需元数据。
+- Agent execute 现在要求 `policy_decision=allow`、QueryDSL v1、Runtime version pin 三者同时成立才会提交 job；deny / approval_required 均只返回治理材料，不创建查询任务。
+- QueryExecution submit 和 Worker 均复核 agent semantic job 的 QueryDSL v1 与 Runtime pin，避免绕过 `/agent/semantic/execute` 直接投递不可追溯任务。
+- 运维观测入口收敛为三层：`/api/v1/semantic/health` 看 Runtime 就绪和版本，`/api/v1/governance/audit-traces` 查治理 / SQL / semantic_plan 回溯，结构化日志聚合 `agent_semantic_execute.*` 指标事件。
+- 剩余上线签核风险仍是环境型：需要在预生产库执行 `make verify-semantic-prod-strict`，并提供真实 PostgreSQL concurrency、真实 datasource metadata、live P34 smoke 的运行证据。
 
 B3 完成标准：
 

@@ -83,6 +83,7 @@ class _PublishedSemanticCatalog:
                 "route": "active_ontology",
                 "binding_status": "bound",
                 "cube_status": "active",
+                "traceability": self._runtime_traceability(),
             },
         }
 
@@ -151,6 +152,7 @@ class _PublishedSemanticCatalog:
                 "route": "active_ontology",
                 "binding_status": "bound",
                 "cube_status": "active",
+                "traceability": self._runtime_traceability(),
                 "projection_result": {
                     "exposed_fields": [school_dimension["name"], metric["name"]],
                     "restricted_fields": list(self.cube["restricted_fields"]),
@@ -164,6 +166,39 @@ class _PublishedSemanticCatalog:
 
     def _cube_resource(self):
         return {"name": self.cube["name"], "status": self.cube["status"]}
+
+    def _runtime_traceability(self):
+        return {
+            "runtime": {
+                "version_pin": {
+                    "namespace": "default",
+                    "snapshot_id": "snap_student_comment_e2e",
+                    "snapshot_status": "active",
+                    "release_id": "rel_student_comment_e2e",
+                    "release_no": 1,
+                    "release_status": "published",
+                    "previous_release_id": None,
+                    "rollback_of_release_id": None,
+                    "manifest_schema_version": "semantic-runtime-manifest/v1",
+                    "asset_count": 2,
+                    "asset_revision_ids": ["rev_metric_comment_count", "rev_cube_student_comment"],
+                },
+                "assets": [
+                    {
+                        "asset_id": "asset_metric_comment_count",
+                        "asset_type": "ontology",
+                        "asset_key": "metric:comment_count",
+                        "revision_id": "rev_metric_comment_count",
+                    },
+                    {
+                        "asset_id": "asset_cube_student_comment",
+                        "asset_type": "cube",
+                        "asset_key": "student_comment_cube",
+                        "revision_id": "rev_cube_student_comment",
+                    },
+                ],
+            }
+        }
 
 
 class _AgentFirstPlanHandler:
@@ -344,6 +379,8 @@ def test_agent_first_runtime_http_execute_worker_and_result_e2e(agent_runtime_e2
         assert stored_job.route_type == "agent_semantic"
         assert stored_job.ticket_snapshot_json["semantic_plan_id"] == "plan_student_comment_e2e"
         assert stored_job.resource_set_json["ontology"][0]["status"] == "active"
+        assert stored_job.governance_snapshot_json["runtime_version_pin"]["release_id"] == "rel_student_comment_e2e"
+        assert stored_job.governance_snapshot_json["sql_hash"] == "hash-student-comment-e2e"
 
 
 def test_agent_first_runtime_student_comment_by_school_acceptance(agent_runtime_e2e_app):
@@ -405,6 +442,7 @@ def test_agent_first_runtime_student_comment_by_school_acceptance(agent_runtime_
         assert stored_job.route_type == "agent_semantic"
         assert stored_job.resource_set_json["cubes"][0]["name"] == "student_comment_cube"
         assert stored_job.ticket_snapshot_json["principal_id"] == "data_agent_test"
+        assert stored_job.governance_snapshot_json["runtime_version_pin"]["release_no"] == 1
         executed_sql = stored_job.validated_sql.lower()
         assert "df_cb_258187.dwd_interaction_comment_reports_df" in executed_sql
         assert "group by comment_school_name" in executed_sql

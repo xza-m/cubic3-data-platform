@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-05-19
+last_reviewed: 2026-05-20
 ---
 
 # 语义中心固定验证流程
@@ -89,6 +89,17 @@ make verify-semantic-prod-strict
 - `SEMANTIC_POSTGRES_DATABASE_URL` 或 PostgreSQL 类型的 `SEMANTIC_BASELINE_DATABASE_URL`：真实 PostgreSQL release 并发验证；SQLite URL 不会通过严格门禁。
 
 严格入口还会运行 `make test-semantic-postgres-concurrency`，验证 PostgreSQL advisory lock、`release_no` 串行分配、`previous_release_id` 锁内重算和 active snapshot partial unique 约束。
+
+### Runtime 治理与观测补证
+
+B3 起，生产候选验证还需要确认 Runtime trace 和观测入口可用：
+
+- `GET /api/v1/semantic/health`：检查 active Runtime snapshot 是否 ready，并返回 `version_pin`、`asset_count`、`binding_count`、`policy_count`。
+- `GET /api/v1/governance/audit-traces`：按 `semantic_plan_id`、`sql_hash`、`route_type`、`principal_id` 回查治理链路。
+- `/api/v1/agent/semantic/plan` 只返回 preview-only ticket，不返回 `query_id`、`poll_url`、`result_url`。
+- `/api/v1/agent/semantic/execute` 只有 `policy_decision=allow` 且存在 QueryDSL v1 与 Runtime version pin 时才提交 QueryExecution job；deny / approval_required 只返回治理材料。
+- QueryExecution job 的 `governance_snapshot_json` 必须包含 `semantic_trace`、`runtime_version_pin`、`runtime_assets`、`query_dsl`、`sql_hash`、`data_level`，Worker 会再次复核 QueryDSL v1 与 Runtime pin。
+- 结构化日志会输出 `metric_event=agent_semantic_execute.submitted` 或 `agent_semantic_execute.blocked`，用于日志侧统计提交量、阻断量、release_no 和 snapshot 维度。
 
 存量库 baseline 补证示例：
 

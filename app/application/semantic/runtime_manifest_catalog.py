@@ -44,6 +44,7 @@ class RuntimeSemanticCatalog:
         cubes: list[CubeDefinition],
         snapshot_id: str | None,
         release_id: str | None,
+        runtime_trace: dict[str, Any] | None = None,
     ):
         self.object_repository = RuntimeRepository(objects)
         self.metric_repository = RuntimeRepository(metrics)
@@ -51,10 +52,14 @@ class RuntimeSemanticCatalog:
         self.relation_repository = RuntimeRepository(relations)
         self.action_repository = RuntimeRepository(actions)
         self.cube_repository = RuntimeRepository(cubes)
+        self.runtime_trace = runtime_trace or {}
         self.binding_metadata = {
             "runtime_snapshot_id": snapshot_id,
             "runtime_release_id": release_id,
         }
+        release_no = (self.runtime_trace.get("version_pin") or {}).get("release_no")
+        if release_no is not None:
+            self.binding_metadata["runtime_release_no"] = release_no
 
     @classmethod
     def from_manifest(cls, manifest: dict[str, Any]) -> "RuntimeSemanticCatalog":
@@ -87,6 +92,7 @@ class RuntimeSemanticCatalog:
             cubes=cubes,
             snapshot_id=manifest.get("snapshot_id"),
             release_id=manifest.get("release_id"),
+            runtime_trace=cls._runtime_trace(manifest),
         )
 
     def get_metric(self, name: str) -> BusinessMetric | None:
@@ -112,6 +118,35 @@ class RuntimeSemanticCatalog:
         }
         repository = repositories.get(entity_type)
         return repository.list_all() if repository is not None else []
+
+    @staticmethod
+    def _runtime_trace(manifest: dict[str, Any]) -> dict[str, Any]:
+        asset_manifest = manifest.get("asset_manifest_json") or {}
+        assets = manifest.get("asset_trace")
+        if assets is None:
+            assets = [
+                {
+                    "asset_id": asset.get("asset_id"),
+                    "asset_type": asset.get("asset_type"),
+                    "asset_key": asset.get("asset_key"),
+                    "revision_id": asset.get("revision_id"),
+                    "spec_checksum": asset.get("spec_checksum"),
+                    "status": asset.get("status"),
+                }
+                for asset in asset_manifest.get("assets") or []
+            ]
+        version_pin = manifest.get("version_pin") or {
+            "snapshot_id": manifest.get("snapshot_id"),
+            "release_id": manifest.get("release_id"),
+            "asset_count": len(assets),
+            "asset_revision_ids": [item["revision_id"] for item in assets if item.get("revision_id")],
+        }
+        return {
+            "version_pin": version_pin,
+            "assets": assets,
+            "bindings": manifest.get("binding_trace") or {},
+            "policies": manifest.get("policy_trace") or {},
+        }
 
     @classmethod
     def _collect_spec(

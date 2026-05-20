@@ -157,6 +157,37 @@ def test_official_compile_metric_reads_metric_and_cube_from_runtime_snapshot_man
         "ok": True,
         "snapshot_id": "snap_1",
         "release_id": "rel_1",
+        "version_pin": {
+            "namespace": "default",
+            "snapshot_id": "snap_1",
+            "snapshot_status": "active",
+            "release_id": "rel_1",
+            "release_no": 7,
+            "release_status": "published",
+            "previous_release_id": "rel_0",
+            "rollback_of_release_id": None,
+            "manifest_schema_version": "semantic-runtime-manifest/v1",
+            "asset_count": 2,
+            "asset_revision_ids": ["rev_metric", "rev_cube"],
+        },
+        "asset_trace": [
+            {
+                "asset_id": "asset_metric_comment_count",
+                "asset_type": "ontology",
+                "asset_key": "metric:comment_count",
+                "revision_id": "rev_metric",
+                "spec_checksum": "a" * 64,
+                "status": "published",
+            },
+            {
+                "asset_id": "asset_cube_student_comment",
+                "asset_type": "cube",
+                "asset_key": "student_comment_cube",
+                "revision_id": "rev_cube",
+                "spec_checksum": "b" * 64,
+                "status": "published",
+            },
+        ],
         "asset_manifest_json": {
             "schema_version": "semantic-runtime-manifest/v1",
             "assets": [
@@ -228,6 +259,10 @@ def test_official_compile_metric_reads_metric_and_cube_from_runtime_snapshot_man
     assert preview["status"] == "ready"
     assert preview["bindings"]["runtime_snapshot_id"] == "snap_1"
     assert preview["bindings"]["runtime_release_id"] == "rel_1"
+    assert preview["bindings"]["runtime_release_no"] == 7
+    assert preview["ticket_material"]["runtime_version_pin"]["release_no"] == 7
+    assert preview["traceability"]["runtime"]["version_pin"]["snapshot_id"] == "snap_1"
+    assert preview["traceability"]["runtime"]["assets"][0]["revision_id"] == "rev_metric"
     assert preview["resource_set"]["physical"][0]["table"] == "dwd_interaction_comment_reports_df"
     assert "comment_school_name" in preview["logical_sql"]
 

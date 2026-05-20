@@ -153,10 +153,27 @@ class QuerySubmissionService:
     ) -> None:
         if route_type != QueryRouteType.AGENT_SEMANTIC.value:
             return
-        query_dsl = (governance_snapshot or {}).get("query_dsl")
+        snapshot = governance_snapshot or {}
+        query_dsl = snapshot.get("query_dsl")
         if not isinstance(query_dsl, dict) or query_dsl.get("dsl_version") != "v1":
             raise ValidationError(
                 "Agent semantic query job requires a versioned QueryDSL v1 snapshot",
                 code="INVALID_AGENT_SEMANTIC_QUERY_DSL",
                 details={"route_type": route_type},
             )
+        runtime_pin = snapshot.get("runtime_version_pin")
+        if not QuerySubmissionService._is_versioned_runtime_pin(runtime_pin):
+            raise ValidationError(
+                "Agent semantic query job requires a Runtime version pin",
+                code="INVALID_AGENT_SEMANTIC_RUNTIME_VERSION_PIN",
+                details={"route_type": route_type},
+            )
+
+    @staticmethod
+    def _is_versioned_runtime_pin(value: Any) -> bool:
+        return (
+            isinstance(value, dict)
+            and bool(value.get("snapshot_id"))
+            and bool(value.get("release_id"))
+            and value.get("release_no") is not None
+        )
