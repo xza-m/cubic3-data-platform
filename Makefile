@@ -52,6 +52,7 @@ SEMANTIC_POSTGRES_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)
 	smoke-semantic \
 	smoke-semantic-live \
 	semantic-baseline-dry-run \
+	semantic-prod-readiness-report \
 	semantic-fixture-cleanup \
 	docs-health \
 	docs-impact \
@@ -105,6 +106,7 @@ help:
 	@printf '  %-26s %s\n' 'make verify-semantic-prod' '语义平台生产候选闸门（迁移 / nginx build / semantic verify / live opt-in / cleanup）'
 	@printf '  %-26s %s\n' 'make verify-semantic-prod-strict' '语义平台上线前严格闸门（要求预发 DB / live smoke / fixture cleanup / PG 并发）'
 	@printf '  %-26s %s\n' 'make semantic-prod-env-required' '校验严格上线前验证所需环境变量'
+	@printf '  %-26s %s\n' 'make semantic-prod-readiness-report' '输出语义平台上线前补证 readiness 报告'
 	@printf '  %-26s %s\n' 'make test-semantic-prod-registry' '语义生产化 SQL Registry / Publish Gate / Runtime Snapshot 单元与集成测试'
 	@printf '  %-26s %s\n' 'make test-semantic-postgres-concurrency' '真实 PostgreSQL 发布并发与 active snapshot 约束测试（设置 SEMANTIC_POSTGRES_DATABASE_URL 后执行）'
 	@printf '  %-26s %s\n' 'make test-agent-runtime' 'Agent-first Runtime official 链路测试'
@@ -378,6 +380,9 @@ semantic-baseline-dry-run:
 	else \
 		printf '%s\n' '[semantic-prod][baseline] skip: 未设置 SEMANTIC_BASELINE_DATABASE_URL，仅执行离线 Alembic 拓扑检查'; \
 	fi
+
+semantic-prod-readiness-report:
+	@PYTHONPATH=. $(PYTHON) scripts/checks/semantic_prod_readiness_report.py
 
 smoke-semantic-live:
 	@if [ "$(SEMANTIC_PROD_LIVE)" = "1" ]; then \

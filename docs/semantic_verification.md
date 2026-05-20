@@ -65,6 +65,8 @@ make verify-semantic-prod
 上线前需要真实预生产库、live smoke 和 PostgreSQL 并发补证时，使用严格入口：
 
 ```bash
+make semantic-prod-readiness-report
+
 SEMANTIC_BASELINE_DATABASE_URL="postgresql://..." \
 SEMANTIC_FIXTURE_NAMESPACE="qa_live_20260519" \
 SEMANTIC_PROD_LIVE=1 \
@@ -79,7 +81,7 @@ make verify-semantic-prod-strict
 4. `docker compose build nginx`：用 `docker/nginx.Dockerfile` 执行 `npm run build:v2`，并通过 `frontend/.dockerignore` 排除本地测试与 Playwright 产物。
 5. `make verify-semantic`：复用语义中心固定交付入口。
 6. `make smoke-semantic-live`：默认 skip；只有 `SEMANTIC_PROD_LIVE=1` 时运行真实 Modeling Copilot live smoke。
-7. `make semantic-fixture-cleanup`：默认无 namespace 时跳过；设置 `SEMANTIC_FIXTURE_NAMESPACE` 与 `SEMANTIC_FIXTURE_DATABASE_URL` 后调用 `scripts/checks/semantic_fixture_cleanup.py`，由 `SemanticTestFixtureManager` 清理 SQL Registry / Release / Snapshot / Copilot session / Proposal 和 YAML fixture 输出。
+7. `make semantic-fixture-cleanup`：默认无 namespace 时跳过；设置 `SEMANTIC_FIXTURE_NAMESPACE` 后，使用 `SEMANTIC_FIXTURE_DATABASE_URL` 或 fallback 到 `SEMANTIC_BASELINE_DATABASE_URL` 调用 `scripts/checks/semantic_fixture_cleanup.py`，由 `SemanticTestFixtureManager` 清理 SQL Registry / Release / Snapshot / Copilot session / Proposal 和 YAML fixture 输出。
 
 `make verify-semantic-prod-strict` 在上述入口前先运行 `make semantic-prod-env-required`，要求：
 
@@ -89,6 +91,8 @@ make verify-semantic-prod-strict
 - `SEMANTIC_POSTGRES_DATABASE_URL` 或 PostgreSQL 类型的 `SEMANTIC_BASELINE_DATABASE_URL`：真实 PostgreSQL release 并发验证；SQLite URL 不会通过严格门禁。
 
 严格入口还会运行 `make test-semantic-postgres-concurrency`，验证 PostgreSQL advisory lock、`release_no` 串行分配、`previous_release_id` 锁内重算和 active snapshot partial unique 约束。
+
+`make semantic-prod-readiness-report` 会输出不含明文数据库密码的 JSON 报告，用于上线前先盘点 strict gate 的四类补证输入：预生产 baseline fingerprint、live smoke、fixture cleanup、PostgreSQL 并发。报告只做盘点，不替代 `make verify-semantic-prod-strict`。
 
 ### Runtime 治理与观测补证
 

@@ -892,7 +892,7 @@ class SemanticTestFixtureManager:
 
 | ID | 任务 | 状态 | 验收证据 |
 | --- | --- | --- | --- |
-| B1-01 | 补 Alembic 空库初始化和存量 baseline runbook | IN_PROGRESS | `test_alembic_initial_schema_contract`、`test_semantic_alembic_baseline`、`make verify-alembic` 通过；真实存量库 fingerprint 待预生产补跑 |
+| B1-01 | 补 Alembic 空库初始化和存量 baseline runbook | DONE | `test_alembic_initial_schema_contract`、`test_semantic_alembic_baseline`、`make verify-alembic` 通过；真实存量库 fingerprint 作为 B4 上线前环境补证跟踪 |
 | B1-02 | 设计 SQL Registry schema：assets、revisions、dependencies、releases、runtime snapshots，锁定 checksum、release_no 和 active snapshot 唯一约束 | DONE | `0001_initial_schema.py` 已补 Registry / Release / Snapshot 表与 active snapshot partial unique index；schema contract 通过 |
 | B1-03 | 实现 Registry repository 与 service，生产写入路径切到 SQL | DONE | `SqlAssetRegistryRepository`、`AssetRegistryService`、repository / service 单测通过；`make test-semantic-prod-registry` 纳入生产候选闸门 |
 | B1-04 | 收紧 YAML 边界：仅保留测试 fixture、示例 seed 和调试导出，生产不做 YAML 兼容写入层 / 双写 / 新写入 | DONE | official router / mapper / compiler 从 SQL runtime snapshot manifest 的 `spec` 还原 catalog；`test_official_runtime_routes_and_compiles_from_snapshot_manifest_without_yaml` 覆盖 YAML 同名资产不得 fallback |
@@ -980,15 +980,33 @@ B3 完成标准：
 - allow / deny / approval_required 都有自动化测试。
 - 生产问题能通过 trace id 定位。
 
+### Phase B4：生产候选签核与上线前补证
+
+目标：解决“本地已收敛后，生产上线前还缺哪些真实环境证据、如何显式阻断未补证发布”。
+
+| ID | 任务 | 状态 | 验收证据 |
+| --- | --- | --- | --- |
+| B4-01 | 增加上线前 readiness 报告，汇总 baseline、live smoke、fixture cleanup、PostgreSQL 并发四类补证状态 | DONE | `scripts/checks/semantic_prod_readiness_report.py`、`make semantic-prod-readiness-report`；单测覆盖 URL 脱敏、fixture DB 复用 baseline DB 和 strict 缺项输出 |
+| B4-02 | 对齐 strict guard、Makefile 和文档里的 fixture cleanup fallback 语义 | DONE | `SEMANTIC_FIXTURE_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)`；readiness 报告显式输出 `fixture_database_url_source` |
+| B4-03 | 在预生产库执行存量库 fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证 | BLOCKED | 依赖 `SEMANTIC_BASELINE_DATABASE_URL` / `SEMANTIC_FIXTURE_NAMESPACE` / PostgreSQL URL；本地 readiness report 会列出缺项 |
+| B4-04 | 执行真实 Modeling Copilot live smoke 和真实 datasource metadata / P34 业务链路补证 | BLOCKED | 依赖 `SEMANTIC_PROD_LIVE=1`、live 后端、真实数据源权限和发布测试 namespace |
+| B4-05 | 产出上线签核记录：版本、补证命令、trace / release_no、cleanup summary、剩余风险确认 | TODO | 预生产严格验证通过后回填 |
+
+B4 完成标准：
+
+- `make semantic-prod-readiness-report` 能在不泄露 DB 密钥的前提下说明 strict gate 是否具备输入。
+- `make verify-semantic-prod-strict` 不允许静默跳过预生产 baseline、live smoke、fixture cleanup 或 PostgreSQL 并发验证。
+- 真实环境补证完成后，签核记录能追到 Runtime `release_no`、`snapshot_id`、audit trace 和 cleanup summary。
+
 ## 8. 总体验收入口
 
-建议新增或演进以下入口：
+当前总体验收入口：
 
 ```bash
 make verify-semantic-prod
 ```
 
-建议包含：
+当前包含：
 
 1. 串行：`make verify-alembic`
 2. 串行：空库初始化演练
@@ -1005,6 +1023,7 @@ make verify-semantic-prod
 - 前端生产 build 必须先于浏览器 smoke，避免复用旧 nginx 镜像误判。
 - live smoke 和 golden case 必须在测试资产 namespace 生效后运行。
 - cleanup 放在最后，即使中间失败也应可单独补跑。
+- 上线前先运行 `make semantic-prod-readiness-report` 判断 strict 输入是否齐备，再运行 `make verify-semantic-prod-strict`。
 
 ## 9. 进度维护规则
 
@@ -1044,27 +1063,22 @@ make verify-semantic-prod
 | Copilot apply / publish 重试产生重复资产 | 发布状态混乱 | `state_version` 乐观锁 + 幂等键 + proposal revision 约束 |
 | 依赖图出现循环 | 发布 gate 卡死或 Runtime 编译失败 | dependency DAG 校验 + 循环依赖单测 |
 
-## 11. 当前初始状态
+## 11. 当前阶段状态
 
-截至 2026-05-19，本 Spec 处于 `implementation-ready` 状态。
+截至 2026-05-20，本 Spec 的 B1 / B2 / B3 本地实现、测试和文档已收敛；当前进入 B4「生产候选签核与上线前补证」。
 
-已知已有基础能力：
+已完成的生产级闭环：
 
-- Modeling Copilot mock smoke 已迁入 P34。
-- Copilot SQL session / Proposal 仓储已有生产默认方向。
-- Source candidate scoring 已有配置化雏形。
-- Agent-first Runtime 和统一查询执行面已有基础测试。
-- Alembic 已收敛为生产初始化 baseline。
+- SQL-only Registry 统一生产资产事实源；YAML 仅保留测试 fixture、示例 seed 和调试导出。
+- Release / rollback / runtime snapshot 已有事务化发布、版本回溯和 active snapshot gate。
+- Copilot 状态机、event log、proposal revision、召回 scoring profile 和学生评论 golden case 已有自动化覆盖。
+- Agent-first Runtime、QueryExecution execute、Runtime trace、semantic health 和 governance audit trace 已接入。
+- `make verify-semantic-prod` 与 `make verify-semantic-prod-strict` 已落地；`make semantic-prod-readiness-report` 用于上线前补证盘点。
 
-尚未完成的生产级闭环：
+尚未完成的生产上线签核：
 
-- 干净前端生产镜像重建。
-- 存量库 baseline runbook 和恢复演练。
-- SQL Registry 统一资产事实源。
-- 生产禁用 SQL / YAML 双写。
-- Release / rollback / runtime snapshot。
-- Copilot 状态机 event log。
-- Runtime published-only 最小 gate。
-- 真实业务 golden case。
-- `verify-semantic-prod` 总入口。
-- `verify-semantic-prod-strict` 上线前严格入口。
+- 在预生产库执行 `SEMANTIC_BASELINE_DATABASE_URL=... make semantic-baseline-dry-run`。
+- 设置 live namespace 后执行 `make semantic-fixture-cleanup` 并保留 cleanup summary。
+- 在真实 PostgreSQL 上执行 `make test-semantic-postgres-concurrency`。
+- 设置 `SEMANTIC_PROD_LIVE=1` 执行真实 Modeling Copilot live smoke，并保留 release / snapshot / trace 证据。
+- 汇总 `make verify-semantic-prod-strict` 的完整输出作为上线签核记录。

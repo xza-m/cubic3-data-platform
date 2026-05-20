@@ -10,9 +10,9 @@
 
 ---
 
-## 0. 当前执行状态（2026-05-19）
+## 0. 当前执行状态（2026-05-20）
 
-B1 已进入实现阶段，当前 worktree 为 `codex/semantic-prod-refactor-b1`。
+B1 / B2 / B3 本地实现、测试和文档已收敛，当前 worktree 为 `codex/semantic-prod-refactor-b1`。下一阶段进入 B4「生产候选签核与上线前补证」。
 
 已完成或已有自动化证据的部分：
 
@@ -23,12 +23,15 @@ B1 已进入实现阶段，当前 worktree 为 `codex/semantic-prod-refactor-b1`
 - `SemanticTestFixtureManager` 已覆盖 Registry / Release / Snapshot / Copilot session / Proposal 清理。
 - nginx 生产构建已切到 `npm run build:v2` 和 `dist-v2`，并用 `.dockerignore` 排除测试产物。
 - `make verify-semantic-prod` 已串起 `verify-alembic -> test-semantic-prod-registry -> semantic-baseline-dry-run -> nginx build -> verify-semantic -> live opt-in -> cleanup`。
+- B2 Copilot 状态机、proposal action、metadata recall、scoring profile、explainability、golden / badcase 和前端状态展示已收敛。
+- B3 Runtime version pin、Agent execute gate、QueryExecution trace、semantic health、OpenAPI 和 audit trace 已收敛。
+- B4 已新增 `make semantic-prod-readiness-report`，用于脱敏盘点 strict gate 的 baseline / live / cleanup / PostgreSQL 并发补证输入。
 
-仍处于 B1 剩余项：
+仍需真实环境补证：
 
 - 真实预生产库 `SEMANTIC_BASELINE_DATABASE_URL` fingerprint 未跑。
-- Publish Gate 已有 schema / binding / runtime / policy 外部 checker 接入点和失败测试；具体生产 sensitivity profile 与 checker wiring 需要 B2/B3 继续细化。
-- `make verify-semantic-prod` 完整目标里的 domain smoke 和 live smoke 需要可用前后端 / 凭据环境补跑。
+- `SEMANTIC_PROD_LIVE=1` 的真实 Modeling Copilot live smoke 未跑。
+- live fixture namespace 的 cleanup summary 未在预生产库保留。
 - 真实 PostgreSQL 并发冲突已有 opt-in 集成测试入口；当前本地未提供 `SEMANTIC_POSTGRES_DATABASE_URL`，上线前由 `verify-semantic-prod-strict` fail-fast 强制补跑。
 
 当前已跑验证：
@@ -532,7 +535,7 @@ cleanup summary: ...
 - [x] 如修改启动、脚本或运行方式，检查 `README.md`、`docs/QUICK_START.md`、`docs/STARTUP_GUIDE.md`、`frontend/README.md`。
 - [x] 如修改系统边界、运行拓扑或语义持久化方式，更新 `docs/TECH_STACK_AND_ARCHITECTURE.md` 与 `docs/architecture/`。
 - [x] 在 `docs/prd/semantic_platform_production_refactor_spec.md` 回填 B1 任务状态和验收证据。
-- [ ] 自己做一次 code review，重点看不可维护风险、事务边界、YAML 暗门、Runtime draft 误读和测试污染。
+- [x] 自己做一次 code review，重点看不可维护风险、事务边界、YAML 暗门、Runtime draft 误读和测试污染。
 
 最小验证：
 
@@ -630,6 +633,25 @@ PYTHONPATH=. python -m pytest --no-cov \
   tests/integration/query_execution \
   tests/integration/governance/test_audit_traces.py
 make verify-semantic-prod
+```
+
+## 7.5 B4 生产候选签核入口
+
+B1-B3 本地收敛后，B4 只处理上线前证据和门禁可操作性：
+
+- [x] B4-01 新增 `scripts/checks/semantic_prod_readiness_report.py` 和 `make semantic-prod-readiness-report`。
+- [x] B4-02 readiness report 对 DB URL 做脱敏，避免签核日志泄露密码。
+- [x] B4-03 readiness report 显式输出 `SEMANTIC_FIXTURE_DATABASE_URL` fallback 到 `SEMANTIC_BASELINE_DATABASE_URL` 的来源。
+- [ ] B4-04 在预生产库执行 baseline fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证。
+- [ ] B4-05 执行真实 Modeling Copilot live smoke，并保留 release / snapshot / audit trace 证据。
+- [ ] B4-06 汇总上线签核记录。
+
+B4 本地最小验证：
+
+```bash
+PYTHONPATH=. python -m pytest --no-cov tests/unit/scripts/test_semantic_prod_readiness_report.py -q
+make semantic-prod-readiness-report
+make verify-docs
 ```
 
 ## 8. 建议 commit 拆分
