@@ -76,6 +76,64 @@ class ModelingProposalService:
             "primary_action": self._gap_primary_action(proposal),
         }
 
+    def confirm_source(self, proposal_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        proposal = self._require(proposal_id)
+        source_patch = self._source_patch(payload)
+        source_hash = self._stable_hash(source_patch)
+        idempotency_key = str(
+            payload.get("idempotency_key") or f"{proposal.id}:confirm_source:{source_hash}"
+        )
+        if proposal.has_action("confirm_source", idempotency_key):
+            return self._dump(proposal)
+
+        request_payload = dict(proposal.source_context.get("request_payload") or {})
+        request_payload.update(source_patch)
+        proposal.source_context.update(source_patch)
+        proposal.source_context["request_payload"] = request_payload
+        proposal.source_context["confirmed_source"] = source_patch
+        self._bump_revision(proposal)
+        if proposal.spec:
+            proposal.status = "drafted"
+        actor = str(payload.get("actor") or payload.get("confirmed_by") or "semantic_owner")
+        self._mark_transition(proposal, actor=actor)
+        proposal.record_action(
+            "confirm_source",
+            actor=actor,
+            idempotency_key=idempotency_key,
+            payload={"source_hash": source_hash, "source": source_patch},
+        )
+        self._repository.save(proposal)
+        return self._dump(proposal)
+
+    def update_spec(self, proposal_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        proposal = self._require(proposal_id)
+        next_spec = self._next_spec(proposal, payload)
+        spec_hash = self._stable_hash(next_spec)
+        current_hash = self._stable_hash(proposal.spec or {})
+        if spec_hash == current_hash:
+            return self._dump(proposal)
+        idempotency_key = str(payload.get("idempotency_key") or f"{proposal.id}:update_spec:{spec_hash}")
+        if proposal.has_action("update_spec", idempotency_key):
+            return self._dump(proposal)
+
+        proposal.spec = next_spec
+        proposal.coverage_result = self._coverage_from_spec(next_spec)
+        proposal.validation_matrix = {"blockers": [], "warnings": [], "infos": []}
+        proposal.runtime_consumption_result = {}
+        proposal.publish_result = {}
+        proposal.status = "drafted"
+        self._bump_revision(proposal)
+        actor = str(payload.get("actor") or payload.get("updated_by") or "semantic_owner")
+        self._mark_transition(proposal, actor=actor)
+        proposal.record_action(
+            "update_spec",
+            actor=actor,
+            idempotency_key=idempotency_key,
+            payload={"spec_hash": spec_hash, "updated_keys": self._spec_update_keys(payload)},
+        )
+        self._repository.save(proposal)
+        return self._dump(proposal)
+
     def draft(self, proposal_id: str) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
         payload = deepcopy(proposal.source_context.get("request_payload") or {})
@@ -701,6 +759,86 @@ class ModelingProposalService:
             proposal.readiness_label = "Blocked"
             return
         proposal.readiness_label = "Save Draft Only"
+
+    def _source_patch(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        patch = {
+            key: deepcopy(payload[key])
+            for key in (
+                "candidate_id",
+                "asset_id",
+                "source_kind",
+                "source_id",
+                "dataset_id",
+                "database",
+                "schema",
+                "table",
+            )
+            if payload.get(key) not in (None, "")
+        }
+        if not patch:
+            raise ValueError("Source confirmation requires at least one source field")
+        return patch
+
+    def _next_spec(self, proposal: ModelingProposal, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if "spec" in payload:
+            next_spec = deepcopy(payload.get("spec") or {})
+        else:
+            next_spec = deepcopy(proposal.spec or {})
+            for key in self._spec_update_keys(payload):
+                current = next_spec.get(key)
+                value = payload.get(key)
+                if isinstance(current, dict) and isinstance(value, dict):
+                    next_spec[key] = self._deep_merge(current, value)
+                else:
+                    next_spec[key] = deepcopy(value)
+        if proposal.source_mode == "agent_led":
+            next_spec = repair_modeling_spec(
+                next_spec,
+                user_goal=str(proposal.intent.get("user_question") or ""),
+                source_mode=proposal.source_mode,
+            )
+        return next_spec
+
+    def _spec_update_keys(self, payload: Dict[str, Any]) -> List[str]:
+        return [
+            key
+            for key in (
+                "spec",
+                "source",
+                "business",
+                "cube",
+                "ontology",
+                "binding",
+                "policy",
+                "governance",
+                "evidence_pack",
+            )
+            if key in payload
+        ]
+
+    def _bump_revision(self, proposal: ModelingProposal) -> None:
+        proposal.proposal_revision_no += 1
+        proposal.approved_proposal_revision_no = None
+        proposal.applied_proposal_revision_no = None
+        proposal.approved_spec_hash = None
+        proposal.applied_spec_hash = None
+        for key in (
+            "approved_spec",
+            "approved_semantic_diff",
+            "approved_spec_hash",
+            "applied_spec_hash",
+            "publish_scope_hash",
+        ):
+            proposal.audit_snapshot.pop(key, None)
+
+    def _deep_merge(self, base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+        merged = deepcopy(base)
+        for key, value in patch.items():
+            if isinstance(merged.get(key), dict) and isinstance(value, dict):
+                merged[key] = self._deep_merge(merged[key], value)
+            else:
+                merged[key] = deepcopy(value)
+        return merged
 
     def _mark_transition(self, proposal: ModelingProposal, *, actor: str) -> None:
         proposal.last_transition_actor = actor

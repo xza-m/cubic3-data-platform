@@ -222,6 +222,70 @@ def test_proposal_apply_and_publish_are_idempotent_after_success():
     ] == ["apply", "publish"]
 
 
+def test_confirm_source_records_action_and_is_idempotent_for_same_source():
+    service = _service()
+    proposal = service.create_proposal(
+        {
+            "source_mode": "agent_led",
+            "source_kind": "business_question",
+            "user_question": "查询学生评论数",
+        }
+    )
+
+    confirmed = service.confirm_source(
+        proposal["id"],
+        {
+            "actor": "semantic_owner",
+            "source_kind": "physical_table",
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+        },
+    )
+    confirmed_again = service.confirm_source(
+        proposal["id"],
+        {
+            "actor": "semantic_owner",
+            "source_kind": "physical_table",
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+        },
+    )
+
+    assert confirmed["source_context"]["confirmed_source"]["table"] == "dwd_student_comment_events"
+    assert confirmed["proposal_revision_no"] == proposal["proposal_revision_no"] + 1
+    assert confirmed_again["proposal_revision_no"] == confirmed["proposal_revision_no"]
+    assert [
+        action["action"]
+        for action in confirmed_again["action_log"]
+        if action["action"] == "confirm_source"
+    ] == ["confirm_source"]
+
+
+def test_update_spec_bumps_revision_and_invalidates_previous_approval():
+    service = _service()
+    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+    approved = service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+
+    updated = service.update_spec(
+        proposal["id"],
+        {
+            "actor": "semantic_owner",
+            "cube": {"name": "student_comments_v2"},
+        },
+    )
+
+    assert updated["proposal_revision_no"] == approved["proposal_revision_no"] + 1
+    assert updated.get("approved_spec_hash") is None
+    assert updated.get("approved_proposal_revision_no") is None
+    assert updated["status"] == "drafted"
+    assert updated["spec"]["cube"]["name"] == "student_comments_v2"
+    assert updated["action_log"][-1]["action"] == "update_spec"
+    with pytest.raises(ValueError, match="approved"):
+        service.apply(proposal["id"])
+
+
 def test_draft_uses_embedded_spec_skips_create_spec_draft_for_copilot_business_question():
     """Copilot：request_payload 仍为 business_question，但附带完整 embedded_spec 时，
     draft 必须直接使用该 spec，不得再调 create_spec_draft（否则会报不支持的建模源类型）。"""
