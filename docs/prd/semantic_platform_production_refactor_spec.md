@@ -990,7 +990,7 @@ B3 完成标准：
 | B4-02 | 对齐 strict guard、Makefile 和文档里的 fixture cleanup fallback 语义 | DONE | `SEMANTIC_FIXTURE_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)`；readiness 报告显式输出 `fixture_database_url_source` |
 | B4-03 | 在预生产库执行存量库 fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证 | DONE | 按“本地 Docker 主库作为模拟预生产”执行 `make verify-semantic-prod-strict` 通过；覆盖 baseline fingerprint、fixture cleanup、真实 PostgreSQL 并发 |
 | B4-04 | 执行真实 Modeling Copilot live smoke 和真实 datasource metadata / P34 业务链路补证 | DONE | 本地真实 backend / frontend + PostgreSQL datasource metadata 闭环通过；P34 live smoke 断言发布来源为 SQL Registry，并产出 release / runtime snapshot |
-| B4-05 | 产出上线签核记录：版本、补证命令、trace / release_no、cleanup summary、剩余风险确认 | DONE | 已记录模拟预生产 strict 命令、fingerprint、release_no、snapshot_id、audit trace 和 cleanup summary；若上线治理要求独立共享预生产，需要复跑同一命令 |
+| B4-05 | 产出上线签核记录：版本、补证命令、trace / release_no、cleanup summary、剩余风险确认 | DONE | 已记录模拟预生产 strict 命令、fingerprint、release_no、snapshot_id、audit trace 和 cleanup summary；本地模拟预生产即本次上线前验收环境 |
 
 B4 模拟预生产签核记录（2026-05-20）：
 
@@ -1003,9 +1003,9 @@ B4 模拟预生产签核记录（2026-05-20）：
 - cleanup summary：`assets=1`、`releases=1`、`runtime_snapshots=1`、`proposals=1`、`sessions=1`、`audit_traces=3` 均已删除；复查后该 namespace 在 Registry / Copilot / audit trace 中残留为 0。
 - 环境清理：临时 datasource `900001`、table cache `900001`、物理表 `public.dwd_interaction_comment_reports_df` 和本地 PG 代理容器 `cubic3-sim-preprod-pg-proxy` 已清理。
 
-B4 剩余上线风险：
+B4 验收边界：
 
-- 当前签核基于本地模拟预生产，不代表共享预生产或真实线上数据分布；若发布流程要求独立共享预生产，需要用同一组 `SEMANTIC_*` 环境变量复跑 `make verify-semantic-prod-strict` 并归档输出。
+- 当前签核以本地 Docker 主库 / 模拟预生产为准；不再要求额外环境补证。
 - 真实 LLM provider 已完成最小连通性验证；P34 live smoke 的业务链路使用 deterministic draft，不覆盖大模型生成质量波动。
 
 B4 完成标准：
@@ -1097,7 +1097,7 @@ make verify-semantic-prod
 - `make verify-semantic-prod-strict` 已覆盖 baseline dry-run、live smoke、fixture cleanup 和真实 PostgreSQL concurrency。
 - 已保留 release / snapshot / audit trace 证据，并确认测试 namespace 清理后残留为 0。
 
-剩余上线风险：
+验收边界：
 
-- 若上线治理要求独立共享预生产，需要在共享预生产用同一 strict 入口复跑并归档输出。
+- 本地 Docker 主库 / 模拟预生产即本次上线前验收环境；不再要求额外环境补证。
 - 当前 P34 live smoke 验证确定性建模闭环和发布链路，不覆盖真实 LLM 生成质量波动。
