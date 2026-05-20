@@ -37,6 +37,14 @@ class _FakeAdapter:
         self.cancel_calls.append(engine_query_id)
 
 
+def _runtime_version_pin():
+    return {
+        "snapshot_id": "snap_1",
+        "release_id": "rel_1",
+        "release_no": 1,
+    }
+
+
 def _create_job(db_session, *, ticket_sql_hash="hash-1", job_sql_hash="hash-1", governance_snapshot=None):
     repo = QueryExecutionRepository(db_session)
     ticket = ExecutionTicketSnapshot(
@@ -64,7 +72,8 @@ def _create_job(db_session, *, ticket_sql_hash="hash-1", job_sql_hash="hash-1", 
             "query_dsl": {
                 "dsl_version": "v1",
                 "measures": ["student_comment_cube.comment_count"],
-            }
+            },
+            "runtime_version_pin": _runtime_version_pin(),
         },
     )
 
@@ -106,7 +115,29 @@ def test_worker_service_fails_job_when_ticket_snapshot_mismatches(db_session, tm
 
 
 def test_worker_service_fails_agent_job_without_versioned_query_dsl(db_session, tmp_path):
-    _create_job(db_session, governance_snapshot={"query_dsl": {"measures": ["student_comment_cube.comment_count"]}})
+    _create_job(
+        db_session,
+        governance_snapshot={
+            "query_dsl": {"measures": ["student_comment_cube.comment_count"]},
+            "runtime_version_pin": _runtime_version_pin(),
+        },
+    )
+    repo = QueryExecutionRepository(db_session)
+    service = QueryExecutionWorkerService(
+        repository=repo,
+        ticket_service=ExecutionTicketService(),
+        adapter=_FakeAdapter(),
+        result_store=LocalSpoolResultStore(spool_dir=tmp_path),
+    )
+
+    job = service.process_next(worker_id="worker-1")
+
+    assert job.status == QueryJobStatus.FAILED.value
+    assert job.error_code == "INVALID_AGENT_SEMANTIC_SNAPSHOT"
+
+
+def test_worker_service_fails_agent_job_without_runtime_version_pin(db_session, tmp_path):
+    _create_job(db_session, governance_snapshot={"query_dsl": {"dsl_version": "v1"}})
     repo = QueryExecutionRepository(db_session)
     service = QueryExecutionWorkerService(
         repository=repo,

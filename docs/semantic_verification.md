@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: frontend
-last_reviewed: 2026-05-18
+last_reviewed: 2026-05-20
 ---
 
 # 语义中心固定验证流程
@@ -53,6 +53,72 @@ make smoke-semantic
 5. `make verify-frontend`
 6. `make smoke-semantic`
 
+## 生产候选验证入口
+
+语义平台进入生产候选时使用更严格的入口：
+
+```bash
+cd /path/to/cubic3-data-platform
+make verify-semantic-prod
+```
+
+上线前需要真实预生产库、live smoke 和 PostgreSQL 并发补证时，使用严格入口：
+
+```bash
+make semantic-prod-readiness-report
+
+SEMANTIC_BASELINE_DATABASE_URL="postgresql://..." \
+SEMANTIC_FIXTURE_NAMESPACE="qa_live_20260519" \
+SEMANTIC_PROD_LIVE=1 \
+make verify-semantic-prod-strict
+```
+
+该入口用于验证 B1 生产资产底座，顺序包含：
+
+1. `make verify-alembic`：确认迁移拓扑仍是单 head。
+2. `make test-semantic-prod-registry`：覆盖 SQL Registry、Publish Gate、Release / Snapshot、真实 governance audit repository 同事务、rollback service / API、active snapshot 和测试清理。
+3. `make semantic-baseline-dry-run`：如果设置 `SEMANTIC_BASELINE_DATABASE_URL`，检查存量库 schema fingerprint；未设置时只输出 skip，不自动 stamp。
+4. `docker compose build nginx`：用 `docker/nginx.Dockerfile` 执行 `npm run build:v2`，并通过 `frontend/.dockerignore` 排除本地测试与 Playwright 产物。
+5. `make verify-semantic`：复用语义中心固定交付入口。
+6. `make smoke-semantic-live`：默认 skip；只有 `SEMANTIC_PROD_LIVE=1` 时运行真实 Modeling Copilot live smoke。
+7. `make semantic-fixture-cleanup`：默认无 namespace 时跳过；设置 `SEMANTIC_FIXTURE_NAMESPACE` 后，使用 `SEMANTIC_FIXTURE_DATABASE_URL` 或 fallback 到 `SEMANTIC_BASELINE_DATABASE_URL` 调用 `scripts/checks/semantic_fixture_cleanup.py`，由 `SemanticTestFixtureManager` 清理 SQL Registry / Release / Snapshot / Copilot session / Proposal 和 YAML fixture 输出。
+
+`make verify-semantic-prod-strict` 在上述入口前先运行 `make semantic-prod-env-required`，要求：
+
+- `SEMANTIC_BASELINE_DATABASE_URL`：预生产库 schema fingerprint。
+- `SEMANTIC_PROD_LIVE=1`：真实 Modeling Copilot live smoke。
+- `SEMANTIC_FIXTURE_NAMESPACE`：清理 live / fixture 测试资产。
+- `SEMANTIC_POSTGRES_DATABASE_URL` 或 PostgreSQL 类型的 `SEMANTIC_BASELINE_DATABASE_URL`：真实 PostgreSQL release 并发验证；SQLite URL 不会通过严格门禁。
+
+严格入口还会运行 `make test-semantic-postgres-concurrency`，验证 PostgreSQL advisory lock、`release_no` 串行分配、`previous_release_id` 锁内重算和 active snapshot partial unique 约束。
+
+`make semantic-prod-readiness-report` 会输出不含明文数据库密码的 JSON 报告，用于上线前先盘点 strict gate 的四类补证输入：预生产 baseline fingerprint、live smoke、fixture cleanup、PostgreSQL 并发。报告只做盘点，不替代 `make verify-semantic-prod-strict`。
+
+### Runtime 治理与观测补证
+
+B3 起，生产候选验证还需要确认 Runtime trace 和观测入口可用：
+
+- `GET /api/v1/semantic/health`：检查 active Runtime snapshot 是否 ready，并返回 `version_pin`、`asset_count`、`binding_count`、`policy_count`。
+- `GET /api/v1/governance/audit-traces`：按 `semantic_plan_id`、`sql_hash`、`route_type`、`principal_id` 回查治理链路。
+- `/api/v1/agent/semantic/plan` 只返回 preview-only ticket，不返回 `query_id`、`poll_url`、`result_url`。
+- `/api/v1/agent/semantic/execute` 只有 `policy_decision=allow` 且存在 QueryDSL v1 与 Runtime version pin 时才提交 QueryExecution job；deny / approval_required 只返回治理材料。
+- QueryExecution job 的 `governance_snapshot_json` 必须包含 `semantic_trace`、`runtime_version_pin`、`runtime_assets`、`query_dsl`、`sql_hash`、`data_level`，Worker 会再次复核 QueryDSL v1 与 Runtime pin。
+- 结构化日志会输出 `metric_event=agent_semantic_execute.submitted` 或 `agent_semantic_execute.blocked`，用于日志侧统计提交量、阻断量、release_no 和 snapshot 维度。
+
+存量库 baseline 补证示例：
+
+```bash
+SEMANTIC_BASELINE_DATABASE_URL="postgresql://..." make semantic-baseline-dry-run
+```
+
+真实 live 补证示例：
+
+```bash
+SEMANTIC_PROD_LIVE=1 make smoke-semantic-live
+```
+
+注意：`verify-semantic-prod` 是发布候选闸门，不并入默认 `make verify`。`verify-semantic-prod-strict` 是上线前闸门；如果 Docker、真实数据源、预生产库或 live 凭据不可用，需要在交付说明里明确未跑项和剩余风险。
+
 ## v2 浏览器回归重点
 
 Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-layout` 目标已经移除。当前 v2 浏览器覆盖分为两类：
@@ -60,7 +126,7 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - 默认前端 smoke：`make smoke-frontend`，底层为 `npm run e2e:smoke`，覆盖 v2 cutover 的低副作用关键路径。
 - 语义专项 smoke：`make smoke-semantic`，覆盖领域创建、领域发布两条有状态真实链路，以及 P34 Modeling Copilot 对话闭环。
 - 建模助手 Agent 专项：`make test-modeling-agent`，覆盖 `spec-draft -> draft-from-spec -> validate -> agent-ready-check -> apply -> publish` 的后端最小链路、`Domain context-preview` 上下文预览，以及 `/semantic/modeling-agent/new` 顶层任务流。
-- Agent-first Runtime 专项：后端单测覆盖 `/api/v1/agent/semantic/plan` 固定 `runtime_mode=official`、official 只命中 active Ontology、Glossary canonical entity 必须 active、Mapper 稳定 Binding 输出、stale measure 与非 active Cube 编译阻断；学生评论真实资产回归覆盖 `Ontology -> Binding -> QueryDSL -> SQL`，要求“最近 N 天”时间过滤和“按学校汇总”维度分组进入最终 SQL。
+- Agent-first Runtime 专项：后端单测覆盖 `/api/v1/agent/semantic/plan` 固定 `runtime_mode=official`、official 必须命中 active SQL runtime snapshot，且 router / mapper / compiler 直接从 snapshot manifest 的 published `spec` 还原语义 catalog；active Ontology、Glossary canonical entity 必须 active，YAML 同名资产不得 fallback，stale measure 与非 active Cube 编译阻断；学生评论真实资产回归覆盖 `Ontology -> Binding -> QueryDSL -> SQL`，要求“最近 N 天”时间过滤和“按学校汇总”维度分组进入最终 SQL。
 - 统一查询执行面专项：`make test-query-execution` 覆盖 QueryExecution 领域实体、提交服务、仓储、结果对象和集成 API，确保 `/api/v1/agent/semantic/execute` 能进入统一执行面而不是停在 preview-only。
 - Modeling Copilot 后端回归：
   - `tests/unit/test_semantic_modeling_copilot_registration.py` 覆盖 DI 注册、关键 route health 和 fail-fast，避免生产启动成功但 Copilot API 静默缺失。
@@ -96,6 +162,8 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - `modeling-agent-smoke` 使用 `frontend/tests/e2e-v2/p34-modeling-agent-smoke.spec.ts` 的 Playwright mock API 闭环，默认由 v2 Playwright 配置启动临时 Vite 服务，不写入后端或语义目录
 - 发布前需要真实后端证据时，可显式运行 `npm run e2e:modeling-agent-smoke:live`；该入口会创建 session、保存 Proposal 并发布语义资产，不进入默认 smoke
 - 真实后端运行时默认使用 SQL 仓储保存 Copilot session / Proposal；未执行当前 Alembic 初始化 / 增量迁移时不要运行 live smoke。生产首次上线空库应从 `0001_initial_schema` 初始化；需要本地 YAML 夹具时显式设置 `SEMANTIC_MODELING_COPILOT_STORE=yaml`
+- 生产语义资产事实源为 SQL Registry；YAML 仅用于测试 fixture、示例 seed 和调试导出，不作为生产写入路径，也不作为离线迁移输入
+- Runtime 生产读取只允许走 active runtime snapshot；draft、Proposal 和 YAML 同名资产不得被 Runtime fallback 命中
 - 真实 Agent Runtime 补证可按需运行 `make preflight-agent-runtime` 和 `make live-agent-runtime`：前者只检查 active Ontology / Cube / Measure 绑定，后者会提交真实 MaxCompute 执行验收
 - 整个入口不承诺 hermetic，也不保证领域 smoke 对工作区和数据零副作用
 - 只应在语义关键路径改动时作为交付门禁运行

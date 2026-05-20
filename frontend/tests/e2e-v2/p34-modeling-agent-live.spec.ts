@@ -14,6 +14,8 @@ const LIVE_QUESTION =
   process.env.P34_LIVE_QUESTION ||
   `${QUESTION}，源表 df_cb_258187.dwd_interaction_comment_reports_df，关键词 comment reports interaction`
 const EXPECTED_SOURCE_TABLE = 'dwd_interaction_comment_reports_df'
+const LIVE_SEMANTIC_NAMESPACE =
+  process.env.P34_LIVE_SEMANTIC_NAMESPACE || process.env.SEMANTIC_FIXTURE_NAMESPACE || ''
 const REPO_ROOT = path.resolve(process.cwd(), '..')
 const TRACKED_STUDENT_COMMENT_ASSET_FILES = [
   'app/infrastructure/ontology/glossary/student_comment.yml',
@@ -228,6 +230,15 @@ async function openPublishedSession(page: Page, token: string, sessionId: string
   await expect(page.getByText(/语义已发布|Data Agent 可消费|已发布/).first()).toBeVisible()
 }
 
+function namespacePatch(): Record<string, string> {
+  if (!LIVE_SEMANTIC_NAMESPACE) return {}
+  return {
+    namespace: LIVE_SEMANTIC_NAMESPACE,
+    semantic_namespace: LIVE_SEMANTIC_NAMESPACE,
+    test_namespace: LIVE_SEMANTIC_NAMESPACE,
+  }
+}
+
 test('P34 live 真实后端完成 session -> deterministic draft -> proposal -> publish @live @p34', async ({
   page,
   request,
@@ -286,7 +297,7 @@ test('P34 live 真实后端完成 session -> deterministic draft -> proposal -> 
       'POST',
       `/api/v1/semantic/modeling-copilot/sessions/${session.id}/save-proposal`,
       auth.headers,
-      { source: 'p34_live_smoke' },
+      { source: 'p34_live_smoke', proposal_patch: namespacePatch() },
     )
     const proposalId = session.current_proposal_id || String(objectAt(stateOf(session).advanced_refs).proposal_id || '')
     expect(proposalId, `保存 Proposal 后缺少 proposal id: ${JSON.stringify(session)}`).toBeTruthy()
@@ -300,6 +311,10 @@ test('P34 live 真实后端完成 session -> deterministic draft -> proposal -> 
     )
     expect(objectAt(stateOf(session).publish_result).status, JSON.stringify(stateOf(session).publish_result))
       .toBe('published')
+    const publishDetails = objectAt(objectAt(stateOf(session).publish_result).details)
+    expect(publishDetails.source, JSON.stringify(publishDetails)).toBe('sql_registry')
+    expect(objectAt(publishDetails.registry).release_id, JSON.stringify(publishDetails)).toBeTruthy()
+    expect(objectAt(publishDetails.registry).snapshot_id, JSON.stringify(publishDetails)).toBeTruthy()
 
     const review = await api<CopilotReview>(
       request,

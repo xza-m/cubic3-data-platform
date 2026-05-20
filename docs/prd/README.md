@@ -25,6 +25,9 @@ last_reviewed: 2026-03-24
 - [语义层建设 PRD](semantic_layer_prd.md)
   - 语义层目标、数据模型、API 和演进设计的核心来源之一
   - 状态：高价值设计文档，但部分章节仍需结合当前实现辨别是否已落地
+- [语义平台生产级重构 Spec](semantic_platform_production_refactor_spec.md)
+  - 跟踪方案 B 的生产级重构：SQL-only Registry、发布治理、Copilot 状态机、Runtime 快照、权限审计、测试隔离和三期任务规划
+  - 状态：重构设计输入和进度跟踪入口，不代表当前已全部落地
 - [通用元数据浏览器设计说明](universal_schema_browser_prd.md)
   - 聚焦异构数据源的统一元数据浏览交互设计
   - 状态：专题组件设计输入

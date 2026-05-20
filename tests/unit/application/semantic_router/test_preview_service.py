@@ -67,6 +67,15 @@ def _save_sample_cube(repo: YamlCubeRepository) -> None:
     )
 
 
+class _RuntimeSnapshotServiceStub:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def get_active_manifest(self, namespace="default"):
+        assert namespace == "default"
+        return self.payload
+
+
 def test_router_routes_metric_and_alias_to_cube(tmp_path):
     cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
     _save_sample_cube(cube_repo)
@@ -216,6 +225,290 @@ def test_official_runtime_only_matches_active_ontology_and_glossary_targets(tmp_
     preview_route = service.route(question="查看草稿成交额趋势", runtime_mode="preview")
     assert preview_route["runtime_mode"] == "preview"
     assert preview_route["business_intent"]["primary_match"]["name"] == "draft_gmv"
+
+
+def test_official_runtime_requires_active_sql_snapshot(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    _save_sample_cube(cube_repo)
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+
+    metric_repo.save(
+        BusinessMetric(
+            name="active_gmv",
+            title="有效GMV",
+            object_name="order",
+            semantic_formula="已发布 GMV",
+            measure_refs=["orders.gmv"],
+            status="active",
+        )
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=SemanticMapperPreviewService(
+            object_repository=object_repo,
+            metric_repository=metric_repo,
+            glossary_repository=glossary_repo,
+            relation_repository=relation_repo,
+            action_repository=action_repo,
+            cube_repository=cube_repo,
+        ),
+        compiler_preview_service=ExecutionCompilerPreviewService(
+            metric_repository=metric_repo,
+            cube_repository=cube_repo,
+        ),
+        runtime_snapshot_service=_RuntimeSnapshotServiceStub(
+            {"ok": False, "error_code": "semantic_runtime_not_ready"}
+        ),
+    )
+
+    route = service.route(question="查看有效GMV趋势", runtime_mode="official")
+
+    assert route["route_type"] == "blocked"
+    assert route["reason"] == "semantic_runtime_not_ready"
+    assert route["traceability"]["runtime"]["manifest_status"] == "blocked"
+
+
+def test_official_runtime_filters_matches_by_snapshot_manifest(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    _save_sample_cube(cube_repo)
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+
+    object_repo.save(BusinessObject(name="order", title="订单", status="active"))
+    metric_repo.save(
+        BusinessMetric(
+            name="active_gmv",
+            title="有效GMV",
+            object_name="order",
+            semantic_formula="已发布 GMV",
+            measure_refs=["orders.gmv"],
+            aliases=["有效成交额"],
+            status="active",
+        )
+    )
+    metric_repo.save(
+        BusinessMetric(
+            name="yaml_only_gmv",
+            title="YAML旁路GMV",
+            object_name="order",
+            semantic_formula="未发布 GMV",
+            measure_refs=["orders.gmv"],
+            aliases=["旁路成交额"],
+            status="active",
+        )
+    )
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    runtime_snapshot = {
+        "ok": True,
+        "snapshot_id": "snap_1",
+        "release_id": "rel_1",
+        "asset_manifest_json": {
+            "schema_version": "semantic-runtime-manifest/v1",
+            "assets": [
+                {
+                    "asset_id": "asset_metric_active_gmv",
+                    "asset_type": "ontology",
+                    "asset_key": "metric:active_gmv",
+                    "revision_id": "rev_1",
+                    "spec_checksum": "a" * 64,
+                    "status": "published",
+                    "spec": {
+                        "metric": {
+                            "name": "active_gmv",
+                            "title": "有效GMV",
+                            "object_name": "order",
+                            "semantic_formula": "已发布 GMV",
+                            "measure_refs": ["orders.gmv"],
+                            "aliases": ["有效成交额"],
+                            "status": "active",
+                        }
+                    },
+                },
+                {
+                    "asset_id": "asset_cube_orders",
+                    "asset_type": "cube",
+                    "asset_key": "orders",
+                    "revision_id": "rev_cube_orders",
+                    "spec_checksum": "d" * 64,
+                    "status": "published",
+                    "spec": {
+                        "cube": {
+                            "name": "orders",
+                            "title": "订单",
+                            "table": "dws.orders",
+                            "source_id": 1,
+                            "source_database": "dw",
+                            "dimensions": {
+                                "status": {"title": "状态", "type": "string", "sql": "{CUBE}.status"}
+                            },
+                            "measures": {
+                                "gmv": {"title": "GMV", "type": "sum", "sql": "{CUBE}.amount"}
+                            },
+                        }
+                    },
+                }
+            ],
+        },
+        "binding_manifest_json": {"schema_version": "semantic-runtime-manifest/v1", "bindings": []},
+        "policy_manifest_json": {"schema_version": "semantic-runtime-manifest/v1", "policies": []},
+    }
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        runtime_snapshot_service=_RuntimeSnapshotServiceStub(runtime_snapshot),
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+
+    active_route = service.route(question="查看有效成交额趋势", runtime_mode="official")
+    yaml_only_route = service.route(question="查看旁路成交额趋势", runtime_mode="official")
+
+    assert active_route["route_type"] == "cube"
+    assert active_route["traceability"]["runtime"]["snapshot_id"] == "snap_1"
+    assert yaml_only_route["route_type"] == "blocked"
+    assert yaml_only_route["reason"] == "未命中已发布业务语义"
+
+
+def test_official_runtime_routes_and_compiles_from_snapshot_manifest_without_yaml(tmp_path):
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+    runtime_snapshot = {
+        "ok": True,
+        "snapshot_id": "snap_sql",
+        "release_id": "rel_sql",
+        "asset_manifest_json": {
+            "schema_version": "semantic-runtime-manifest/v1",
+            "assets": [
+                {
+                    "asset_id": "asset_metric_comment_count",
+                    "asset_type": "ontology",
+                    "asset_key": "metric:comment_count",
+                    "revision_id": "rev_metric",
+                    "spec_checksum": "b" * 64,
+                    "status": "published",
+                    "spec": {
+                        "metric": {
+                            "name": "comment_count",
+                            "title": "学生评论数",
+                            "object_name": "StudentComment",
+                            "semantic_formula": "按评论ID去重统计评论数量",
+                            "measure_refs": ["student_comment_cube.comment_count"],
+                            "aliases": ["评论数"],
+                            "status": "active",
+                        }
+                    },
+                },
+                {
+                    "asset_id": "asset_cube_student_comment",
+                    "asset_type": "cube",
+                    "asset_key": "student_comment_cube",
+                    "revision_id": "rev_cube",
+                    "spec_checksum": "c" * 64,
+                    "status": "published",
+                    "spec": {
+                        "cube": {
+                            "name": "student_comment_cube",
+                            "title": "学生评论",
+                            "table": "df_cb_258187.dwd_interaction_comment_reports_df",
+                            "source_id": 1,
+                            "source_database": "df_cb_258187",
+                            "dimensions": {
+                                "school_name": {
+                                    "title": "学校名称",
+                                    "type": "string",
+                                    "sql": "{CUBE}.comment_school_name",
+                                    "synonyms": ["学校"],
+                                },
+                                "ds": {"title": "分区日期", "type": "time", "sql": "{CUBE}.ds"},
+                            },
+                            "measures": {
+                                "comment_count": {
+                                    "title": "评论数",
+                                    "type": "number",
+                                    "sql": "COUNT(DISTINCT {CUBE}.comment_id)",
+                                    "certified": True,
+                                }
+                            },
+                            "partition": {
+                                "field": "ds",
+                                "type": "date",
+                                "format": "yyyyMMdd",
+                                "max_range_days": 30,
+                            },
+                        }
+                    },
+                },
+            ],
+        },
+        "binding_manifest_json": {"schema_version": "semantic-runtime-manifest/v1", "bindings": []},
+        "policy_manifest_json": {"schema_version": "semantic-runtime-manifest/v1", "policies": []},
+    }
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        runtime_snapshot_service=_RuntimeSnapshotServiceStub(runtime_snapshot),
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+
+    result = service.execute_plan_preview(
+        question="查询最近7天评论数，按学校汇总",
+        runtime_mode="official",
+        viewer_roles=["ops_readonly"],
+    )
+
+    route = result["route"]
+    preview = result["compiled_targets"][0]["preview"]
+    assert route["route_type"] == "cube"
+    assert route["matched"]["metric_name"] == "comment_count"
+    assert result["projection_result"]["binding_status"] == "linked"
+    assert preview["status"] == "ready"
+    assert preview["bindings"]["runtime_snapshot_id"] == "snap_sql"
+    assert preview["bindings"]["runtime_release_id"] == "rel_sql"
+    assert "df_cb_258187.dwd_interaction_comment_reports_df" in preview["logical_sql"]
+    assert "comment_school_name" in preview["logical_sql"]
 
 
 def test_official_runtime_extracts_analysis_slots_and_compiles_query_dsl(tmp_path):

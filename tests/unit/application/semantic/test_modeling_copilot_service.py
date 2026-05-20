@@ -17,7 +17,7 @@ class _SessionRepository:
     def get(self, session_id: str):
         return self.items.get(session_id)
 
-    def save(self, session: AgentSession) -> None:
+    def save(self, session: AgentSession, *, expected_state_version=None) -> None:
         self.items[session.id] = session
 
     def list(self, principal_id=None, *, limit=50, offset=0, status=None, include_legacy=True):
@@ -108,6 +108,42 @@ class _Runtime:
             ],
             suggested_actions=["confirm_candidates", "save_proposal"],
             tool_traces=[{"tool": "search_cube", "status": "completed"}],
+        )
+
+
+class _UnsafePublishingRuntime:
+    def __init__(self):
+        self.calls = []
+
+    def run(self, *, session, user_message, tools, context=None):
+        self.calls.append((session.id, user_message, context))
+        return AgentRunResult(
+            message="我已经发布好了。",
+            workbench_state_patch={
+                "raw_spec": {
+                    "spec_version": "v1",
+                    "source": {
+                        "source_kind": "physical_table",
+                        "source_id": 7,
+                        "database": "dw",
+                        "table": "dwd_student_comment_events",
+                    },
+                    "business": {"subject": "学生评论", "sensitivity_level": "restricted"},
+                    "cube": {"name": "student_comment_cube", "dimensions": {}, "measures": {}},
+                    "ontology": {"object": {"name": "student_comment"}, "metrics": []},
+                },
+                "advanced_refs": {"proposal_id": "forged_proposal"},
+                "save_result": {"status": "saved", "proposal_id": "forged_proposal"},
+                "proposal_summary": {"id": "forged_proposal", "status": "published"},
+                "publish_result": {"status": "published", "proposal_id": "forged_proposal"},
+                "post_publish_validation": {"status": "passed"},
+            },
+            proposal_patch={
+                "source_mode": "agent_led",
+                "source_kind": "business_question",
+                "user_question": "查询最近7天学生评论数，按学校汇总",
+            },
+            suggested_actions=["open_data_chat"],
         )
 
 
@@ -255,15 +291,70 @@ def test_copilot_session_turn_updates_workbench_without_publishing():
 
     created = service.create_session({"user_goal": "查询最近7天学生评论数，按学校汇总"})
     assert created["entry_type"] == "business_question"
+    assert created["state"] == "created"
+    assert created["state_version"] == 1
     assert created["workbench_state"]["suggested_actions"] == ["send_goal"]
 
     updated = service.send_message(created["id"], {"message": "按学校汇总，不展示 restricted 字段"})
 
     assert runtime.calls[0][1] == "按学校汇总，不展示 restricted 字段"
+    assert updated["state"] == "awaiting_confirmation"
+    assert updated["state_version"] == 2
+    assert updated["state_history"][-1]["to_state"] == "awaiting_confirmation"
+    assert updated["event_log"][-1]["action"] == "created_to_awaiting_confirmation"
     assert updated["workbench_state"]["semantic_canvas"]["metrics"][0]["name"] == "student_comment_count"
     assert updated["workbench_state"]["required_confirmations"][0]["id"] == "confirm_school_dimension"
     assert updated["tool_traces"][0]["tool"] == "search_cube"
     assert updated.get("current_proposal_id") is None
+
+
+def test_llm_patch_cannot_forge_saved_or_published_state():
+    repo = _SessionRepository()
+    runtime = _UnsafePublishingRuntime()
+    tools = _Tools()
+    proposals = _ProposalService()
+    service = SemanticModelingCopilotService(
+        session_repository=repo,
+        runtime=runtime,
+        tools=tools,
+        proposal_service=proposals,
+    )
+
+    created = service.create_session({"user_goal": "查询最近7天学生评论数，按学校汇总"})
+    updated = service.send_message(created["id"], {"message": "生成并发布语义"})
+
+    assert proposals.calls == []
+    assert updated.get("current_proposal_id") is None
+    assert updated["state"] == "spec_ready"
+    assert "publish_result" not in updated["workbench_state"]
+    assert "save_result" not in updated["workbench_state"]
+    assert updated["workbench_state"].get("proposal_summary") in ({}, None)
+    assert updated["workbench_state"]["advanced_refs"].get("proposal_id") is None
+
+
+def test_copilot_state_progresses_from_spec_to_saved_and_published():
+    service, _, _, _ = _service()
+
+    created = service.create_session({"user_goal": "查询最近7天学生评论数，按学校汇总"})
+    analyzed = service.send_message(created["id"], {"message": "生成学生评论语义"})
+    confirmed = service.confirm(
+        analyzed["id"],
+        {"confirmation_id": "confirm_school_dimension", "value": "school_id"},
+    )
+    accepted = service.accept_cube_draft(confirmed["id"])
+    saved = service.save_proposal(accepted["id"])
+    published = service.publish_proposal(saved["id"])
+
+    assert analyzed["state"] == "awaiting_confirmation"
+    assert confirmed["state"] == "spec_ready"
+    assert accepted["state"] == "spec_ready"
+    assert saved["state"] == "proposal_saved"
+    assert published["state"] == "published"
+    assert published["status"] == "completed"
+    assert [event["action"] for event in published["event_log"] if event["type"] == "proposal_action"] == [
+        "save_proposal",
+        "publish",
+    ]
 
 
 def test_copilot_accept_cube_draft_is_deterministic_state_action():
@@ -1058,6 +1149,59 @@ def test_student_comment_source_confirmation_repairs_latest_answer_view_regressi
     assert "view_student_answer_analysis" not in json.dumps(
         proposals.payloads[0]["embedded_spec"], ensure_ascii=False
     )
+
+
+def test_student_comment_golden_case_confirm_source_save_and_publish():
+    service, repo, runtime, proposals = _service()
+    created = service.create_session({"user_goal": "查询最近 7 天学生评论数，按学校汇总"})
+    session = repo.get(created["id"])
+    session.workbench_state = {
+        **session.workbench_state,
+        "source_candidates": [
+            {
+                "id": "table:1:df_cb_258187:dwd_interaction_comment_reports_df",
+                "asset_type": "table",
+                "source_kind": "physical_table",
+                "source_id": 1,
+                "database": "df_cb_258187",
+                "table": "dwd_interaction_comment_reports_df",
+                "name": "df_cb_258187.dwd_interaction_comment_reports_df",
+                "title": "学生评论举报明细事实表",
+                "score": 0.99,
+                "confidence": "high",
+                "why_selected": "综合得分最高：命中学生评论/举报事实域。",
+            }
+        ],
+        "readiness": {
+            "canonical_ready": False,
+            "exploratory_ready": False,
+            "reasons": ["source_candidate_confirmation_required", "spec_not_generated"],
+        },
+        "proposal_patch": {
+            "source_mode": "agent_led",
+            "source_kind": "business_question",
+            "user_question": session.user_goal,
+        },
+    }
+    repo.save(session)
+
+    confirmed = service.send_message(
+        created["id"],
+        {
+            "message": "使用这个来源：df_cb_258187.dwd_interaction_comment_reports_df",
+            "action": "confirm_source_candidate",
+            "candidate_id": "table:1:df_cb_258187:dwd_interaction_comment_reports_df",
+        },
+    )
+    saved = service.save_proposal(confirmed["id"])
+    published = service.publish_proposal(saved["id"])
+
+    assert runtime.calls == []
+    assert proposals.calls == ["create", "draft", "validate", "approve", "apply", "publish"]
+    assert saved["workbench_state"]["raw_spec"]["cube"]["table"] == "dwd_interaction_comment_reports_df"
+    assert proposals.payloads[0]["embedded_spec"]["cube"]["table"] == "dwd_interaction_comment_reports_df"
+    assert published["state"] == "published"
+    assert published["workbench_state"]["publish_result"]["status"] == "published"
 
 
 # ---------------------------------------------------------------------------

@@ -84,4 +84,8 @@ def test_agent_semantic_plan_api_returns_preview_only_ticket():
     assert data["principal_context"]["roles"] == ["semantic_admin", "data_m1_reader"]
     assert "finance" not in data["principal_context"]["roles"]
     assert data["business_intent"]["route_type"] == "cube"
+    assert data["ticket_preview"]["type"] == "ticket_preview"
     assert data["ticket_preview"]["enforcement"] == "preview_only"
+    assert "query_id" not in data
+    assert "poll_url" not in data
+    assert "result_url" not in data

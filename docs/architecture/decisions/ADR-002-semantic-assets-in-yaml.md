@@ -1,16 +1,18 @@
 ---
 doc_type: adr
-status: current
+status: superseded
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-03-24
+last_reviewed: 2026-05-19
 ---
 
 # ADR-002 语义定义采用 YAML 文件仓储作为主承载
 
 ## 状态
 
-当前有效
+已被 [ADR-010 生产语义资产采用 SQL Registry 作为事实源](ADR-010-semantic-sql-registry-production-source.md) 在生产链路上替代。
+
+本 ADR 仅保留历史背景：YAML 仓储曾作为 Cube、Domain、View、Recipe、Catalog 的主承载。当前生产事实源为 PostgreSQL SQL Registry；YAML 只用于本地开发 fixture、示例 seed 和调试导出，不做生产双写，也不作为离线迁移输入。
 
 ## 背景
 
@@ -34,7 +36,7 @@ last_reviewed: 2026-03-24
 
 ## 决策
 
-当前阶段把语义定义对象的主承载形式固定为 YAML 文件仓储：
+历史阶段曾把语义定义对象的主承载形式固定为 YAML 文件仓储：
 
 - Catalog 存在 `app/infrastructure/semantic/catalogs/`
 - Cube 存在 `app/infrastructure/semantic/cubes/`
@@ -42,7 +44,7 @@ last_reviewed: 2026-03-24
 - View 存在 `app/infrastructure/semantic/views/`
 - Recipe 存在 `app/infrastructure/semantic/recipes/`
 
-数据库继续承载数据源、数据集、执行记录等平台事实；语义定义不再额外建立一套并行的数据库主模型作为默认事实源。
+当前生产阶段已调整为：数据库继续承载数据源、数据集、执行记录等平台事实，同时 SQL Registry 承载生产语义资产事实源；YAML 不再是生产发布链路的主事实源。
 
 ## 理由
 
@@ -61,8 +63,8 @@ last_reviewed: 2026-03-24
 
 约束：
 
-- Cube、Domain、View、Recipe、Catalog 的主事实源是 YAML，而不是数据库表
-- 任何想引入“数据库优先的语义定义存储”方案，都应视为架构变更并单独评估
+- Cube、Domain、View、Recipe、Catalog 的历史主事实源是 YAML；生产发布链路以 SQL Registry 为准
+- 任何想恢复生产 YAML 双写或 YAML 迁移输入的方案，都应视为架构变更并单独评估
 - 文件命名、目录结构和对象主键策略会影响兼容性，不能随意改动
 - 仓储缓存与 reload 行为属于当前实现约束，调试和热更新场景需要显式考虑刷新
 

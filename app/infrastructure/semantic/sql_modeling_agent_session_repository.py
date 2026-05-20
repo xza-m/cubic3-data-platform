@@ -4,8 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from app.domain.semantic.copilot_state import CopilotStateConflict
 from app.domain.semantic.modeling_agent_session import AgentSession
 from app.domain.semantic.ports.modeling_agent_session_repository import (
     IModelingAgentSessionRepository,
@@ -23,25 +25,59 @@ class SqlModelingAgentSessionRepository(IModelingAgentSessionRepository):
         row = self._get_row(session_id)
         if row is None:
             return None
-        return AgentSession(**(row.payload_json or {}))
+        return AgentSession(**self._payload_from_row(row))
 
-    def save(self, session: AgentSession) -> None:
+    def save(
+        self,
+        session: AgentSession,
+        *,
+        expected_state_version: Optional[int] = None,
+    ) -> None:
         session.touch()
         payload = session.model_dump(exclude_none=True)
+        updated_at = _parse_utc(session.updated_at)
+        row_values = {
+            "principal_id": session.principal_id,
+            "status": session.status,
+            "state": session.state,
+            "state_version": session.state_version,
+            "title": session.title,
+            "payload_json": payload,
+        }
+        if updated_at is not None:
+            row_values["updated_at"] = updated_at
         row = self._get_row(session.id)
         if row is None:
+            if expected_state_version is not None and expected_state_version != 0:
+                raise CopilotStateConflict(
+                    f"expected state_version={expected_state_version}, actual=None"
+                )
             row = SemanticModelingAgentSessionORM(id=session.id)
             created_at = _parse_utc(session.created_at)
             if created_at is not None:
                 row.created_at = created_at
             self.session.add(row)
-        row.principal_id = session.principal_id
-        row.status = session.status
-        row.title = session.title
-        row.payload_json = payload
-        updated_at = _parse_utc(session.updated_at)
-        if updated_at is not None:
-            row.updated_at = updated_at
+        elif expected_state_version is not None:
+            stmt = (
+                update(SemanticModelingAgentSessionORM)
+                .where(SemanticModelingAgentSessionORM.id == session.id)
+                .where(
+                    SemanticModelingAgentSessionORM.state_version == expected_state_version
+                )
+                .values(**row_values, version=SemanticModelingAgentSessionORM.version + 1)
+            )
+            result = self.session.execute(stmt)
+            if result.rowcount != 1:
+                actual_row = self._get_row(session.id)
+                actual = self._state_version_from_row(actual_row) if actual_row else None
+                self.session.rollback()
+                raise CopilotStateConflict(
+                    f"expected state_version={expected_state_version}, actual={actual}"
+                )
+            self.session.commit()
+            return
+        for key, value in row_values.items():
+            setattr(row, key, value)
         row.version = int(row.version or 0) + 1
         self.session.commit()
 
@@ -70,7 +106,7 @@ class SqlModelingAgentSessionRepository(IModelingAgentSessionRepository):
             query = query.offset(offset)
         if limit is not None and limit >= 0:
             query = query.limit(limit)
-        return [AgentSession(**(row.payload_json or {})) for row in query.all()]
+        return [AgentSession(**self._payload_from_row(row)) for row in query.all()]
 
     def delete(self, session_id: str) -> None:
         row = self._get_row(session_id)
@@ -99,6 +135,18 @@ class SqlModelingAgentSessionRepository(IModelingAgentSessionRepository):
             .filter(SemanticModelingAgentSessionORM.id == session_id)
             .first()
         )
+
+    def _payload_from_row(self, row: SemanticModelingAgentSessionORM) -> dict:
+        payload = dict(row.payload_json or {})
+        payload.setdefault("state", row.state or "created")
+        payload.setdefault("state_version", row.state_version or 1)
+        payload.setdefault("state_history", [])
+        payload.setdefault("event_log", [])
+        return payload
+
+    def _state_version_from_row(self, row: SemanticModelingAgentSessionORM) -> int:
+        payload = row.payload_json or {}
+        return int(row.state_version or payload.get("state_version") or 1)
 
 
 def _parse_utc(value: str | None) -> datetime | None:

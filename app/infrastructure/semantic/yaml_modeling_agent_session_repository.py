@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 import yaml
 
+from app.domain.semantic.copilot_state import CopilotStateConflict
 from app.domain.semantic.modeling_agent_session import AgentSession
 from app.domain.semantic.ports.modeling_agent_session_repository import IModelingAgentSessionRepository
 
@@ -32,18 +33,31 @@ class YamlModelingAgentSessionRepository(IModelingAgentSessionRepository):
 
     def get(self, session_id: str) -> Optional[AgentSession]:
         self._ensure_loaded()
-        return self._cache.get(session_id)
+        session = self._cache.get(session_id)
+        return session.model_copy(deep=True) if session is not None else None
 
-    def save(self, session: AgentSession) -> None:
+    def save(
+        self,
+        session: AgentSession,
+        *,
+        expected_state_version: Optional[int] = None,
+    ) -> None:
         self._ensure_loaded()
         self._dir.mkdir(parents=True, exist_ok=True)
+        existing = self._cache.get(session.id)
+        if expected_state_version is not None:
+            actual = existing.state_version if existing is not None else None
+            if actual != expected_state_version:
+                raise CopilotStateConflict(
+                    f"expected state_version={expected_state_version}, actual={actual}"
+                )
         session.touch()
         fp = self._dir / f"{session.id}.yml"
         fp.write_text(
             yaml.dump(session.model_dump(exclude_none=True), allow_unicode=True, sort_keys=False),
             encoding="utf-8",
         )
-        self._cache[session.id] = session
+        self._cache[session.id] = session.model_copy(deep=True)
 
     def list(
         self,
@@ -56,7 +70,8 @@ class YamlModelingAgentSessionRepository(IModelingAgentSessionRepository):
     ) -> List[AgentSession]:
         self._ensure_loaded()
         items: List[AgentSession] = []
-        for session in self._cache.values():
+        for cached in self._cache.values():
+            session = cached.model_copy(deep=True)
             if principal_id is not None:
                 if session.principal_id is None:
                     if not include_legacy:

@@ -133,6 +133,75 @@ class _Builder:
         return {"publish_targets": publish_targets or {"cube": True, "ontology": False}}
 
 
+class _SqlRegistryRepository:
+    def __init__(self):
+        self.assets = {}
+        self.revisions = {}
+        self.active_snapshot = None
+
+    def get_asset(self, namespace, asset_type, asset_key):
+        return self.assets.get((namespace, asset_type, asset_key))
+
+    def get_asset_by_id(self, asset_id):
+        return next((asset for asset in self.assets.values() if asset.id == asset_id), None)
+
+    def create_or_update_asset(self, asset):
+        self.assets[(asset.namespace, asset.asset_type, asset.asset_key)] = asset
+        return asset
+
+    def append_revision(self, asset_id, spec, *, proposal_id=None, actor=None, force_new_revision=False):
+        revision = SimpleNamespace(
+            id=f"rev_{len(self.revisions) + 1}",
+            asset_id=asset_id,
+            revision_no=len([item for item in self.revisions.values() if item.asset_id == asset_id]) + 1,
+            revision_status="draft",
+            spec_json=deepcopy(spec),
+            spec_checksum=f"sha-{len(self.revisions) + 1}",
+            proposal_id=proposal_id,
+            created_by=actor,
+        )
+        self.revisions[revision.id] = revision
+        asset = self.get_asset_by_id(asset_id)
+        asset.current_revision_id = revision.id
+        return revision
+
+    def get_revision(self, revision_id):
+        return self.revisions.get(revision_id)
+
+    def get_active_snapshot(self, namespace="default"):
+        return self.active_snapshot
+
+
+class _SqlReleaseService:
+    def __init__(self, repo):
+        self.repo = repo
+        self.calls = []
+
+    def publish(self, *, namespace, revision_ids, actor, gate_result, idempotency_key=None):
+        self.calls.append(
+            {
+                "namespace": namespace,
+                "revision_ids": list(revision_ids),
+                "actor": actor,
+                "gate_result": deepcopy(gate_result),
+                "idempotency_key": idempotency_key,
+            }
+        )
+        release = SimpleNamespace(
+            id=f"rel_{len(self.calls)}",
+            release_no=len(self.calls),
+            status="published",
+            namespace=namespace,
+        )
+        for revision_id in revision_ids:
+            revision = self.repo.get_revision(revision_id)
+            asset = self.repo.get_asset_by_id(revision.asset_id)
+            asset.status = "active"
+            asset.current_release_id = release.id
+        self.repo.active_snapshot = SimpleNamespace(id=f"snap_{len(self.calls)}")
+        return release
+
+
 def _service(builder=None):
     return ModelingProposalService(
         repository=_MemoryProposalRepository(),
@@ -178,6 +247,152 @@ def test_proposal_flow_wraps_existing_builder_and_computes_readiness():
     assert applied["status"] == "applied"
     assert applied["applied_spec_hash"] == approved["approved_spec_hash"]
     assert applied["audit_snapshot"]["applied_spec_hash"] == approved["approved_spec_hash"]
+
+
+def test_proposal_approve_is_idempotent_for_same_revision():
+    service = _service()
+    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+
+    first = service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+    second = service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+
+    assert first["approved_spec_hash"] == second["approved_spec_hash"]
+    assert len(second["review_records"]) == 1
+    assert [
+        action["action"]
+        for action in second["action_log"]
+        if action["action"] == "approve"
+    ] == ["approve"]
+
+
+def test_proposal_apply_and_publish_are_idempotent_after_success():
+    builder = _Builder()
+    service = _service(builder)
+    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+    service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+
+    first_apply = service.apply(proposal["id"])
+    second_apply = service.apply(proposal["id"])
+    first_publish = service.publish(proposal["id"], publish_targets={"cube": True, "ontology": False})
+    second_publish = service.publish(proposal["id"], publish_targets={"cube": True, "ontology": False})
+
+    assert first_apply["applied_spec_hash"] == second_apply["applied_spec_hash"]
+    assert first_publish["publish_result"] == second_publish["publish_result"]
+    assert [call[0] for call in builder.calls].count("apply") == 1
+    assert [call[0] for call in builder.calls].count("publish") == 1
+    assert [
+        action["action"]
+        for action in second_publish["action_log"]
+        if action["action"] in {"apply", "publish"}
+    ] == ["apply", "publish"]
+
+
+def test_apply_and_publish_use_sql_registry_when_available():
+    builder = _Builder()
+    registry = _SqlRegistryRepository()
+    release_service = _SqlReleaseService(registry)
+    service = ModelingProposalService(
+        repository=_MemoryProposalRepository(),
+        builder=builder,
+        readiness_checker=PublishReadinessChecker(),
+        asset_registry_repository=registry,
+        release_service=release_service,
+    )
+    proposal = service.create_proposal({"source_mode": "agent_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+    service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+
+    applied = service.apply(proposal["id"])
+    published = service.publish(proposal["id"], publish_targets={"cube": True, "ontology": True})
+
+    assert [call[0] for call in builder.calls].count("apply") == 0
+    assert [call[0] for call in builder.calls].count("publish") == 0
+    assert applied["drafts"]["apply_result"]["source"] == "sql_registry"
+    assert applied["drafts"]["apply_result"]["registry"]["revision_id"] == "rev_1"
+    assert published["publish_result"]["source"] == "sql_registry"
+    assert published["publish_result"]["cube"]["status"] == "active"
+    assert published["publish_result"]["registry"]["release_id"] == "rel_1"
+    assert published["publish_result"]["registry"]["snapshot_id"] == "snap_1"
+    assert release_service.calls[0]["gate_result"]["proposal_id"] == proposal["id"]
+
+    second = service.create_proposal({"source_mode": "agent_led", "table": "dwd_student_comment_events"})
+    service.draft(second["id"])
+    service.validate(second["id"])
+    service.approve(second["id"], {"approved_by": "semantic_owner"})
+    service.apply(second["id"])
+
+    asset = registry.get_asset("default", "cube", "student_comments")
+    assert asset.status == "active"
+    assert asset.current_release_id == "rel_1"
+
+
+def test_confirm_source_records_action_and_is_idempotent_for_same_source():
+    service = _service()
+    proposal = service.create_proposal(
+        {
+            "source_mode": "agent_led",
+            "source_kind": "business_question",
+            "user_question": "查询学生评论数",
+        }
+    )
+
+    confirmed = service.confirm_source(
+        proposal["id"],
+        {
+            "actor": "semantic_owner",
+            "source_kind": "physical_table",
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+        },
+    )
+    confirmed_again = service.confirm_source(
+        proposal["id"],
+        {
+            "actor": "semantic_owner",
+            "source_kind": "physical_table",
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+        },
+    )
+
+    assert confirmed["source_context"]["confirmed_source"]["table"] == "dwd_student_comment_events"
+    assert confirmed["proposal_revision_no"] == proposal["proposal_revision_no"] + 1
+    assert confirmed_again["proposal_revision_no"] == confirmed["proposal_revision_no"]
+    assert [
+        action["action"]
+        for action in confirmed_again["action_log"]
+        if action["action"] == "confirm_source"
+    ] == ["confirm_source"]
+
+
+def test_update_spec_bumps_revision_and_invalidates_previous_approval():
+    service = _service()
+    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+    approved = service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+
+    updated = service.update_spec(
+        proposal["id"],
+        {
+            "actor": "semantic_owner",
+            "cube": {"name": "student_comments_v2"},
+        },
+    )
+
+    assert updated["proposal_revision_no"] == approved["proposal_revision_no"] + 1
+    assert updated.get("approved_spec_hash") is None
+    assert updated.get("approved_proposal_revision_no") is None
+    assert updated["status"] == "drafted"
+    assert updated["spec"]["cube"]["name"] == "student_comments_v2"
+    assert updated["action_log"][-1]["action"] == "update_spec"
+    with pytest.raises(ValueError, match="approved"):
+        service.apply(proposal["id"])
 
 
 def test_draft_uses_embedded_spec_skips_create_spec_draft_for_copilot_business_question():

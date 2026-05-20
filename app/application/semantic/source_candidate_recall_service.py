@@ -75,13 +75,20 @@ class SourceCandidateRecallService:
         )[: max(1, limit)]
 
         if not ranked:
-            return self._empty()
+            return self._empty(query=query, terms=terms)
+        ranked = self._annotate_rank_explanations(ranked)
         state = "single_high" if len(ranked) == 1 and ranked[0].get("confidence") == "high" else "multiple"
         return {
             "summary": f"已召回 {len(ranked)} 个候选数据来源",
             "state": state,
             "candidates": ranked,
             "suggested_action": "confirm_source_candidate",
+            "explainability": self._explainability_payload(
+                ranked,
+                query=query,
+                terms=terms,
+                decision="confirm_source_candidate",
+            ),
         }
 
     @classmethod
@@ -392,10 +399,106 @@ class SourceCandidateRecallService:
         return "", None, ""
 
     @staticmethod
-    def _empty() -> Dict[str, Any]:
+    def _empty(query: str = "", terms: Optional[Sequence[str]] = None) -> Dict[str, Any]:
         return {
             "summary": "没有召回到候选数据来源",
             "state": "no_candidate",
             "candidates": [],
             "suggested_action": "ask_for_source",
+            "explainability": {
+                "decision": "ask_for_source",
+                "reason": "本地语义资产、Dataset 与 datasource 表缓存均未命中可审阅数据来源。",
+                "query": query,
+                "query_terms": list(terms or []),
+                "selected_candidate_id": None,
+                "candidate_explanations": [],
+                "scoring_profile_ids": [],
+            },
         }
+
+    def _annotate_rank_explanations(self, ranked: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not ranked:
+            return []
+        annotated: List[Dict[str, Any]] = []
+        top_score = float(ranked[0].get("score") or 0)
+        for index, candidate in enumerate(ranked, start=1):
+            item = dict(candidate)
+            item["rank"] = index
+            if index == 1:
+                item["why_selected"] = self._candidate_selected_reason(item, len(ranked))
+            else:
+                item["why_not_selected"] = self._candidate_rejected_reason(item, top_score)
+            annotated.append(item)
+        return annotated
+
+    def _explainability_payload(
+        self,
+        ranked: List[Dict[str, Any]],
+        *,
+        query: str,
+        terms: Sequence[str],
+        decision: str,
+    ) -> Dict[str, Any]:
+        selected = ranked[0] if ranked else None
+        rules = self._scoring_config.matching_rules(query, terms)
+        return {
+            "decision": decision,
+            "reason": selected.get("why_selected") if isinstance(selected, dict) else "没有可确认候选。",
+            "query": query,
+            "query_terms": list(terms),
+            "selected_candidate_id": selected.get("id") if isinstance(selected, dict) else None,
+            "scoring_profile_ids": [rule.rule_id for rule in rules],
+            "candidate_explanations": [
+                {
+                    "candidate_id": candidate.get("id"),
+                    "name": candidate.get("name") or candidate.get("title"),
+                    "rank": candidate.get("rank"),
+                    "score": candidate.get("score"),
+                    "confidence": candidate.get("confidence"),
+                    "decision": "selected" if index == 0 else "rejected",
+                    "reason": candidate.get("why_selected") if index == 0 else candidate.get("why_not_selected"),
+                    "matched_terms": candidate.get("matched_terms") or [],
+                    "score_breakdown": candidate.get("score_breakdown") or {},
+                    "evidence": candidate.get("evidence") or [],
+                }
+                for index, candidate in enumerate(ranked)
+            ],
+        }
+
+    @staticmethod
+    def _candidate_selected_reason(candidate: Dict[str, Any], total: int) -> str:
+        evidence = "; ".join(str(item) for item in (candidate.get("evidence") or [])[:2] if str(item))
+        breakdown = SourceCandidateRecallService._breakdown_reason(candidate.get("score_breakdown") or {})
+        reason = f"综合得分最高（{candidate.get('score')}），置信度 {candidate.get('confidence')}。"
+        if evidence:
+            reason += f" {evidence}。"
+        if breakdown:
+            reason += f" 主要评分：{breakdown}。"
+        if total > 1:
+            reason += " 仍需要用户确认后才能生成 spec。"
+        return reason
+
+    @staticmethod
+    def _candidate_rejected_reason(candidate: Dict[str, Any], top_score: float) -> str:
+        score = float(candidate.get("score") or 0)
+        delta = max(0.0, top_score - score)
+        breakdown = SourceCandidateRecallService._breakdown_reason(candidate.get("score_breakdown") or {})
+        reason = f"排名第 {candidate.get('rank')}，得分低于首选 {round(delta, 4)}。"
+        if breakdown:
+            reason += f" 评分明细：{breakdown}。"
+        evidence = "; ".join(str(item) for item in (candidate.get("evidence") or [])[:2] if str(item))
+        if evidence:
+            reason += f" 证据：{evidence}。"
+        return reason
+
+    @staticmethod
+    def _breakdown_reason(breakdown: Dict[str, Any]) -> str:
+        parts: List[str] = []
+        for key, value in breakdown.items():
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            sign = "+" if number >= 0 else ""
+            parts.append(f"{key} {sign}{round(number, 4)}")
+        return " · ".join(parts)

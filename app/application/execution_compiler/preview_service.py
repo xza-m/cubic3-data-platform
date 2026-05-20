@@ -9,6 +9,7 @@ from app.application.governance.access import (
     canonical_sql_hash,
     infer_data_level_for_resource,
 )
+from app.application.semantic.runtime_manifest_catalog import RuntimeSemanticCatalog
 from app.domain.semantic.compiler import CompilationError, QueryCompiler
 from app.domain.semantic.entities import QueryDSL
 from app.domain.semantic.join_graph import JoinGraph
@@ -81,10 +82,12 @@ class ExecutionCompilerPreviewService:
         *,
         metric_repository: IBusinessMetricRepository,
         cube_repository: ICubeRepository,
+        runtime_snapshot_service=None,
         policy_guard_service=None,
     ):
         self._metric_repository = metric_repository
         self._cube_repository = cube_repository
+        self._runtime_snapshot_service = runtime_snapshot_service
         self._policy_guard_service = policy_guard_service
 
     def compile_preview(
@@ -101,6 +104,8 @@ class ExecutionCompilerPreviewService:
         question: Optional[str] = None,
         viewer_roles: Optional[list[str]] = None,
         principal_context: Optional[dict[str, Any]] = None,
+        runtime_mode: Optional[str] = None,
+        runtime_manifest: Optional[dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         normalized_target_type = (target_type or "").strip().lower()
         if normalized_target_type == "sql":
@@ -113,6 +118,8 @@ class ExecutionCompilerPreviewService:
                 question=question,
                 viewer_roles=viewer_roles or [],
                 principal_context=principal_context,
+                runtime_mode=runtime_mode,
+                runtime_manifest=runtime_manifest,
             )
         if normalized_target_type == "retrieval":
             return self.compile_retrieval_preview(
@@ -144,6 +151,8 @@ class ExecutionCompilerPreviewService:
         question: Optional[str] = None,
         viewer_roles: Optional[list[str]] = None,
         principal_context: Optional[dict[str, Any]] = None,
+        runtime_mode: Optional[str] = None,
+        runtime_manifest: Optional[dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         preview = self.compile_preview(
             target_type=target_type,
@@ -157,6 +166,8 @@ class ExecutionCompilerPreviewService:
             question=question,
             viewer_roles=viewer_roles,
             principal_context=principal_context,
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
         )
         steps = {
             "sql": ["识别业务指标语义", "绑定分析层 Measure", "生成伪 SQL 执行预览"],
@@ -178,10 +189,17 @@ class ExecutionCompilerPreviewService:
         question: Optional[str] = None,
         viewer_roles: Optional[list[str]] = None,
         principal_context: Optional[dict[str, Any]] = None,
+        runtime_mode: Optional[str] = None,
+        runtime_manifest: Optional[dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        metric = self._metric_repository.get(metric_name)
+        runtime_catalog = self._runtime_catalog(
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+        )
+        metric = runtime_catalog.get_metric(metric_name) if runtime_catalog else self._metric_repository.get(metric_name)
         if metric is None:
             raise ValueError(f"未找到业务指标: {metric_name}")
+        cube_repository = runtime_catalog.cube_repository if runtime_catalog else self._cube_repository
         roles = self._resolve_roles(viewer_roles=viewer_roles, principal_context=principal_context)
         policy = self._evaluate_policy(target_type="metric", target_name=metric.name, viewer_roles=roles)
         if policy["status"] == "blocked":
@@ -200,7 +218,7 @@ class ExecutionCompilerPreviewService:
             )
         measure_ref = metric.measure_refs[0]
         cube_name, _, measure_name = measure_ref.partition(".")
-        cube = self._cube_repository.get(cube_name)
+        cube = cube_repository.get(cube_name)
         if cube is None or measure_name not in cube.measures:
             return self._blocked_metric_preview(
                 metric=metric,
@@ -234,8 +252,9 @@ class ExecutionCompilerPreviewService:
                 analysis_intent=analysis_intent or {},
                 query_dsl=query_dsl,
                 question=question,
+                cube_repository=cube_repository,
             )
-            compiled = QueryCompiler(JoinGraph(self._cube_repository.list_all())).compile(dsl)
+            compiled = QueryCompiler(JoinGraph(cube_repository.list_all())).compile(dsl)
         except (CompilationError, ValueError) as exc:
             return self._blocked_metric_preview(
                 metric=metric,
@@ -252,6 +271,43 @@ class ExecutionCompilerPreviewService:
         logical_sql = compiled.sql
         sql_hash = canonical_sql_hash(logical_sql)
         query_dsl_payload = dsl.model_dump(mode="json", exclude_none=True)
+        runtime_trace = runtime_catalog.runtime_trace if runtime_catalog else {}
+        ticket_material = {
+            "target_type": "sql",
+            "resource_set": resource_set,
+            "sql_hash": sql_hash,
+            "data_level": data_level,
+        }
+        if runtime_trace.get("version_pin"):
+            ticket_material["runtime_version_pin"] = runtime_trace["version_pin"]
+        traceability = {
+            "compiler": {
+                "source": "query_compiler",
+                "primary_cube": compiled.primary_cube,
+                "joined_cubes": compiled.joined_cubes,
+            },
+            "business_metric": {
+                "name": metric.name,
+                "title": metric.title,
+                "object_name": metric.object_name,
+                "semantic_formula": metric.semantic_formula,
+            },
+            "analysis_measure": {
+                "measure_ref": measure_ref,
+                "measure_name": measure_name,
+                "measure_title": measure.title,
+                "cube_name": cube.name,
+                "cube_title": cube.title,
+            },
+            "data_source": {
+                "table": cube.table,
+                "source_dataset_id": cube.source_dataset_id,
+                "source_dataset_type": cube.source_dataset_type,
+                "source_database": cube.source_database,
+            },
+        }
+        if runtime_trace:
+            traceability["runtime"] = runtime_trace
         return {
             "status": "ready",
             "target_type": "sql",
@@ -266,45 +322,16 @@ class ExecutionCompilerPreviewService:
             "resource_set": resource_set,
             "data_level": data_level,
             "sql_hash": sql_hash,
-            "ticket_material": {
-                "target_type": "sql",
-                "resource_set": resource_set,
-                "sql_hash": sql_hash,
-                "data_level": data_level,
-            },
+            "ticket_material": ticket_material,
             "bindings": {
                 "metric_name": metric.name,
                 "measure_ref": measure_ref,
                 "cube_name": cube.name,
                 "query_dsl_status": "compiled",
+                **(runtime_catalog.binding_metadata if runtime_catalog else {}),
             },
             "policy": policy,
-            "traceability": {
-                "compiler": {
-                    "source": "query_compiler",
-                    "primary_cube": compiled.primary_cube,
-                    "joined_cubes": compiled.joined_cubes,
-                },
-                "business_metric": {
-                    "name": metric.name,
-                    "title": metric.title,
-                    "object_name": metric.object_name,
-                    "semantic_formula": metric.semantic_formula,
-                },
-                "analysis_measure": {
-                    "measure_ref": measure_ref,
-                    "measure_name": measure_name,
-                    "measure_title": measure.title,
-                    "cube_name": cube.name,
-                    "cube_title": cube.title,
-                },
-                "data_source": {
-                    "table": cube.table,
-                    "source_dataset_id": cube.source_dataset_id,
-                    "source_dataset_type": cube.source_dataset_type,
-                    "source_database": cube.source_database,
-                },
-            },
+            "traceability": traceability,
         }
 
     def _build_query_dsl(
@@ -316,6 +343,7 @@ class ExecutionCompilerPreviewService:
         analysis_intent: dict[str, Any],
         query_dsl: Optional[dict[str, Any]],
         question: Optional[str] = None,
+        cube_repository=None,
     ) -> QueryDSL:
         if query_dsl is not None:
             return QueryDSL(**query_dsl)
@@ -326,7 +354,11 @@ class ExecutionCompilerPreviewService:
         dimensions: list[str] = []
         inferred_join_path = analysis_intent.get("join_path")
         for term in analysis_intent.get("dimension_terms") or analysis_intent.get("dimensions") or []:
-            dimension_ref, join_path = self._resolve_dimension_binding(cube, term)
+            dimension_ref, join_path = self._resolve_dimension_binding(
+                cube,
+                term,
+                cube_repository=cube_repository or self._cube_repository,
+            )
             dimensions.append(dimension_ref)
             if join_path:
                 if inferred_join_path and inferred_join_path != join_path:
@@ -399,13 +431,14 @@ class ExecutionCompilerPreviewService:
             if item.strip()
         ]
 
-    def _resolve_dimension_binding(self, cube, term: str) -> tuple[str, list[str] | None]:
+    def _resolve_dimension_binding(self, cube, term: str, *, cube_repository=None) -> tuple[str, list[str] | None]:
+        cube_repository = cube_repository or self._cube_repository
         direct = self._find_dimension_name(cube, term)
         if direct:
             return f"{cube.name}.{direct}", None
 
         for _join_name, join_def in cube.joins.items():
-            target_cube = self._cube_repository.get(join_def.cube)
+            target_cube = cube_repository.get(join_def.cube)
             if target_cube is None:
                 continue
             if (
@@ -691,6 +724,21 @@ class ExecutionCompilerPreviewService:
                 }
             },
         }
+
+    def _runtime_catalog(
+        self,
+        *,
+        runtime_mode: str | None,
+        runtime_manifest: dict[str, Any] | None,
+    ) -> RuntimeSemanticCatalog | None:
+        if runtime_mode != "official":
+            return None
+        manifest = runtime_manifest
+        if manifest is None and self._runtime_snapshot_service is not None:
+            manifest = self._runtime_snapshot_service.get_active_manifest("default")
+        if not manifest or not manifest.get("ok"):
+            return None
+        return RuntimeSemanticCatalog.from_manifest(manifest)
 
     @staticmethod
     def _resolve_roles(

@@ -227,4 +227,16 @@ class QueryExecutionWorkerService:
             issues.append("missing query_dsl")
         elif query_dsl.get("dsl_version") != "v1":
             issues.append("query_dsl.dsl_version must be v1")
+        runtime_pin = snapshot.get("runtime_version_pin")
+        if not QueryExecutionWorkerService._is_versioned_runtime_pin(runtime_pin):
+            issues.append("missing runtime_version_pin")
         return issues
+
+    @staticmethod
+    def _is_versioned_runtime_pin(value: Any) -> bool:
+        return (
+            isinstance(value, dict)
+            and bool(value.get("snapshot_id"))
+            and bool(value.get("release_id"))
+            and value.get("release_no") is not None
+        )

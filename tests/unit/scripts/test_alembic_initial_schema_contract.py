@@ -47,5 +47,19 @@ def test_production_release_uses_single_initial_alembic_revision():
         "access_principals",
         "semantic_modeling_agent_sessions",
         "semantic_modeling_proposals",
+        "semantic_assets",
+        "semantic_asset_revisions",
+        "semantic_asset_dependencies",
+        "semantic_releases",
+        "semantic_release_assets",
+        "semantic_runtime_snapshots",
     ):
         assert f'"{table_name}"' in source or f"'{table_name}'" in source
+
+    for index_name in (
+        "uq_semantic_assets_namespace_type_key",
+        "uq_semantic_asset_revisions_asset_revision_no",
+        "uq_semantic_releases_namespace_release_no",
+        "uq_semantic_runtime_snapshots_active_namespace",
+    ):
+        assert f'"{index_name}"' in source or f"'{index_name}'" in source

@@ -12,6 +12,7 @@ from app.application.semantic.modeling_coverage_analyzer import CoverageAnalyzer
 from app.application.semantic.modeling_spec_repair import repair_modeling_spec
 from app.application.semantic.modeling_validation_matrix import ValidationMatrixBuilder
 from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
+from app.domain.semantic.asset_registry import SemanticAsset
 from app.domain.semantic.modeling_proposal import ModelingProposal
 from app.domain.semantic.ports.modeling_proposal_repository import IModelingProposalRepository
 
@@ -25,12 +26,18 @@ class ModelingProposalService:
         repository: IModelingProposalRepository,
         builder: Any,
         readiness_checker: PublishReadinessChecker,
+        asset_registry_repository: Any = None,
+        release_service: Any = None,
+        asset_namespace: str = "default",
         coverage_analyzer: Optional[CoverageAnalyzer] = None,
         validation_matrix_builder: Optional[ValidationMatrixBuilder] = None,
     ):
         self._repository = repository
         self._builder = builder
         self._readiness_checker = readiness_checker
+        self._asset_registry_repository = asset_registry_repository
+        self._release_service = release_service
+        self._asset_namespace = asset_namespace or "default"
         self._coverage_analyzer = coverage_analyzer or CoverageAnalyzer(readiness_checker)
         self._validation_matrix_builder = validation_matrix_builder or ValidationMatrixBuilder()
 
@@ -75,6 +82,64 @@ class ModelingProposalService:
             "technical_change": self._gap_technical_change(proposal),
             "primary_action": self._gap_primary_action(proposal),
         }
+
+    def confirm_source(self, proposal_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        proposal = self._require(proposal_id)
+        source_patch = self._source_patch(payload)
+        source_hash = self._stable_hash(source_patch)
+        idempotency_key = str(
+            payload.get("idempotency_key") or f"{proposal.id}:confirm_source:{source_hash}"
+        )
+        if proposal.has_action("confirm_source", idempotency_key):
+            return self._dump(proposal)
+
+        request_payload = dict(proposal.source_context.get("request_payload") or {})
+        request_payload.update(source_patch)
+        proposal.source_context.update(source_patch)
+        proposal.source_context["request_payload"] = request_payload
+        proposal.source_context["confirmed_source"] = source_patch
+        self._bump_revision(proposal)
+        if proposal.spec:
+            proposal.status = "drafted"
+        actor = str(payload.get("actor") or payload.get("confirmed_by") or "semantic_owner")
+        self._mark_transition(proposal, actor=actor)
+        proposal.record_action(
+            "confirm_source",
+            actor=actor,
+            idempotency_key=idempotency_key,
+            payload={"source_hash": source_hash, "source": source_patch},
+        )
+        self._repository.save(proposal)
+        return self._dump(proposal)
+
+    def update_spec(self, proposal_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        proposal = self._require(proposal_id)
+        next_spec = self._next_spec(proposal, payload)
+        spec_hash = self._stable_hash(next_spec)
+        current_hash = self._stable_hash(proposal.spec or {})
+        if spec_hash == current_hash:
+            return self._dump(proposal)
+        idempotency_key = str(payload.get("idempotency_key") or f"{proposal.id}:update_spec:{spec_hash}")
+        if proposal.has_action("update_spec", idempotency_key):
+            return self._dump(proposal)
+
+        proposal.spec = next_spec
+        proposal.coverage_result = self._coverage_from_spec(next_spec)
+        proposal.validation_matrix = {"blockers": [], "warnings": [], "infos": []}
+        proposal.runtime_consumption_result = {}
+        proposal.publish_result = {}
+        proposal.status = "drafted"
+        self._bump_revision(proposal)
+        actor = str(payload.get("actor") or payload.get("updated_by") or "semantic_owner")
+        self._mark_transition(proposal, actor=actor)
+        proposal.record_action(
+            "update_spec",
+            actor=actor,
+            idempotency_key=idempotency_key,
+            payload={"spec_hash": spec_hash, "updated_keys": self._spec_update_keys(payload)},
+        )
+        self._repository.save(proposal)
+        return self._dump(proposal)
 
     def draft(self, proposal_id: str) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
@@ -146,24 +211,41 @@ class ModelingProposalService:
 
     def approve(self, proposal_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
+        approved_hash = self._stable_hash(proposal.spec)
+        if proposal.status in {"approved", "applied", "published"}:
+            if (
+                proposal.approved_spec_hash == approved_hash
+                and proposal.approved_proposal_revision_no == proposal.proposal_revision_no
+            ):
+                return self._dump(proposal)
+            raise ValueError("Approved proposal revision does not match current spec")
         if proposal.status != "validated":
             raise ValueError("Proposal must be validated before approved")
         review = dict(payload or {})
         review.setdefault("approved_by", "semantic_owner")
         review.setdefault("review_type", "single_owner")
         proposal.review_records.append(review)
-        approved_hash = self._stable_hash(proposal.spec)
         proposal.audit_snapshot["approved_spec"] = deepcopy(proposal.spec)
         proposal.audit_snapshot["approved_semantic_diff"] = deepcopy(proposal.semantic_diff)
         proposal.audit_snapshot["approved_spec_hash"] = approved_hash
         proposal.approved_spec_hash = approved_hash
+        proposal.approved_proposal_revision_no = proposal.proposal_revision_no
         proposal.status = "approved"
-        self._mark_transition(proposal, actor=str(review.get("approved_by") or "semantic_owner"))
+        actor = str(review.get("approved_by") or "semantic_owner")
+        self._mark_transition(proposal, actor=actor)
+        proposal.record_action(
+            "approve",
+            actor=actor,
+            idempotency_key=self._proposal_action_key(proposal, "approve", approved_hash),
+            payload={"approved_spec_hash": approved_hash},
+        )
         self._repository.save(proposal)
         return self._dump(proposal)
 
     def apply(self, proposal_id: str) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
+        if proposal.status in {"applied", "published"}:
+            return self._dump(proposal)
         if proposal.status != "approved":
             raise ValueError("Proposal must be approved before apply")
         approved_spec = proposal.audit_snapshot.get("approved_spec") or proposal.spec
@@ -171,28 +253,238 @@ class ModelingProposalService:
         current_hash = self._stable_hash(proposal.spec)
         if current_hash != approved_hash:
             raise ValueError("Approved spec changed before apply")
-        result = self._builder.apply(proposal.spec)
+        result = (
+            self._apply_to_sql_registry(proposal)
+            if self._uses_sql_registry()
+            else self._builder.apply(proposal.spec)
+        )
         applied_spec = result.get("spec") or proposal.spec
         applied_hash = self._stable_hash(applied_spec)
         proposal.drafts["apply_result"] = result
         proposal.spec = applied_spec
         proposal.applied_spec_hash = applied_hash
         proposal.audit_snapshot["applied_spec_hash"] = applied_hash
+        proposal.applied_proposal_revision_no = proposal.proposal_revision_no
         proposal.status = "applied"
         self._mark_transition(proposal, actor="semantic_bundle_builder")
+        proposal.record_action(
+            "apply",
+            actor="semantic_bundle_builder",
+            idempotency_key=self._proposal_action_key(proposal, "apply", approved_hash),
+            payload={
+                "approved_spec_hash": approved_hash,
+                "applied_spec_hash": applied_hash,
+            },
+        )
         self._repository.save(proposal)
         return self._dump(proposal)
 
     def publish(self, proposal_id: str, publish_targets: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
+        scope_hash = self._stable_hash(publish_targets or {"cube": True, "ontology": False})
+        if proposal.status == "published":
+            existing_scope_hash = proposal.audit_snapshot.get("publish_scope_hash")
+            if existing_scope_hash and existing_scope_hash != scope_hash:
+                raise ValueError("Proposal already published with different publish scope")
+            return self._dump(proposal)
         if proposal.status != "applied":
             raise ValueError("Proposal must be applied before publish")
-        result = self._builder.publish(proposal.spec, publish_targets=publish_targets)
+        result = (
+            self._publish_from_sql_registry(proposal, publish_targets=publish_targets, scope_hash=scope_hash)
+            if self._uses_sql_registry()
+            else self._builder.publish(proposal.spec, publish_targets=publish_targets)
+        )
         proposal.publish_result = result
+        proposal.audit_snapshot["publish_scope_hash"] = scope_hash
         proposal.status = "published"
         self._mark_transition(proposal, actor="semantic_publisher")
+        proposal.record_action(
+            "publish",
+            actor="semantic_publisher",
+            idempotency_key=self._proposal_action_key(proposal, "publish", scope_hash),
+            payload={"publish_scope_hash": scope_hash},
+        )
         self._repository.save(proposal)
         return self._dump(proposal)
+
+    def _uses_sql_registry(self) -> bool:
+        return self._asset_registry_repository is not None and self._release_service is not None
+
+    def _apply_to_sql_registry(self, proposal: ModelingProposal) -> Dict[str, Any]:
+        spec = deepcopy(proposal.spec or {})
+        asset = self._upsert_sql_registry_asset(proposal, spec, status="draft")
+        revision = self._asset_registry_repository.append_revision(
+            asset.id,
+            spec,
+            proposal_id=proposal.id,
+            actor="semantic_bundle_builder",
+        )
+        return {
+            "published": False,
+            "source": "sql_registry",
+            "spec": spec,
+            "assets": {
+                "cube": {
+                    "id": asset.id,
+                    "name": asset.asset_key,
+                    "status": asset.status,
+                    "revision_id": revision.id,
+                    "revision_no": revision.revision_no,
+                    "namespace": asset.namespace,
+                    "source": "sql_registry",
+                }
+            },
+            "registry": {
+                "namespace": asset.namespace,
+                "asset_id": asset.id,
+                "asset_key": asset.asset_key,
+                "revision_id": revision.id,
+                "revision_no": revision.revision_no,
+                "spec_checksum": revision.spec_checksum,
+            },
+        }
+
+    def _publish_from_sql_registry(
+        self,
+        proposal: ModelingProposal,
+        *,
+        publish_targets: Optional[Dict[str, bool]],
+        scope_hash: str,
+    ) -> Dict[str, Any]:
+        targets = publish_targets or {"cube": True, "ontology": False}
+        if targets.get("cube") is False:
+            raise ValueError("SQL Registry publish requires cube target")
+
+        spec = deepcopy(proposal.spec or {})
+        asset = self._upsert_sql_registry_asset(proposal, spec, status="draft")
+        revision_id = self._registry_revision_id(proposal)
+        revision = self._asset_registry_repository.get_revision(revision_id) if revision_id else None
+        if revision is None or revision.asset_id != asset.id:
+            revision = self._asset_registry_repository.append_revision(
+                asset.id,
+                spec,
+                proposal_id=proposal.id,
+                actor="semantic_publisher",
+            )
+
+        release = self._release_service.publish(
+            namespace=asset.namespace,
+            revision_ids=[revision.id],
+            actor="semantic_publisher",
+            gate_result={
+                "decision": "allow",
+                "source": "modeling_proposal",
+                "proposal_id": proposal.id,
+                "approved_spec_hash": proposal.approved_spec_hash,
+                "publish_scope_hash": scope_hash,
+            },
+            idempotency_key=self._proposal_action_key(proposal, "publish", scope_hash),
+        )
+        active_asset = self._asset_registry_repository.get_asset_by_id(asset.id) or asset
+        snapshot = self._active_registry_snapshot(asset.namespace)
+        cube_result = {
+            "id": active_asset.id,
+            "name": active_asset.asset_key,
+            "status": active_asset.status,
+            "revision_id": revision.id,
+            "release_id": release.id,
+            "release_no": release.release_no,
+            "namespace": active_asset.namespace,
+            "source": "sql_registry",
+        }
+        result = {
+            "publish_targets": targets,
+            "source": "sql_registry",
+            "cube": cube_result,
+            "published": {"cube": cube_result},
+            "release": {
+                "id": release.id,
+                "release_no": release.release_no,
+                "status": release.status,
+                "namespace": release.namespace,
+            },
+            "registry": {
+                "namespace": active_asset.namespace,
+                "asset_id": active_asset.id,
+                "asset_key": active_asset.asset_key,
+                "revision_id": revision.id,
+                "release_id": release.id,
+                "snapshot_id": getattr(snapshot, "id", None) if snapshot is not None else None,
+            },
+        }
+        if targets.get("ontology"):
+            result["ontology"] = {"status": "active", "source": "sql_registry", "asset_id": active_asset.id}
+            result["published"]["ontology"] = result["ontology"]
+        return result
+
+    def _upsert_sql_registry_asset(
+        self,
+        proposal: ModelingProposal,
+        spec: Dict[str, Any],
+        *,
+        status: str,
+    ) -> SemanticAsset:
+        namespace = self._registry_namespace(proposal)
+        cube = spec.get("cube") or {}
+        ontology = spec.get("ontology") or {}
+        obj = ontology.get("object") or {}
+        asset_key = str(cube.get("name") or obj.get("name") or "").strip()
+        if not asset_key:
+            raise ValueError("Semantic spec must include cube.name before registry apply")
+        existing = self._asset_registry_repository.get_asset(namespace, "cube", asset_key)
+        title = (
+            cube.get("title")
+            or obj.get("title")
+            or (spec.get("business") or {}).get("subject")
+            or asset_key
+        )
+        asset = SemanticAsset(
+            id=existing.id if existing is not None else f"asset_{uuid4().hex}",
+            namespace=namespace,
+            asset_type="cube",
+            asset_key=asset_key,
+            title=str(title),
+            status=existing.status if existing is not None else status,
+            current_revision_id=getattr(existing, "current_revision_id", None),
+            current_release_id=getattr(existing, "current_release_id", None),
+            owner_principal_id=self._registry_owner(proposal),
+            source_kind="copilot" if proposal.source_mode == "agent_led" else "human",
+        )
+        return self._asset_registry_repository.create_or_update_asset(asset)
+
+    def _registry_namespace(self, proposal: ModelingProposal) -> str:
+        payload = proposal.source_context.get("request_payload") or {}
+        return str(
+            payload.get("semantic_namespace")
+            or payload.get("namespace")
+            or proposal.source_context.get("semantic_namespace")
+            or self._asset_namespace
+            or "default"
+        )
+
+    def _registry_owner(self, proposal: ModelingProposal) -> str:
+        for record in reversed(proposal.review_records or []):
+            owner = record.get("approved_by") or record.get("actor") or record.get("reviewer")
+            if owner:
+                return str(owner)
+        return "semantic_owner"
+
+    def _registry_revision_id(self, proposal: ModelingProposal) -> Optional[str]:
+        apply_result = proposal.drafts.get("apply_result") or {}
+        registry = apply_result.get("registry") or {}
+        revision_id = registry.get("revision_id")
+        if revision_id:
+            return str(revision_id)
+        cube = (apply_result.get("assets") or {}).get("cube") or {}
+        if cube.get("revision_id"):
+            return str(cube["revision_id"])
+        return None
+
+    def _active_registry_snapshot(self, namespace: str) -> Any:
+        getter = getattr(self._asset_registry_repository, "get_active_snapshot", None)
+        if getter is None:
+            return None
+        return getter(namespace)
 
     def close(self, proposal_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
@@ -662,10 +954,98 @@ class ModelingProposalService:
             return
         proposal.readiness_label = "Save Draft Only"
 
+    def _source_patch(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        patch = {
+            key: deepcopy(payload[key])
+            for key in (
+                "candidate_id",
+                "asset_id",
+                "source_kind",
+                "source_id",
+                "dataset_id",
+                "database",
+                "schema",
+                "table",
+            )
+            if payload.get(key) not in (None, "")
+        }
+        if not patch:
+            raise ValueError("Source confirmation requires at least one source field")
+        return patch
+
+    def _next_spec(self, proposal: ModelingProposal, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if "spec" in payload:
+            next_spec = deepcopy(payload.get("spec") or {})
+        else:
+            next_spec = deepcopy(proposal.spec or {})
+            for key in self._spec_update_keys(payload):
+                current = next_spec.get(key)
+                value = payload.get(key)
+                if isinstance(current, dict) and isinstance(value, dict):
+                    next_spec[key] = self._deep_merge(current, value)
+                else:
+                    next_spec[key] = deepcopy(value)
+        if proposal.source_mode == "agent_led":
+            next_spec = repair_modeling_spec(
+                next_spec,
+                user_goal=str(proposal.intent.get("user_question") or ""),
+                source_mode=proposal.source_mode,
+            )
+        return next_spec
+
+    def _spec_update_keys(self, payload: Dict[str, Any]) -> List[str]:
+        return [
+            key
+            for key in (
+                "spec",
+                "source",
+                "business",
+                "cube",
+                "ontology",
+                "binding",
+                "policy",
+                "governance",
+                "evidence_pack",
+            )
+            if key in payload
+        ]
+
+    def _bump_revision(self, proposal: ModelingProposal) -> None:
+        proposal.proposal_revision_no += 1
+        proposal.approved_proposal_revision_no = None
+        proposal.applied_proposal_revision_no = None
+        proposal.approved_spec_hash = None
+        proposal.applied_spec_hash = None
+        for key in (
+            "approved_spec",
+            "approved_semantic_diff",
+            "approved_spec_hash",
+            "applied_spec_hash",
+            "publish_scope_hash",
+        ):
+            proposal.audit_snapshot.pop(key, None)
+
+    def _deep_merge(self, base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+        merged = deepcopy(base)
+        for key, value in patch.items():
+            if isinstance(merged.get(key), dict) and isinstance(value, dict):
+                merged[key] = self._deep_merge(merged[key], value)
+            else:
+                merged[key] = deepcopy(value)
+        return merged
+
     def _mark_transition(self, proposal: ModelingProposal, *, actor: str) -> None:
         proposal.last_transition_actor = actor
         proposal.last_transition_at = datetime.utcnow().isoformat(timespec="seconds") + "Z"
         self._sync_readiness_label(proposal)
+
+    def _proposal_action_key(
+        self,
+        proposal: ModelingProposal,
+        action: str,
+        checksum: str,
+    ) -> str:
+        return f"{proposal.id}:{proposal.proposal_revision_no}:{action}:{checksum}"
 
     def _stable_hash(self, value: Dict[str, Any]) -> str:
         payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

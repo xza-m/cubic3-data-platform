@@ -5,6 +5,8 @@ import hashlib
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.application.semantic.runtime_manifest_catalog import RuntimeSemanticCatalog
+from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
 from app.domain.ontology.entities import BusinessAction, BusinessMetric, BusinessObject, BusinessRelation
 from app.domain.ontology.ports.action_repository import IBusinessActionRepository
 from app.domain.ontology.ports.glossary_repository import IGlossaryRepository
@@ -37,6 +39,7 @@ class SemanticRouterPreviewService:
         mapper_preview_service,
         compiler_preview_service,
         runtime_service=None,
+        runtime_snapshot_service=None,
         policy_guard_service=None,
     ):
         self._object_repository = object_repository
@@ -47,6 +50,7 @@ class SemanticRouterPreviewService:
         self._mapper_preview_service = mapper_preview_service
         self._compiler_preview_service = compiler_preview_service
         self._runtime_service = runtime_service
+        self._runtime_snapshot_service = runtime_snapshot_service
         self._policy_guard_service = policy_guard_service
 
     def route(
@@ -61,13 +65,43 @@ class SemanticRouterPreviewService:
         if not question:
             raise ValueError("问题不能为空")
         runtime_mode = self._normalize_runtime_mode(runtime_mode)
-        viewer_roles = self._resolve_roles(viewer_roles=viewer_roles, principal_context=principal_context)
         semantic_plan_id = self._build_semantic_plan_id(question)
+        runtime_manifest = self._load_runtime_manifest(runtime_mode)
+        if runtime_manifest is not None and not runtime_manifest.get("ok"):
+            return self._blocked_runtime_route(
+                question=question,
+                semantic_plan_id=semantic_plan_id,
+                runtime_mode=runtime_mode,
+                runtime_manifest=runtime_manifest,
+            )
+        runtime_catalog = self._runtime_catalog(runtime_mode=runtime_mode, runtime_manifest=runtime_manifest)
+        mapper_preview_service = self._mapper_preview_service_for(runtime_catalog)
+        viewer_roles = self._resolve_roles(viewer_roles=viewer_roles, principal_context=principal_context)
 
-        matched_metric, metric_match_source = self._match_metric(question, runtime_mode=runtime_mode)
-        matched_object, object_match_source = self._match_object(question, runtime_mode=runtime_mode)
-        matched_relation, relation_match_source = self._match_relation(question, runtime_mode=runtime_mode)
-        matched_action, action_match_source = self._match_action(question, runtime_mode=runtime_mode)
+        matched_metric, metric_match_source = self._match_metric(
+            question,
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+            runtime_catalog=runtime_catalog,
+        )
+        matched_object, object_match_source = self._match_object(
+            question,
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+            runtime_catalog=runtime_catalog,
+        )
+        matched_relation, relation_match_source = self._match_relation(
+            question,
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+            runtime_catalog=runtime_catalog,
+        )
+        matched_action, action_match_source = self._match_action(
+            question,
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+            runtime_catalog=runtime_catalog,
+        )
         wants_knowledge = any(keyword in question for keyword in self._KNOWLEDGE_KEYWORDS)
         wants_analysis = any(keyword in question for keyword in self._ANALYSIS_KEYWORDS)
         wants_tool = any(keyword in question for keyword in self._TOOL_KEYWORDS)
@@ -162,12 +196,14 @@ class SemanticRouterPreviewService:
 
         if matched_metric is not None:
             if projection_preview is None and primary_entity["entity_type"] == "metric":
-                projection_preview = self._mapper_preview_service.preview(entity_type="metric", entity_name=matched_metric.name)
+                projection_preview = mapper_preview_service.preview(entity_type="metric", entity_name=matched_metric.name)
             execution_preview = self._compiler_preview_service.compile_metric_preview(
                 matched_metric.name,
                 analysis_intent=analysis_intent,
                 viewer_roles=viewer_roles,
                 principal_context=principal_context,
+                runtime_mode=runtime_mode,
+                runtime_manifest=runtime_manifest,
             )
             policy = self._evaluate_policy(
                 target_type="metric",
@@ -181,7 +217,7 @@ class SemanticRouterPreviewService:
                 reason = policy.get("reason") or execution_preview.get("reason")
 
         if matched_relation is not None:
-            relation_projection = self._mapper_preview_service.preview(entity_type="relation", entity_name=matched_relation.name)
+            relation_projection = mapper_preview_service.preview(entity_type="relation", entity_name=matched_relation.name)
             if projection_preview is None and primary_entity["entity_type"] == "relation":
                 projection_preview = relation_projection
             source_policy = self._evaluate_policy(
@@ -204,7 +240,7 @@ class SemanticRouterPreviewService:
                 reason = relation_policy.get("reason")
 
         if matched_action is not None:
-            action_projection = self._mapper_preview_service.preview(entity_type="action", entity_name=matched_action.name)
+            action_projection = mapper_preview_service.preview(entity_type="action", entity_name=matched_action.name)
             if projection_preview is None and primary_entity["entity_type"] == "action":
                 projection_preview = action_projection
             action_policy = self._evaluate_policy(
@@ -223,7 +259,7 @@ class SemanticRouterPreviewService:
                 reason = action_policy.get("reason")
 
         if effective_matched_object is not None:
-            object_projection = self._mapper_preview_service.preview(entity_type="object", entity_name=effective_matched_object.name)
+            object_projection = mapper_preview_service.preview(entity_type="object", entity_name=effective_matched_object.name)
             if projection_preview is None and primary_entity["entity_type"] == "object":
                 projection_preview = object_projection
             object_policy = self._evaluate_policy(
@@ -255,6 +291,7 @@ class SemanticRouterPreviewService:
             "question": question,
             "runtime": {
                 "mode": runtime_mode,
+                **self._runtime_trace(runtime_manifest),
             },
             "principal": {
                 "principal_id": (principal_context or {}).get("principal_id"),
@@ -484,6 +521,8 @@ class SemanticRouterPreviewService:
             principal_context=principal_context,
             runtime_mode=runtime_mode,
         )
+        normalized_runtime_mode = self._normalize_runtime_mode(runtime_mode)
+        runtime_manifest = self._load_runtime_manifest(normalized_runtime_mode)
         viewer_roles = self._resolve_roles(viewer_roles=viewer_roles, principal_context=principal_context)
         compiled_targets: List[Dict[str, Any]] = []
         for target in plan.get("execution_targets", []):
@@ -498,6 +537,8 @@ class SemanticRouterPreviewService:
                 query_dsl=target.get("query_dsl"),
                 viewer_roles=viewer_roles or [],
                 principal_context=principal_context,
+                runtime_mode=normalized_runtime_mode,
+                runtime_manifest=runtime_manifest,
             )
             compiled_targets.append(
                 {
@@ -596,8 +637,148 @@ class SemanticRouterPreviewService:
         return str(getattr(entity, "status", "active") or "") == "active"
 
     @classmethod
-    def _runtime_entities(cls, entities: List[Any], runtime_mode: str) -> List[Any]:
-        return [entity for entity in entities if cls._runtime_visible(entity, runtime_mode)]
+    def _runtime_entities(
+        cls,
+        entities: List[Any],
+        runtime_mode: str,
+        *,
+        runtime_manifest: dict[str, Any] | None = None,
+        entity_type: str | None = None,
+        runtime_catalog: RuntimeSemanticCatalog | None = None,
+    ) -> List[Any]:
+        if runtime_mode == cls._OFFICIAL_MODE and runtime_catalog is not None and entity_type is not None:
+            return runtime_catalog.list_entities(entity_type)
+        visible = [entity for entity in entities if cls._runtime_visible(entity, runtime_mode)]
+        if runtime_mode != cls._OFFICIAL_MODE or runtime_manifest is None or entity_type is None:
+            return visible
+        return [
+            entity
+            for entity in visible
+            if cls._runtime_manifest_allows(
+                runtime_manifest=runtime_manifest,
+                entity_type=entity_type,
+                entity=entity,
+            )
+        ]
+
+    def _load_runtime_manifest(self, runtime_mode: str) -> dict[str, Any] | None:
+        if runtime_mode != self._OFFICIAL_MODE or self._runtime_snapshot_service is None:
+            return None
+        return self._runtime_snapshot_service.get_active_manifest("default")
+
+    def _runtime_catalog(
+        self,
+        *,
+        runtime_mode: str,
+        runtime_manifest: dict[str, Any] | None,
+    ) -> RuntimeSemanticCatalog | None:
+        if runtime_mode != self._OFFICIAL_MODE or not runtime_manifest or not runtime_manifest.get("ok"):
+            return None
+        return RuntimeSemanticCatalog.from_manifest(runtime_manifest)
+
+    def _mapper_preview_service_for(self, runtime_catalog: RuntimeSemanticCatalog | None):
+        if runtime_catalog is None:
+            return self._mapper_preview_service
+        return SemanticMapperPreviewService(
+            object_repository=runtime_catalog.object_repository,
+            metric_repository=runtime_catalog.metric_repository,
+            glossary_repository=runtime_catalog.glossary_repository,
+            relation_repository=runtime_catalog.relation_repository,
+            action_repository=runtime_catalog.action_repository,
+            cube_repository=runtime_catalog.cube_repository,
+        )
+
+    @classmethod
+    def _runtime_manifest_allows(
+        cls,
+        *,
+        runtime_manifest: dict[str, Any],
+        entity_type: str,
+        entity: Any,
+    ) -> bool:
+        asset_manifest = runtime_manifest.get("asset_manifest_json") or {}
+        assets = asset_manifest.get("assets") or []
+        if not assets:
+            return False
+        name = str(getattr(entity, "name", "") or getattr(entity, "canonical_name", "") or "").strip()
+        term = str(getattr(entity, "term", "") or "").strip()
+        entry_type = str(getattr(entity, "entry_type", "") or entity_type).strip()
+        candidates = {item for item in (name, term) if item}
+        candidates.update({f"{entity_type}:{item}" for item in list(candidates)})
+        if name and entry_type:
+            candidates.add(f"{entry_type}:{name}")
+        if term and entry_type:
+            candidates.add(f"{entry_type}:{term}")
+        for asset in assets:
+            asset_key = str(asset.get("asset_key") or "").strip()
+            if asset_key in candidates:
+                return True
+            if any(candidate and asset_key.endswith(f":{candidate}") for candidate in candidates):
+                return True
+        return False
+
+    @staticmethod
+    def _runtime_trace(runtime_manifest: dict[str, Any] | None) -> Dict[str, Any]:
+        if runtime_manifest is None:
+            return {}
+        version_pin = runtime_manifest.get("version_pin") or {}
+        trace = {
+            "snapshot_id": runtime_manifest.get("snapshot_id"),
+            "release_id": runtime_manifest.get("release_id"),
+            "release_no": version_pin.get("release_no"),
+            "manifest_status": "ready" if runtime_manifest.get("ok") else "blocked",
+            "error_code": runtime_manifest.get("error_code"),
+        }
+        if version_pin:
+            trace["version_pin"] = version_pin
+        if runtime_manifest.get("asset_trace") is not None:
+            trace["assets"] = runtime_manifest.get("asset_trace")
+        if runtime_manifest.get("binding_trace") is not None:
+            trace["bindings"] = runtime_manifest.get("binding_trace")
+        if runtime_manifest.get("policy_trace") is not None:
+            trace["policies"] = runtime_manifest.get("policy_trace")
+        return trace
+
+    def _blocked_runtime_route(
+        self,
+        *,
+        question: str,
+        semantic_plan_id: str,
+        runtime_mode: str,
+        runtime_manifest: dict[str, Any],
+    ) -> Dict[str, Any]:
+        projection_result = self._empty_projection_result()
+        return {
+            "semantic_plan_id": semantic_plan_id,
+            "question": question,
+            "runtime_mode": runtime_mode,
+            "route_type": "blocked",
+            "planning_mode": "single_step",
+            "targets": [],
+            "matched": {},
+            "primary_match": {},
+            "matched_entities": [],
+            "business_intent": {
+                "route_type": "blocked",
+                "targets": [],
+                "matched_entities": [],
+                "primary_match": {},
+            },
+            "projection_result": projection_result,
+            "resolved_bindings": [],
+            "execution_preview": None,
+            "traceability": {
+                "semantic_plan_id": semantic_plan_id,
+                "question": question,
+                "runtime": {
+                    "mode": runtime_mode,
+                    **self._runtime_trace(runtime_manifest),
+                },
+                "ontology": {},
+                "analysis": {},
+            },
+            "reason": runtime_manifest.get("error_code") or "semantic_runtime_not_ready",
+        }
 
     @staticmethod
     def _empty_projection_result() -> Dict[str, Any]:
@@ -802,81 +983,169 @@ class SemanticRouterPreviewService:
             intent["limit"] = 100
         return intent
 
-    def _match_metric(self, question: str, runtime_mode: str | None = None) -> Tuple[Optional[BusinessMetric], Optional[str]]:
+    def _match_metric(
+        self,
+        question: str,
+        runtime_mode: str | None = None,
+        runtime_manifest: dict[str, Any] | None = None,
+        runtime_catalog: RuntimeSemanticCatalog | None = None,
+    ) -> Tuple[Optional[BusinessMetric], Optional[str]]:
         runtime_mode = self._normalize_runtime_mode(runtime_mode)
         normalized_question = _normalize(question)
-        for metric in self._runtime_entities(self._metric_repository.list_all(), runtime_mode):
+        for metric in self._runtime_entities(
+            self._metric_repository.list_all(),
+            runtime_mode,
+            runtime_manifest=runtime_manifest,
+            entity_type="metric",
+            runtime_catalog=runtime_catalog,
+        ):
             candidates = [metric.name, metric.title, *metric.aliases]
             if any(_normalize(candidate) and _normalize(candidate) in normalized_question for candidate in candidates):
                 return metric, "metric"
 
-        for glossary in self._runtime_entities(self._glossary_repository.list_all(), runtime_mode):
+        for glossary in self._runtime_entities(
+            self._glossary_repository.list_all(),
+            runtime_mode,
+            runtime_manifest=runtime_manifest,
+            entity_type="glossary",
+            runtime_catalog=runtime_catalog,
+        ):
             if glossary.entry_type != "metric":
                 continue
             candidates = [glossary.term, glossary.canonical_name, *glossary.aliases]
             if not any(_normalize(candidate) and _normalize(candidate) in normalized_question for candidate in candidates):
                 continue
-            metric = self._metric_repository.get(glossary.canonical_name)
+            metric = (
+                runtime_catalog.get_metric(glossary.canonical_name)
+                if runtime_catalog is not None
+                else self._metric_repository.get(glossary.canonical_name)
+            )
             if metric is not None and self._runtime_visible(metric, runtime_mode):
                 return metric, "glossary"
 
         return None, None
 
-    def _match_object(self, question: str, runtime_mode: str | None = None) -> Tuple[Optional[BusinessObject], Optional[str]]:
+    def _match_object(
+        self,
+        question: str,
+        runtime_mode: str | None = None,
+        runtime_manifest: dict[str, Any] | None = None,
+        runtime_catalog: RuntimeSemanticCatalog | None = None,
+    ) -> Tuple[Optional[BusinessObject], Optional[str]]:
         runtime_mode = self._normalize_runtime_mode(runtime_mode)
         normalized_question = _normalize(question)
-        for obj in self._runtime_entities(self._object_repository.list_all(), runtime_mode):
+        for obj in self._runtime_entities(
+            self._object_repository.list_all(),
+            runtime_mode,
+            runtime_manifest=runtime_manifest,
+            entity_type="object",
+            runtime_catalog=runtime_catalog,
+        ):
             candidates = [obj.name, obj.title, *obj.aliases]
             if any(_normalize(candidate) and _normalize(candidate) in normalized_question for candidate in candidates):
                 return obj, "object"
 
-        for glossary in self._runtime_entities(self._glossary_repository.list_all(), runtime_mode):
+        for glossary in self._runtime_entities(
+            self._glossary_repository.list_all(),
+            runtime_mode,
+            runtime_manifest=runtime_manifest,
+            entity_type="glossary",
+            runtime_catalog=runtime_catalog,
+        ):
             if glossary.entry_type != "object":
                 continue
             candidates = [glossary.term, glossary.canonical_name, *glossary.aliases]
             if not any(_normalize(candidate) and _normalize(candidate) in normalized_question for candidate in candidates):
                 continue
-            obj = self._object_repository.get(glossary.canonical_name)
+            obj = (
+                runtime_catalog.get_object(glossary.canonical_name)
+                if runtime_catalog is not None
+                else self._object_repository.get(glossary.canonical_name)
+            )
             if obj is not None and self._runtime_visible(obj, runtime_mode):
                 return obj, "glossary"
 
         return None, None
 
-    def _match_relation(self, question: str, runtime_mode: str | None = None) -> Tuple[Optional[BusinessRelation], Optional[str]]:
+    def _match_relation(
+        self,
+        question: str,
+        runtime_mode: str | None = None,
+        runtime_manifest: dict[str, Any] | None = None,
+        runtime_catalog: RuntimeSemanticCatalog | None = None,
+    ) -> Tuple[Optional[BusinessRelation], Optional[str]]:
         runtime_mode = self._normalize_runtime_mode(runtime_mode)
         normalized_question = _normalize(question)
-        for relation in self._runtime_entities(self._relation_repository.list_all(), runtime_mode):
+        for relation in self._runtime_entities(
+            self._relation_repository.list_all(),
+            runtime_mode,
+            runtime_manifest=runtime_manifest,
+            entity_type="relation",
+            runtime_catalog=runtime_catalog,
+        ):
             candidates = [relation.name, relation.title, *relation.aliases]
             if any(_normalize(candidate) and _normalize(candidate) in normalized_question for candidate in candidates):
                 return relation, "relation"
 
-        for glossary in self._runtime_entities(self._glossary_repository.list_all(), runtime_mode):
+        for glossary in self._runtime_entities(
+            self._glossary_repository.list_all(),
+            runtime_mode,
+            runtime_manifest=runtime_manifest,
+            entity_type="glossary",
+            runtime_catalog=runtime_catalog,
+        ):
             if glossary.entry_type != "relation":
                 continue
             candidates = [glossary.term, glossary.canonical_name, *glossary.aliases]
             if not any(_normalize(candidate) and _normalize(candidate) in normalized_question for candidate in candidates):
                 continue
-            relation = self._relation_repository.get(glossary.canonical_name)
+            relation = (
+                runtime_catalog.get_relation(glossary.canonical_name)
+                if runtime_catalog is not None
+                else self._relation_repository.get(glossary.canonical_name)
+            )
             if relation is not None and self._runtime_visible(relation, runtime_mode):
                 return relation, "glossary"
 
         return None, None
 
-    def _match_action(self, question: str, runtime_mode: str | None = None) -> Tuple[Optional[BusinessAction], Optional[str]]:
+    def _match_action(
+        self,
+        question: str,
+        runtime_mode: str | None = None,
+        runtime_manifest: dict[str, Any] | None = None,
+        runtime_catalog: RuntimeSemanticCatalog | None = None,
+    ) -> Tuple[Optional[BusinessAction], Optional[str]]:
         runtime_mode = self._normalize_runtime_mode(runtime_mode)
         normalized_question = _normalize(question)
-        for action in self._runtime_entities(self._action_repository.list_all(), runtime_mode):
+        for action in self._runtime_entities(
+            self._action_repository.list_all(),
+            runtime_mode,
+            runtime_manifest=runtime_manifest,
+            entity_type="action",
+            runtime_catalog=runtime_catalog,
+        ):
             candidates = [action.name, action.title, *action.aliases]
             if any(_normalize(candidate) and _normalize(candidate) in normalized_question for candidate in candidates):
                 return action, "action"
 
-        for glossary in self._runtime_entities(self._glossary_repository.list_all(), runtime_mode):
+        for glossary in self._runtime_entities(
+            self._glossary_repository.list_all(),
+            runtime_mode,
+            runtime_manifest=runtime_manifest,
+            entity_type="glossary",
+            runtime_catalog=runtime_catalog,
+        ):
             if glossary.entry_type != "action":
                 continue
             candidates = [glossary.term, glossary.canonical_name, *glossary.aliases]
             if not any(_normalize(candidate) and _normalize(candidate) in normalized_question for candidate in candidates):
                 continue
-            action = self._action_repository.get(glossary.canonical_name)
+            action = (
+                runtime_catalog.get_action(glossary.canonical_name)
+                if runtime_catalog is not None
+                else self._action_repository.get(glossary.canonical_name)
+            )
             if action is not None and self._runtime_visible(action, runtime_mode):
                 return action, "glossary"
 

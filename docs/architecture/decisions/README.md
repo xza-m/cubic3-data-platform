@@ -19,7 +19,7 @@ last_reviewed: 2026-03-24
 ## 当前 ADR
 
 - [ADR-001 平台主线采用 React SPA + Flask API + 分层后端 + RQ 异步任务](ADR-001-platform-baseline.md)
-- [ADR-002 语义定义采用 YAML 文件仓储作为主承载](ADR-002-semantic-assets-in-yaml.md)
+- [ADR-002 语义定义采用 YAML 文件仓储作为主承载](ADR-002-semantic-assets-in-yaml.md)（已被 ADR-010 在生产链路替代）
 - [ADR-003 异步任务与领域事件统一基于 RQ + Redis 执行](ADR-003-rq-for-tasks-and-events.md)
 - [ADR-004 语义中心采用固定的工作台页面模型，而非资源优先导航](ADR-004-semantic-workbench-page-model.md)
 - [ADR-005 HTTP API 采用按业务域分组的 `/api/v1` 契约边界](ADR-005-domain-oriented-api-boundary.md)
@@ -27,3 +27,4 @@ last_reviewed: 2026-03-24
 - [ADR-007 Semantic Mapper 只承担只读投影与一致性检测](ADR-007-semantic-mapper-read-only-projection.md)
 - [ADR-008 BusinessMetric 采用语义公式而非执行公式](ADR-008-business-metric-semantic-formula.md)
 - [ADR-009 第一阶段引入最小 Execution Compiler Preview 验证闭环](ADR-009-minimal-execution-compiler-preview.md)
+- [ADR-010 生产语义资产采用 SQL Registry 作为事实源](ADR-010-semantic-sql-registry-production-source.md)

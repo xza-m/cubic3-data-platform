@@ -141,7 +141,7 @@ app/
 - `interfaces/api/v1/*` 暴露 HTTP 接口
 - `application/*` 承担命令、查询、处理器与编排服务
 - `domain/*` 承担实体、端口和领域规则
-- `infrastructure/*` 对接数据库、Redis、外部服务和语义 YAML 仓库
+- `infrastructure/*` 对接数据库、Redis、外部服务、生产 SQL Registry 与本地语义 YAML fixture 仓库
 
 这是典型的 `Hexagonal Architecture + DDD + CQRS 风格拆分`。
 
@@ -186,7 +186,7 @@ app/
   - `Policy Impact` 可汇总受影响分析实体、治理挂点状态与当前问题清单
 - `Agent-ready Access Governance`
   - `/api/v1/agent/semantic/plan` 已固定为 Agent-first Runtime 入口，API 层和 `AgentPlanHandler` 统一注入 `runtime_mode=official`
-  - official Runtime 只读取已发布 `Ontology` 与已发布 `Cube`：先做业务语义命中，再通过 Binding 编译到 Cube 执行目标；诊断类 `/semantic-router/*` 仍保留 preview 能力
+  - official Runtime 只读取 active SQL runtime snapshot manifest 中的 published `Ontology` 与 published `Cube` `spec`：先做业务语义命中，再通过 Binding 编译到 Cube 执行目标；draft、Proposal 和 YAML 同名资产不得 fallback；诊断类 `/semantic-router/*` 仍保留 preview 能力
   - Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；正式 `/api/v1/agent/semantic/plan` 不信任请求体角色、JWT 角色声明和 `viewer_roles`，诊断类 preview API 仅可用 `viewer_roles` 做沙盒预演
   - `Semantic Mapper` 稳定输出 `projection_result / resolved_bindings / binding_status / binding_issues`，只做只读 Binding，不定义第三套 mapping 真相源
   - `Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；运行时 SQL 必须由 `QueryDSL -> QueryCompiler` 生成，基础维度分组与时间过滤不能绕开 DSL；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
@@ -203,6 +203,11 @@ app/
   - `SemanticModelingAgentSpec` 只作为构建输入、用户确认材料和审计快照，不作为运行时语义源
   - `agent-ready-check` 用于构建页沙盒确认 Cube 已可执行、Ontology 已发布且业务指标能绑定真实 Cube Measure；它不替代正式 `/api/v1/agent/semantic/plan`
   - 默认只发布 Cube；Ontology 必须经业务语义确认后显式发布，正式 Agent 问数链路仍只消费已发布 Ontology
+- `SQL Registry / Release / Runtime Snapshot`
+  - 生产语义资产事实源为 PostgreSQL SQL Registry，覆盖 asset、revision、dependency、release、release asset 和 runtime snapshot
+  - Publish Gate 采用生产 profile，覆盖 runtime schema、binding、policy、sensitivity 和 runtime compile；`confidential / restricted` 需要 approval
+  - rollback 创建新的 release，并生成新的 active snapshot，不复活旧 snapshot
+  - YAML 仅保留为本地 fixture、示例 seed 和调试导出，不作为生产双写或离线迁移输入
 - `Domain 业务上下文`
   - `Domain` 收窄为业务主题、资产组织、默认上下文、候选范围和 Agent 提示的承载对象
   - 新增 `/api/v1/semantic/domains/<domain_id>/context-preview`，用于预览该业务上下文下候选 Cube、Ontology 引用和沙盒 Agent 上下文

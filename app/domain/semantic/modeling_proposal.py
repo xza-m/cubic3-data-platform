@@ -38,9 +38,13 @@ class ModelingProposal(BaseModel):
         default_factory=lambda: {"blockers": [], "warnings": [], "infos": []}
     )
     review_records: List[Dict[str, Any]] = Field(default_factory=list)
+    action_log: List[Dict[str, Any]] = Field(default_factory=list)
     publish_result: Dict[str, Any] = Field(default_factory=dict)
     runtime_consumption_result: Dict[str, Any] = Field(default_factory=dict)
     readiness_label: str = "Save Draft Only"
+    proposal_revision_no: int = 1
+    approved_proposal_revision_no: Optional[int] = None
+    applied_proposal_revision_no: Optional[int] = None
     approved_spec_hash: Optional[str] = None
     applied_spec_hash: Optional[str] = None
     last_transition_actor: Optional[str] = None
@@ -51,6 +55,34 @@ class ModelingProposal(BaseModel):
 
     def touch(self) -> None:
         self.updated_at = _utc_now()
+
+    def has_action(self, action: str, idempotency_key: str) -> bool:
+        return any(
+            item.get("action") == action and item.get("idempotency_key") == idempotency_key
+            for item in self.action_log
+        )
+
+    def record_action(
+        self,
+        action: str,
+        *,
+        actor: str,
+        idempotency_key: str,
+        payload: Dict[str, Any] | None = None,
+    ) -> None:
+        if self.has_action(action, idempotency_key):
+            return
+        item: Dict[str, Any] = {
+            "action": action,
+            "actor": actor,
+            "idempotency_key": idempotency_key,
+            "proposal_revision_no": self.proposal_revision_no,
+            "status": self.status,
+            "created_at": _utc_now(),
+        }
+        if payload:
+            item["payload"] = payload
+        self.action_log.append(item)
 
 
 def _utc_now() -> str:

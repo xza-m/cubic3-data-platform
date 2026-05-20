@@ -122,6 +122,12 @@ def test_student_comment_query_prefers_comment_reports_dwd_over_broad_answer_vie
         for candidate in candidates
         if candidate["name"] == "view_student_answer_analysis"
     )
+    assert candidates[0]["rank"] == 1
+    assert candidates[0]["why_selected"].startswith("综合得分最高")
+    assert answer_view["why_not_selected"]
+    assert result["explainability"]["selected_candidate_id"] == candidates[0]["id"]
+    assert result["explainability"]["candidate_explanations"][0]["decision"] == "selected"
+    assert "student_comment" in result["explainability"]["scoring_profile_ids"]
 
 
 def test_recall_uses_metadata_scoring_rule_for_new_domain_without_service_code_change():
@@ -165,3 +171,16 @@ def test_recall_uses_metadata_scoring_rule_for_new_domain_without_service_code_c
     assert candidates[0]["score_breakdown"]["refund_order_domain_boost"] > 0
     plain_order = next(candidate for candidate in candidates if candidate["table"] == "dwd_order_df")
     assert plain_order["score_breakdown"]["plain_order_domain_penalty"] < 0
+
+
+def test_recall_no_candidate_response_is_explainable():
+    service = SourceCandidateRecallService(
+        datasource_repository=_FakeDatasourceRepository(),
+        table_cache_service=_FakeTableCacheService(),
+    )
+
+    result = service.recall("完全未知的收入留存概念")
+
+    assert result["state"] == "no_candidate"
+    assert result["explainability"]["decision"] == "ask_for_source"
+    assert result["explainability"]["candidate_explanations"] == []

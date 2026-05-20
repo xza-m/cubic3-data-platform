@@ -1,4 +1,5 @@
 from .data_source import DataSource
+from .extraction_template import ExtractionTemplate
 from .dataset import Dataset
 from .dataset_field import DatasetField
 from .extraction_task import ExtractionTask
@@ -18,6 +19,7 @@ from .agent_query_log import AgentQueryLog
 
 __all__ = [
     'DataSource',
+    'ExtractionTemplate',
     'Dataset',
     'DatasetField',
     'ExtractionTask',

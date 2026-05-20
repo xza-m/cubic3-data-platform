@@ -335,7 +335,35 @@ def mock_domain_canvas_service():
 
 
 @pytest.fixture
-def semantic_client(mock_semantic_service, mock_dataset_repo, mock_dataset_handler, mock_publish_service, mock_modeling_service, mock_modeling_source_service, mock_domain_modeling_service, mock_domain_canvas_service):
+def mock_runtime_snapshot_service():
+    service = MagicMock()
+    service.get_active_manifest.return_value = {
+        "ok": True,
+        "version_pin": {
+            "namespace": "default",
+            "snapshot_id": "snap_1",
+            "snapshot_status": "active",
+            "release_id": "rel_1",
+            "release_no": 3,
+            "release_status": "published",
+            "previous_release_id": "rel_0",
+            "rollback_of_release_id": None,
+            "manifest_schema_version": "semantic-runtime-manifest/v1",
+            "asset_count": 2,
+            "asset_revision_ids": ["rev_metric", "rev_cube"],
+        },
+        "asset_trace": [
+            {"asset_key": "metric:comment_count", "revision_id": "rev_metric"},
+            {"asset_key": "student_comment_cube", "revision_id": "rev_cube"},
+        ],
+        "binding_trace": {"schema_version": "semantic-runtime-manifest/v1", "count": 1},
+        "policy_trace": {"schema_version": "semantic-runtime-manifest/v1", "count": 1},
+    }
+    return service
+
+
+@pytest.fixture
+def semantic_client(mock_semantic_service, mock_dataset_repo, mock_dataset_handler, mock_publish_service, mock_modeling_service, mock_modeling_source_service, mock_domain_modeling_service, mock_domain_canvas_service, mock_runtime_snapshot_service):
     """Create a minimal Flask app with only the semantic blueprint registered."""
     app = Flask(__name__)
     app.config["TESTING"] = True
@@ -347,6 +375,7 @@ def semantic_client(mock_semantic_service, mock_dataset_repo, mock_dataset_handl
         modeling_source_service=mock_modeling_source_service,
         domain_modeling_service=mock_domain_modeling_service,
         domain_canvas_service=mock_domain_canvas_service,
+        runtime_snapshot_service=mock_runtime_snapshot_service,
         dataset_repo=mock_dataset_repo,
         dataset_handler=mock_dataset_handler,
         query_adapter_getter=lambda: (MagicMock(), "mock_project"),
@@ -361,6 +390,18 @@ def semantic_client(mock_semantic_service, mock_dataset_repo, mock_dataset_handl
 # ============================================================================
 # /cubes
 # ============================================================================
+
+def test_semantic_health_returns_runtime_snapshot_version_pin(semantic_client):
+    resp = semantic_client.get("/api/v1/semantic/health")
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["status"] == "healthy"
+    assert data["runtime"]["manifest_status"] == "ready"
+    assert data["runtime"]["version_pin"]["release_id"] == "rel_1"
+    assert data["runtime"]["version_pin"]["release_no"] == 3
+    assert data["runtime"]["asset_count"] == 2
+
 
 class TestCubesEndpoint:
     def test_list_cubes_returns_200(self, semantic_client):

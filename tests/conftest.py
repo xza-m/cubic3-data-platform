@@ -51,8 +51,14 @@ def _register_all_models():
         QueryResultObjectORM,
     )
     from app.infrastructure.semantic.models import (  # noqa
+        SemanticAssetDependencyORM,
+        SemanticAssetORM,
+        SemanticAssetRevisionORM,
         SemanticModelingAgentSessionORM,
         SemanticModelingProposalORM,
+        SemanticReleaseAssetORM,
+        SemanticReleaseORM,
+        SemanticRuntimeSnapshotORM,
     )
     from app.domain.queries.scheduled_query import ScheduledQuery            # noqa  B-back-8
     from app.domain.queries.scheduled_query_run import ScheduledQueryRun    # noqa  B-back-8

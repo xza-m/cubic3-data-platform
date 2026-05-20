@@ -32,6 +32,11 @@ def test_openapi_json_exposes_agent_ready_contracts(client):
             "side_effect": "preview",
             "risk": "medium",
         },
+        ("/api/v1/semantic/health", "get"): {
+            "operationId": "SemanticRuntimeHealthGet",
+            "side_effect": "none",
+            "risk": "low",
+        },
         ("/api/v1/governance/audit-traces", "get"): {
             "operationId": "GovernanceAuditTraceList",
             "side_effect": "none",
