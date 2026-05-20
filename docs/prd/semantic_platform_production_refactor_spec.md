@@ -924,20 +924,20 @@ B1 完成标准：
 | B2-01 | 重构 Copilot session 为最小状态机，加入 `state_version` 乐观锁 | DONE | `tests/unit/domain/semantic/test_copilot_state.py`、`make test-modeling-agent` |
 | B2-02 | 增加 Copilot event log | DONE | `tests/unit/infrastructure/semantic/test_sql_modeling_copilot_repositories.py`、`make test-modeling-agent` |
 | B2-03 | 增加 proposal action model：确认来源、修改 spec、apply、publish，并定义 apply / publish 幂等语义 | DONE | `tests/unit/application/semantic/test_modeling_proposal_service.py` 覆盖 confirm_source / update_spec revision 串联，以及 approve / apply / publish 幂等 |
-| B2-04 | 抽象 `MetadataRecallService` | TODO | service unit |
-| B2-05 | 配置化 scoring profile | TODO | config regression |
-| B2-06 | 增加 recall explainability | TODO | API response test |
-| B2-07 | 建立学生评论 golden case | TODO | golden e2e |
-| B2-08 | 前端任务卡与后端状态机对齐 | TODO | P34 E2E |
-| B2-09 | 增加 badcase 回放：错表、缺字段、权限不足、spec 不完整 | TODO | regression suite |
-| B2-10 | LLM 输出仅进入 proposal，禁止绕过服务端 gate | TODO | security regression |
+| B2-04 | 抽象 metadata-backed 来源召回服务（实现名 `SourceCandidateRecallService`） | DONE | `tests/unit/application/semantic/test_source_candidate_recall_service.py` 覆盖语义资产 / Dataset / datasource 表缓存召回与无候选状态 |
+| B2-05 | 配置化 scoring profile | DONE | `test_recall_uses_metadata_scoring_rule_for_new_domain_without_service_code_change` 覆盖新增退款订单领域无需改召回服务代码 |
+| B2-06 | 增加 recall explainability | DONE | 召回响应返回 `rank`、`score_breakdown`、`why_selected` / `why_not_selected` 与顶层 `explainability`；单测覆盖选中与无候选解释 |
+| B2-07 | 建立学生评论 golden case | DONE | `test_student_comment_golden_case_confirm_source_save_and_publish` 覆盖业务问题 -> 确认评论 DWD -> spec -> Proposal -> publish |
+| B2-08 | 前端任务卡与后端状态机对齐 | DONE | `ModelingAgent.test.tsx` 覆盖后端 `state/state_version` 展示、候选来源解释与评分明细、确认来源主链路 |
+| B2-09 | 增加 badcase 回放：错表、缺字段、权限不足、spec 不完整 | DONE | 错表修复、无候选解释、`need_source_table`、`SPEC_REQUIRED`、权限不足前端友好错误、发布校验阻断均已有回归；后续新增真实样本时纳入同一 suite |
+| B2-10 | LLM 输出仅进入 proposal，禁止绕过服务端 gate | DONE | `test_llm_patch_cannot_forge_saved_or_published_state` 覆盖 LLM 返回 `publish_result/save_result/advanced_refs.proposal_id` 时被服务端过滤 |
 
 B2 阶段收敛状态（2026-05-20）：
 
-- 已完成可恢复主干：B2-01 / B2-02 / B2-03 已落地状态机、event log、proposal action log、`state_version` 乐观锁和 proposal revision 幂等边界。
-- 召回质量仍是阶段主阻塞：B2-04 / B2-05 / B2-06 还未把召回服务抽象、scoring profile 和 explainability 统一到后端契约。
-- 业务验收仍缺 golden / badcase：B2-07 / B2-09 需要学生评论 golden case、错表、缺字段、权限不足、spec 不完整的可重复回放。
-- 前端和安全闭环未完全收口：B2-08 / B2-10 需要把任务卡状态、冲突刷新和“LLM 只能写 proposal”补成端到端验证。
+- B2 已完成本地生产契约收敛：状态机、event log、proposal action、metadata 召回、scoring profile、explainability、前端状态展示、golden case、badcase 和 LLM gate 均有单测或前端 unit 覆盖。
+- 召回策略采用 KISS / YAGNI：当前使用本地元数据缓存 + 配置化 scoring rule，不引入独立向量库或离线 YAML 桥；新增领域优先加 scoring profile 和 golden/badcase，而不是改主服务逻辑。
+- 前端按 SOLID / DRY 收敛为后端状态驱动：任务卡只展示 `state/state_version/readiness/source_candidates`，不再用固定流程推断真实状态；并保留 `state_version` 给后续冲突刷新与乐观锁提示。
+- 剩余风险不再阻塞 B2 本地收敛，但阻塞生产上线签核：需要在预生产库执行 `verify-semantic-prod-strict`，并用真实 datasource metadata / live P34 smoke 补一次端到端证据。
 
 B2 完成标准：
 

@@ -48,6 +48,7 @@ def repair_modeling_spec(
     if canonical_rule is not None:
         _apply_canonical_rule_spec(repaired, canonical_rule)
         cube = repaired["cube"]
+    _ensure_cube_source_table(repaired, cube)
     cube_name = str(cube.get("name") or cube.get("table") or "semantic_cube")
     cube["name"] = cube_name
     dimensions = _ensure_dimensions(cube, user_goal)
@@ -176,6 +177,18 @@ def _ensure_measure(cube: Dict[str, Any], dimensions: Dict[str, Dict[str, Any]],
     }
     cube["measures"] = measures
     return "total_count"
+
+
+def _ensure_cube_source_table(spec: Dict[str, Any], cube: Dict[str, Any]) -> None:
+    if cube.get("table"):
+        return
+    source = spec.get("source") if isinstance(spec.get("source"), dict) else {}
+    table = str(source.get("table") or "").strip()
+    if not table:
+        source_ref = str(cube.get("source") or "").strip()
+        table = source_ref.split(".")[-1] if source_ref else ""
+    if table:
+        cube["table"] = table
 
 
 def _default_metric(object_name: str, subject: str, cube_name: str, measure_name: str) -> Dict[str, Any]:

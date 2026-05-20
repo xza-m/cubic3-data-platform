@@ -502,6 +502,10 @@ export interface CopilotSourceCandidate {
   confidence?: 'high' | 'medium' | 'low' | string
   matched_terms?: string[]
   evidence?: string[]
+  rank?: number
+  score_breakdown?: Record<string, number>
+  why_selected?: string
+  why_not_selected?: string
   selected?: boolean
   [key: string]: unknown
 }
@@ -626,6 +630,10 @@ export interface SemanticModelingCopilotSession {
   user_goal: string
   entry_type: SemanticModelingCopilotEntryType
   status: 'active' | 'completed' | 'abandoned' | string
+  state?: string
+  state_version?: number
+  state_history?: Array<Record<string, unknown>>
+  event_log?: Array<Record<string, unknown>>
   principal_id?: string | null
   title?: string | null
   conversation?: SemanticModelingCopilotMessage[]

@@ -1412,7 +1412,7 @@ class SemanticModelingCopilotService:
 
     def _apply_agent_result(self, session: AgentSession, result: AgentRunResult) -> None:
         state = deepcopy(session.workbench_state)
-        state = self._deep_merge(state, result.workbench_state_patch)
+        state = self._deep_merge(state, self._sanitize_agent_workbench_patch(result.workbench_state_patch))
         if has_reviewable_spec(state.get("raw_spec")):
             state["raw_spec"] = repair_modeling_spec(
                 state["raw_spec"],
@@ -1428,6 +1428,28 @@ class SemanticModelingCopilotService:
         state["agent_message"] = result.message
         session.workbench_state = state
         session.tool_traces.extend(result.tool_traces)
+
+    @staticmethod
+    def _sanitize_agent_workbench_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
+        """LLM 只能写草稿态工作台，不能伪造服务端治理动作结果。"""
+        if not isinstance(patch, dict):
+            return {}
+        sanitized = deepcopy(patch)
+        for key in (
+            "publish_result",
+            "post_publish_validation",
+            "publish_gate",
+            "save_result",
+            "proposal_summary",
+        ):
+            sanitized.pop(key, None)
+        advanced_refs = sanitized.get("advanced_refs")
+        if isinstance(advanced_refs, dict):
+            advanced_refs = dict(advanced_refs)
+            for key in ("proposal_id", "proposal_status", "published_asset_id"):
+                advanced_refs.pop(key, None)
+            sanitized["advanced_refs"] = advanced_refs
+        return sanitized
 
     def _initial_workbench_state(self, user_goal: str, entry_type: str) -> Dict[str, Any]:
         return {

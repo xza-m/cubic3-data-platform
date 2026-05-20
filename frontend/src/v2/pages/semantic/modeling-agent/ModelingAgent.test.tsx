@@ -270,6 +270,8 @@ const NO_SOURCE_SESSION: SemanticModelingCopilotSession = {
 const SOURCE_CANDIDATE_SESSION: SemanticModelingCopilotSession = {
   ...NO_SOURCE_SESSION,
   id: 'session_source_candidate',
+  state: 'awaiting_confirmation',
+  state_version: 4,
   conversation: [
     { role: 'user', content: 'Data Agent 没听懂"班级活跃度"，帮我补语义' },
     { role: 'assistant', content: '我找到了候选数据来源。请先选择一项，我会基于它生成可审阅 spec。' },
@@ -289,6 +291,8 @@ const SOURCE_CANDIDATE_SESSION: SemanticModelingCopilotSession = {
         title: '班级活跃事实表',
         confidence: 'high',
         score: 0.86,
+        score_breakdown: { source_base: 0.42, lexical_match: 0.28, canonical_table_boost: 0.08 },
+        why_selected: '综合得分最高：命中班级互动活跃事实表，来自 datasource 元数据缓存。',
         evidence: ['数据源表缓存命中，未实时连接外部库'],
       },
     ],
@@ -571,6 +575,9 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
     expect(screen.getByText('推荐数据来源')).toBeInTheDocument()
     expect(screen.getByText('班级活跃事实表')).toBeInTheDocument()
     expect(screen.getByText('dw.dwd_class_activity_df')).toBeInTheDocument()
+    expect(screen.getByText(/综合得分最高/)).toBeInTheDocument()
+    expect(screen.getByText(/评分明细/)).toHaveTextContent('canonical_table_boost +0.08')
+    expect(screen.getByText('awaiting_confirmation · v4')).toBeInTheDocument()
     expect(screen.getByTestId('copilot-run-state')).toHaveTextContent('当前状态：等待你确认数据来源')
     expect(screen.getByTestId('copilot-run-state')).toHaveTextContent('后台没有继续运行')
     const artifacts = screen.getByTestId('artifact-panel')

@@ -737,6 +737,12 @@ function CopilotTopbar({ session }: { session: SemanticModelingCopilotSession | 
         {session?.entry_type ? (
           <Chip>{entryTypeLabel(session.entry_type)}</Chip>
         ) : null}
+        {session?.state ? (
+          <Chip tone="neutral">
+            {session.state}
+            {typeof session.state_version === 'number' ? ` · v${session.state_version}` : ''}
+          </Chip>
+        ) : null}
         <Chip tone={tone === 'accent' ? 'accent' : tone}>{label}</Chip>
       </div>
     </div>
@@ -3065,8 +3071,11 @@ function SourceCandidateCard({
           const name = String(candidate.name ?? candidate.table ?? candidate.title ?? `candidate-${index + 1}`)
           const title = String(candidate.title ?? '')
           const confidence = String(candidate.confidence ?? confidenceLabel(candidate.score))
-          const evidence = Array.isArray(candidate.evidence) ? candidate.evidence[0] : ''
+          const evidence =
+            String(candidate.why_selected ?? candidate.why_not_selected ?? '') ||
+            (Array.isArray(candidate.evidence) ? candidate.evidence[0] : '')
           const matched = Array.isArray(candidate.matched_terms) ? candidate.matched_terms.slice(0, 3).join(' / ') : ''
+          const scoreBreakdown = formatScoreBreakdown(candidate.score_breakdown)
           return (
             <div
               key={String(candidate.id ?? name)}
@@ -3091,6 +3100,9 @@ function SourceCandidateCard({
                   <div className="mt-1.5 text-[12px] leading-5 text-3">
                     {evidence || (matched ? `匹配：${matched}` : '来自已同步 datasource 元数据，不实时连接源库。')}
                   </div>
+                  {scoreBreakdown ? (
+                    <div className="mt-1 text-[11px] leading-5 text-4">评分明细：{scoreBreakdown}</div>
+                  ) : null}
                   <div className="mt-2">
                     <Button size="sm" variant="primary" onClick={() => onConfirm(candidate)}>
                       <CheckCircle2 size={12} /> 使用此来源
@@ -3104,6 +3116,18 @@ function SourceCandidateCard({
       </div>
     </CardShell>
   )
+}
+
+function formatScoreBreakdown(value: unknown): string {
+  if (!value || typeof value !== 'object') return ''
+  return Object.entries(value as Record<string, unknown>)
+    .map(([key, raw]) => {
+      const number = Number(raw)
+      if (!Number.isFinite(number) || number === 0) return ''
+      return `${key} ${number > 0 ? '+' : ''}${Number(number.toFixed(4))}`
+    })
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function AssetRow({
