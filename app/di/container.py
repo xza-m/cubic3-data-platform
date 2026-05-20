@@ -812,6 +812,8 @@ class Container(containers.DeclarativeContainer):
         repository=semantic_modeling_proposal_repository,
         builder=semantic_modeling_agent,
         readiness_checker=semantic_modeling_copilot_readiness_checker,
+        asset_registry_repository=semantic_asset_registry_repository,
+        release_service=semantic_release_service,
     )
 
     semantic_modeling_copilot_runtime = providers.Singleton(
