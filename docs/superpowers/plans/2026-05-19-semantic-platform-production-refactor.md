@@ -12,7 +12,9 @@
 
 ## 0. 当前执行状态（2026-05-20）
 
-B1 / B2 / B3 本地实现、测试和文档已收敛，当前 worktree 为 `codex/semantic-prod-refactor-b1`。下一阶段进入 B4「生产候选签核与上线前补证」。
+B1 / B2 / B3 本地实现、测试和文档已收敛，当前 worktree 为 `codex/semantic-prod-refactor-b1`。B4 已按“本地 Docker 主库作为模拟预生产”完成生产候选签核。
+
+当前完成状态以本节、7.5 小节和主 Spec 阶段表为准；下方 B1 / B2 / B3 早期 checkbox 是过程拆解记录，未勾选项不代表当前仍未实现。
 
 已完成或已有自动化证据的部分：
 
@@ -26,13 +28,14 @@ B1 / B2 / B3 本地实现、测试和文档已收敛，当前 worktree 为 `code
 - B2 Copilot 状态机、proposal action、metadata recall、scoring profile、explainability、golden / badcase 和前端状态展示已收敛。
 - B3 Runtime version pin、Agent execute gate、QueryExecution trace、semantic health、OpenAPI 和 audit trace 已收敛。
 - B4 已新增 `make semantic-prod-readiness-report`，用于脱敏盘点 strict gate 的 baseline / live / cleanup / PostgreSQL 并发补证输入。
+- B4 模拟预生产补证已完成：`make verify-semantic-prod-strict` 通过，baseline fingerprint、真实 PostgreSQL concurrency、P34 Modeling Copilot live smoke、SQL Registry release / runtime snapshot / audit trace 和 cleanup summary 均已留证。
+- P34 live smoke 暴露并已修复一个生产缺陷：Copilot publish 路径不应再写 legacy YAML，已切到 SQL Registry 发布并生成 release / runtime snapshot。
+- fixture cleanup 已补齐 semantic release audit trace 清理，避免模拟预生产验证留下测试审计残留。
 
-仍需真实环境补证：
+剩余上线风险：
 
-- 真实预生产库 `SEMANTIC_BASELINE_DATABASE_URL` fingerprint 未跑。
-- `SEMANTIC_PROD_LIVE=1` 的真实 Modeling Copilot live smoke 未跑。
-- live fixture namespace 的 cleanup summary 未在预生产库保留。
-- 真实 PostgreSQL 并发冲突已有 opt-in 集成测试入口；当前本地未提供 `SEMANTIC_POSTGRES_DATABASE_URL`，上线前由 `verify-semantic-prod-strict` fail-fast 强制补跑。
+- 当前签核基于本地模拟预生产，不代表共享预生产或真实线上数据分布；若上线治理要求独立共享预生产，需要复跑同一 strict 入口并归档输出。
+- 真实 LLM provider 已完成最小连通性验证；P34 live smoke 当前验证确定性建模闭环和发布链路，不覆盖大模型生成质量波动。
 
 当前已跑验证：
 
@@ -45,6 +48,10 @@ B1 / B2 / B3 本地实现、测试和文档已收敛，当前 worktree 为 `code
 - `make semantic-baseline-dry-run smoke-semantic-live semantic-fixture-cleanup`
 - `docker compose build nginx`
 - `cd frontend && npm run e2e:modeling-agent-smoke`
+- `scripts/checks/semantic_alembic_baseline.py --database-url postgresql://postgres:postgres@postgres:5432/cubic3_data_platform`，fingerprint 为 `9d61087e9de9de8d10c7c664663ce66c8f14aafd76360ca0b452efc58e105861`
+- `tests/integration/semantic/test_semantic_postgres_concurrency.py`，Docker PostgreSQL 上通过
+- `cd frontend && VITE_API_PROXY_TARGET=http://127.0.0.1:81 V2_E2E_BASE_URL=http://127.0.0.1:3001 npm run e2e:modeling-agent-smoke:live`
+- `make verify-changed`
 
 ## 1. 来源与边界
 
@@ -642,9 +649,9 @@ B1-B3 本地收敛后，B4 只处理上线前证据和门禁可操作性：
 - [x] B4-01 新增 `scripts/checks/semantic_prod_readiness_report.py` 和 `make semantic-prod-readiness-report`。
 - [x] B4-02 readiness report 对 DB URL 做脱敏，避免签核日志泄露密码。
 - [x] B4-03 readiness report 显式输出 `SEMANTIC_FIXTURE_DATABASE_URL` fallback 到 `SEMANTIC_BASELINE_DATABASE_URL` 的来源。
-- [ ] B4-04 在预生产库执行 baseline fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证。
-- [ ] B4-05 执行真实 Modeling Copilot live smoke，并保留 release / snapshot / audit trace 证据。
-- [ ] B4-06 汇总上线签核记录。
+- [x] B4-04 在模拟预生产库执行 baseline fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证。
+- [x] B4-05 执行真实 Modeling Copilot live smoke，并保留 release / snapshot / audit trace 证据。
+- [x] B4-06 汇总上线签核记录；独立共享预生产复跑作为上线治理可选补证。
 
 B4 本地最小验证：
 
@@ -653,6 +660,16 @@ PYTHONPATH=. python -m pytest --no-cov tests/unit/scripts/test_semantic_prod_rea
 make semantic-prod-readiness-report
 make verify-docs
 ```
+
+B4 模拟预生产验收记录：
+
+- namespace：`sim_preprod_20260520`
+- strict：`make verify-semantic-prod-strict` 通过。
+- baseline fingerprint：`4bb3356ace2d3da1e870ede6dcfa56c7ae38ab805347898499782b50af0eb130`。
+- release：`rel_48462d56e34249139a893d4a43cf96d6`，`release_no=1`。
+- snapshot：`snap_fb7836dceec1407889506ef55de10cd8`。
+- audit trace：`gat_7404d8d657dd49f09bcc4c650641a4db`。
+- cleanup：Registry / Copilot / audit trace namespace 残留复查为 0；临时 datasource、table cache、物理表和 PG 代理容器已清理。
 
 ## 8. 建议 commit 拆分
 

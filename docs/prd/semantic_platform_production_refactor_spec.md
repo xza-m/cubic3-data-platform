@@ -988,9 +988,25 @@ B3 完成标准：
 | --- | --- | --- | --- |
 | B4-01 | 增加上线前 readiness 报告，汇总 baseline、live smoke、fixture cleanup、PostgreSQL 并发四类补证状态 | DONE | `scripts/checks/semantic_prod_readiness_report.py`、`make semantic-prod-readiness-report`；单测覆盖 URL 脱敏、fixture DB 复用 baseline DB 和 strict 缺项输出 |
 | B4-02 | 对齐 strict guard、Makefile 和文档里的 fixture cleanup fallback 语义 | DONE | `SEMANTIC_FIXTURE_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)`；readiness 报告显式输出 `fixture_database_url_source` |
-| B4-03 | 在预生产库执行存量库 fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证 | BLOCKED | 依赖 `SEMANTIC_BASELINE_DATABASE_URL` / `SEMANTIC_FIXTURE_NAMESPACE` / PostgreSQL URL；本地 readiness report 会列出缺项 |
-| B4-04 | 执行真实 Modeling Copilot live smoke 和真实 datasource metadata / P34 业务链路补证 | BLOCKED | 依赖 `SEMANTIC_PROD_LIVE=1`、live 后端、真实数据源权限和发布测试 namespace |
-| B4-05 | 产出上线签核记录：版本、补证命令、trace / release_no、cleanup summary、剩余风险确认 | TODO | 预生产严格验证通过后回填 |
+| B4-03 | 在预生产库执行存量库 fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证 | DONE | 按“本地 Docker 主库作为模拟预生产”执行 `make verify-semantic-prod-strict` 通过；覆盖 baseline fingerprint、fixture cleanup、真实 PostgreSQL 并发 |
+| B4-04 | 执行真实 Modeling Copilot live smoke 和真实 datasource metadata / P34 业务链路补证 | DONE | 本地真实 backend / frontend + PostgreSQL datasource metadata 闭环通过；P34 live smoke 断言发布来源为 SQL Registry，并产出 release / runtime snapshot |
+| B4-05 | 产出上线签核记录：版本、补证命令、trace / release_no、cleanup summary、剩余风险确认 | DONE | 已记录模拟预生产 strict 命令、fingerprint、release_no、snapshot_id、audit trace 和 cleanup summary；若上线治理要求独立共享预生产，需要复跑同一命令 |
+
+B4 模拟预生产签核记录（2026-05-20）：
+
+- 环境假设：按用户确认，本地 Docker 主库作为模拟预生产；namespace 为 `sim_preprod_20260520`，临时 datasource / table cache / physical table 仅用于本地 live smoke，结束后清理。
+- readiness：`SEMANTIC_PROD_LIVE=1 make semantic-prod-readiness-report` 输出 `ready_for_strict`，DB URL 已脱敏。
+- 严格入口：`make verify-semantic-prod-strict` 通过，覆盖 Alembic 拓扑、Registry、baseline dry-run、nginx 生产构建、后端/前端/Playwright smoke、P34 mock smoke、P34 live smoke、fixture cleanup 和真实 PostgreSQL concurrency。
+- baseline fingerprint：`4bb3356ace2d3da1e870ede6dcfa56c7ae38ab805347898499782b50af0eb130`。
+- P34 live smoke：真实 backend / frontend + PostgreSQL datasource metadata 闭环通过；发布来源断言为 `sql_registry`。
+- release 证据：`release_id=rel_48462d56e34249139a893d4a43cf96d6`，`release_no=1`，`snapshot_id=snap_fb7836dceec1407889506ef55de10cd8`，`asset_key=dwd_interaction_comment_reports_df`，`audit_trace=gat_7404d8d657dd49f09bcc4c650641a4db`。
+- cleanup summary：`assets=1`、`releases=1`、`runtime_snapshots=1`、`proposals=1`、`sessions=1`、`audit_traces=3` 均已删除；复查后该 namespace 在 Registry / Copilot / audit trace 中残留为 0。
+- 环境清理：临时 datasource `900001`、table cache `900001`、物理表 `public.dwd_interaction_comment_reports_df` 和本地 PG 代理容器 `cubic3-sim-preprod-pg-proxy` 已清理。
+
+B4 剩余上线风险：
+
+- 当前签核基于本地模拟预生产，不代表共享预生产或真实线上数据分布；若发布流程要求独立共享预生产，需要用同一组 `SEMANTIC_*` 环境变量复跑 `make verify-semantic-prod-strict` 并归档输出。
+- 真实 LLM provider 已完成最小连通性验证；P34 live smoke 的业务链路使用 deterministic draft，不覆盖大模型生成质量波动。
 
 B4 完成标准：
 
@@ -1065,7 +1081,7 @@ make verify-semantic-prod
 
 ## 11. 当前阶段状态
 
-截至 2026-05-20，本 Spec 的 B1 / B2 / B3 本地实现、测试和文档已收敛；当前进入 B4「生产候选签核与上线前补证」。
+截至 2026-05-20，本 Spec 的 B1 / B2 / B3 本地实现、测试和文档已收敛；B4 已按“本地 Docker 主库作为模拟预生产”完成生产候选签核。
 
 已完成的生产级闭环：
 
@@ -1075,10 +1091,13 @@ make verify-semantic-prod
 - Agent-first Runtime、QueryExecution execute、Runtime trace、semantic health 和 governance audit trace 已接入。
 - `make verify-semantic-prod` 与 `make verify-semantic-prod-strict` 已落地；`make semantic-prod-readiness-report` 用于上线前补证盘点。
 
-尚未完成的生产上线签核：
+已完成的模拟预生产上线签核：
 
-- 在预生产库执行 `SEMANTIC_BASELINE_DATABASE_URL=... make semantic-baseline-dry-run`。
-- 设置 live namespace 后执行 `make semantic-fixture-cleanup` 并保留 cleanup summary。
-- 在真实 PostgreSQL 上执行 `make test-semantic-postgres-concurrency`。
-- 设置 `SEMANTIC_PROD_LIVE=1` 执行真实 Modeling Copilot live smoke，并保留 release / snapshot / trace 证据。
-- 汇总 `make verify-semantic-prod-strict` 的完整输出作为上线签核记录。
+- `SEMANTIC_PROD_LIVE=1 make semantic-prod-readiness-report` 输出 `ready_for_strict`。
+- `make verify-semantic-prod-strict` 已覆盖 baseline dry-run、live smoke、fixture cleanup 和真实 PostgreSQL concurrency。
+- 已保留 release / snapshot / audit trace 证据，并确认测试 namespace 清理后残留为 0。
+
+剩余上线风险：
+
+- 若上线治理要求独立共享预生产，需要在共享预生产用同一 strict 入口复跑并归档输出。
+- 当前 P34 live smoke 验证确定性建模闭环和发布链路，不覆盖真实 LLM 生成质量波动。
