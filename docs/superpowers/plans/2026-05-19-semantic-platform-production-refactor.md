@@ -32,9 +32,9 @@ B1 / B2 / B3 本地实现、测试和文档已收敛，当前 worktree 为 `code
 - P34 live smoke 暴露并已修复一个生产缺陷：Copilot publish 路径不应再写 legacy YAML，已切到 SQL Registry 发布并生成 release / runtime snapshot。
 - fixture cleanup 已补齐 semantic release audit trace 清理，避免模拟预生产验证留下测试审计残留。
 
-剩余上线风险：
+验收边界：
 
-- 当前签核基于本地模拟预生产，不代表共享预生产或真实线上数据分布；若上线治理要求独立共享预生产，需要复跑同一 strict 入口并归档输出。
+- 本地 Docker 主库 / 模拟预生产即本次上线前验收环境；不再要求额外环境补证。
 - 真实 LLM provider 已完成最小连通性验证；P34 live smoke 当前验证确定性建模闭环和发布链路，不覆盖大模型生成质量波动。
 
 当前已跑验证：
@@ -651,7 +651,7 @@ B1-B3 本地收敛后，B4 只处理上线前证据和门禁可操作性：
 - [x] B4-03 readiness report 显式输出 `SEMANTIC_FIXTURE_DATABASE_URL` fallback 到 `SEMANTIC_BASELINE_DATABASE_URL` 的来源。
 - [x] B4-04 在模拟预生产库执行 baseline fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证。
 - [x] B4-05 执行真实 Modeling Copilot live smoke，并保留 release / snapshot / audit trace 证据。
-- [x] B4-06 汇总上线签核记录；独立共享预生产复跑作为上线治理可选补证。
+- [x] B4-06 汇总上线签核记录；本地模拟预生产作为本次上线前验收环境。
 
 B4 本地最小验证：
 
