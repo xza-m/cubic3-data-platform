@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from app.infrastructure.governance.models import GovernanceAuditTraceORM
 from app.infrastructure.semantic.models import (
     SemanticAssetDependencyORM,
     SemanticAssetORM,
@@ -98,8 +99,14 @@ class SemanticTestFixtureManager:
             deleted["assets"] = self._delete(
                 self._session.query(SemanticAssetORM).filter(SemanticAssetORM.namespace == namespace)
             )
-            deleted["proposals"] = self._delete_payload_namespace(SemanticModelingProposalORM, namespace)
-            deleted["sessions"] = self._delete_payload_namespace(SemanticModelingAgentSessionORM, namespace)
+            proposal_ids = self._payload_namespace_ids(SemanticModelingProposalORM, namespace)
+            deleted["proposals"] = self._delete_payload_namespace(
+                SemanticModelingProposalORM,
+                namespace,
+                ids=proposal_ids,
+            )
+            deleted["sessions"] = self._delete_session_namespace(namespace, proposal_ids)
+            deleted["audit_traces"] = self._delete_audit_traces(namespace, release_ids)
             deleted["yaml_fixture_outputs"] = self._cleanup_yaml_namespace(namespace)
             self._session.commit()
             return {"ok": True, "namespace": namespace, "deleted": deleted}
@@ -117,12 +124,77 @@ class SemanticTestFixtureManager:
         query.delete(synchronize_session=False)
         return int(count)
 
-    def _delete_payload_namespace(self, model, namespace: str) -> int:
+    def _payload_namespace_ids(self, model, namespace: str) -> list[str]:
+        rows = self._session.query(model).all()
+        return [
+            row.id
+            for row in rows
+            if self._payload_matches_namespace(row.payload_json or {}, namespace)
+        ]
+
+    def _delete_payload_namespace(self, model, namespace: str, *, ids: list[str] | None = None) -> int:
         rows = self._session.query(model).all()
         count = 0
         for row in rows:
             payload = row.payload_json or {}
-            if payload.get("test_namespace") == namespace or payload.get("namespace") == namespace:
+            if (ids is not None and row.id in ids) or self._payload_matches_namespace(payload, namespace):
+                self._session.delete(row)
+                count += 1
+        return count
+
+    def _delete_session_namespace(self, namespace: str, proposal_ids: list[str]) -> int:
+        proposal_id_set = set(proposal_ids)
+        rows = self._session.query(SemanticModelingAgentSessionORM).all()
+        count = 0
+        for row in rows:
+            payload = row.payload_json or {}
+            if self._payload_matches_namespace(payload, namespace) or self._session_links_proposal(
+                payload,
+                proposal_id_set,
+            ):
+                self._session.delete(row)
+                count += 1
+        return count
+
+    @classmethod
+    def _payload_matches_namespace(cls, payload: Any, namespace: str) -> bool:
+        if isinstance(payload, dict):
+            for key, value in payload.items():
+                if key in {"namespace", "semantic_namespace", "test_namespace"} and str(value) == namespace:
+                    return True
+                if cls._payload_matches_namespace(value, namespace):
+                    return True
+            return False
+        if isinstance(payload, list):
+            return any(cls._payload_matches_namespace(item, namespace) for item in payload)
+        return False
+
+    @classmethod
+    def _session_links_proposal(cls, payload: dict[str, Any], proposal_ids: set[str]) -> bool:
+        if not proposal_ids:
+            return False
+        current = str(payload.get("current_proposal_id") or "")
+        if current in proposal_ids:
+            return True
+        state = payload.get("workbench_state") if isinstance(payload.get("workbench_state"), dict) else {}
+        advanced_refs = state.get("advanced_refs") if isinstance(state.get("advanced_refs"), dict) else {}
+        proposal_summary = state.get("proposal_summary") if isinstance(state.get("proposal_summary"), dict) else {}
+        return any(
+            str(value or "") in proposal_ids
+            for value in (
+                advanced_refs.get("proposal_id"),
+                proposal_summary.get("id"),
+            )
+        )
+
+    def _delete_audit_traces(self, namespace: str, release_ids: list[str]) -> int:
+        release_id_set = set(release_ids)
+        rows = self._session.query(GovernanceAuditTraceORM).filter(
+            GovernanceAuditTraceORM.target_type == "semantic_release"
+        )
+        count = 0
+        for row in rows:
+            if row.target_name in release_id_set or self._payload_matches_namespace(row.traceability or {}, namespace):
                 self._session.delete(row)
                 count += 1
         return count

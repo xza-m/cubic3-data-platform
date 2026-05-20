@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.infrastructure.governance.models import GovernanceAuditTraceORM
 from app.infrastructure.semantic.models import (
     SemanticAssetORM,
     SemanticAssetRevisionORM,
@@ -79,6 +80,18 @@ def test_semantic_fixture_manager_cleans_registry_release_snapshot_and_copilot_r
             version=1,
         )
     )
+    db_session.add(
+        GovernanceAuditTraceORM(
+            id="trace_1",
+            target_type="semantic_release",
+            target_name="rel_1",
+            execution_target="semantic_registry",
+            decision="allow",
+            policy_decision={},
+            traceability={"namespace": namespace, "release_id": "rel_1"},
+            timestamp="2026-05-20T00:00:00Z",
+        )
+    )
     db_session.commit()
 
     summary = SemanticTestFixtureManager(db_session).cleanup_namespace(namespace)
@@ -91,7 +104,48 @@ def test_semantic_fixture_manager_cleans_registry_release_snapshot_and_copilot_r
     assert summary["deleted"]["assets"] == 1
     assert summary["deleted"]["proposals"] == 1
     assert summary["deleted"]["sessions"] == 1
+    assert summary["deleted"]["audit_traces"] == 1
     assert db_session.get(SemanticAssetORM, "asset_1") is None
+    assert db_session.get(GovernanceAuditTraceORM, "trace_1") is None
+
+
+def test_semantic_fixture_manager_cleans_nested_namespace_payloads(db_session):
+    namespace = "qa_live_fixture_nested"
+    db_session.add(
+        SemanticModelingProposalORM(
+            id="proposal_nested",
+            status="published",
+            payload_json={
+                "source_context": {
+                    "request_payload": {
+                        "semantic_namespace": namespace,
+                    },
+                },
+            },
+        )
+    )
+    db_session.add(
+        SemanticModelingAgentSessionORM(
+            id="session_nested",
+            status="completed",
+            payload_json={
+                "current_proposal_id": "proposal_nested",
+                "workbench_state": {
+                    "advanced_refs": {"proposal_id": "proposal_nested"},
+                },
+            },
+            version=1,
+        )
+    )
+    db_session.commit()
+
+    summary = SemanticTestFixtureManager(db_session).cleanup_namespace(namespace)
+
+    assert summary["ok"] is True
+    assert summary["deleted"]["proposals"] == 1
+    assert summary["deleted"]["sessions"] == 1
+    assert db_session.get(SemanticModelingProposalORM, "proposal_nested") is None
+    assert db_session.get(SemanticModelingAgentSessionORM, "session_nested") is None
 
 
 def test_semantic_fixture_manager_namespace_is_unique():
