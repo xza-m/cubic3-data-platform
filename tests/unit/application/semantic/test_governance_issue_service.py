@@ -86,3 +86,32 @@ def test_governance_issue_service_merges_mapper_stale_check_items():
     assert payload["items"][0]["metadata"]["missing_refs"] == [
         "student_comment_cube.comment_count"
     ]
+
+
+def test_governance_issue_service_marks_skipped_schema_sync_as_warn():
+    report = SyncReport(
+        total_cubes=1,
+        checked_cubes=0,
+        skipped_cubes=["orders"],
+    )
+
+    payload = SemanticGovernanceIssueService().build_payload(schema_report=report)
+
+    assert payload["summary"]["status"] == "warn"
+    assert payload["summary"]["by_code"] == {"schema_sync_skipped": 1}
+    assert payload["items"] == [
+        {
+            "id": "schema_sync:schema_sync_skipped:cube:orders:orders",
+            "code": "schema_sync_skipped",
+            "source": "schema_sync",
+            "severity": "warn",
+            "object_type": "cube",
+            "object_name": "orders",
+            "resource_ref": "orders",
+            "message": "Schema sync 未完成：未能读取物理 Schema，或该 Cube 不适用本次检测",
+            "metadata": {
+                "cube": "orders",
+                "kind": "skipped",
+            },
+        }
+    ]

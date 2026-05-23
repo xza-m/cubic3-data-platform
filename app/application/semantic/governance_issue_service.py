@@ -78,10 +78,13 @@ class SemanticGovernanceIssueService:
 
     def from_schema_report(self, report: SyncReport) -> List[GovernanceIssue]:
         issues: List[GovernanceIssue] = []
+        drift_cubes = set()
         for drift in report.drifts:
             code = _SCHEMA_DRIFT_CODE_MAP.get(drift.kind, f"schema_drift_{drift.kind}")
             object_type = drift.object_type or "cube"
             object_name = drift.object_name or drift.cube
+            if object_type == "cube" and object_name:
+                drift_cubes.add(object_name)
             resource_ref = self._schema_resource_ref(drift.table, drift.column)
             issues.append(
                 GovernanceIssue(
@@ -97,6 +100,24 @@ class SemanticGovernanceIssueService:
                         "table": drift.table,
                         "kind": drift.kind,
                         "column": drift.column,
+                    },
+                )
+            )
+        for cube_name in report.skipped_cubes:
+            if cube_name in drift_cubes:
+                continue
+            issues.append(
+                GovernanceIssue(
+                    code="schema_sync_skipped",
+                    source="schema_sync",
+                    object_type="cube",
+                    object_name=cube_name,
+                    severity="warn",
+                    resource_ref=cube_name,
+                    message="Schema sync 未完成：未能读取物理 Schema，或该 Cube 不适用本次检测",
+                    metadata={
+                        "cube": cube_name,
+                        "kind": "skipped",
                     },
                 )
             )
