@@ -26,6 +26,7 @@
     "perf:lhci:assert": "cd .. && npx --yes @lhci/cli@0.15.x assert --config=lighthouserc.json",
     "e2e:domain-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/domain_creation_smoke.py",
     "e2e:domain-publish-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/domain_publish_smoke.py",
+    "e2e:governance-issues-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/governance_issues_smoke.py",
     "e2e:modeling-agent-smoke": "playwright test --config tests/e2e-v2/playwright.config.ts p34-modeling-agent-smoke.spec.ts",
     "e2e:modeling-agent-smoke:live": "P34_LIVE_API=1 playwright test --config tests/e2e-v2/playwright.config.ts p34-modeling-agent-live.spec.ts --workers=1",
     "ci:pre-push": "npm run lint && npm run test:unit && npm run build:v2",

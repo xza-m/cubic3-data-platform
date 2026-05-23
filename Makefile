@@ -251,6 +251,7 @@ smoke-semantic:
 	@printf '%s\n' '[layer4][semantic] 运行语义中心关键路径 smoke'
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-smoke
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-publish-smoke
+	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:governance-issues-smoke
 	cd $(FRONTEND_DIR) && $(NPM) run e2e:modeling-agent-smoke
 
 verify: lint typecheck test smoke

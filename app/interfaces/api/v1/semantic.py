@@ -2,7 +2,7 @@
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from flask import Blueprint, g, request
+from flask import Blueprint, current_app, g, request
 from app.interfaces.api.middleware.auth import require_admin, require_auth
 from app.shared.response import success, error, not_found, created
 from app.shared.utils.logger import get_logger
@@ -53,6 +53,7 @@ def create_semantic_blueprint(
     view_materialize_service=None,
     cube_listing_service=None,
     runtime_snapshot_service=None,
+    mapper_service=None,
 ):
     """Blueprint 工厂：依赖在初始化时注入，便于单元测试时传入 Mock。
 
@@ -128,6 +129,75 @@ def create_semantic_blueprint(
         if query_adapter_getter is None:
             return None, None
         return query_adapter_getter()
+
+    def _build_schema_sync_service():
+        from app.application.semantic.schema_sync_service import SchemaSyncService
+        from app.domain.semantic.ports.schema_inspector import ISchemaInspector
+
+        class _NullInspector(ISchemaInspector):
+            def get_table_columns(self, table_name: str):
+                return []
+
+            def fetch_dict_enums(self, dict_type: str):
+                return None
+
+        runtime_binding_service = getattr(
+            semantic_service._definition_service,
+            "_runtime_binding_service",
+            None,
+        )
+        adapter, database = _resolve_query_adapter()
+        if adapter is not None:
+            from app.infrastructure.semantic.maxcompute_schema_inspector import MaxComputeSchemaInspector
+            inspector = MaxComputeSchemaInspector(adapter=adapter, database=database)
+        else:
+            inspector = _NullInspector()
+        return SchemaSyncService(
+            cube_repo=semantic_service._cube_repo,
+            inspector=inspector,
+            view_repo=semantic_service._view_repo,
+            registry_repo=registry_repo,
+            runtime_binding_service=runtime_binding_service,
+        )
+
+    def _build_schema_report(cube_name=None):
+        sync_service = _build_schema_sync_service()
+        if cube_name:
+            return sync_service.check_cube(cube_name)
+        return sync_service.check_all()
+
+    def _resolve_mapper_service():
+        if mapper_service is not None:
+            return mapper_service
+        container = getattr(current_app, "container", None)
+        provider = (
+            getattr(container, "semantic_mapper_preview_service", None)
+            if container is not None
+            else None
+        )
+        if provider is None:
+            return None
+        try:
+            return provider() if callable(provider) else provider
+        except Exception as exc:
+            logger.warning("resolve_semantic_mapper_service_failed", error=str(exc))
+            return None
+
+    def _build_mapper_stale_payload():
+        resolved_mapper_service = _resolve_mapper_service()
+        stale_check = (
+            getattr(resolved_mapper_service, "stale_check", None)
+            if resolved_mapper_service is not None
+            else None
+        )
+        if not callable(stale_check):
+            return None
+        try:
+            payload = stale_check()
+            return payload if isinstance(payload, dict) else None
+        except Exception as exc:
+            logger.warning("semantic_mapper_stale_check_failed", error=str(exc))
+            return None
 
     def _parse_positive_int_arg(name, *, default, maximum=None):
         raw_value = request.args.get(name)
@@ -1011,6 +1081,21 @@ def create_semantic_blueprint(
 
     # ── Schema Sync ──
 
+    @bp.route('/governance/issues', methods=['GET'])
+    @require_admin
+    def governance_issues():
+        """返回语义治理问题聚合结果。"""
+        cube_name = (request.args.get("cube_name") or "").strip() or None
+        from app.application.semantic.governance_issue_service import SemanticGovernanceIssueService
+
+        schema_report = _build_schema_report(cube_name)
+        mapper_stale_payload = _build_mapper_stale_payload()
+        payload = SemanticGovernanceIssueService().build_payload(
+            schema_report=schema_report,
+            mapper_stale_payload=mapper_stale_payload,
+        )
+        return success(data=payload)
+
     @bp.route('/schema-sync', methods=['POST'])
     @require_admin
     def schema_sync():
@@ -1026,36 +1111,7 @@ def create_semantic_blueprint(
         notify = body.get("notify", False)
         webhook_url = body.get("webhook_url", "")
 
-        from app.application.semantic.schema_sync_service import SchemaSyncService
-        from app.domain.semantic.ports.schema_inspector import ISchemaInspector
-
-        class _NullInspector(ISchemaInspector):
-            def get_table_columns(self, table_name: str):
-                return []
-
-            def fetch_dict_enums(self, dict_type: str):
-                return None
-
-        runtime_binding_service = getattr(semantic_service._definition_service, "_runtime_binding_service", None)
-        adapter, database = _resolve_query_adapter()
-        if adapter is not None:
-            from app.infrastructure.semantic.maxcompute_schema_inspector import MaxComputeSchemaInspector
-            inspector = MaxComputeSchemaInspector(adapter=adapter, database=database)
-        else:
-            inspector = _NullInspector()
-        cube_repo = semantic_service._cube_repo
-        sync_service = SchemaSyncService(
-            cube_repo=cube_repo,
-            inspector=inspector,
-            view_repo=semantic_service._view_repo,
-            registry_repo=registry_repo,
-            runtime_binding_service=runtime_binding_service,
-        )
-
-        if cube_name:
-            report = sync_service.check_cube(cube_name)
-        else:
-            report = sync_service.check_all()
+        report = _build_schema_report(cube_name)
 
         report_dict = report.to_dict()
         report_dict["checked_at"] = datetime.now(timezone.utc).isoformat()

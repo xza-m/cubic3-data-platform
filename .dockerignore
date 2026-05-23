@@ -1,0 +1,21 @@
+# 前端依赖和构建产物由镜像构建阶段重新生成
+frontend/node_modules
+frontend/dist
+frontend/dist-v2
+frontend/coverage
+frontend/test-results
+frontend/playwright-report-v2
+frontend/.cache
+frontend/.eslintcache
+
+# 前端测试只在本地/CI 验证入口执行，不进入 nginx production build context
+frontend/src/**/*.test.ts
+frontend/src/**/*.test.tsx
+frontend/src/**/__tests__/
+frontend/tests/
+
+# 通用本地噪声
+.git
+.DS_Store
+*.log
+npm-debug.log*

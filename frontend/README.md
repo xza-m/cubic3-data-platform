@@ -82,6 +82,8 @@ npm run test:unit
 npm run test:e2e:v2
 # 只跑 smoke 子集（P1/P2/P3/P7/P21）
 npm run test:e2e:v2:smoke
+# 语义治理问题真实后端 smoke（通常由根目录 make smoke-semantic 串行调用）
+npm run e2e:governance-issues-smoke
 
 # 设计令牌 + i18n 覆盖等综合校验（根目录 Make 入口也可：`make verify-frontend`）
 npm run lint:all
