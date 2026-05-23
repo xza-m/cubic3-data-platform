@@ -193,10 +193,10 @@ export const NAV_MODULES: NavModule[] = [
         path: '/semantic/ontology/governance',
         implemented: true,
       },
-      { section: t('nav.semantic.section.physical', '物理底座'), label: 'Cube', path: '/semantic/cubes', implemented: true },
-      { section: t('nav.semantic.section.physical', '物理底座'), label: t('nav.semantic.sub.domains', '业务上下文'), path: '/semantic/domains', implemented: true },
+      { section: t('nav.semantic.section.physical', 'Cube工作台'), label: 'Cube', path: '/semantic/cubes', implemented: true },
+      { section: t('nav.semantic.section.physical', 'Cube工作台'), label: t('nav.semantic.sub.domains', '业务上下文'), path: '/semantic/domains', implemented: true },
       {
-        section: t('nav.semantic.section.physical', '物理底座'),
+        section: t('nav.semantic.section.physical', 'Cube工作台'),
         label: t('nav.semantic.sub.workbench', '语义诊断'),
         path: '/semantic/workbench',
         implemented: true,

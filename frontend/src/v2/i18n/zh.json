@@ -1033,7 +1033,7 @@
   "nav.semantic.label": "语义中心",
   "nav.semantic.section.build": "语义构建",
   "nav.semantic.section.ontology": "本体工作台",
-  "nav.semantic.section.physical": "物理底座",
+  "nav.semantic.section.physical": "Cube工作台",
   "nav.semantic.sub.modelingAgent": "建模助手 Agent",
   "nav.semantic.sub.domains": "业务上下文",
   "nav.semantic.sub.governance": "治理中心",
