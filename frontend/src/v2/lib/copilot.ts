@@ -77,7 +77,8 @@ export function countCanvasAssets(state?: SemanticModelingCopilotWorkbenchState)
     (canvas.metrics?.length ?? 0) +
     (canvas.dimensions?.length ?? 0) +
     (canvas.bindings?.length ?? 0) +
-    (canvas.policies?.length ?? 0)
+    (canvas.policies?.length ?? 0) +
+    (state?.candidate_cards?.length ?? 0)
   )
 }
 
@@ -90,11 +91,11 @@ export function entryTypeLabel(value?: string | null): string {
     case 'table_known':
       return '已知事实表'
     case 'semantic_gap':
-      return '语义缺口'
+      return '未命中 Trace'
     case 'business_question':
       return '业务问题'
     default:
-      return value ? String(value) : '未选择'
+      return value ? String(value) : '业务问题'
   }
 }
 
@@ -125,7 +126,12 @@ export function inferEntryType(text: string): 'table_known' | 'business_question
   if (/\b[a-z][\w]*\.[a-z][\w]*\b/.test(normalized) || /\bdwd_|ods_|ads_|dim_|fact_/.test(normalized)) {
     return 'table_known'
   }
-  if (normalized.includes('没听懂') || normalized.includes('补语义') || normalized.includes('未命中')) {
+  if (
+    normalized.includes('没听懂') ||
+    normalized.includes('补语义') ||
+    normalized.includes('未命中') ||
+    normalized.includes('miss_trace')
+  ) {
     return 'semantic_gap'
   }
   return 'business_question'
@@ -137,22 +143,27 @@ export function isCubeDraftAccepted(state?: SemanticModelingCopilotWorkbenchStat
   return (state?.required_confirmations ?? []).some((item) => item.id === 'accept_cube_draft' && item.confirmed)
 }
 
-export function readinessLabel(session: SemanticModelingCopilotSession | null): string {
-  if (!session) return '未开始'
+export function readinessLabel(session: SemanticModelingCopilotSession | null | undefined): string {
+  if (!session) return '等你描述需求'
   const readiness = session.workbench_state?.readiness
+  if ((session.workbench_state?.publish_result as Record<string, unknown> | undefined)?.status === 'published') return '已发布 · Data Agent 可消费'
+  if (session.current_proposal_id) return '语义已就绪 · 待发布'
+  const requiredCount = session.workbench_state?.required_confirmations?.length ?? 0
+  if (requiredCount > 0) return `请确认 ${requiredCount} 项口径`
+  if (hasCubeDraft(session.workbench_state) && !isCubeDraftAccepted(session.workbench_state)) return 'Cube 草稿待接受'
   if (readiness?.canonical_ready) return '正式可用'
-  if ((session.workbench_state?.publish_result as Record<string, unknown> | undefined)?.status === 'published') return '已发布'
-  if ((session.workbench_state?.required_confirmations ?? []).length > 0) return '待确认'
-  if (readiness?.exploratory_ready) return '可预演'
+  if (readiness?.exploratory_ready || countCanvasAssets(session.workbench_state) > 0) return '可应用语义'
   if ((readiness?.reasons ?? []).length > 0) return '已阻塞'
   return session.status === 'completed' ? '已完成' : '进行中'
 }
 
-export function readinessTone(session: SemanticModelingCopilotSession | null): Tone {
+export function readinessTone(session: SemanticModelingCopilotSession | null | undefined): Tone {
   if (!session) return 'neutral'
   const readiness = session.workbench_state?.readiness
   if (readiness?.canonical_ready || (session.workbench_state?.publish_result as Record<string, unknown> | undefined)?.status === 'published') return 'success'
+  if (session.current_proposal_id) return 'accent'
   if ((session.workbench_state?.required_confirmations ?? []).length > 0) return 'warning'
+  if (hasCubeDraft(session.workbench_state) && !isCubeDraftAccepted(session.workbench_state)) return 'warning'
   if (readiness?.exploratory_ready) return 'accent'
   if ((readiness?.reasons ?? []).length > 0) return 'warning'
   return 'neutral'
@@ -182,17 +193,21 @@ export function sandboxFriendlyMessage(
   return { tone: 'success', headline: preview.summary || '沙盒预演通过', hint: '预演只验证草稿，不会发布正式语义资产。' }
 }
 
-export function sessionTitle(session: SemanticModelingCopilotSession | null): string {
-  if (!session) return ''
-  return String(session.title || session.user_goal || session.id || '')
+export function sessionTitle(session: SemanticModelingCopilotSession | null | undefined): string {
+  if (!session) return '准备开始'
+  const title = String(session.title || session.user_goal || session.id || '')
+  return title.length > 24 ? `${title.slice(0, 23)}…` : title
 }
 
 export function statusTone(value?: string | null): Tone {
   const text = String(value ?? '').toLowerCase()
   if (!text) return 'neutral'
+  if (text === 'p0' || text === 'p1') return 'success'
+  if (text === 'p2' || text.includes('draft') || text.includes('proposed')) return 'warning'
+  if (['candidate', 'restricted'].some((token) => text.includes(token))) return 'accent'
   if (['active', 'linked', 'ready', 'success', 'completed', 'published', 'approved'].some((token) => text.includes(token))) return 'success'
-  if (['blocked', 'restricted', 'warning', 'draft', 'candidate', 'pending', 'review'].some((token) => text.includes(token))) return 'warning'
-  if (['failed', 'error', 'denied', 'danger', 'rejected'].some((token) => text.includes(token))) return 'danger'
+  if (['blocked', 'failed', 'error', 'denied', 'danger', 'rejected'].some((token) => text.includes(token))) return 'danger'
+  if (['warning', 'pending', 'review'].some((token) => text.includes(token))) return 'warning'
   return 'neutral'
 }
 
