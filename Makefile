@@ -300,13 +300,12 @@ verify-changed:
 	$(PYTHON) scripts/checks/changed_validation.py --execute $(VERIFY_CONTEXT) $(VERIFY_FILES)
 
 test-modeling-agent:
-	@printf '%s\n' '[layer3][modeling-agent] 运行建模助手 Agent 与 Domain 上下文最小链路测试'
+	@printf '%s\n' '[layer3][modeling-copilot] 运行建模 Copilot 与 Domain 上下文最小链路测试'
 	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
 		tests/unit/domain/semantic/test_entities.py::TestDomainEntities::test_domain_definition_accepts_context_fields_without_join_truth \
 		tests/unit/application/semantic/test_domain_modeling_service.py::test_domain_context_preview_returns_candidate_scope_without_join_truth \
 		tests/integration/test_semantic_api.py::TestDomainsEndpoint::test_domain_context_preview_returns_candidate_scope \
 		tests/unit/application/semantic/test_modeling_draft_builder.py \
-		tests/integration/test_semantic_modeling_agent_api.py \
 		tests/unit/application/semantic/test_modeling_copilot_service.py \
 		tests/integration/test_semantic_modeling_copilot_api.py
 	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx

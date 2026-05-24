@@ -477,63 +477,6 @@ export interface SemanticModelingAgentValidationResult {
   agent_sandbox_preview?: Record<string, unknown>
 }
 
-export interface SemanticModelingAgentReadyResult {
-  status: 'ready' | 'pending_validation' | 'blocked' | string
-  cube_status?: string
-  ontology_status?: string
-  bindings?: Record<string, unknown>
-  issues?: SemanticModelingAgentValidationIssue[]
-  checks?: Record<string, unknown>
-  truth_sources?: {
-    business?: string
-    execution?: string
-    domain?: string
-    [key: string]: unknown
-  }
-}
-
-export interface SemanticModelingAgentApplyResult {
-  published: boolean
-  assets: Record<string, unknown>
-  spec?: SemanticModelingAgentSpec
-  audit?: Record<string, unknown>
-}
-
-export interface SemanticModelingAgentPublishRequest {
-  spec: SemanticModelingAgentSpec
-  publish_targets?: {
-    cube?: boolean
-    ontology?: boolean
-  }
-}
-
-export interface SemanticModelingAgentPublishResult {
-  publish_targets: {
-    cube: boolean
-    ontology: boolean
-  }
-  published?: Record<string, unknown>
-  audit?: Record<string, unknown>
-}
-
-export const createSemanticModelingAgentSpecDraft = (body: SemanticModelingAgentSpecDraftBody) =>
-  post<SemanticModelingAgentSpecDraftResult>('/semantic/modeling-agent/spec-draft', body)
-
-export const draftSemanticModelingAgentFromSpec = (spec: SemanticModelingAgentSpec) =>
-  post<SemanticModelingAgentDraftResult>('/semantic/modeling-agent/draft-from-spec', { spec })
-
-export const validateSemanticModelingAgent = (spec: SemanticModelingAgentSpec) =>
-  post<SemanticModelingAgentValidationResult>('/semantic/modeling-agent/validate', { spec })
-
-export const checkSemanticModelingAgentReady = (spec: SemanticModelingAgentSpec) =>
-  post<SemanticModelingAgentReadyResult>('/semantic/modeling-agent/agent-ready-check', { spec })
-
-export const applySemanticModelingAgent = (spec: SemanticModelingAgentSpec) =>
-  post<SemanticModelingAgentApplyResult>('/semantic/modeling-agent/apply', { spec })
-
-export const publishSemanticModelingAgent = (body: SemanticModelingAgentPublishRequest) =>
-  post<SemanticModelingAgentPublishResult>('/semantic/modeling-agent/publish', body)
-
 export type SemanticModelingProposalStatus =
   | 'created'
   | 'drafted'

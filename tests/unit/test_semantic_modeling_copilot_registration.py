@@ -8,6 +8,8 @@ from app import (
     register_semantic_modeling_copilot_blueprint,
 )
 
+LEGACY_MODELING_AGENT_PREFIX = "/api/v1/semantic/modeling-" + "agent"
+
 
 class _ContainerStub:
     def __init__(self, service=None, exc: Exception | None = None):
@@ -30,6 +32,16 @@ def test_register_semantic_modeling_copilot_blueprint_adds_required_routes():
     routes = {rule.rule for rule in app.url_map.iter_rules()}
     assert "/api/v1/semantic/modeling-copilot/sessions" in routes
     assert "/api/v1/semantic/modeling-copilot/sessions/<session_id>/publish" in routes
+    assert f"{LEGACY_MODELING_AGENT_PREFIX}/spec-draft" not in routes
+    assert f"{LEGACY_MODELING_AGENT_PREFIX}/validate" not in routes
+
+
+def test_create_app_registers_only_modeling_copilot_public_routes(app):
+    routes = {rule.rule for rule in app.url_map.iter_rules()}
+
+    assert "/api/v1/semantic/modeling-copilot/sessions" in routes
+    assert f"{LEGACY_MODELING_AGENT_PREFIX}/spec-draft" not in routes
+    assert f"{LEGACY_MODELING_AGENT_PREFIX}/validate" not in routes
 
 
 def test_register_semantic_modeling_copilot_blueprint_fails_fast_on_provider_error():

@@ -7,36 +7,52 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 vi.mock('@v2/api/semantic', () => ({
   activateCube: vi.fn(),
   addCubeToDomain: vi.fn(),
-  checkSemanticModelingAgentReady: vi.fn(),
   compileDsl: vi.fn(),
+  acceptSemanticModelingCopilotCubeDraft: vi.fn(),
+  applySemanticModelingProposal: vi.fn(),
+  approveSemanticModelingProposal: vi.fn(),
+  closeSemanticModelingProposal: vi.fn(),
+  confirmSemanticModelingCopilotAssumption: vi.fn(),
   createCube: vi.fn(),
   createDomain: vi.fn(),
-  createSemanticModelingAgentSpecDraft: vi.fn(),
+  createSemanticModelingCopilotSession: vi.fn(),
+  createSemanticModelingProposal: vi.fn(),
   deprecateCube: vi.fn(),
+  deleteSemanticModelingCopilotSession: vi.fn(),
   describeCube: vi.fn(),
   describeDomain: vi.fn(),
   describeView: vi.fn(),
-  draftSemanticModelingAgentFromSpec: vi.fn(),
+  draftSemanticModelingProposal: vi.fn(),
   draftCubeFromSource: vi.fn(),
   getDomainCanvas: vi.fn(),
   previewDomainContext: vi.fn(),
   getDomainPublishHistory: vi.fn(),
   getMaterializeStatus: vi.fn(),
   getSemanticGraph: vi.fn(),
+  getSemanticModelingCopilotReview: vi.fn(),
+  getSemanticModelingCopilotSession: vi.fn(),
+  getSemanticModelingProposal: vi.fn(),
+  getSemanticModelingProposalGapView: vi.fn(),
   getViewMaterializeRuns: vi.fn(),
   listCatalogs: vi.fn(),
   listCubes: vi.fn(),
   listDomains: vi.fn(),
+  listSemanticModelingCopilotSessions: vi.fn(),
   listViews: vi.fn(),
   materializeView: vi.fn(),
+  patchSemanticModelingCopilotSpec: vi.fn(),
   publishDomain: vi.fn(),
-  publishSemanticModelingAgent: vi.fn(),
+  publishSemanticModelingCopilotProposal: vi.fn(),
+  publishSemanticModelingProposal: vi.fn(),
+  previewSemanticModelingCopilotSandbox: vi.fn(),
   readSemanticFile: vi.fn(),
+  renameSemanticModelingCopilotSession: vi.fn(),
+  saveSemanticModelingCopilotProposal: vi.fn(),
   schemaSyncCube: vi.fn(),
+  sendSemanticModelingCopilotMessage: vi.fn(),
   updateCube: vi.fn(),
   updateDomain: vi.fn(),
-  applySemanticModelingAgent: vi.fn(),
-  validateSemanticModelingAgent: vi.fn(),
+  validateSemanticModelingProposal: vi.fn(),
   validateCubeFields: vi.fn(),
   validateSemanticFile: vi.fn(),
   writeSemanticFile: vi.fn(),
@@ -71,12 +87,28 @@ import {
   useAddCubeToDomain,
   useCompileDsl,
   useSemanticFile,
-  useCreateSemanticModelingAgentSpecDraft,
-  useDraftSemanticModelingAgentFromSpec,
-  useValidateSemanticModelingAgent,
-  useCheckSemanticModelingAgentReady,
-  useApplySemanticModelingAgent,
-  usePublishSemanticModelingAgent,
+  useSemanticModelingProposal,
+  useSemanticModelingProposalGapView,
+  useCreateSemanticModelingProposal,
+  useDraftSemanticModelingProposal,
+  useValidateSemanticModelingProposal,
+  useApproveSemanticModelingProposal,
+  useApplySemanticModelingProposal,
+  usePublishSemanticModelingProposal,
+  useCloseSemanticModelingProposal,
+  useSemanticModelingCopilotSession,
+  useSemanticModelingCopilotReview,
+  useCreateSemanticModelingCopilotSession,
+  useSemanticModelingCopilotSessions,
+  useDeleteSemanticModelingCopilotSession,
+  useRenameSemanticModelingCopilotSession,
+  useSendSemanticModelingCopilotMessage,
+  useConfirmSemanticModelingCopilotAssumption,
+  useAcceptSemanticModelingCopilotCubeDraft,
+  usePreviewSemanticModelingCopilotSandbox,
+  useSaveSemanticModelingCopilotProposal,
+  usePublishSemanticModelingCopilotProposal,
+  useUpdateSemanticModelingCopilotSpec,
   useValidateCubeFields,
   useDryRunMetric,
   useSemanticGraph,
@@ -413,56 +445,182 @@ describe('semantic - misc', () => {
   })
 })
 
-describe('semantic - modeling agent', () => {
-  it('modeling agent mutations call API and invalidate saved assets', async () => {
-    ok(api.createSemanticModelingAgentSpecDraft as ReturnType<typeof vi.fn>, { spec: { spec_version: 'v1' } })
-    ok(api.draftSemanticModelingAgentFromSpec as ReturnType<typeof vi.fn>, { cube: { name: 'student_comments' } })
-    ok(api.validateSemanticModelingAgent as ReturnType<typeof vi.fn>, { status: 'ready' })
-    ok(api.checkSemanticModelingAgentReady as ReturnType<typeof vi.fn>, { status: 'ready' })
-    ok(api.applySemanticModelingAgent as ReturnType<typeof vi.fn>, { published: false })
-    ok(api.publishSemanticModelingAgent as ReturnType<typeof vi.fn>, { publish_targets: { cube: true, ontology: false } })
+describe('semantic - modeling proposals', () => {
+  it('proposal queries gate on proposal id', async () => {
+    ok(api.getSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
+    ok(api.getSemanticModelingProposalGapView as ReturnType<typeof vi.fn>, { id: 'p1' })
+    const { wrapper } = makeWrapper()
+
+    renderHook(() => useSemanticModelingProposal(undefined), { wrapper })
+    renderHook(() => useSemanticModelingProposalGapView(undefined), { wrapper })
+    expect(api.getSemanticModelingProposal).not.toHaveBeenCalled()
+    expect(api.getSemanticModelingProposalGapView).not.toHaveBeenCalled()
+
+    const proposal = renderHook(() => useSemanticModelingProposal('p1'), { wrapper })
+    const gapView = renderHook(() => useSemanticModelingProposalGapView('p1'), { wrapper })
+    await waitFor(() => expect(proposal.result.current.isSuccess).toBe(true))
+    await waitFor(() => expect(gapView.result.current.isSuccess).toBe(true))
+  })
+
+  it('proposal mutations call API and invalidate semantic cache', async () => {
+    ok(api.createSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
+    ok(api.draftSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
+    ok(api.validateSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
+    ok(api.approveSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
+    ok(api.applySemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
+    ok(api.publishSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
+    ok(api.closeSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
     const { qc, wrapper } = makeWrapper()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
-    const specDraft = renderHook(() => useCreateSemanticModelingAgentSpecDraft(), { wrapper })
+    const create = renderHook(() => useCreateSemanticModelingProposal(), { wrapper })
     await act(async () => {
-      await specDraft.result.current.mutateAsync({ table: 'dwd_student_comment_events' } as never)
+      await create.result.current.mutateAsync({ table: 'dwd_student_comment_events' } as never)
     })
 
-    const draftFromSpec = renderHook(() => useDraftSemanticModelingAgentFromSpec(), { wrapper })
+    const draft = renderHook(() => useDraftSemanticModelingProposal(), { wrapper })
     await act(async () => {
-      await draftFromSpec.result.current.mutateAsync({ spec_version: 'v1' } as never)
+      await draft.result.current.mutateAsync('p1')
     })
 
-    const validate = renderHook(() => useValidateSemanticModelingAgent(), { wrapper })
+    const validate = renderHook(() => useValidateSemanticModelingProposal(), { wrapper })
     await act(async () => {
-      await validate.result.current.mutateAsync({ spec_version: 'v1' } as never)
+      await validate.result.current.mutateAsync('p1')
     })
 
-    const agentReady = renderHook(() => useCheckSemanticModelingAgentReady(), { wrapper })
+    const approve = renderHook(() => useApproveSemanticModelingProposal(), { wrapper })
     await act(async () => {
-      await agentReady.result.current.mutateAsync({ spec_version: 'v1' } as never)
+      await approve.result.current.mutateAsync({ proposalId: 'p1', comment: 'ok' })
     })
 
-    const apply = renderHook(() => useApplySemanticModelingAgent(), { wrapper })
+    const apply = renderHook(() => useApplySemanticModelingProposal(), { wrapper })
     await act(async () => {
-      await apply.result.current.mutateAsync({ spec_version: 'v1' } as never)
+      await apply.result.current.mutateAsync('p1')
     })
 
-    const publish = renderHook(() => usePublishSemanticModelingAgent(), { wrapper })
+    const publish = renderHook(() => usePublishSemanticModelingProposal(), { wrapper })
     await act(async () => {
-      await publish.result.current.mutateAsync({
-        spec: { spec_version: 'v1' },
-        publish_targets: { cube: true },
-      } as never)
+      await publish.result.current.mutateAsync({ proposalId: 'p1', publishTargets: { cube: true } })
     })
 
-    expect(api.createSemanticModelingAgentSpecDraft).toHaveBeenCalledWith({ table: 'dwd_student_comment_events' })
-    expect(api.draftSemanticModelingAgentFromSpec).toHaveBeenCalledWith({ spec_version: 'v1' })
-    expect(api.validateSemanticModelingAgent).toHaveBeenCalledWith({ spec_version: 'v1' })
-    expect(api.checkSemanticModelingAgentReady).toHaveBeenCalledWith({ spec_version: 'v1' })
-    expect(api.applySemanticModelingAgent).toHaveBeenCalledWith({ spec_version: 'v1' })
-    expect(api.publishSemanticModelingAgent).toHaveBeenCalledWith({ spec: { spec_version: 'v1' }, publish_targets: { cube: true } })
+    const close = renderHook(() => useCloseSemanticModelingProposal(), { wrapper })
+    await act(async () => {
+      await close.result.current.mutateAsync({ proposalId: 'p1', closeReason: 'abandoned', comment: 'later' })
+    })
+
+    expect(api.createSemanticModelingProposal).toHaveBeenCalledWith({ table: 'dwd_student_comment_events' })
+    expect(api.draftSemanticModelingProposal).toHaveBeenCalledWith('p1')
+    expect(api.validateSemanticModelingProposal).toHaveBeenCalledWith('p1')
+    expect(api.approveSemanticModelingProposal).toHaveBeenCalledWith('p1', { comment: 'ok' })
+    expect(api.applySemanticModelingProposal).toHaveBeenCalledWith('p1')
+    expect(api.publishSemanticModelingProposal).toHaveBeenCalledWith('p1', { publish_targets: { cube: true } })
+    expect(api.closeSemanticModelingProposal).toHaveBeenCalledWith('p1', { comment: 'later', close_reason: 'abandoned' })
     expect(spy).toHaveBeenCalledWith({ queryKey: ['semantic'] })
+  })
+})
+
+describe('semantic - modeling copilot sessions', () => {
+  const session = {
+    id: 's1',
+    user_goal: '创建语义模型',
+    entry_type: 'business_question',
+    status: 'active',
+    workbench_state: {},
+  }
+
+  it('session queries gate on session id and list sessions', async () => {
+    ok(api.getSemanticModelingCopilotSession as ReturnType<typeof vi.fn>, session)
+    ok(api.getSemanticModelingCopilotReview as ReturnType<typeof vi.fn>, { session_id: 's1' })
+    ok(api.listSemanticModelingCopilotSessions as ReturnType<typeof vi.fn>, { items: [session], total: 1 })
+    const { wrapper } = makeWrapper()
+
+    renderHook(() => useSemanticModelingCopilotSession(undefined), { wrapper })
+    renderHook(() => useSemanticModelingCopilotReview(undefined), { wrapper })
+    expect(api.getSemanticModelingCopilotSession).not.toHaveBeenCalled()
+    expect(api.getSemanticModelingCopilotReview).not.toHaveBeenCalled()
+
+    const detail = renderHook(() => useSemanticModelingCopilotSession('s1'), { wrapper })
+    const review = renderHook(() => useSemanticModelingCopilotReview('s1'), { wrapper })
+    const list = renderHook(() => useSemanticModelingCopilotSessions({ include_legacy: false }), { wrapper })
+    await waitFor(() => expect(detail.result.current.isSuccess).toBe(true))
+    await waitFor(() => expect(review.result.current.isSuccess).toBe(true))
+    await waitFor(() => expect(list.result.current.isSuccess).toBe(true))
+  })
+
+  it('session mutations call Copilot APIs and update caches', async () => {
+    ok(api.createSemanticModelingCopilotSession as ReturnType<typeof vi.fn>, session)
+    ok(api.deleteSemanticModelingCopilotSession as ReturnType<typeof vi.fn>, { deleted: true, id: 's1' })
+    ok(api.renameSemanticModelingCopilotSession as ReturnType<typeof vi.fn>, { ...session, title: '新标题' })
+    ok(api.sendSemanticModelingCopilotMessage as ReturnType<typeof vi.fn>, session)
+    ok(api.confirmSemanticModelingCopilotAssumption as ReturnType<typeof vi.fn>, session)
+    ok(api.acceptSemanticModelingCopilotCubeDraft as ReturnType<typeof vi.fn>, session)
+    ok(api.previewSemanticModelingCopilotSandbox as ReturnType<typeof vi.fn>, session)
+    ok(api.saveSemanticModelingCopilotProposal as ReturnType<typeof vi.fn>, session)
+    ok(api.publishSemanticModelingCopilotProposal as ReturnType<typeof vi.fn>, session)
+    ok(api.patchSemanticModelingCopilotSpec as ReturnType<typeof vi.fn>, session)
+    const { qc, wrapper } = makeWrapper()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    const create = renderHook(() => useCreateSemanticModelingCopilotSession(), { wrapper })
+    await act(async () => {
+      await create.result.current.mutateAsync({ user_goal: '创建语义模型' })
+    })
+
+    const rename = renderHook(() => useRenameSemanticModelingCopilotSession(), { wrapper })
+    await act(async () => {
+      await rename.result.current.mutateAsync({ sessionId: 's1', title: '新标题' })
+    })
+
+    const send = renderHook(() => useSendSemanticModelingCopilotMessage(), { wrapper })
+    await act(async () => {
+      await send.result.current.mutateAsync({ sessionId: 's1', message: '继续' })
+    })
+
+    const confirm = renderHook(() => useConfirmSemanticModelingCopilotAssumption(), { wrapper })
+    await act(async () => {
+      await confirm.result.current.mutateAsync({ sessionId: 's1', confirmationId: 'c1', value: true })
+    })
+
+    const accept = renderHook(() => useAcceptSemanticModelingCopilotCubeDraft(), { wrapper })
+    await act(async () => {
+      await accept.result.current.mutateAsync({ sessionId: 's1', body: { source: 'cube' } })
+    })
+
+    const preview = renderHook(() => usePreviewSemanticModelingCopilotSandbox(), { wrapper })
+    await act(async () => {
+      await preview.result.current.mutateAsync({ sessionId: 's1', body: { dry_run: true } })
+    })
+
+    const save = renderHook(() => useSaveSemanticModelingCopilotProposal(), { wrapper })
+    await act(async () => {
+      await save.result.current.mutateAsync({ sessionId: 's1', body: { reviewer: 'test' } })
+    })
+
+    const publish = renderHook(() => usePublishSemanticModelingCopilotProposal(), { wrapper })
+    await act(async () => {
+      await publish.result.current.mutateAsync({ sessionId: 's1', body: { publish_targets: { cube: true } } })
+    })
+
+    const updateSpec = renderHook(() => useUpdateSemanticModelingCopilotSpec(), { wrapper })
+    await act(async () => {
+      await updateSpec.result.current.mutateAsync({ sessionId: 's1', body: { spec: { spec_version: 'v1' } } })
+    })
+
+    const remove = renderHook(() => useDeleteSemanticModelingCopilotSession(), { wrapper })
+    await act(async () => {
+      await remove.result.current.mutateAsync('s1')
+    })
+
+    expect(api.createSemanticModelingCopilotSession).toHaveBeenCalledWith({ user_goal: '创建语义模型' })
+    expect(api.renameSemanticModelingCopilotSession).toHaveBeenCalledWith('s1', '新标题')
+    expect(api.sendSemanticModelingCopilotMessage).toHaveBeenCalledWith('s1', { message: '继续' })
+    expect(api.confirmSemanticModelingCopilotAssumption).toHaveBeenCalledWith('s1', { confirmation_id: 'c1', value: true })
+    expect(api.acceptSemanticModelingCopilotCubeDraft).toHaveBeenCalledWith('s1', { source: 'cube' })
+    expect(api.previewSemanticModelingCopilotSandbox).toHaveBeenCalledWith('s1', { dry_run: true })
+    expect(api.saveSemanticModelingCopilotProposal).toHaveBeenCalledWith('s1', { reviewer: 'test' })
+    expect(api.publishSemanticModelingCopilotProposal).toHaveBeenCalledWith('s1', { publish_targets: { cube: true } })
+    expect(api.patchSemanticModelingCopilotSpec).toHaveBeenCalledWith('s1', { spec: { spec_version: 'v1' } })
+    expect(api.deleteSemanticModelingCopilotSession).toHaveBeenCalledWith('s1')
+    expect(spy).toHaveBeenCalled()
   })
 })
