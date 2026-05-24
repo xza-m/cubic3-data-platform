@@ -295,6 +295,31 @@ export interface DataAssetSyncRunListResponse {
   total: number
 }
 
+export interface SemanticGovernanceIssue {
+  id: string
+  code: string
+  severity: string
+  title?: string | null
+  message?: string | null
+  object_type?: string | null
+  object_name?: string | null
+  metadata?: Record<string, unknown> | null
+  [key: string]: unknown
+}
+
+export interface SemanticGovernanceIssueResponse {
+  issues: SemanticGovernanceIssue[]
+  summary?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+interface SemanticGovernanceIssueRawResponse {
+  items?: SemanticGovernanceIssue[]
+  issues?: SemanticGovernanceIssue[]
+  summary?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export const getDataAssetRadar = () =>
   get<DataAssetRadarApiResponse>('/semantic/assets/radar').then((data) => {
     const issueCount = (data.failed_sync_count ?? 0) + (data.stale_profile_count ?? 0) + (data.drift_risk_count ?? 0)
@@ -358,6 +383,13 @@ export const getDataAssetTableEvidence = (tableId: string) =>
 
 export const listDataAssetSyncRuns = (params?: { limit?: number }) =>
   get<DataAssetSyncRunListResponse>('/semantic/assets/sync-runs', { limit: params?.limit })
+
+export const getSemanticGovernanceIssues = (
+  params: { cube_name?: string; schema_source?: 'asset_snapshot' | string } = {},
+) => get<SemanticGovernanceIssueRawResponse>('/semantic/governance/issues', params).then((raw) => ({
+  ...raw,
+  issues: raw.issues ?? raw.items ?? [],
+}))
 
 export const getDataAssetSyncRun = (syncRunId: string) =>
   get<DataAssetSyncRun>(`/semantic/assets/sync-runs/${encodeURIComponent(syncRunId)}`)

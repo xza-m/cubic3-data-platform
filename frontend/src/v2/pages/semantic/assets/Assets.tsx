@@ -10,6 +10,7 @@ import {
   getDataAssetTableEvidence,
   getDataAssetTableFields,
   getDataAssetRadar,
+  getSemanticGovernanceIssues,
   listDataAssetSyncRuns,
   listDataAssetPhysicalTables,
   syncDataAssetMetadata,
@@ -20,6 +21,7 @@ import {
   type DataAssetPhysicalTableListParams,
   type DataAssetRadarResponse,
   type DataAssetSyncRun,
+  type SemanticGovernanceIssue,
 } from '@v2/api/semantic'
 
 type AssetView = 'radar' | 'tables' | 'fields' | 'lineage' | 'quality' | 'sync-runs'
@@ -75,6 +77,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
   const [fields, setFields] = useState<DataAssetFieldProfile[]>([])
   const [evidence, setEvidence] = useState<DataAssetEvidenceBundle | null>(null)
   const [syncRuns, setSyncRuns] = useState<DataAssetSyncRun[]>([])
+  const [driftIssues, setDriftIssues] = useState<SemanticGovernanceIssue[]>([])
   const [tableKeyword, setTableKeyword] = useState('')
   const [sourceFilter, setSourceFilter] = useState('')
   const [databaseFilter, setDatabaseFilter] = useState('')
@@ -106,16 +109,18 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
         schema: schemaFilter,
         syncStatus: syncStatusFilter,
       })
-      const [nextRadar, nextTables, nextSyncRuns] = await Promise.all([
+      const [nextRadar, nextTables, nextSyncRuns, nextGovernanceIssues] = await Promise.all([
         getDataAssetRadar(),
         listDataAssetPhysicalTables(tableParams),
         listDataAssetSyncRuns({ limit: 50 }),
+        getSemanticGovernanceIssues({ schema_source: 'asset_snapshot' }),
       ])
       if (listRequestIdRef.current !== requestId) return
       setRadar(nextRadar)
       setTables(nextTables.tables)
       setTableTotal(nextTables.total)
       setSyncRuns(nextSyncRuns.items)
+      setDriftIssues(nextGovernanceIssues.issues ?? [])
       setSelectedTableId((currentTableId) => {
         if (nextTables.tables.length === 0) return null
         if (currentTableId && nextTables.tables.some((item) => item.id === currentTableId)) {
@@ -333,6 +338,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
         ) : (
           <div className="space-y-4">
             {view === 'radar' ? <RadarSection radar={radar} syncRate={syncRate} /> : null}
+            {view === 'radar' ? <DriftSummary issues={driftIssues} /> : null}
             {view === 'radar' || view === 'tables' ? (
               <TablesSection
                 tables={tables}
@@ -402,6 +408,45 @@ function RadarSection({ radar, syncRate }: { radar: DataAssetRadarResponse; sync
       </CardBody>
     </Card>
   )
+}
+
+function DriftSummary({ issues }: { issues: SemanticGovernanceIssue[] }) {
+  if (issues.length === 0) return null
+
+  return (
+    <Card>
+      <CardHead
+        title="Schema 漂移风险"
+        subtitle={`复用语义治理接口发现 ${fmtNumber(issues.length)} 条资产快照漂移信号`}
+      />
+      <CardBody>
+        <div className="space-y-2">
+          {issues.map((issue) => {
+            const title = issue.object_name || issue.title || issue.code
+            const message = issue.message || issue.code
+            return (
+              <div key={issue.id} className="rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-1">{title}</div>
+                    <div className="mt-1 text-xs text-3">{message}</div>
+                  </div>
+                  <Chip tone={governanceIssueTone(issue.severity)}>{issue.severity}</Chip>
+                </div>
+                <div className="mt-2 text-[11px] text-3">{issue.code}</div>
+              </div>
+            )
+          })}
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+function governanceIssueTone(severity: string): 'danger' | 'warning' | 'neutral' {
+  if (severity === 'error' || severity === 'critical') return 'danger'
+  if (severity === 'warn' || severity === 'warning') return 'warning'
+  return 'neutral'
 }
 
 function TablesSection({

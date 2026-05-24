@@ -3,12 +3,20 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
+const mockApiClientGet = vi.hoisted(() => vi.fn())
+
 vi.mock('@v2/layout/AppShell', () => ({
   useAppShell: () => ({
     setBreadcrumbs: vi.fn(),
     setTopBarActions: vi.fn(),
     setContextPanel: vi.fn(),
   }),
+}))
+
+vi.mock('@v2/api/client', () => ({
+  apiClient: {
+    get: mockApiClientGet,
+  },
 }))
 
 vi.mock('@v2/api/semantic', async () => {
@@ -184,6 +192,7 @@ describe('数据资产底座工作区', () => {
         },
       ],
     })
+    mockApiClientGet.mockResolvedValue({ data: { data: { items: [] } } })
     mockListDataAssetSyncRuns.mockResolvedValue({
       items: [
         {
@@ -223,6 +232,81 @@ describe('数据资产底座工作区', () => {
     expect(screen.getByText('订单事实表')).toBeInTheDocument()
     expect(screen.getByText('dwd_order_fact')).toBeInTheDocument()
     expect(screen.getByText('生产 PostgreSQL')).toBeInTheDocument()
+  })
+
+  it('资产雷达无 Schema 漂移问题时不展示漂移摘要', async () => {
+    render(
+      <MemoryRouter>
+        <AssetWorkspace view="radar" />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('底座健康概览')).toBeInTheDocument()
+    expect(screen.queryByText('Schema 漂移风险')).not.toBeInTheDocument()
+  })
+
+  it('资产雷达展示复用语义治理的 Schema 漂移摘要', async () => {
+    mockApiClientGet.mockResolvedValueOnce({
+      data: {
+        data: {
+          items: [
+            {
+              id: 'schema-drift-1',
+              code: 'schema_drift_missing_in_physical',
+              severity: 'warn',
+              object_type: 'physical_table',
+              object_name: 'dwd_order_fact',
+              message: '语义字段 order_amount 在资产快照中缺失',
+            },
+          ],
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter>
+        <AssetWorkspace view="radar" />
+      </MemoryRouter>,
+    )
+
+    const driftSummary = (await screen.findByText('Schema 漂移风险')).closest('.card')
+    expect(driftSummary).not.toBeNull()
+    expect(within(driftSummary as HTMLElement).getByText('dwd_order_fact')).toBeInTheDocument()
+    expect(within(driftSummary as HTMLElement).getByText('语义字段 order_amount 在资产快照中缺失')).toBeInTheDocument()
+    expect(within(driftSummary as HTMLElement).getByText('warn')).toHaveClass('chip-warning')
+    expect(mockApiClientGet).toHaveBeenCalledWith('/semantic/governance/issues', {
+      params: { schema_source: 'asset_snapshot' },
+    })
+  })
+
+  it('资产雷达兼容语义治理 issues 响应并展示 Schema 漂移摘要', async () => {
+    mockApiClientGet.mockResolvedValueOnce({
+      data: {
+        data: {
+          issues: [
+            {
+              id: 'schema-drift-legacy-1',
+              code: 'schema_drift_type_changed',
+              severity: 'warn',
+              object_type: 'physical_table',
+              object_name: 'dwd_order_fact',
+              message: '旧契约 issues 分支仍应展示',
+            },
+          ],
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter>
+        <AssetWorkspace view="radar" />
+      </MemoryRouter>,
+    )
+
+    const driftSummary = (await screen.findByText('Schema 漂移风险')).closest('.card')
+    expect(driftSummary).not.toBeNull()
+    expect(within(driftSummary as HTMLElement).getByText('dwd_order_fact')).toBeInTheDocument()
+    expect(within(driftSummary as HTMLElement).getByText('旧契约 issues 分支仍应展示')).toBeInTheDocument()
   })
 
   it('最近同步提示展示失败数据源名称', async () => {
@@ -555,6 +639,63 @@ describe('数据资产底座工作区', () => {
     await waitFor(() => expect(selector).toHaveValue('table.comments'))
     expect(screen.getByText('学生评论举报事实表')).toBeInTheDocument()
     expect(screen.queryByText('订单事实表')).not.toBeInTheDocument()
+  })
+
+  it('旧治理问题响应不会覆盖当前 Schema 漂移摘要', async () => {
+    const user = userEvent.setup()
+    const staleGovernance = deferred<{ data: { data: { items: Array<Record<string, unknown>> } } }>()
+
+    mockApiClientGet
+      .mockImplementationOnce(() => staleGovernance.promise)
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            items: [
+              {
+                id: 'current-governance-issue',
+                code: 'schema_drift_current',
+                severity: 'warn',
+                object_type: 'physical_table',
+                object_name: 'dwd_current_fact',
+                message: '当前 governance 漂移',
+              },
+            ],
+          },
+        },
+      })
+
+    render(
+      <MemoryRouter>
+        <AssetWorkspace view="radar" />
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: '刷新资产底座' }))
+
+    expect(await screen.findByText('当前 governance 漂移')).toBeInTheDocument()
+    await waitFor(() => expect(mockApiClientGet).toHaveBeenCalledTimes(2))
+
+    staleGovernance.resolve({
+      data: {
+        data: {
+          items: [
+            {
+              id: 'stale-governance-issue',
+              code: 'schema_drift_stale',
+              severity: 'warn',
+              object_type: 'physical_table',
+              object_name: 'dwd_stale_fact',
+              message: '旧 governance 漂移',
+            },
+          ],
+        },
+      },
+    })
+    await staleGovernance.promise
+
+    expect(screen.getByText('当前 governance 漂移')).toBeInTheDocument()
+    expect(screen.queryByText('旧 governance 漂移')).not.toBeInTheDocument()
+    expect(screen.queryByText('dwd_stale_fact')).not.toBeInTheDocument()
   })
 
   it('旧 evidence 不会覆盖当前选中表画像', async () => {
