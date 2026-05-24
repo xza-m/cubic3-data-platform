@@ -3,6 +3,7 @@
 """
 from copy import deepcopy
 from datetime import datetime
+import re
 from app.shared.utils.time import utcnow
 from typing import Dict, Any, List
 from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Text
@@ -10,6 +11,36 @@ from app.shared.db_types import JsonType
 from sqlalchemy.orm import relationship
 from app.extensions import db
 from app.shared.enums import DataSourceType, ConnectionStatus
+
+
+_SENSITIVE_CONNECTION_CONFIG_KEYS = {
+    'password',
+    'accesskey',
+    'accesskeyid',
+    'accessid',
+    'accesskeysecret',
+    'secretaccesskey',
+    'secret',
+    'token',
+}
+
+
+def normalize_connection_config_key(key: str) -> str:
+    """统一 snake_case、camelCase、kebab-case 等配置 key 形态。"""
+    return re.sub(r'[^a-z0-9]', '', str(key or '').lower())
+
+
+def is_sensitive_connection_config_key(key: str) -> bool:
+    """判断连接配置 key 是否需要脱敏。"""
+    return normalize_connection_config_key(key) in _SENSITIVE_CONNECTION_CONFIG_KEYS
+
+
+def mask_sensitive_config_value(value: Any) -> str:
+    """脱敏连接配置值，保留少量前后缀便于定位配置来源。"""
+    val = str(value)
+    if len(val) > 6:
+        return f"{val[:3]}{'*' * (len(val) - 6)}{val[-3:]}"
+    return '******'
 
 
 class DataSource(db.Model):
@@ -227,15 +258,9 @@ class DataSource(db.Model):
         """
         config = self.connection_config.copy() if self.connection_config else {}
         
-        # 脱敏敏感字段
-        sensitive_keys = ['password', 'access_key', 'secret_access_key', 'secret', 'token']
-        for key in sensitive_keys:
-            if key in config and config[key]:
-                val = str(config[key])
-                if len(val) > 6:
-                    config[key] = f"{val[:3]}{'*' * (len(val) - 6)}{val[-3:]}"
-                else:
-                    config[key] = '******'
+        for key, value in list(config.items()):
+            if is_sensitive_connection_config_key(key) and value:
+                config[key] = mask_sensitive_config_value(value)
         
         return config
     

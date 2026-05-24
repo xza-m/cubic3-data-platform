@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, UniqueConstraint, text
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text, UniqueConstraint, text
 
 from app.extensions import db
 from app.shared.db_types import JsonType
@@ -202,3 +202,147 @@ class SemanticModelingProposalORM(db.Model):
     version = Column(Integer, nullable=False, default=1)
     created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class DataAssetTableORM(db.Model):
+    """数据资产底座物理表事实。"""
+
+    __tablename__ = "data_asset_tables"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_id",
+            "database",
+            "schema",
+            "name",
+            name="uq_data_asset_tables_source_database_schema_name",
+        ),
+        Index("idx_data_asset_tables_source_layer", "source_id", "layer"),
+        Index("idx_data_asset_tables_sync_profile", "sync_status", "profile_status"),
+        {"extend_existing": True},
+    )
+
+    id = Column(String(128), primary_key=True)
+    source_id = Column(String(128), nullable=False)
+    database = Column(String(191), nullable=False)
+    schema = Column(String(191), nullable=True)
+    name = Column(String(255), nullable=False)
+    title = Column(String(255), nullable=True)
+    description = Column(String(1024), nullable=True)
+    layer = Column(String(64), nullable=True)
+    owner = Column(String(128), nullable=True)
+    table_type = Column(String(64), nullable=False, default="table")
+    lifecycle_status = Column(String(32), nullable=False, default="active")
+    row_count = Column(Integer, nullable=True)
+    partition_count = Column(Integer, nullable=True)
+    field_count = Column(Integer, nullable=False, default=0)
+    profile_status = Column(String(32), nullable=False, default="unknown")
+    sync_status = Column(String(32), nullable=False, default="unknown")
+    last_synced_at = Column(DateTime, nullable=True)
+    last_profiled_at = Column(DateTime, nullable=True)
+    extra_json = Column(JsonType, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class DataAssetFieldORM(db.Model):
+    """数据资产底座字段事实。"""
+
+    __tablename__ = "data_asset_fields"
+    __table_args__ = (
+        UniqueConstraint("table_id", "name", name="uq_data_asset_fields_table_name"),
+        Index("idx_data_asset_fields_table_ordinal", "table_id", "ordinal"),
+        {"extend_existing": True},
+    )
+
+    id = Column(String(128), primary_key=True)
+    table_id = Column(String(128), nullable=False)
+    source_id = Column(String(128), nullable=False)
+    database = Column(String(191), nullable=False)
+    schema = Column(String(191), nullable=True)
+    table_name = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False)
+    data_type = Column(Text, nullable=False)
+    ordinal = Column(Integer, nullable=False, default=0)
+    nullable = Column(Boolean, nullable=False, default=True)
+    comment = Column(String(1024), nullable=True)
+    profile_json = Column(JsonType, nullable=False, default=dict)
+    sensitivity_level = Column(String(32), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class DataAssetSnapshotORM(db.Model):
+    """资产快照，包括 schema/profile/partition/quality。"""
+
+    __tablename__ = "data_asset_snapshots"
+    __table_args__ = (
+        Index("idx_data_asset_snapshots_table_type_created", "table_id", "snapshot_type", "created_at"),
+        Index("idx_data_asset_snapshots_sync_run", "sync_run_id"),
+        {"extend_existing": True},
+    )
+
+    id = Column(String(128), primary_key=True)
+    table_id = Column(String(128), nullable=False)
+    snapshot_type = Column(String(32), nullable=False)
+    payload_json = Column(JsonType, nullable=False, default=dict)
+    sync_run_id = Column(String(128), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+
+
+class DataAssetSyncRunORM(db.Model):
+    """元数据同步批次。"""
+
+    __tablename__ = "data_asset_sync_runs"
+    __table_args__ = (
+        Index("idx_data_asset_sync_runs_source_started", "source_id", "started_at"),
+        Index("idx_data_asset_sync_runs_status", "status"),
+        {"extend_existing": True},
+    )
+
+    id = Column(String(128), primary_key=True)
+    source_id = Column(String(128), nullable=False)
+    status = Column(String(32), nullable=False, default="running")
+    started_at = Column(DateTime, nullable=False, default=utcnow)
+    finished_at = Column(DateTime, nullable=True)
+    error_message = Column(String(1024), nullable=True)
+    stats_json = Column(JsonType, nullable=False, default=dict)
+
+
+class DataAssetUsageORM(db.Model):
+    """资产使用记录。"""
+
+    __tablename__ = "data_asset_usage"
+    __table_args__ = (
+        Index("idx_data_asset_usage_table_source", "table_id", "source_type"),
+        Index("idx_data_asset_usage_last_used", "last_used_at"),
+        {"extend_existing": True},
+    )
+
+    id = Column(String(128), primary_key=True)
+    table_id = Column(String(128), nullable=False)
+    field_id = Column(String(128), nullable=True)
+    source_type = Column(String(64), nullable=False)
+    source_ref = Column(String(255), nullable=False)
+    usage_count = Column(Integer, nullable=False, default=1)
+    last_used_at = Column(DateTime, nullable=False, default=utcnow)
+    metadata_json = Column(JsonType, nullable=False, default=dict)
+
+
+class DataAssetLineageORM(db.Model):
+    """轻量资产血缘边。"""
+
+    __tablename__ = "data_asset_lineage"
+    __table_args__ = (
+        Index("idx_data_asset_lineage_source", "source_table_id", "relation_type"),
+        Index("idx_data_asset_lineage_target", "target_type", "target_ref"),
+        {"extend_existing": True},
+    )
+
+    id = Column(String(128), primary_key=True)
+    source_table_id = Column(String(128), nullable=False)
+    target_table_id = Column(String(128), nullable=True)
+    target_type = Column(String(64), nullable=False)
+    target_ref = Column(String(255), nullable=False)
+    relation_type = Column(String(32), nullable=False, default="downstream")
+    metadata_json = Column(JsonType, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, default=utcnow)

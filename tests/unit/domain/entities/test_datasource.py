@@ -165,6 +165,13 @@ class TestDatasource:
             connection_config={
                 "password": "abcdef",
                 "access_key": "ABCDEFGHIJ",
+                "accessKey": "CAMELCASESECRET",
+                "access_key_id": "LTAI5tExampleKey",
+                "access_id": "plain-access-id",
+                "accessId": "plain-access-id-2",
+                "accessKeyId": "plain-access-id-3",
+                "access_key_secret": "example-secret-value",
+                "accessKeySecret": "example-secret-value-2",
                 "secret_access_key": "SECRETACCESS",
                 "secret": "xyz",
                 "token": "token-123456",
@@ -176,6 +183,17 @@ class TestDatasource:
 
         assert masked["password"] == "******"
         assert masked["access_key"] == "ABC****HIJ"
+        assert masked["accessKey"] != "CAMELCASESECRET"
+        assert masked["access_key_id"].startswith("LTA")
+        assert masked["access_key_id"] != "LTAI5tExampleKey"
+        assert "*" in masked["access_key_id"]
+        assert masked["access_id"] != "plain-access-id"
+        assert masked["accessId"] != "plain-access-id-2"
+        assert masked["accessKeyId"] != "plain-access-id-3"
+        assert masked["access_key_secret"].startswith("exa")
+        assert masked["access_key_secret"] != "example-secret-value"
+        assert "*" in masked["access_key_secret"]
+        assert masked["accessKeySecret"] != "example-secret-value-2"
         assert masked["secret_access_key"].startswith("SEC")
         assert masked["secret"] == "******"
         assert masked["token"].startswith("tok")

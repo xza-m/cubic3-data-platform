@@ -35,6 +35,7 @@ from .interfaces.api.v1.subscriptions import app_instance_subscriptions_bp
 
 # 语义层 API v1
 from .interfaces.api.v1.semantic import create_semantic_blueprint
+from .interfaces.api.v1.semantic_assets import create_semantic_assets_blueprint
 from .interfaces.api.v1.semantic_releases import create_semantic_releases_blueprint
 from .interfaces.api.v1.semantic_modeling_agent import create_semantic_modeling_agent_blueprint
 from .interfaces.api.v1.semantic_modeling_copilot import create_semantic_modeling_copilot_blueprint
@@ -163,6 +164,12 @@ def create_app(role: str = "web") -> Flask:
         QueryResultObjectORM,
     )
     from .infrastructure.semantic.models import (  # noqa
+        DataAssetFieldORM,
+        DataAssetLineageORM,
+        DataAssetSnapshotORM,
+        DataAssetSyncRunORM,
+        DataAssetTableORM,
+        DataAssetUsageORM,
         SemanticAssetDependencyORM,
         SemanticAssetORM,
         SemanticAssetRevisionORM,
@@ -220,6 +227,9 @@ def create_app(role: str = "web") -> Flask:
             dataset_handler=container.create_dataset_handler(),
             registry_repo=container.semantic_registry_repository(),
             runtime_snapshot_service=container.runtime_snapshot_service(),
+        ))
+        app.register_blueprint(create_semantic_assets_blueprint(
+            container.data_asset_service,
         ))
         app.register_blueprint(create_semantic_modeling_agent_blueprint(
             container.semantic_modeling_agent(),

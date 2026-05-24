@@ -130,6 +130,7 @@ from app.application.semantic.metric_semantics_service import MetricSemanticsSer
 from app.application.semantic.semantic_modeling_agent import SemanticModelingAgent
 from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
+from app.application.semantic.data_asset_service import DataAssetService
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
 from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
@@ -170,6 +171,7 @@ from app.infrastructure.semantic.sql_modeling_proposal_repository import (
     SqlModelingProposalRepository,
 )
 from app.infrastructure.semantic.sql_asset_registry_repository import SqlAssetRegistryRepository
+from app.infrastructure.semantic.sql_data_asset_repository import SqlDataAssetRepository
 from app.infrastructure.semantic.yaml_view_repository import YamlViewRepository
 from app.infrastructure.semantic.yaml_recipe_repository import YamlRecipeRepository
 from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
@@ -448,6 +450,11 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    data_asset_repository = providers.Factory(
+        SqlDataAssetRepository,
+        session=db_session,
+    )
+
     publish_gate_service = providers.Factory(
         PublishGateService.production,
     )
@@ -470,6 +477,12 @@ class Container(containers.DeclarativeContainer):
     datasource_repository = providers.Factory(
         DatasourceRepository,
         session=db_session
+    )
+
+    data_asset_service = providers.Factory(
+        DataAssetService,
+        repository=data_asset_repository,
+        datasource_repository=datasource_repository,
     )
     
     dataset_repository = providers.Factory(
