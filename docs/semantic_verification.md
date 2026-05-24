@@ -125,7 +125,7 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 
 - 默认前端 smoke：`make smoke-frontend`，底层为 `npm run e2e:smoke`，覆盖 v2 cutover 的低副作用关键路径。
 - 语义专项 smoke：`make smoke-semantic`，覆盖领域创建、领域发布、治理问题三条真实后端链路，以及 P34 Modeling Copilot 对话闭环。
-- 建模助手 Agent 专项：`make test-modeling-agent`，覆盖 `spec-draft -> draft-from-spec -> validate -> agent-ready-check -> apply -> publish` 的后端最小链路、`Domain context-preview` 上下文预览，以及 `/semantic/modeling-agent/new` 顶层任务流。
+- 建模助手 Copilot 专项：`make test-modeling-agent`，覆盖内部 `SemanticModelDraftBuilder`、Copilot session API、候选资产确认、spec 生成、保存 Proposal、发布门禁、`Domain context-preview` 上下文预览，以及 `/semantic/modeling-copilot/new` 顶层任务流。
 - Agent-first Runtime 专项：后端单测覆盖 `/api/v1/agent/semantic/plan` 固定 `runtime_mode=official`、official 必须命中 active SQL runtime snapshot，且 router / mapper / compiler 直接从 snapshot manifest 的 published `spec` 还原语义 catalog；active Ontology、Glossary canonical entity 必须 active，YAML 同名资产不得 fallback，stale measure 与非 active Cube 编译阻断；学生评论真实资产回归覆盖 `Ontology -> Binding -> QueryDSL -> SQL`，要求“最近 N 天”时间过滤和“按学校汇总”维度分组进入最终 SQL。
 - 统一查询执行面专项：`make test-query-execution` 覆盖 QueryExecution 领域实体、提交服务、仓储、结果对象和集成 API，确保 `/api/v1/agent/semantic/execute` 能进入统一执行面而不是停在 preview-only。
 - Modeling Copilot 后端回归：
@@ -191,8 +191,8 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - 校验 `summary` / `items` 契约、issue 计数一致性和 severity 枚举
 - 默认不要求环境一定存在漂移；如需在有种子数据的环境强制验证命中治理问题，可设置 `GOVERNANCE_SMOKE_REQUIRE_ISSUE=1`
 
-### 4. `modeling-agent-smoke`
-- 打开 `/semantic/modeling-agent/new`
+### 4. `modeling-copilot-smoke`
+- 打开 `/semantic/modeling-copilot/new`
 - 从“查询最近 7 天学生评论数，按学校汇总”业务问题进入 Copilot 对话流
 - 校验已有语义资产召回、口径确认、Spec 编辑、应用语义、确认发布和发布后验收提示
 - 校验没有可复用 Cube 时的候选来源确认与确定性生成 Spec 分支；学生评论候选源应稳定落到 `df_cb_258187.dwd_interaction_comment_reports_df`

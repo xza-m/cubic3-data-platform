@@ -87,13 +87,15 @@ last_reviewed: 2026-05-23
 
 ### 3.1 桥接 Cube 工作台
 
-Cube 工作台从 `EvidenceBundle` 获取候选源和字段证据，用于生成 spec、展示 Review、补齐 trace 和发布前校验。
+Cube 草案进入 Modeling Copilot Proposal 链路。Cube 工作台从 `EvidenceBundle` 获取候选源和字段证据，用于生成 spec、展示 Review、补齐 trace 和发布前校验；内部 `SemanticModelDraftBuilder` 负责草案生成、校验和发布门禁材料组装。
 
 当前约束：
 
 - 建模 Copilot 召回阶段优先读本地语义资产、Dataset 与表缓存，不在每次用户输入时实时连接外部库。
 - 用户确认候选源后，再补证据包和 schema 校验。
-- 生成的 Cube 仍进入语义建模 Copilot / 内部 `SemanticModelDraftBuilder` 的 spec / validate / apply / publish 链路。
+- 数据资产底座不直接生成 Cube、Ontology 或运行时语义真相，只提供元数据事实、`AssetRef` 与 `EvidenceBundle`。
+- Modeling Copilot 生成草案时优先读取 `EvidenceBundle.schema_snapshot`；证据包缺失 schema 时，才走 datasource adapter fallback 补齐字段事实。
+- 生成的 Cube 仍进入 Modeling Copilot Proposal / 内部 `SemanticModelDraftBuilder` 的 spec / validate / apply / publish 链路。
 
 ### 3.2 桥接 Ontology-Cube Projection
 
@@ -148,7 +150,7 @@ Schema 漂移必须复用现有三件套，不引入第二套 drift detector：
 - 在数据资产底座里新增 `SchemaDriftDetector`、`AssetDriftService` 或独立 drift 规则表。
 - 在前端直接比较字段数组并生成治理告警。
 - 让 Ontology-Cube Projection 自己判断物理字段缺失、类型变化或新列未绑定。
-- 用定时任务绕开 `SchemaSyncService` 直接写 drift 状态。
+- 不用定时任务绕开 `SchemaSyncService` 直接写 drift 状态；Schema 漂移统一复用 `SchemaSyncService + AssetSnapshotSchemaInspector + SemanticGovernanceIssueService`，资产页面只展示结果。
 
 允许做法：
 
@@ -166,9 +168,10 @@ Schema 漂移必须复用现有三件套，不引入第二套 drift detector：
   -> 候选源召回
   -> AssetRef 列表
   -> EvidenceBundle
+  -> schema_snapshot 优先 / datasource adapter fallback
   -> SemanticModelDraftBuilder spec 草稿
   -> SchemaSyncService 校验
-  -> Proposal Review
+  -> Modeling Copilot Proposal Review
   -> 发布 Cube / Ontology
 ```
 

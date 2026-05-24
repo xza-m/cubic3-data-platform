@@ -60,7 +60,7 @@ last_reviewed: 2026-05-19
 | `make verify-backend` | 后端改动 | 串联 backend lint/typecheck/test/smoke；未配置项显式 `skip` |
 | `make verify-frontend` | 前端非语义改动 | 串联 frontend lint/typecheck/test/smoke |
 | `make verify-docs` | 仅文档改动 | 运行文档健康检查 |
-| `make verify-semantic` | 语义中心改动 | 在 Agent Runtime、统一查询执行面、建模助手 Agent 最小链路、backend + frontend 基线验证之上，补充语义专项 smoke |
+| `make verify-semantic` | 语义中心改动 | 在 Agent Runtime、统一查询执行面、建模助手 Copilot 最小链路、backend + frontend 基线验证之上，补充语义专项 smoke |
 | `make verify-semantic-prod` | 语义平台生产候选 | 在迁移拓扑、SQL Registry / Publish Gate / Release Snapshot 专项、可选存量库 fingerprint、nginx v2 生产镜像、语义专项验证、live opt-in 和 fixture cleanup 上做发布候选收口 |
 | `make verify-semantic-prod-strict` | 语义平台上线前 | 先执行 `semantic-prod-env-required`，强制要求预生产 DB fingerprint、live smoke、fixture cleanup 和真实 PostgreSQL concurrency，再执行生产候选闸门 |
 | `make verify` | 跨域、共享契约或影响面不明 | 串联仓库级四层入口 |
@@ -112,7 +112,7 @@ last_reviewed: 2026-05-19
 | v2 E2E smoke | `make smoke-frontend` | Playwright v2 smoke（`npm run e2e:smoke`） |
 | Agent-first Runtime 最小链路 | `make test-agent-runtime` | official runtime 路由、Mapper Binding、QueryDSL 编译、stale measure / 非 active Cube 阻断与 Agent plan API preview-only 回归 |
 | 统一查询执行面最小链路 | `make test-query-execution` | QueryExecution 领域实体、提交服务、仓储、结果对象和集成 API 回归 |
-| 建模助手 Agent 最小链路 | `make test-modeling-agent` | SemanticModelingAgentSpec、草稿生成、校验、Agent-ready 检查、保存、cube-only 发布与 Domain context-preview 的后端/前端单测 |
+| 建模助手 Copilot 最小链路 | `make test-modeling-agent` | 内部 `SemanticModelDraftBuilder`、Copilot session API、候选资产确认、spec 生成、保存 Proposal、发布门禁、Domain context-preview、前端 Copilot 页面单测 |
 | 语义专项 smoke | `make smoke-semantic` | 领域创建、领域发布、治理问题三条真实后端浏览器烟测 + P34 Modeling Copilot mock 闭环 |
 | 语义生产候选 | `make verify-semantic-prod` | 迁移 / SQL Registry / baseline / nginx build / semantic verify / live opt-in / cleanup 的生产候选闸门 |
 | 语义上线前严格验收 | `make verify-semantic-prod-strict` | 环境变量 fail-fast + `verify-semantic-prod` + 真实 PostgreSQL 发布并发测试 |
@@ -135,7 +135,7 @@ last_reviewed: 2026-05-19
 | `make verify-backend` | 仅后端改动的默认交付入口 |
 | `make verify-frontend` | 仅前端非语义改动的默认交付入口 |
 | `make verify-docs` | 仅文档改动的默认交付入口 |
-| `make verify-semantic` | 语义中心改动；在 Agent Runtime、统一查询执行面、建模助手 Agent / Domain 上下文最小链路、backend + frontend 基线之外补语义专项 smoke |
+| `make verify-semantic` | 语义中心改动；在 Agent Runtime、统一查询执行面、建模助手 Copilot / Domain 上下文最小链路、backend + frontend 基线之外补语义专项 smoke |
 | `make verify-semantic-prod` | 语义平台生产候选；会构建 nginx 生产镜像，默认跳过 live smoke，设置 `SEMANTIC_PROD_LIVE=1` 后运行真实链路 |
 | `make verify-semantic-prod-strict` | 语义平台上线前严格验收；要求预生产 DB、live smoke、fixture cleanup 和真实 PostgreSQL concurrency 环境变量，不允许静默 skip |
 | `make semantic-prod-readiness-report` | 上线前补证盘点；输出脱敏 JSON，说明 strict gate 的 baseline / live / cleanup / PostgreSQL 并发输入是否齐备 |

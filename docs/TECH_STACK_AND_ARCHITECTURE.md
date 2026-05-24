@@ -198,10 +198,12 @@ app/
   - 权限职责边界固定为 data-platform 负责 `Principal / PermissionPackage / RoleBinding / DataPolicy / PolicyDecision / GatewayAccessContextPreview`，`dw-query-gateway` 负责接收可信 `GatewayAccessContext`、SQL guard 与 `CredentialBinding`，MaxCompute 负责 RAM / ACL 物理兜底；data-platform 不保存真实 RAM 凭据；gateway 到 MaxCompute 的落地方案见 `docs/architecture/access-gateway-maxcompute-ram.md`
   - `/semantic-router/execute-plan` 与 `/execution-compiler/execute` 已补 M3/raw/ODS 拦截，返回 `require_approval` 且不真实执行
   - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 查询
-- `建模助手 Agent`
-  - 新增 `/api/v1/semantic/modeling-agent/spec-draft`、`draft-from-spec`、`validate`、`agent-ready-check`、`apply`、`publish`，由应用层内部 `SemanticModelDraftBuilder` 编排 Cube 草稿与 Ontology 草稿生成
-  - `SemanticModelingAgentSpec` 只作为构建输入、用户确认材料和审计快照，不作为运行时语义源
-  - `agent-ready-check` 用于构建页沙盒确认 Cube 已可执行、Ontology 已发布且业务指标能绑定真实 Cube Measure；它不替代正式 `/api/v1/agent/semantic/plan`
+- `建模助手 Copilot`
+  - 唯一 Copilot 会话 API 为 `/api/v1/semantic/modeling-copilot/sessions/*`；旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路已下线，不再作为新的建模助手产品入口或公开会话 API
+  - 迁移期 Proposal 兼容面仍可保留为内部 / 前端兼容 client、types、hooks，例如 Proposal API 与 `SemanticModelingAgentSpec` 构建期类型；这些兼容面不代表新的产品入口或公开会话契约
+  - 应用层内部 `SemanticModelDraftBuilder` 继续承接确定性 spec 生成、候选资产确认、校验、保存 Proposal 和发布门禁材料组装
+  - 数据资产底座只向 Copilot 提供元数据事实、`AssetRef` 与 `EvidenceBundle`；草案生成优先使用 `schema_snapshot`，缺失时才走 datasource adapter fallback
+  - 发布前门禁用于构建页沙盒确认 Cube 已可执行、Ontology 已发布且业务指标能绑定真实 Cube Measure；它不替代正式 `/api/v1/agent/semantic/plan`
   - 默认只发布 Cube；Ontology 必须经业务语义确认后显式发布，正式 Agent 问数链路仍只消费已发布 Ontology
 - `SQL Registry / Release / Runtime Snapshot`
   - 生产语义资产事实源为 PostgreSQL SQL Registry，覆盖 asset、revision、dependency、release、release asset 和 runtime snapshot
@@ -215,7 +217,7 @@ app/
 
 当前前端已把这条主链收口到顶层构建任务流与两个工作台的最小联动：
 
-- `建模助手 Agent` 位于 `/semantic/modeling-agent/new`，作为语义中心顶层任务流，不归属于 `/semantic/cubes/new`
+- `建模助手 Copilot` 位于 `/semantic/modeling-copilot/new` 与 `/semantic/modeling-copilot/:sessionId`，作为语义中心顶层任务流，不归属于 `/semantic/cubes/new`
 - `业务语义工作台` 可从对象投影视图直接跳到 `语义工作台 / Cube 管理`
 - `语义工作台` 可从 Cube 标题区回看来源业务对象
 - stale / impact 告警已在 `业务语义工作台` 收口为可定位的实体提示
@@ -230,7 +232,7 @@ app/
 - `业务语义工作台` 的“发布 / 影响 / 历史”面板已补入最近一次发布失败的内联反馈，发布阻断不再只通过 toast 呈现
 - `业务语义工作台` 已补入订单域模板预览与一键应用入口，可直接消费 `/api/v1/ontology/templates/order-domain` 与 `/apply`，快速生成订单域对象、属性、业务指标、关系、动作、术语与权限基线
 - `业务语义工作台` 总览页已补入 Agent 预演面板，可调用 `/api/v1/agent/semantic/plan` 查看 route、compiled SQL、policy decision 与 `preview_only` ticket
-- `建模助手 Agent` 页面已补入 Agent-ready 检查，可在草稿发布前查看 Cube / Ontology 状态、指标绑定和真相源边界
+- `建模助手 Copilot` 页面已补入发布前门禁检查，可在草稿发布前查看 Cube / Ontology 状态、指标绑定和真相源边界
 - 智能问数后端消息主链已优先尝试走语义路由与统一执行运行时，仅在未命中或执行失败时回退 Agent / 传统 LLM
 - 智能问数后端消息主链已开始生成并返回 `semantic_plan` 相关上下文；当前 v2 前端 `/data-chat` 仍是 Placeholder，完整聊天界面尚未恢复。
 - `Cube` 激活时已补入最小业务语义优先准入校验：对 `certified=true` 的 Measure，必须存在至少一个 `BusinessMetric.measure_refs` 反向引用
@@ -274,7 +276,7 @@ frontend/src/
 - `/config/*`
 - `/settings`
 - `/semantic/ontology`
-- `/semantic/modeling-agent/new`（建模助手 Agent）
+- `/semantic/modeling-copilot/new`（建模助手 Copilot）
 - `/semantic/workbench`（语义诊断）
 - `/semantic/cubes`
 - `/semantic/domains`
@@ -284,7 +286,7 @@ frontend/src/
 
 - 首页工作台不再由前端拼装多组统计请求，统一消费 `/api/v1/dashboard/overview`
 - 查询中心旧入口 `/queries/editor`、`/queries/templates` 只保留兼容重定向；`/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是当前有效子路由
-- 语义中心当前以 `/semantic/modeling-agent/new` 作为建模助手 Agent 顶层任务流，以 `/semantic/ontology` 作为业务语义主入口，覆盖对象、指标、关系、治理和工作台总览；`/semantic/workbench` 当前承接语义诊断 / DevTools
+- 语义中心当前以 `/semantic/modeling-copilot/new` 作为建模助手 Copilot 顶层任务流，以 `/semantic/ontology` 作为业务语义主入口，覆盖对象、指标、关系、治理和工作台总览；`/semantic/workbench` 当前承接语义诊断 / DevTools
 - `/semantic/cubes`、`/semantic/domains`、`/semantic/views/:name` 继续作为物理语义资产、业务上下文资产画布与 View 入口
 - `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 当前保留为真实 v2 页面；`/semantic/tools`、`/semantic/overview` 等旧别名会重定向到当前入口
 - v2 路由/API 详细审计见 [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
@@ -311,7 +313,7 @@ frontend/src/
 - `/api/v1/conversations`
 - `/api/v1/files`
 - `/api/v1/semantic`
-- `/api/v1/semantic/modeling-agent`
+- `/api/v1/semantic/modeling-copilot`
 - `/api/v1/ontology`
 - `/api/v1/semantic-mapper`
 - `/api/v1/semantic-router`
@@ -343,7 +345,7 @@ frontend/src/
   - `/api/v1/agent/semantic/plan`：Agent-first official Runtime 主入口，返回 `runtime_mode / business_intent / projection_result / resolved_bindings / compiled_targets / policy_decision / semantic_trace` 与 preview-only ticket
   - `/api/v1/agent/semantic/execute`：Agent-first 查询执行入口，生成受治理的 async query execution job
   - `/api/v1/query-execution/*`：统一查询执行面，提供 job 状态、事件、结果和取消能力
-- `/api/v1/semantic/modeling-agent/*`：建模助手 Agent 的构建期接口，负责从事实表和业务意图生成、校验、Agent-ready 检查、保存并按范围发布 Cube + Ontology 草稿；不被正式 Agent 运行时直接读取
+- `/api/v1/semantic/modeling-copilot/sessions/*`：建模助手 Copilot 的唯一公开 session API，负责对话状态、候选资产确认、Proposal Review、保存和发布门禁投影；内部 spec 生成与校验继续由 `SemanticModelDraftBuilder` 承接；旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路已下线，不再作为新的建模助手产品入口或公开会话 API。迁移期 Proposal API client、types、hooks 和 `SemanticModelingAgentSpec` 构建期类型可继续作为兼容面存在，但不代表新的公开会话契约
 - `/api/v1/semantic/domains/<domain_id>/context-preview`：Domain 业务上下文预览接口，只返回候选范围和 Agent 沙盒提示，不作为执行时 Join 或指标真相源
 - `/semantic/ontology`：业务语义工作台前端首期版本，已覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模与投影预览
 
