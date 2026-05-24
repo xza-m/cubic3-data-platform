@@ -1032,6 +1032,70 @@ def test_confirm_source_candidate_generates_spec_without_runtime():
     assert updated["workbench_state"]["raw_spec"]["spec_version"] == "v1"
 
 
+def test_confirm_source_candidate_preserves_data_asset_evidence_in_proposal_patch():
+    service, repo, runtime, _ = _service()
+    created = service.create_session({"user_goal": "查询最近 7 天学生评论数"})
+    session = repo.get(created["id"])
+    evidence_bundle = {
+        "runtime_truth": False,
+        "asset_refs": [
+            {
+                "asset_type": "table",
+                "source_id": "maxcompute-prod",
+                "database": "df_cb_258187",
+                "schema": "dw",
+                "name": "dwd_interaction_comment_reports_df",
+                "qualified_name": "df_cb_258187.dw.dwd_interaction_comment_reports_df",
+            }
+        ],
+        "schema_snapshot": {"columns": [{"name": "school_id", "type": "BIGINT"}]},
+    }
+    session.workbench_state = {
+        **session.workbench_state,
+        "source_candidates": [
+            {
+                "id": "asset:tbl_comment",
+                "asset_type": "data_asset_table",
+                "source_kind": "physical_table",
+                "source_id": "maxcompute-prod",
+                "database": "df_cb_258187",
+                "schema": "dw",
+                "table": "dwd_interaction_comment_reports_df",
+                "name": "df_cb_258187.dw.dwd_interaction_comment_reports_df",
+                "title": "学生评论举报明细事实表",
+                "asset_ref": evidence_bundle["asset_refs"][0],
+                "evidence_bundle": evidence_bundle,
+            }
+        ],
+        "readiness": {
+            "canonical_ready": False,
+            "exploratory_ready": False,
+            "reasons": ["source_candidate_confirmation_required", "spec_not_generated"],
+        },
+        "proposal_patch": {
+            "source_mode": "agent_led",
+            "source_kind": "business_question",
+            "user_question": session.user_goal,
+        },
+    }
+    repo.save(session)
+
+    updated = service.send_message(
+        created["id"],
+        {
+            "message": "使用这个来源：df_cb_258187.dw.dwd_interaction_comment_reports_df",
+            "action": "confirm_source_candidate",
+            "candidate_id": "asset:tbl_comment",
+        },
+    )
+
+    assert runtime.calls == []
+    patch = updated["workbench_state"]["proposal_patch"]
+    assert patch["asset_ref"]["qualified_name"] == "df_cb_258187.dw.dwd_interaction_comment_reports_df"
+    assert patch["evidence_bundle"]["runtime_truth"] is False
+    assert patch["evidence_bundle"]["schema_snapshot"]["columns"][0]["name"] == "school_id"
+
+
 def test_student_comment_source_confirmation_repairs_latest_answer_view_regression():
     class _EchoDraftTools(_Tools):
         def execute(self, tool_name, arguments, context):

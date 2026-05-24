@@ -797,6 +797,7 @@ class Container(containers.DeclarativeContainer):
         datasource_repository=datasource_repository,
         table_cache_service=table_cache_service,
         dataset_repository=dataset_repository,
+        data_asset_service=data_asset_service,
     )
 
     semantic_modeling_copilot_tools = providers.Singleton(

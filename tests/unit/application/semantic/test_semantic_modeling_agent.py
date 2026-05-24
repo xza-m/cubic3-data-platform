@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
+from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
 from app.application.semantic.semantic_modeling_agent import SemanticModelingAgent
+from app.shared.exceptions import ApplicationException
 
 
 def _cube_draft():
@@ -67,6 +71,14 @@ def _builder(**overrides):
     )
 
 
+def _source_service(cube_modeling_service=None):
+    return CubeModelingSourceService(
+        cube_modeling_service=cube_modeling_service or MagicMock(),
+        dataset_repository=MagicMock(),
+        datasource_repository=MagicMock(),
+    )
+
+
 def test_coerce_business_question_uses_qualified_candidate_table():
     """Copilot proposal 常见 source_kind=business_question + candidate_table=project.table。"""
     source_service = MagicMock()
@@ -110,6 +122,124 @@ def test_coerce_business_question_keeps_explicit_source_id():
     kw = source_service.generate_cube_draft_from_source.call_args.kwargs
     assert kw["source_id"] == 7
     source_service.resolve_default_physical_source_id.assert_not_called()
+
+
+def test_modeling_agent_uses_asset_evidence_schema_before_live_adapter():
+    source_service = MagicMock()
+    source_service.generate_cube_draft_from_asset_evidence.return_value = _cube_draft()
+    builder = _builder(source_service=source_service)
+    evidence_bundle = {
+        "runtime_truth": False,
+        "schema_snapshot": {
+            "columns": [
+                {"name": "school_id", "type": "BIGINT", "comment": "学校ID"},
+                {"name": "comment_id", "type": "STRING", "comment": "评论ID"},
+            ]
+        },
+    }
+
+    result = builder.create_spec_draft(
+        {
+            "source_kind": "physical_table",
+            "source_id": "maxcompute-prod",
+            "database": "df_cb_258187",
+            "schema": "dw",
+            "table": "dwd_interaction_comment_reports_df",
+            "business_subject": "学生评论",
+            "evidence_bundle": evidence_bundle,
+        }
+    )
+
+    source_service.generate_cube_draft_from_asset_evidence.assert_called_once()
+    source_service.generate_cube_draft_from_source.assert_not_called()
+    assert result["spec"]["source"]["evidence_bundle"] == evidence_bundle
+    assert result["spec"]["source"]["evidence_bundle"] is not evidence_bundle
+    evidence_bundle["schema_snapshot"]["columns"][0]["name"] = "polluted"
+    assert result["spec"]["source"]["evidence_bundle"]["schema_snapshot"]["columns"][0]["name"] == "school_id"
+
+
+def test_asset_evidence_source_id_requires_valid_numeric_id():
+    cube_modeling_service = MagicMock()
+    service = _source_service(cube_modeling_service)
+
+    with pytest.raises(ApplicationException, match="source_id 必须映射到有效数据源 ID"):
+        service.generate_cube_draft_from_asset_evidence(
+            source_id="maxcompute-prod",
+            database="df_cb_258187",
+            schema="dw",
+            table="dwd_interaction_comment_reports_df",
+            evidence_bundle={"schema_snapshot": {"columns": [{"name": "school_id", "type": "BIGINT"}]}},
+        )
+
+    cube_modeling_service.build_cube_draft_payload.assert_not_called()
+
+
+def test_asset_evidence_source_id_accepts_numeric_string_and_copies_evidence():
+    cube_modeling_service = MagicMock()
+    cube_modeling_service.build_cube_draft_payload.return_value = {"name": "comment_cube"}
+    service = _source_service(cube_modeling_service)
+    evidence_bundle = {
+        "schema_snapshot": {
+            "columns": [{"name": "school_id", "type": "BIGINT", "comment": "学校ID"}],
+        }
+    }
+
+    result = service.generate_cube_draft_from_asset_evidence(
+        source_id="7",
+        database="df_cb_258187",
+        schema="dw",
+        table="dwd_interaction_comment_reports_df",
+        evidence_bundle=evidence_bundle,
+    )
+
+    kw = cube_modeling_service.build_cube_draft_payload.call_args.kwargs
+    assert kw["source_id"] == 7
+    assert kw["data_source"] == "metadata_snapshot"
+    assert result["asset_evidence"] == evidence_bundle
+    assert result["asset_evidence"] is not evidence_bundle
+    evidence_bundle["schema_snapshot"]["columns"][0]["name"] = "polluted"
+    assert result["asset_evidence"]["schema_snapshot"]["columns"][0]["name"] == "school_id"
+
+
+def test_asset_evidence_normalizes_fields_and_partition_flags():
+    cube_modeling_service = MagicMock()
+    cube_modeling_service.build_cube_draft_payload.return_value = {"name": "comment_cube"}
+    service = _source_service(cube_modeling_service)
+
+    service.generate_cube_draft_from_asset_evidence(
+        source_id=7,
+        database="df_cb_258187",
+        schema="dw",
+        table="dwd_interaction_comment_reports_df",
+        evidence_bundle={
+            "schema_snapshot": {
+                "fields": [
+                    {"field_name": "school_id", "data_type": "BIGINT", "display_name": "学校ID"},
+                    {"field_name": "ds", "data_type": "STRING", "is_partition": True},
+                ]
+            }
+        },
+    )
+
+    kw = cube_modeling_service.build_cube_draft_payload.call_args.kwargs
+    assert kw["columns"] == [
+        {"name": "school_id", "type": "BIGINT", "comment": "学校ID"},
+        {"name": "ds", "type": "STRING", "comment": ""},
+    ]
+    assert kw["partitions"] == ["ds"]
+
+
+def test_asset_evidence_requires_schema_columns_or_fields():
+    service = _source_service()
+
+    with pytest.raises(ApplicationException, match="缺少 columns 或 fields"):
+        service.generate_cube_draft_from_asset_evidence(
+            source_id=7,
+            database="df_cb_258187",
+            schema="dw",
+            table="dwd_interaction_comment_reports_df",
+            evidence_bundle={"schema_snapshot": {"columns": []}},
+        )
 
 
 def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():

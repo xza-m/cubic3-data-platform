@@ -1,6 +1,7 @@
 """统一建模源服务。"""
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional
 
 from app.application.semantic.cube_modeling_service import CubeModelingService
@@ -86,6 +87,49 @@ class CubeModelingSourceService:
             raise ApplicationException("当前暂不支持从 file 数据集生成 Cube")
 
         raise ApplicationException(f"不支持的数据集类型: {dataset.dataset_type}")
+
+    def generate_cube_draft_from_asset_evidence(
+        self,
+        *,
+        source_id: Any,
+        database: Optional[str],
+        table: Optional[str],
+        evidence_bundle: Dict[str, Any],
+        schema: Optional[str] = None,
+        name: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """基于数据资产证据包中的 schema_snapshot 生成 Cube 草稿，避免优先打 live adapter。"""
+        if not source_id or not database or not table:
+            raise ApplicationException("数据资产建模源缺少必要字段: source_id, database, table")
+        schema_snapshot = evidence_bundle.get("schema_snapshot") if isinstance(evidence_bundle, dict) else None
+        if not isinstance(schema_snapshot, dict):
+            raise ApplicationException("数据资产证据缺少 schema_snapshot，无法生成 Cube 草稿")
+
+        columns = self._normalize_schema_columns(
+            schema_snapshot.get("columns") or schema_snapshot.get("fields")
+        )
+        if not columns:
+            raise ApplicationException("数据资产 schema_snapshot 缺少 columns 或 fields，无法生成 Cube 草稿")
+
+        partitions = self._normalize_schema_partitions(schema_snapshot, columns)
+        source_id_for_payload = self._strict_int_source_id(source_id)
+        payload = self._cube_modeling_service.build_cube_draft_payload(
+            source_id=source_id_for_payload,
+            database=database,
+            schema=schema,
+            table=table,
+            columns=columns,
+            partitions=partitions,
+            name=name or table,
+            title=title or schema_snapshot.get("title"),
+            description=description or schema_snapshot.get("description"),
+            comment=schema_snapshot.get("comment"),
+            data_source="metadata_snapshot",
+        )
+        payload["asset_evidence"] = deepcopy(evidence_bundle or {})
+        return payload
 
     def _generate_from_physical_dataset(
         self,
@@ -185,3 +229,46 @@ class CubeModelingSourceService:
         if isinstance(fields_relation, Iterable):
             return list(fields_relation)
         return []
+
+    @staticmethod
+    def _normalize_schema_columns(raw_columns: Any) -> List[Dict[str, Any]]:
+        if not isinstance(raw_columns, list):
+            return []
+        columns: List[Dict[str, Any]] = []
+        for item in raw_columns:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or item.get("field_name") or item.get("physical_name") or "").strip()
+            if not name:
+                continue
+            columns.append({
+                "name": name,
+                "type": item.get("type") or item.get("data_type") or item.get("field_type") or "string",
+                "comment": item.get("comment") or item.get("description") or item.get("display_name") or "",
+            })
+        return columns
+
+    @staticmethod
+    def _normalize_schema_partitions(schema_snapshot: Dict[str, Any], columns: List[Dict[str, Any]]) -> List[Any]:
+        explicit_partitions = schema_snapshot.get("partitions") or schema_snapshot.get("partition_fields") or []
+        if explicit_partitions:
+            return explicit_partitions
+        raw_columns = schema_snapshot.get("columns") or schema_snapshot.get("fields") or []
+        partitions: List[str] = []
+        if not isinstance(raw_columns, list):
+            return partitions
+        valid_column_names = {str(column.get("name") or "") for column in columns}
+        for item in raw_columns:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or item.get("field_name") or item.get("physical_name") or "").strip()
+            if name and name in valid_column_names and bool(item.get("is_partition") or item.get("partition")):
+                partitions.append(name)
+        return partitions
+
+    @staticmethod
+    def _strict_int_source_id(source_id: Any) -> int:
+        try:
+            return int(source_id)
+        except (TypeError, ValueError):
+            raise ApplicationException("数据资产证据中的 source_id 必须映射到有效数据源 ID") from None

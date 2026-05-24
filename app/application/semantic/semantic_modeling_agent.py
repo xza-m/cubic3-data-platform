@@ -65,17 +65,29 @@ class SemanticModelingAgent:
         """生成用户可编辑的 SemanticModelingAgentSpec 草稿。"""
         source_payload = self._normalize_source_payload(payload)
         business = self._build_business_section(payload)
-        cube = self._cube_modeling_source_service.generate_cube_draft_from_source(
-            source_kind=source_payload["source_kind"],
-            source_id=source_payload.get("source_id"),
-            dataset_id=source_payload.get("dataset_id"),
-            database=source_payload.get("database"),
-            schema=source_payload.get("schema"),
-            table=source_payload.get("table"),
-            name=source_payload.get("name"),
-            title=source_payload.get("title") or business["subject"],
-            description=source_payload.get("description"),
-        )
+        if self._has_asset_schema_snapshot(source_payload):
+            cube = self._cube_modeling_source_service.generate_cube_draft_from_asset_evidence(
+                source_id=source_payload.get("source_id"),
+                database=source_payload.get("database"),
+                schema=source_payload.get("schema"),
+                table=source_payload.get("table"),
+                evidence_bundle=source_payload["evidence_bundle"],
+                name=source_payload.get("name"),
+                title=source_payload.get("title") or business["subject"],
+                description=source_payload.get("description"),
+            )
+        else:
+            cube = self._cube_modeling_source_service.generate_cube_draft_from_source(
+                source_kind=source_payload["source_kind"],
+                source_id=source_payload.get("source_id"),
+                dataset_id=source_payload.get("dataset_id"),
+                database=source_payload.get("database"),
+                schema=source_payload.get("schema"),
+                table=source_payload.get("table"),
+                name=source_payload.get("name"),
+                title=source_payload.get("title") or business["subject"],
+                description=source_payload.get("description"),
+            )
         ontology = self._build_ontology_from_cube(cube, business)
         sensitive_fields = self._detect_sensitive_fields(cube)
         spec = {
@@ -343,6 +355,8 @@ class SemanticModelingAgent:
             "name": name,
             "title": title,
             "description": description,
+            "evidence_bundle": deepcopy(payload.get("evidence_bundle")),
+            "asset_ref": deepcopy(payload.get("asset_ref")),
         }
 
     @staticmethod
@@ -353,6 +367,16 @@ class SemanticModelingAgent:
             if ref and "." in ref:
                 return ref
         return ""
+
+    @staticmethod
+    def _has_asset_schema_snapshot(source_payload: Dict[str, Any]) -> bool:
+        if source_payload.get("source_kind") != "physical_table":
+            return False
+        evidence_bundle = source_payload.get("evidence_bundle")
+        if not isinstance(evidence_bundle, dict):
+            return False
+        schema_snapshot = evidence_bundle.get("schema_snapshot")
+        return isinstance(schema_snapshot, dict) and bool(schema_snapshot)
 
     def _build_business_section(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         subject = str(payload.get("business_subject") or payload.get("subject") or payload.get("title") or "业务对象").strip()

@@ -338,6 +338,10 @@ class ModelingToolRegistry:
             "business_subject": request_payload.get("business_subject") or self._subject_from_text(goal),
             "sensitivity_level": request_payload.get("sensitivity_level") or "restricted",
         }
+        context_request_payload = context.get("request_payload") if isinstance(context.get("request_payload"), dict) else {}
+        for key in ("evidence_bundle", "asset_ref"):
+            if key not in payload and key in context_request_payload:
+                payload[key] = deepcopy(context_request_payload[key])
         if not payload.get("candidate_table") and not payload.get("table"):
             candidate_source = self._candidate_source_from_assets({"candidates": self._candidate_assets(goal)})
             candidate_table = str(candidate_source.get("candidate_table") or candidate_source.get("table") or "")
@@ -372,6 +376,11 @@ class ModelingToolRegistry:
             schema = candidate.get("schema")
             table = str(candidate.get("table") or "").strip()
             name = str(candidate.get("name") or "").strip()
+            extra_evidence = {}
+            if isinstance(candidate.get("asset_ref"), dict):
+                extra_evidence["asset_ref"] = deepcopy(candidate["asset_ref"])
+            if isinstance(candidate.get("evidence_bundle"), dict):
+                extra_evidence["evidence_bundle"] = deepcopy(candidate["evidence_bundle"])
             if source_kind == "dataset" and dataset_id:
                 return {
                     "source_kind": "dataset",
@@ -381,6 +390,7 @@ class ModelingToolRegistry:
                     "schema": schema,
                     "table": table or None,
                     "candidate_table": name or table,
+                    **extra_evidence,
                 }
             if source_kind == "physical_table" and table:
                 return {
@@ -390,6 +400,7 @@ class ModelingToolRegistry:
                     "schema": schema,
                     "table": table,
                     "candidate_table": f"{database}.{table}" if database and "." not in table else table,
+                    **extra_evidence,
                 }
             asset_type = str(candidate.get("asset_type") or "").strip()
             if asset_type == "table" and name:
