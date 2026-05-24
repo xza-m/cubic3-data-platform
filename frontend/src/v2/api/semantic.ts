@@ -144,6 +144,247 @@ export const createCubeRevision = (name: string) =>
 export const draftCubeFromSource = (body: CubeDraftBody) =>
   post<CubeDetail>('/semantic/cubes/draft-from-source', body)
 
+// ─── 数据资产底座类型 / API ─────────────────────────────────────────────────
+
+export type DataAssetSyncStatus = 'synced' | 'pending' | 'failed' | 'unknown' | string
+
+export interface DataAssetRadarSummary {
+  physical_table_count: number
+  synced_table_count: number
+  field_count: number
+  lineage_edge_count: number
+  quality_issue_count: number
+  last_sync_at?: string | null
+}
+
+export interface DataAssetRadarHealth {
+  score: number
+  level: 'healthy' | 'warning' | 'critical' | string
+  label: string
+}
+
+export interface DataAssetRadarResponse {
+  summary: DataAssetRadarSummary
+  health: DataAssetRadarHealth
+}
+
+interface DataAssetRadarApiResponse {
+  table_count: number
+  field_count: number
+  failed_sync_count: number
+  stale_profile_count: number
+  drift_risk_count: number
+  last_sync_at?: string | null
+  status?: string
+}
+
+export interface DataAssetPhysicalTable {
+  id: string
+  datasource_name: string
+  database?: string | null
+  schema?: string | null
+  table_name: string
+  display_name?: string | null
+  owner?: string | null
+  sync_status: DataAssetSyncStatus
+  field_count: number
+  row_count?: number | null
+  updated_at?: string | null
+}
+
+export interface DataAssetPhysicalTableListResponse {
+  tables: DataAssetPhysicalTable[]
+  total: number
+  page: number
+  page_size: number
+  page_count: number
+}
+
+export interface DataAssetPhysicalTableListParams {
+  q?: string
+  page?: number
+  page_size?: number
+  limit?: number
+  source_id?: string
+  database?: string
+  schema?: string
+  sync_status?: string
+  lifecycle_status?: string
+}
+
+interface DataAssetTableApiItem {
+  id: string
+  source_id: string
+  database?: string | null
+  schema?: string | null
+  name: string
+  title?: string | null
+  owner?: string | null
+  sync_status?: string | null
+  field_count?: number | null
+  row_count?: number | null
+  updated_at?: string | null
+}
+
+interface DataAssetTableApiListResponse {
+  items: DataAssetTableApiItem[]
+  total: number
+  page?: number
+  page_size?: number
+  page_count?: number
+}
+
+export interface DataAssetMetadataSyncRequest {
+  scope: 'all' | 'tables' | 'fields' | string
+  source_id?: string
+  database?: string
+  schema?: string
+  tables?: unknown[]
+}
+
+export interface DataAssetMetadataSyncResponse {
+  sync_run_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | string
+  submitted_at?: string | null
+  finished_at?: string | null
+  error_message?: string | null
+  stats?: Record<string, unknown> | null
+}
+
+export interface DataAssetFieldProfile {
+  id: string
+  name: string
+  data_type: string
+  nullable?: boolean
+  comment?: string | null
+  profile?: {
+    null_rate?: number | null
+    cardinality?: number | null
+    [key: string]: unknown
+  } | null
+}
+
+export interface DataAssetFieldListResponse {
+  items: DataAssetFieldProfile[]
+  total: number
+}
+
+export interface DataAssetEvidenceBundle {
+  runtime_truth: false
+  asset_refs?: Array<Record<string, unknown>>
+  schema_snapshot?: Record<string, unknown>
+  sample_profile?: Record<string, unknown>
+  usage_evidence?: Array<Record<string, unknown>>
+  lineage_evidence?: Array<Record<string, unknown>>
+  drift_evidence?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface DataAssetSyncRun {
+  id: string
+  source_id?: string | null
+  status: string
+  started_at?: string | null
+  finished_at?: string | null
+  stats?: Record<string, unknown> | null
+  error_message?: string | null
+}
+
+export interface DataAssetSyncRunListResponse {
+  items: DataAssetSyncRun[]
+  total: number
+}
+
+export const getDataAssetRadar = () =>
+  get<DataAssetRadarApiResponse>('/semantic/assets/radar').then((data) => {
+    const issueCount = (data.failed_sync_count ?? 0) + (data.stale_profile_count ?? 0) + (data.drift_risk_count ?? 0)
+    const level = data.status === 'error' ? 'critical' : data.status === 'warn' ? 'warning' : 'healthy'
+    return {
+      summary: {
+        physical_table_count: data.table_count ?? 0,
+        synced_table_count: Math.max((data.table_count ?? 0) - (data.failed_sync_count ?? 0), 0),
+        field_count: data.field_count ?? 0,
+        lineage_edge_count: 0,
+        quality_issue_count: issueCount,
+        last_sync_at: data.last_sync_at ?? null,
+      },
+      health: {
+        score: level === 'healthy' ? 100 : level === 'warning' ? 72 : 35,
+        level,
+        label: level === 'healthy' ? '健康' : level === 'warning' ? '关注' : '异常',
+      },
+    } satisfies DataAssetRadarResponse
+  })
+
+export const listDataAssetPhysicalTables = (params: DataAssetPhysicalTableListParams = {}) => {
+  const pageSize = params.page_size ?? params.limit
+  return get<DataAssetTableApiListResponse>('/semantic/assets/tables', {
+    keyword: params.q,
+    q: params.q,
+    page: params.page,
+    page_size: pageSize,
+    limit: params.limit,
+    source_id: params.source_id,
+    database: params.database,
+    schema: params.schema,
+    sync_status: params.sync_status,
+    lifecycle_status: params.lifecycle_status,
+  }).then((data) => ({
+    tables: (data.items ?? []).map((item) => ({
+      id: item.id,
+      datasource_name: item.source_id,
+      database: item.database,
+      schema: item.schema,
+      table_name: item.name,
+      display_name: item.title,
+      owner: item.owner,
+      sync_status: normalizeDataAssetSyncStatus(item.sync_status),
+      field_count: item.field_count ?? 0,
+      row_count: item.row_count,
+      updated_at: item.updated_at,
+    })),
+    total: data.total ?? 0,
+    page: data.page ?? params.page ?? 1,
+    page_size: data.page_size ?? pageSize ?? (data.items?.length ?? 0),
+    page_count: data.page_count ?? Math.max(1, Math.ceil((data.total ?? 0) / Math.max(pageSize ?? 1, 1))),
+  }))
+}
+
+export const getDataAssetTableFields = (tableId: string) =>
+  get<DataAssetFieldListResponse>(`/semantic/assets/tables/${encodeURIComponent(tableId)}/fields`)
+
+export const getDataAssetTableEvidence = (tableId: string) =>
+  get<DataAssetEvidenceBundle>(`/semantic/assets/tables/${encodeURIComponent(tableId)}/evidence`)
+
+export const listDataAssetSyncRuns = (params?: { limit?: number }) =>
+  get<DataAssetSyncRunListResponse>('/semantic/assets/sync-runs', { limit: params?.limit })
+
+export const getDataAssetSyncRun = (syncRunId: string) =>
+  get<DataAssetSyncRun>(`/semantic/assets/sync-runs/${encodeURIComponent(syncRunId)}`)
+
+export const syncDataAssetMetadata = (body: DataAssetMetadataSyncRequest) =>
+  post<{
+    id: string
+    status: string
+    started_at?: string | null
+    finished_at?: string | null
+    error_message?: string | null
+    stats?: Record<string, unknown> | null
+  }>('/semantic/assets/sync-runs', body).then((data) => ({
+    sync_run_id: data.id,
+    status: data.status,
+    submitted_at: data.started_at,
+    finished_at: data.finished_at,
+    error_message: data.error_message,
+    stats: data.stats,
+  }))
+
+function normalizeDataAssetSyncStatus(status: string | null | undefined): DataAssetSyncStatus {
+  if (status === 'success') return 'synced'
+  if (status === 'running') return 'pending'
+  return status || 'unknown'
+}
+
 // ─── 建模助手 Agent 类型 / API ──────────────────────────────────────────────
 
 export interface SemanticModelingAgentSource {
