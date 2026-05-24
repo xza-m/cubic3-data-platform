@@ -414,6 +414,22 @@ COMPILE_PREVIEW_REQUEST_SCHEMA = object_schema(
 )
 
 OPENAPI_OPERATION_METADATA: dict[tuple[str, str], dict[str, Any]] = {
+    ("/api/v1/semantic/assets/tables", "get"): {
+        "operationId": "SemanticAssetsTablesList",
+        "summary": "获取数据资产物理表列表",
+    },
+    ("/api/v1/semantic/assets/physical-tables", "get"): {
+        "operationId": "SemanticAssetsPhysicalTablesList",
+        "summary": "获取数据资产物理表列表（兼容别名）",
+    },
+    ("/api/v1/semantic/assets/sync-runs", "post"): {
+        "operationId": "SemanticAssetsSyncRunCreate",
+        "summary": "创建数据资产元数据同步批次",
+    },
+    ("/api/v1/semantic/assets/metadata-sync", "post"): {
+        "operationId": "SemanticAssetsMetadataSyncCreate",
+        "summary": "创建数据资产元数据同步批次（兼容别名）",
+    },
     ("/api/v1/data-center/datasources", "get"): {
         "operationId": "DataSourcesList",
         "summary": "获取数据源列表",

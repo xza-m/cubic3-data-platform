@@ -168,6 +168,42 @@ export const NAV_MODULES: NavModule[] = [
         path: '/semantic/modeling-copilot/new',
         implemented: true,
       },
+      {
+        section: t('nav.semantic.section.assets', '数据资产底座'),
+        label: t('nav.semantic.sub.assetsRadar', '资产雷达'),
+        path: '/semantic/assets',
+        implemented: true,
+      },
+      {
+        section: t('nav.semantic.section.assets', '数据资产底座'),
+        label: t('nav.semantic.sub.assetsTables', '物理表'),
+        path: '/semantic/assets/tables',
+        implemented: true,
+      },
+      {
+        section: t('nav.semantic.section.assets', '数据资产底座'),
+        label: t('nav.semantic.sub.assetsTableProfile', '表画像'),
+        path: '/semantic/assets/table-profile',
+        implemented: true,
+      },
+      {
+        section: t('nav.semantic.section.assets', '数据资产底座'),
+        label: t('nav.semantic.sub.assetsFieldProfile', '字段画像'),
+        path: '/semantic/assets/field-profile',
+        implemented: true,
+      },
+      {
+        section: t('nav.semantic.section.assets', '数据资产底座'),
+        label: t('nav.semantic.sub.assetsLineageUsage', '血缘使用'),
+        path: '/semantic/assets/lineage-usage',
+        implemented: true,
+      },
+      {
+        section: t('nav.semantic.section.assets', '数据资产底座'),
+        label: t('nav.semantic.sub.assetsMetadataSync', '元数据同步'),
+        path: '/semantic/assets/sync',
+        implemented: true,
+      },
       { section: t('nav.semantic.section.ontology', '本体工作台'), label: t('nav.semantic.sub.overview', '总览'), path: '/semantic/ontology', implemented: true },
       {
         section: t('nav.semantic.section.ontology', '本体工作台'),

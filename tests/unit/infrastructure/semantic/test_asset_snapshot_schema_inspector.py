@@ -1,6 +1,7 @@
 from app.infrastructure.semantic.asset_snapshot_schema_inspector import (
     AssetSnapshotSchemaInspector,
 )
+from app.domain.semantic.data_asset import AssetSnapshot, AssetTable
 from app.domain.semantic.ports.schema_inspector import ISchemaInspector
 
 
@@ -82,3 +83,36 @@ def test_asset_snapshot_schema_inspector_falls_back_when_snapshot_missing():
         {"name": "id", "type": "BIGINT"},
     ]
     assert inspector.fetch_dict_enums("fallback_enum") == {"1": "启用"}
+
+
+def test_asset_snapshot_schema_inspector_can_lookup_latest_schema_snapshot_from_repository():
+    class FakeRepository:
+        def list_tables(self, *, keyword="", page=1, page_size=20):
+            assert keyword == "orders"
+            return {
+                "items": [
+                    AssetTable(
+                        id="tbl_orders",
+                        source_id="maxcompute-prod",
+                        database="dw",
+                        name="orders",
+                    )
+                ],
+                "total": 1,
+            }
+
+        def latest_snapshot(self, table_id, *, snapshot_type="schema"):
+            assert table_id == "tbl_orders"
+            assert snapshot_type == "schema"
+            return AssetSnapshot(
+                id="snap_orders",
+                table_id="tbl_orders",
+                snapshot_type="schema",
+                payload={"columns": [{"name": "order_id", "type": "bigint"}]},
+            )
+
+    inspector = AssetSnapshotSchemaInspector.from_repository(FakeRepository())
+
+    assert inspector.get_table_columns("dw.orders") == [
+        {"name": "order_id", "type": "BIGINT"}
+    ]

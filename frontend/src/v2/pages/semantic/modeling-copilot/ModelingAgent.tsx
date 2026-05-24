@@ -3076,6 +3076,7 @@ function SourceCandidateCard({
             (Array.isArray(candidate.evidence) ? candidate.evidence[0] : '')
           const matched = Array.isArray(candidate.matched_terms) ? candidate.matched_terms.slice(0, 3).join(' / ') : ''
           const scoreBreakdown = formatScoreBreakdown(candidate.score_breakdown)
+          const dataAssetEvidence = dataAssetEvidenceForCandidate(candidate)
           return (
             <div
               key={String(candidate.id ?? name)}
@@ -3103,6 +3104,9 @@ function SourceCandidateCard({
                   {scoreBreakdown ? (
                     <div className="mt-1 text-[11px] leading-5 text-4">评分明细：{scoreBreakdown}</div>
                   ) : null}
+                  {dataAssetEvidence ? (
+                    <DataAssetCandidateEvidence evidence={dataAssetEvidence} />
+                  ) : null}
                   <div className="mt-2">
                     <Button size="sm" variant="primary" onClick={() => onConfirm(candidate)}>
                       <CheckCircle2 size={12} /> 使用此来源
@@ -3116,6 +3120,76 @@ function SourceCandidateCard({
       </div>
     </CardShell>
   )
+}
+
+interface DataAssetCandidateEvidenceModel {
+  assetType: string
+  qualifiedName: string
+  hasEvidenceBundle: boolean
+  runtimeTruth?: boolean
+  rowCount: string
+  partitionCount: string
+  profileStatus: string
+}
+
+function DataAssetCandidateEvidence({ evidence }: { evidence: DataAssetCandidateEvidenceModel }) {
+  return (
+    <div
+      data-testid="data-asset-candidate-evidence"
+      className="mt-2 rounded-[8px] border px-3 py-2"
+      style={{ borderColor: 'rgba(37,99,235,0.18)', background: 'rgba(239,246,255,0.48)' }}
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Chip tone="accent">{evidence.assetType}</Chip>
+        {evidence.hasEvidenceBundle ? <Chip>EvidenceBundle</Chip> : null}
+        {typeof evidence.runtimeTruth === 'boolean' ? (
+          <Chip tone={evidence.runtimeTruth ? 'success' : 'warning'}>
+            runtime_truth={String(evidence.runtimeTruth)}
+          </Chip>
+        ) : null}
+      </div>
+      {evidence.qualifiedName ? (
+        <div className="mt-1.5 break-all text-[11.5px] text-3">
+          资产引用：<code className="font-mono text-1">{evidence.qualifiedName}</code>
+        </div>
+      ) : null}
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-3">
+        {evidence.rowCount ? <span>行数：{evidence.rowCount}</span> : null}
+        {evidence.partitionCount ? <span>分区数：{evidence.partitionCount}</span> : null}
+        {evidence.profileStatus ? <span>画像状态：{evidence.profileStatus}</span> : null}
+      </div>
+    </div>
+  )
+}
+
+function dataAssetEvidenceForCandidate(candidate: CopilotSourceCandidate): DataAssetCandidateEvidenceModel | null {
+  const assetRef = isRecord(candidate.asset_ref) ? candidate.asset_ref : null
+  const evidenceBundle = isRecord(candidate.evidence_bundle) ? candidate.evidence_bundle : null
+  const profileSummary = isRecord(candidate.profile_summary) ? candidate.profile_summary : null
+  const sampleProfile = isRecord(evidenceBundle?.sample_profile) ? evidenceBundle.sample_profile : profileSummary
+  const assetType = stringValue(candidate.asset_type)
+  const qualifiedName = stringValue(assetRef?.qualified_name) || stringValue(candidate.qualified_name)
+  const hasDataAssetEvidence = assetType === 'data_asset_table' || Boolean(assetRef || evidenceBundle || profileSummary)
+  if (!hasDataAssetEvidence) return null
+
+  const runtimeTruth = typeof evidenceBundle?.runtime_truth === 'boolean' ? evidenceBundle.runtime_truth : undefined
+  return {
+    assetType: assetType || 'data_asset_table',
+    qualifiedName,
+    hasEvidenceBundle: Boolean(evidenceBundle),
+    runtimeTruth,
+    rowCount: formatProfileNumber(sampleProfile?.row_count),
+    partitionCount: formatProfileNumber(sampleProfile?.partition_count),
+    profileStatus: stringValue(sampleProfile?.profile_status),
+  }
+}
+
+function formatProfileNumber(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Intl.NumberFormat('zh-CN').format(value)
+  }
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return ''
 }
 
 function formatScoreBreakdown(value: unknown): string {

@@ -84,3 +84,29 @@ describe('findModule + findLayout 组合', () => {
     expect(layout.hideBreadcrumbs).toBe(true)
   })
 })
+
+describe('数据资产底座导航', () => {
+  it('语义中心只保留数据资产底座分组和六个资产页面', () => {
+    const semantic = NAV_MODULES.find((module) => module.id === 'semantic')
+    const assetItems = semantic?.subnav?.filter((item) => item.section === '数据资产底座') ?? []
+    const buildItems = semantic?.subnav?.filter((item) => item.section === '语义构建') ?? []
+
+    expect(buildItems.map((item) => item.label)).toEqual(['建模助手 Copilot'])
+    expect(assetItems.map((item) => item.label)).toEqual([
+      '资产雷达',
+      '物理表',
+      '表画像',
+      '字段画像',
+      '血缘使用',
+      '元数据同步',
+    ])
+    expect(assetItems.map((item) => item.path)).toEqual([
+      '/semantic/assets',
+      '/semantic/assets/tables',
+      '/semantic/assets/table-profile',
+      '/semantic/assets/field-profile',
+      '/semantic/assets/lineage-usage',
+      '/semantic/assets/sync',
+    ])
+  })
+})

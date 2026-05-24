@@ -124,7 +124,7 @@ SEMANTIC_PROD_LIVE=1 make smoke-semantic-live
 Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-layout` 目标已经移除。当前 v2 浏览器覆盖分为两类：
 
 - 默认前端 smoke：`make smoke-frontend`，底层为 `npm run e2e:smoke`，覆盖 v2 cutover 的低副作用关键路径。
-- 语义专项 smoke：`make smoke-semantic`，覆盖领域创建、领域发布、治理问题三条真实后端链路，以及 P34 Modeling Copilot 对话闭环。
+- 语义专项 smoke：`make smoke-semantic`，覆盖领域创建、领域发布、治理问题、数据资产底座四条真实后端链路，以及 P34 Modeling Copilot 对话闭环。
 - 建模助手 Copilot 专项：`make test-modeling-agent`，覆盖内部 `SemanticModelDraftBuilder`、Copilot session API、候选资产确认、spec 生成、保存 Proposal、发布门禁、`Domain context-preview` 上下文预览，以及 `/semantic/modeling-copilot/new` 顶层任务流。
 - Agent-first Runtime 专项：后端单测覆盖 `/api/v1/agent/semantic/plan` 固定 `runtime_mode=official`、official 必须命中 active SQL runtime snapshot，且 router / mapper / compiler 直接从 snapshot manifest 的 published `spec` 还原语义 catalog；active Ontology、Glossary canonical entity 必须 active，YAML 同名资产不得 fallback，stale measure 与非 active Cube 编译阻断；学生评论真实资产回归覆盖 `Ontology -> Binding -> QueryDSL -> SQL`，要求“最近 N 天”时间过滤和“按学校汇总”维度分组进入最终 SQL。
 - 统一查询执行面专项：`make test-query-execution` 覆盖 QueryExecution 领域实体、提交服务、仓储、结果对象和集成 API，确保 `/api/v1/agent/semantic/execute` 能进入统一执行面而不是停在 preview-only。
@@ -148,14 +148,15 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 1. `npm run e2e:domain-smoke`
 2. `npm run e2e:domain-publish-smoke`
 3. `npm run e2e:governance-issues-smoke`
-4. `npm run e2e:modeling-agent-smoke`
+4. `npm run e2e:data-assets-smoke`
+5. `npm run e2e:modeling-agent-smoke`
 
 ## 状态契约
 
 `make smoke-semantic` 不是默认仓库 smoke，而是语义专项 smoke：
 
 - `domain-smoke` / `domain-publish-smoke` 会创建或更新草稿、测试数据和语义资产
-- `domain-smoke` / `domain-publish-smoke` / `governance-issues-smoke` 依赖前端开发服务、最新后端代码和可写语义目录
+- `domain-smoke` / `domain-publish-smoke` / `governance-issues-smoke` / `data-assets-smoke` 依赖前端开发服务、最新后端代码和可写语义目录
 - 依赖真实后端 JWT：默认用 `DOMAIN_SMOKE_USERNAME` / `DOMAIN_SMOKE_PASSWORD`
   登录 `/api/v1/auth/login` 获取；也可显式设置 `DOMAIN_SMOKE_AUTH_TOKEN`
 - 默认使用 `http://127.0.0.1:3102` 作为临时前端端口，避免占用日常开发的
@@ -166,12 +167,13 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - 生产语义资产事实源为 SQL Registry；YAML 仅用于测试 fixture、示例 seed 和调试导出，不作为生产写入路径，也不作为离线迁移输入
 - Runtime 生产读取只允许走 active runtime snapshot；draft、Proposal 和 YAML 同名资产不得被 Runtime fallback 命中
 - 真实 Agent Runtime 补证可按需运行 `make preflight-agent-runtime` 和 `make live-agent-runtime`：前者只检查 active Ontology / Cube / Measure 绑定，后者会提交真实 MaxCompute 执行验收
-- 整个入口不承诺 hermetic，也不保证领域 smoke 对工作区和数据零副作用
+- `data-assets-smoke` 会写入确定性 `data-asset-smoke` 元数据夹具，覆盖资产同步、资产雷达、物理表列表、表证据包、`schema_source=asset_snapshot` 治理问题契约，并创建真实 Modeling Copilot session 验证资产底座到 Copilot 入口的连接
+- 整个入口不承诺 hermetic，也不保证领域 smoke 或资产 smoke 对工作区和数据零副作用
 - 只应在语义关键路径改动时作为交付门禁运行
 
 如果你需要可回收结果，优先在独立测试环境、临时数据空间或可清理本地环境中执行。
 
-## 四条浏览器烟测
+## 五条浏览器烟测
 
 ### 1. `domain-smoke`
 - 创建业务上下文草稿
@@ -191,7 +193,17 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - 校验 `summary` / `items` 契约、issue 计数一致性和 severity 枚举
 - 默认不要求环境一定存在漂移；如需在有种子数据的环境强制验证命中治理问题，可设置 `GOVERNANCE_SMOKE_REQUIRE_ISSUE=1`
 
-### 4. `modeling-copilot-smoke`
+### 4. `data-assets-smoke`
+- 使用真实登录获取 JWT
+- 调用 `POST /api/v1/semantic/assets/sync-runs` 写入确定性 MaxCompute-like 元数据 payload
+- 调用 `GET /api/v1/semantic/assets/radar` 校验表数和字段数至少覆盖本次同步
+- 调用 `GET /api/v1/semantic/assets/tables` 找回 smoke 物理表
+- 调用 `GET /api/v1/semantic/assets/tables/<id>/evidence` 校验 `EvidenceBundle` 包含资产引用、schema 快照，且不被标记为 runtime truth
+- 调用 `GET /api/v1/semantic/governance/issues?schema_source=asset_snapshot` 校验治理链路能读取资产快照来源
+- 调用 `POST /api/v1/semantic/modeling-copilot/sessions` 用“查询最近 7 天学生评论数，按学校汇总”创建真实 Copilot session；当前创建契约不直接接收 EvidenceBundle，后续候选资产证据由 Copilot 召回链路读取
+- 当前完成态要求该脚本在可写测试库中通过；404、鉴权失败或响应字段缺失都应视为数据资产底座或 Copilot session 契约回归。
+
+### 5. `modeling-copilot-smoke`
 - 打开 `/semantic/modeling-copilot/new`
 - 从“查询最近 7 天学生评论数，按学校汇总”业务问题进入 Copilot 对话流
 - 校验已有语义资产召回、口径确认、Spec 编辑、应用语义、确认发布和发布后验收提示

@@ -787,7 +787,7 @@ function SyncRunsSection({ syncRuns }: { syncRuns: DataAssetSyncRun[] }) {
 
 function MetricCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-[var(--bg-soft)] px-2.5 py-2">
+    <div className="rounded-md bg-[var(--bg-surface-2)] px-2.5 py-2">
       <div className="text-[11px] text-3">{label}</div>
       <div className="mt-1 font-medium text-1">{value}</div>
     </div>

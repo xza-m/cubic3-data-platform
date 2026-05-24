@@ -130,7 +130,22 @@ def create_semantic_blueprint(
             return None, None
         return query_adapter_getter()
 
-    def _build_schema_sync_service():
+    def _resolve_data_asset_repository():
+        container = getattr(current_app, "container", None)
+        provider = (
+            getattr(container, "data_asset_repository", None)
+            if container is not None
+            else None
+        )
+        if provider is None:
+            return None
+        try:
+            return provider() if callable(provider) else provider
+        except Exception as exc:
+            logger.warning("resolve_data_asset_repository_failed", error=str(exc))
+            return None
+
+    def _build_schema_sync_service(schema_source=None):
         from app.application.semantic.schema_sync_service import SchemaSyncService
         from app.domain.semantic.ports.schema_inspector import ISchemaInspector
 
@@ -146,12 +161,24 @@ def create_semantic_blueprint(
             "_runtime_binding_service",
             None,
         )
-        adapter, database = _resolve_query_adapter()
-        if adapter is not None:
-            from app.infrastructure.semantic.maxcompute_schema_inspector import MaxComputeSchemaInspector
-            inspector = MaxComputeSchemaInspector(adapter=adapter, database=database)
+        if schema_source == "asset_snapshot":
+            from app.infrastructure.semantic.asset_snapshot_schema_inspector import (
+                AssetSnapshotSchemaInspector,
+            )
+
+            repository = _resolve_data_asset_repository()
+            inspector = (
+                AssetSnapshotSchemaInspector.from_repository(repository)
+                if repository is not None
+                else _NullInspector()
+            )
         else:
-            inspector = _NullInspector()
+            adapter, database = _resolve_query_adapter()
+            if adapter is not None:
+                from app.infrastructure.semantic.maxcompute_schema_inspector import MaxComputeSchemaInspector
+                inspector = MaxComputeSchemaInspector(adapter=adapter, database=database)
+            else:
+                inspector = _NullInspector()
         return SchemaSyncService(
             cube_repo=semantic_service._cube_repo,
             inspector=inspector,
@@ -160,8 +187,8 @@ def create_semantic_blueprint(
             runtime_binding_service=runtime_binding_service,
         )
 
-    def _build_schema_report(cube_name=None):
-        sync_service = _build_schema_sync_service()
+    def _build_schema_report(cube_name=None, *, schema_source=None):
+        sync_service = _build_schema_sync_service(schema_source=schema_source)
         if cube_name:
             return sync_service.check_cube(cube_name)
         return sync_service.check_all()
@@ -197,6 +224,23 @@ def create_semantic_blueprint(
             return payload if isinstance(payload, dict) else None
         except Exception as exc:
             logger.warning("semantic_mapper_stale_check_failed", error=str(exc))
+            return None
+
+    def _build_data_asset_summary_payload():
+        container = getattr(current_app, "container", None)
+        provider = (
+            getattr(container, "data_asset_service", None)
+            if container is not None
+            else None
+        )
+        if provider is None:
+            return None
+        try:
+            service = provider() if callable(provider) else provider
+            radar_summary = getattr(service, "radar_summary", None)
+            return radar_summary() if callable(radar_summary) else None
+        except Exception as exc:
+            logger.warning("semantic_data_asset_summary_failed", error=str(exc))
             return None
 
     def _parse_positive_int_arg(name, *, default, maximum=None):
@@ -1086,13 +1130,16 @@ def create_semantic_blueprint(
     def governance_issues():
         """返回语义治理问题聚合结果。"""
         cube_name = (request.args.get("cube_name") or "").strip() or None
+        schema_source = (request.args.get("schema_source") or "").strip() or None
         from app.application.semantic.governance_issue_service import SemanticGovernanceIssueService
 
-        schema_report = _build_schema_report(cube_name)
+        schema_report = _build_schema_report(cube_name, schema_source=schema_source)
         mapper_stale_payload = _build_mapper_stale_payload()
+        data_asset_summary = _build_data_asset_summary_payload()
         payload = SemanticGovernanceIssueService().build_payload(
             schema_report=schema_report,
             mapper_stale_payload=mapper_stale_payload,
+            data_asset_summary=data_asset_summary,
         )
         return success(data=payload)
 

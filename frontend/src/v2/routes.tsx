@@ -107,6 +107,12 @@ const OntologyRelations = lazy(() => import('@v2/pages/semantic/ontology/Relatio
 const OntologyGovernance = lazy(() => import('@v2/pages/semantic/ontology/Governance'))
 const DevTools = lazy(() => import('@v2/pages/semantic/devtools/DevTools'))
 const SemanticModelingCopilot = lazy(() => import('@v2/pages/semantic/modeling-copilot/ModelingAgent'))
+const Assets = lazy(() => import('@v2/pages/semantic/assets/Assets'))
+const AssetTables = lazy(() => import('@v2/pages/semantic/assets/Tables'))
+const AssetFields = lazy(() => import('@v2/pages/semantic/assets/Fields'))
+const AssetLineage = lazy(() => import('@v2/pages/semantic/assets/Lineage'))
+const AssetQuality = lazy(() => import('@v2/pages/semantic/assets/Quality'))
+const AssetSyncRuns = lazy(() => import('@v2/pages/semantic/assets/SyncRuns'))
 const Cubes = lazy(() => import('@v2/pages/semantic/cubes/Cubes'))
 const CubeCreate = lazy(() => import('@v2/pages/semantic/cubes/CubeCreate'))
 const CubeDetail = lazy(() => import('@v2/pages/semantic/cubes/CubeDetail'))
@@ -291,6 +297,20 @@ export default function AppRoutes() {
             {/* 顶层建模助手 Copilot 任务流：不归属于 Cube 层级 */}
             <Route path="modeling-copilot/new" element={wrap(<SemanticModelingCopilot />)} />
             <Route path="modeling-copilot/:sessionId" element={wrap(<SemanticModelingCopilot />)} />
+
+            {/* 数据资产底座 */}
+            <Route path="assets">
+              <Route index element={wrap(<Assets />)} />
+              <Route path="tables" element={wrap(<AssetTables />)} />
+              <Route path="table-profile" element={wrap(<AssetQuality />)} />
+              <Route path="field-profile" element={wrap(<AssetFields />)} />
+              <Route path="lineage-usage" element={wrap(<AssetLineage />)} />
+              <Route path="sync" element={wrap(<AssetSyncRuns />)} />
+              <Route path="fields" element={<Navigate to="/semantic/assets/field-profile" replace />} />
+              <Route path="lineage" element={<Navigate to="/semantic/assets/lineage-usage" replace />} />
+              <Route path="quality" element={<Navigate to="/semantic/assets/table-profile" replace />} />
+              <Route path="sync-runs" element={<Navigate to="/semantic/assets/sync" replace />} />
+            </Route>
 
             {/* Cube：静态 new 在动态 :name 前；edit 作为 :name 的子路由 */}
             <Route path="cubes">

@@ -31,6 +31,21 @@ class AssetSnapshotSchemaInspector(ISchemaInspector):
         else:
             self._snapshots = None
 
+    @classmethod
+    def from_repository(
+        cls,
+        repository: Any,
+        enum_provider: Optional[Callable[[str], Optional[Dict[str, str]]]] = None,
+        fallback_inspector: Optional[ISchemaInspector] = None,
+    ) -> "AssetSnapshotSchemaInspector":
+        """通过数据资产仓储读取最新 schema 快照。"""
+
+        return cls(
+            lambda table_name: _lookup_repository_snapshot(repository, table_name),
+            enum_provider=enum_provider,
+            fallback_inspector=fallback_inspector,
+        )
+
     def get_table_columns(self, table_name: str) -> List[Dict[str, str]]:
         snapshot = self._resolve_snapshot(table_name)
         if snapshot is None:
@@ -86,3 +101,76 @@ class AssetSnapshotSchemaInspector(ISchemaInspector):
             )
             normalized.append({"name": str(name), "type": str(data_type).upper()})
         return normalized
+
+
+def _lookup_repository_snapshot(repository: Any, table_name: str) -> Optional[Dict[str, Any]]:
+    table = _lookup_repository_table(repository, table_name)
+    if table is None:
+        return None
+    table_id = _value(table, "id")
+    if not table_id or not hasattr(repository, "latest_snapshot"):
+        return None
+    snapshot = repository.latest_snapshot(str(table_id), snapshot_type="schema")
+    if snapshot is None:
+        return None
+    payload = _value(snapshot, "payload")
+    return payload if isinstance(payload, dict) else None
+
+
+def _lookup_repository_table(repository: Any, table_name: str) -> Any:
+    if hasattr(repository, "get_table_by_qualified_name"):
+        table = repository.get_table_by_qualified_name(table_name)
+        if table is not None:
+            return table
+    if not hasattr(repository, "list_tables"):
+        return None
+    keyword = _last_name_part(table_name)
+    page = repository.list_tables(keyword=keyword, page=1, page_size=50)
+    for table in page.get("items", []) if isinstance(page, dict) else []:
+        if _table_matches(table, table_name):
+            return table
+    return None
+
+
+def _table_matches(table: Any, table_name: str) -> bool:
+    expected = _normalize_table_name(table_name)
+    candidates = {
+        _normalize_table_name(_value(table, "name")),
+        _normalize_table_name(
+            ".".join(
+                part
+                for part in [
+                    _value(table, "schema") or _value(table, "source_schema"),
+                    _value(table, "name"),
+                ]
+                if part
+            )
+        ),
+        _normalize_table_name(
+            ".".join(
+                part
+                for part in [
+                    _value(table, "database"),
+                    _value(table, "schema") or _value(table, "source_schema"),
+                    _value(table, "name"),
+                ]
+                if part
+            )
+        ),
+    }
+    return expected in candidates
+
+
+def _value(obj: Any, key: str) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key)
+    value = getattr(obj, key, None)
+    return None if callable(value) else value
+
+
+def _last_name_part(table_name: str) -> str:
+    return str(table_name or "").split(".")[-1].strip()
+
+
+def _normalize_table_name(table_name: Any) -> str:
+    return ".".join(part for part in str(table_name or "").lower().split(".") if part)

@@ -22,15 +22,18 @@ def _create_engine_smart(database_url: str, **pg_kwargs):
     """根据数据库 URL 选择合适的引擎参数。
 
     SQLite 不支持连接池参数（max_overflow / pool_timeout 等），
-    需要使用 StaticPool 或直接省略这些参数。
+    内存库需要 StaticPool 保持 schema；文件库使用独立连接以支持本地
+    threaded smoke 并发请求。
     """
     if database_url.startswith('sqlite'):
-        from sqlalchemy.pool import StaticPool
-        return create_engine(
-            database_url,
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
+        if ":memory:" in database_url or database_url.rstrip("/") == "sqlite:":
+            from sqlalchemy.pool import StaticPool
+            return create_engine(
+                database_url,
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+        return create_engine(database_url, connect_args={"check_same_thread": False})
     return create_engine(database_url, **pg_kwargs)
 
 

@@ -304,6 +304,33 @@ const SOURCE_CANDIDATE_SESSION: SemanticModelingCopilotSession = {
   },
 }
 
+const DATA_ASSET_SOURCE_CANDIDATE_SESSION: SemanticModelingCopilotSession = {
+  ...SOURCE_CANDIDATE_SESSION,
+  id: 'session_data_asset_source_candidate',
+  workbench_state: {
+    ...SOURCE_CANDIDATE_SESSION.workbench_state,
+    source_candidates: [
+      {
+        id: 'data-asset:dw_smoke:dwd_data_asset_smoke_df',
+        asset_type: 'data_asset_table',
+        name: 'dwd_data_asset_smoke_df',
+        title: '数据资产底座 smoke 评论事实表',
+        asset_ref: {
+          qualified_name: 'data-asset-smoke.df_cb_258187.dw_smoke.dwd_data_asset_smoke_df',
+        },
+        evidence_bundle: {
+          runtime_truth: false,
+          sample_profile: {
+            row_count: 128,
+            partition_count: 1,
+            profile_status: 'fresh',
+          },
+        },
+      },
+    ],
+  },
+}
+
 describe('ModelingAgent · 对话原生 Copilot', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -593,6 +620,18 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         candidate_id: 'table:7:dw:dwd_class_activity_df',
       }),
     )
+  })
+
+  it('推荐数据来源展示数据资产底座候选的资产引用与证据边界', () => {
+    activeSessionFixture = DATA_ASSET_SOURCE_CANDIDATE_SESSION
+    renderAt('/semantic/modeling-copilot/session_data_asset_source_candidate')
+
+    expect(screen.getByText('数据资产底座 smoke 评论事实表')).toBeInTheDocument()
+    expect(screen.getByText('data_asset_table')).toBeInTheDocument()
+    expect(screen.getByText('data-asset-smoke.df_cb_258187.dw_smoke.dwd_data_asset_smoke_df')).toBeInTheDocument()
+    expect(screen.getByText('EvidenceBundle')).toBeInTheDocument()
+    expect(screen.getByText('runtime_truth=false')).toBeInTheDocument()
+    expect(screen.getByText(/行数：128/)).toBeInTheDocument()
   })
 
   it('右侧 Trace tab 回放工具调用、用户动作和发布审计链路', () => {

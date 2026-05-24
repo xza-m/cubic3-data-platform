@@ -51,6 +51,12 @@ def _register_all_models():
         QueryResultObjectORM,
     )
     from app.infrastructure.semantic.models import (  # noqa
+        DataAssetFieldORM,
+        DataAssetLineageORM,
+        DataAssetSnapshotORM,
+        DataAssetSyncRunORM,
+        DataAssetTableORM,
+        DataAssetUsageORM,
         SemanticAssetDependencyORM,
         SemanticAssetORM,
         SemanticAssetRevisionORM,

@@ -115,3 +115,21 @@ def test_governance_issue_service_marks_skipped_schema_sync_as_warn():
             },
         }
     ]
+
+
+def test_governance_issue_service_adds_data_asset_foundation_issues():
+    payload = SemanticGovernanceIssueService().build_payload(
+        data_asset_summary={
+            "failed_sync_count": 1,
+            "stale_profile_count": 2,
+            "drift_risk_count": 1,
+        }
+    )
+
+    assert payload["summary"]["status"] == "warn"
+    assert payload["summary"]["by_code"] == {
+        "data_asset_sync_failed": 1,
+        "data_asset_profile_stale": 1,
+        "data_asset_schema_drift_risk": 1,
+    }
+    assert {item["source"] for item in payload["items"]} == {"data_asset"}
