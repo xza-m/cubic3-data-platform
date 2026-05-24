@@ -113,7 +113,7 @@ help:
 	@printf '  %-26s %s\n' 'make test-query-execution' '统一查询执行面最小链路测试'
 	@printf '  %-26s %s\n' 'make preflight-agent-runtime' '真实环境 Agent Runtime 语义资产预检（不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make live-agent-runtime' '真实 MaxCompute 执行验收（opt-in，不并入默认 verify）'
-	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Agent 与 Domain 上下文最小链路测试'
+	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Copilot 与 Domain 上下文最小链路测试'
 	@printf '  %-26s %s\n' 'make smoke-semantic' '语义中心关键路径运行验证'
 	@printf '  %-26s %s\n' 'make smoke-semantic-live' 'Modeling Copilot live smoke（SEMANTIC_PROD_LIVE=1 时执行）'
 	@printf '  %-26s %s\n' 'make coverage' 'coverage 聚合入口（backend + frontend，可选，不并入默认四层）'
@@ -308,7 +308,7 @@ test-modeling-agent:
 		tests/unit/application/semantic/test_modeling_draft_builder.py \
 		tests/unit/application/semantic/test_modeling_copilot_service.py \
 		tests/integration/test_semantic_modeling_copilot_api.py
-	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx
+	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-copilot/ModelingAgent.test.tsx
 
 test-semantic-prod-registry:
 	@printf '%s\n' '[layer3][semantic-prod-registry] 运行 SQL Registry / Publish Gate / Release Snapshot 生产化收敛测试'

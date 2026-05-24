@@ -1,4 +1,4 @@
-// frontend/src/v2/pages/semantic/modeling-agent/components/CubeEditor.tsx
+// frontend/src/v2/pages/semantic/modeling-copilot/components/CubeEditor.tsx
 //
 // 工作台核心组件：Cube spec 可编辑 / 只读两态共用。
 // - editable=true：dimensions / measures 表格化增删改，name/source 可编辑；

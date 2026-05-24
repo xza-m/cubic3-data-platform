@@ -106,7 +106,7 @@ const OntologyMetrics = lazy(() => import('@v2/pages/semantic/ontology/Metrics')
 const OntologyRelations = lazy(() => import('@v2/pages/semantic/ontology/Relations'))
 const OntologyGovernance = lazy(() => import('@v2/pages/semantic/ontology/Governance'))
 const DevTools = lazy(() => import('@v2/pages/semantic/devtools/DevTools'))
-const SemanticModelingAgent = lazy(() => import('@v2/pages/semantic/modeling-agent/ModelingAgent'))
+const SemanticModelingCopilot = lazy(() => import('@v2/pages/semantic/modeling-copilot/ModelingAgent'))
 const Cubes = lazy(() => import('@v2/pages/semantic/cubes/Cubes'))
 const CubeCreate = lazy(() => import('@v2/pages/semantic/cubes/CubeCreate'))
 const CubeDetail = lazy(() => import('@v2/pages/semantic/cubes/CubeDetail'))
@@ -288,9 +288,9 @@ export default function AppRoutes() {
             {/* 语义诊断工作台 */}
             <Route path="workbench" element={wrap(<DevTools />)} />
 
-            {/* 顶层建模助手 Agent 任务流：不归属于 Cube 层级 */}
-            <Route path="modeling-agent/new" element={wrap(<SemanticModelingAgent />)} />
-            <Route path="modeling-agent/:sessionId" element={wrap(<SemanticModelingAgent />)} />
+            {/* 顶层建模助手 Copilot 任务流：不归属于 Cube 层级 */}
+            <Route path="modeling-copilot/new" element={wrap(<SemanticModelingCopilot />)} />
+            <Route path="modeling-copilot/:sessionId" element={wrap(<SemanticModelingCopilot />)} />
 
             {/* Cube：静态 new 在动态 :name 前；edit 作为 :name 的子路由 */}
             <Route path="cubes">

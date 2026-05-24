@@ -1,4 +1,4 @@
-// frontend/src/v2/pages/semantic/modeling-agent/ModelingAgent.tsx
+// frontend/src/v2/pages/semantic/modeling-copilot/ModelingAgent.tsx
 //
 // 语义建模 Copilot · 对话原生工作台。
 // 设计要点（脱离传统 dashboard）：
@@ -185,7 +185,7 @@ export default function ModelingAgent() {
   // ── 会话不存在时回到新建页 ──────────────────────────────────────────────
   useEffect(() => {
     if (sessionQ.isError) {
-      navigate('/semantic/modeling-agent/new', { replace: true })
+      navigate('/semantic/modeling-copilot/new', { replace: true })
     }
   }, [sessionQ.isError, navigate])
 
@@ -206,7 +206,7 @@ export default function ModelingAgent() {
           user_goal: text,
           entry_type: inferEntryType(text),
         })
-        navigate(`/semantic/modeling-agent/${target.id}`)
+        navigate(`/semantic/modeling-copilot/${target.id}`)
       }
       await sendMessage.mutateAsync({ sessionId: target.id, message: text })
       setDraft('')
@@ -347,7 +347,7 @@ export default function ModelingAgent() {
       await deleteSession.mutateAsync(target.id)
       toast.show({ tone: 'success', title: '会话已删除' })
       if (target.id === activeSessionId) {
-        navigate('/semantic/modeling-agent/new')
+        navigate('/semantic/modeling-copilot/new')
       }
     } catch (error) {
       toast.show({
@@ -483,13 +483,13 @@ export default function ModelingAgent() {
               请联系管理员在后端环境变量中配置 <code>LLM_API_KEY / LLM_API_BASE / LLM_MODEL</code>。
             </div>
             <div className="mt-1 text-[12.5px]">
-              你也可以临时使用旧的{' '}
+              你可以返回{' '}
               <button
                 type="button"
-                onClick={() => navigate('/semantic/modeling-agent/spec/new')}
+                onClick={() => navigate('/semantic/modeling-copilot/new')}
                 className="underline underline-offset-2 hover:text-red-700"
               >
-                Spec Wizard 模式建模
+                新建建模会话
               </button>
               。
             </div>
@@ -552,7 +552,7 @@ export default function ModelingAgent() {
             type="button"
             className="group flex w-full items-center gap-2.5 rounded-[10px] border px-3 py-2.5 text-left transition hover:border-[color:var(--accent)]"
             style={{ borderColor: 'rgba(37,99,235,0.22)', background: 'var(--accent-soft)' }}
-            onClick={() => navigate('/semantic/modeling-agent/new')}
+            onClick={() => navigate('/semantic/modeling-copilot/new')}
           >
             <span
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-white"
@@ -585,7 +585,7 @@ export default function ModelingAgent() {
                   key={s.id}
                   session={s}
                   active={s.id === activeSessionId}
-                  onSelect={() => navigate(`/semantic/modeling-agent/${s.id}`)}
+                  onSelect={() => navigate(`/semantic/modeling-copilot/${s.id}`)}
                   onRename={() => void handleRenameSession(s)}
                   onDelete={() => void handleDeleteSession(s)}
                 />

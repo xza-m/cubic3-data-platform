@@ -151,10 +151,10 @@ export const NAV_MODULES: NavModule[] = [
     group: '语义',
     implemented: true,
     layout: {
-      // /semantic/modeling-agent/* 走对话原生 fullBleed：自带左栏 sessions、隐藏 secondary sidebar / inspector / 面包屑
+      // /semantic/modeling-copilot/* 走对话原生 fullBleed：自带左栏 sessions、隐藏 secondary sidebar / inspector / 面包屑
       byPathPrefix: [
         {
-          prefix: '/semantic/modeling-agent',
+          prefix: '/semantic/modeling-copilot',
           secondarySidebar: false,
           inspector: false,
           hideBreadcrumbs: true,
@@ -164,8 +164,8 @@ export const NAV_MODULES: NavModule[] = [
     subnav: [
       {
         section: t('nav.semantic.section.build', '语义构建'),
-        label: t('nav.semantic.sub.modelingAgent', '建模助手 Agent'),
-        path: '/semantic/modeling-agent/new',
+        label: t('nav.semantic.sub.modelingCopilot', '建模助手 Copilot'),
+        path: '/semantic/modeling-copilot/new',
         implemented: true,
       },
       { section: t('nav.semantic.section.ontology', '本体工作台'), label: t('nav.semantic.sub.overview', '总览'), path: '/semantic/ontology', implemented: true },

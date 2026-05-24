@@ -39,7 +39,7 @@ describe('findLayout', () => {
     expect(resolved.hideBreadcrumbs).toBe(false)
   })
 
-  it('语义中心默认双栏，但 modeling-agent 子路由切到 fullBleed', () => {
+  it('语义中心默认双栏，但 modeling-copilot 子路由切到 fullBleed', () => {
     const semantic = NAV_MODULES.find((m) => m.id === 'semantic')!
     const ontology = findLayout('/semantic/ontology', semantic)
     expect(ontology).toEqual({
@@ -48,7 +48,7 @@ describe('findLayout', () => {
       hideBreadcrumbs: false,
     })
 
-    const copilot = findLayout('/semantic/modeling-agent/new', semantic)
+    const copilot = findLayout('/semantic/modeling-copilot/new', semantic)
     expect(copilot).toEqual({
       secondarySidebar: false,
       inspector: false,
@@ -58,7 +58,7 @@ describe('findLayout', () => {
 
   it('byPathPrefix 命中前缀完全相等也算', () => {
     const semantic = NAV_MODULES.find((m) => m.id === 'semantic')!
-    const exact = findLayout('/semantic/modeling-agent', semantic)
+    const exact = findLayout('/semantic/modeling-copilot', semantic)
     expect(exact.secondarySidebar).toBe(false)
     expect(exact.hideBreadcrumbs).toBe(true)
   })
@@ -75,10 +75,10 @@ describe('findLayout', () => {
 })
 
 describe('findModule + findLayout 组合', () => {
-  it('/semantic/modeling-agent/new 命中 semantic 模块并应用 fullBleed', () => {
-    const module = findModule('/semantic/modeling-agent/new')
+  it('/semantic/modeling-copilot/new 命中 semantic 模块并应用 fullBleed', () => {
+    const module = findModule('/semantic/modeling-copilot/new')
     expect(module?.id).toBe('semantic')
-    const layout = findLayout('/semantic/modeling-agent/new', module!)
+    const layout = findLayout('/semantic/modeling-copilot/new', module!)
     expect(layout.secondarySidebar).toBe(false)
     expect(layout.inspector).toBe(false)
     expect(layout.hideBreadcrumbs).toBe(true)

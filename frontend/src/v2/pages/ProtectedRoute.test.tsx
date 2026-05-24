@@ -13,10 +13,10 @@ describe('ProtectedRoute', () => {
     vi.stubEnv('VITE_BROWSER_E2E_FIXTURES', '1')
 
     render(
-      <MemoryRouter initialEntries={['/semantic/modeling-agent/new']}>
+      <MemoryRouter initialEntries={['/semantic/modeling-copilot/new']}>
         <Routes>
           <Route path="/" element={<ProtectedRoute />}>
-            <Route path="semantic/modeling-agent/new" element={<div>fixture page</div>} />
+            <Route path="semantic/modeling-copilot/new" element={<div>fixture page</div>} />
           </Route>
           <Route path="/login" element={<div>login page</div>} />
         </Routes>

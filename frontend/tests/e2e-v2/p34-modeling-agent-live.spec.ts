@@ -224,7 +224,7 @@ async function openPublishedSession(page: Page, token: string, sessionId: string
     window.sessionStorage.setItem('v2.access_token', accessToken)
     window.localStorage.setItem('auth_token', accessToken)
   }, token)
-  await page.goto(`/semantic/modeling-agent/${sessionId}`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`/semantic/modeling-copilot/${sessionId}`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('chat-workspace')).toBeVisible()
   await expect(page.getByText(LIVE_QUESTION).first()).toBeVisible()
   await expect(page.getByText(/语义已发布|Data Agent 可消费|已发布/).first()).toBeVisible()

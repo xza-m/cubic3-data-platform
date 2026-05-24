@@ -1,4 +1,4 @@
-// frontend/src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx
+// frontend/src/v2/pages/semantic/modeling-copilot/ModelingAgent.test.tsx
 //
 // 对话原生 ModelingAgent Copilot 工作台测试。
 // 覆盖：
@@ -209,8 +209,8 @@ function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/semantic/modeling-agent/new" element={<ModelingAgent />} />
-        <Route path="/semantic/modeling-agent/:sessionId" element={<ModelingAgent />} />
+        <Route path="/semantic/modeling-copilot/new" element={<ModelingAgent />} />
+        <Route path="/semantic/modeling-copilot/:sessionId" element={<ModelingAgent />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -345,7 +345,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
   })
 
   it('从空态发送业务问题，调 createSession + sendMessage', async () => {
-    renderAt('/semantic/modeling-agent/new')
+    renderAt('/semantic/modeling-copilot/new')
 
     expect(screen.getByText('告诉我你想分析什么数据')).toBeInTheDocument()
 
@@ -369,7 +369,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('已有 session 时展示结构化卡片：已发现的语义资产 + 需要你确认', () => {
     activeSessionFixture = ANALYZED_SESSION
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     expect(screen.getByText('已发现的语义资产')).toBeInTheDocument()
     expect(screen.getByText('学生评论总数')).toBeInTheDocument()
@@ -382,7 +382,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('保持 Chat 为主界面，把 Proposal Review 放到右侧 artifact panel', () => {
     activeSessionFixture = ANALYZED_SESSION
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const chat = screen.getByTestId('chat-workspace')
     const artifacts = screen.getByTestId('artifact-panel')
@@ -418,7 +418,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('Chat 中打开 Spec 编辑会切到右侧 Spec tab，并提供 AI 编辑入口', async () => {
     activeSessionFixture = ANALYZED_SESSION
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const artifacts = screen.getByTestId('artifact-panel')
     fireEvent.click(within(screen.getByTestId('chat-workspace')).getByRole('button', { name: /在右侧编辑 Spec/ }))
@@ -431,7 +431,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('右侧 Spec 支持直接编辑完整 raw_spec 并 PATCH spec', async () => {
     activeSessionFixture = ANALYZED_SESSION
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const artifacts = screen.getByTestId('artifact-panel')
     fireEvent.click(within(screen.getByTestId('chat-workspace')).getByRole('button', { name: /在右侧编辑 Spec/ }))
@@ -458,7 +458,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('右侧 Review 只读辅助，口径确认仍从 Chat 主链路完成', async () => {
     activeSessionFixture = ANALYZED_SESSION
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const artifacts = screen.getByTestId('artifact-panel')
     expect(within(artifacts).queryByRole('button', { name: /使用推荐/ })).not.toBeInTheDocument()
@@ -482,7 +482,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
       ],
     }
 
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const chatState = screen.getByTestId('copilot-run-state')
     expect(within(chatState).getByText('当前状态：等待你确认口径')).toBeInTheDocument()
@@ -507,7 +507,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         },
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const artifacts = screen.getByTestId('artifact-panel')
     expandArtifacts(artifacts)
@@ -521,7 +521,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('右侧 Source tab 展示源表字段、样本行和推荐证据', () => {
     activeSessionFixture = ANALYZED_SESSION
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const artifacts = screen.getByTestId('artifact-panel')
     expandArtifacts(artifacts)
@@ -537,7 +537,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('缺少物理表或数据集时，右侧只提示回 Chat 补齐建模输入', () => {
     activeSessionFixture = NO_SOURCE_SESSION
-    renderAt('/semantic/modeling-agent/session_no_source')
+    renderAt('/semantic/modeling-copilot/session_no_source')
 
     const artifacts = screen.getByTestId('artifact-panel')
     const guidance = within(artifacts).getByTestId('artifact-guidance')
@@ -570,7 +570,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         raw_spec: ANALYZED_SESSION.workbench_state.raw_spec,
       },
     })
-    renderAt('/semantic/modeling-agent/session_source_candidate')
+    renderAt('/semantic/modeling-copilot/session_source_candidate')
 
     expect(screen.getByText('推荐数据来源')).toBeInTheDocument()
     expect(screen.getByText('班级活跃事实表')).toBeInTheDocument()
@@ -623,7 +623,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         ],
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const artifacts = screen.getByTestId('artifact-panel')
     fireEvent.click(within(artifacts).getByRole('button', { name: '审计回放' }))
@@ -672,7 +672,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         result_summary: '正式 Data Agent 已能命中 student_comment_cube。',
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     const artifacts = screen.getByTestId('artifact-panel')
     expandArtifacts(artifacts)
@@ -687,7 +687,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('使用推荐按钮把推荐值传给 confirm', async () => {
     activeSessionFixture = ANALYZED_SESSION
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     fireEvent.click(within(screen.getByTestId('chat-workspace')).getByRole('button', { name: /使用推荐/ }))
     await waitFor(() =>
@@ -707,7 +707,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         required_confirmations: [],
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     fireEvent.click(within(screen.getByTestId('chat-next-action')).getByRole('button', { name: /应用语义/ }))
     await waitFor(() =>
@@ -724,7 +724,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         raw_spec: { cubes: [{ name: 'student_comment_cube', source: 'dwd_x', dimensions: [], measures: [] }] } as Record<string, unknown>,
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     expect(screen.getByText('建议新建 Cube')).toBeInTheDocument()
     expect(screen.getAllByText('student_comment_cube').length).toBeGreaterThan(0)
@@ -746,7 +746,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         raw_spec: { cubes: [{ name: 'student_comment_cube', source: 'dwd_x' }] } as Record<string, unknown>,
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     fireEvent.click(screen.getByRole('button', { name: /接受草稿/ }))
     await waitFor(() =>
@@ -765,7 +765,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         proposal_summary: { id: 'proposal_x', status: 'validated' },
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     expect(screen.getByText('语义已应用 · 待发布')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /确认发布/ }))
@@ -787,7 +787,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         proposal_summary: { id: 'proposal_x', status: 'validated' },
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     fireEvent.click(screen.getByRole('button', { name: /确认发布/ }))
 
@@ -807,14 +807,14 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
         raw_spec: { cubes: [{ name: 'c1', source: 'dwd_x' }] } as Record<string, unknown>,
       },
     }
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     expect(screen.getByText('沙盒预演被阻塞：Cube 草稿还没接受')).toBeInTheDocument()
   })
 
   it('沙盒预演调 previewSandbox，不污染 runtime', async () => {
     activeSessionFixture = ANALYZED_SESSION
-    renderAt('/semantic/modeling-agent/session_1')
+    renderAt('/semantic/modeling-copilot/session_1')
 
     fireEvent.click(within(screen.getByTestId('chat-next-action')).getByRole('button', { name: /沙盒预演/ }))
     await waitFor(() =>
@@ -830,7 +830,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
       }),
     )
 
-    renderAt('/semantic/modeling-agent/new')
+    renderAt('/semantic/modeling-copilot/new')
 
     fireEvent.change(screen.getByLabelText('建模目标'), {
       target: { value: '查询最近7天学生评论数，按学校汇总' },
@@ -852,7 +852,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
       },
     ]
     activeSessionFixture = sessionsFixture[0]
-    const { container } = renderAt('/semantic/modeling-agent/session_1')
+    const { container } = renderAt('/semantic/modeling-copilot/session_1')
 
     const aside = container.querySelector('aside')
     expect(aside).not.toBeNull()
@@ -882,7 +882,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
       updated_at: new Date(now - 4 * 24 * 60 * 60 * 1000).toISOString(),
     })
     activeSessionFixture = sessionsFixture[0]
-    const { container } = renderAt('/semantic/modeling-agent/recent_0')
+    const { container } = renderAt('/semantic/modeling-copilot/recent_0')
 
     const sidebar = container.querySelector('aside') as HTMLElement
     expect(within(sidebar).getByText('10')).toBeInTheDocument()
@@ -897,7 +897,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('空态渲染：未提供 sessionId 时显示引导卡', () => {
     activeSessionFixture = null
-    renderAt('/semantic/modeling-agent/new')
+    renderAt('/semantic/modeling-copilot/new')
 
     expect(screen.getByText('告诉我你想分析什么数据')).toBeInTheDocument()
     expect(screen.getByText('查询最近 7 天学生评论数，按学校汇总')).toBeInTheDocument()
@@ -905,7 +905,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
 
   it('点击示例卡把文案预填到 composer', () => {
     activeSessionFixture = null
-    renderAt('/semantic/modeling-agent/new')
+    renderAt('/semantic/modeling-copilot/new')
 
     fireEvent.click(screen.getByText('查询最近 7 天学生评论数，按学校汇总'))
     const composer = screen.getByLabelText('建模目标') as HTMLTextAreaElement
