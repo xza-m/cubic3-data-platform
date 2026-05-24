@@ -90,8 +90,10 @@ const ExecutionDetail = lazy(() => import('@v2/pages/apps/executions/ExecutionDe
 
 // ── Config 域 ─────────────────────────────────────────────────────────────────
 const Channels = lazy(() => import('@v2/pages/config/channels/Channels'))
+const ChannelCreate = lazy(() => import('@v2/pages/config/channels/ChannelCreate'))
 const ChannelDetail = lazy(() => import('@v2/pages/config/channels/ChannelDetail'))
 const Subscriptions = lazy(() => import('@v2/pages/config/subscriptions/Subscriptions'))
+const SubscriptionCreate = lazy(() => import('@v2/pages/config/subscriptions/SubscriptionCreate'))
 const SubscriptionDetail = lazy(() => import('@v2/pages/config/subscriptions/SubscriptionDetail'))
 const AccessIdentity = lazy(() => import('@v2/pages/config/access/AccessIdentity'))
 
@@ -260,11 +262,13 @@ export default function AppRoutes() {
 
             <Route path="channels">
               <Route index element={wrap(<Channels />)} />
+              <Route path="new" element={wrap(<ChannelCreate />)} />
               <Route path=":id" element={wrap(<ChannelDetail />)} />
             </Route>
 
             <Route path="subscriptions">
               <Route index element={wrap(<Subscriptions />)} />
+              <Route path="new" element={wrap(<SubscriptionCreate />)} />
               <Route path=":id" element={wrap(<SubscriptionDetail />)} />
             </Route>
 
