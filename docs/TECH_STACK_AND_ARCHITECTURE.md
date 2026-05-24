@@ -199,7 +199,7 @@ app/
   - `/semantic-router/execute-plan` 与 `/execution-compiler/execute` 已补 M3/raw/ODS 拦截，返回 `require_approval` 且不真实执行
   - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 查询
 - `建模助手 Agent`
-  - 新增 `/api/v1/semantic/modeling-agent/spec-draft`、`draft-from-spec`、`validate`、`agent-ready-check`、`apply`、`publish`，由应用层 `SemanticModelingAgent` 编排 Cube 草稿与 Ontology 草稿生成
+  - 新增 `/api/v1/semantic/modeling-agent/spec-draft`、`draft-from-spec`、`validate`、`agent-ready-check`、`apply`、`publish`，由应用层内部 `SemanticModelDraftBuilder` 编排 Cube 草稿与 Ontology 草稿生成
   - `SemanticModelingAgentSpec` 只作为构建输入、用户确认材料和审计快照，不作为运行时语义源
   - `agent-ready-check` 用于构建页沙盒确认 Cube 已可执行、Ontology 已发布且业务指标能绑定真实 Cube Measure；它不替代正式 `/api/v1/agent/semantic/plan`
   - 默认只发布 Cube；Ontology 必须经业务语义确认后显式发布，正式 Agent 问数链路仍只消费已发布 Ontology

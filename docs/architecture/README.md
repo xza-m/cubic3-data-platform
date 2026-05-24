@@ -93,7 +93,7 @@ last_reviewed: 2026-05-23
     - `/api/docs/openapi.json` 作为唯一 OpenAPI 输出入口，当前已为第一批只读 / 预览 / 审计接口补入 Agent 风险扩展和字段级 `data` schema；`make typecheck-contracts` 负责阻断核心契约缺失、重复 `operationId` 与非法 Agent 扩展字段
   - 当前已补入建模助手 Agent 最小链路：
     - `/semantic/modeling-agent/new` 是语义中心顶层 `建模助手 Agent` 任务流，不归入 Cube 层级
-    - `/api/v1/semantic/modeling-agent/spec-draft -> draft-from-spec -> validate -> agent-ready-check -> apply -> publish` 由 `SemanticModelingAgent` 编排，生成 Cube 技术语义与 Ontology 业务语义草稿
+    - `/api/v1/semantic/modeling-agent/spec-draft -> draft-from-spec -> validate -> agent-ready-check -> apply -> publish` 由内部 `SemanticModelDraftBuilder` 编排，生成 Cube 技术语义与 Ontology 业务语义草稿
     - `SemanticModelingAgentSpec` 只作为构建期输入、确认材料和审计快照；正式 Agent 规划仍只消费已发布 Ontology，分析执行仍以 Cube 为真相源
     - `/semantic/modeling-agent/new` 的 Copilot 体验采用 Chat-first 结构：中间 Chat 始终是注意力中心，右侧 Artifact 面板按需展示 `Review / Spec / Source / Preview / Trace`，生成的 Proposal Review 不阻断对话流；当前五个 artifact 均已接入产品化主链路
     - `/api/v1/semantic/modeling-copilot/sessions/<session_id>/review` 是建模助手的只读 artifact 投影，用于展示候选变更、阻塞项、原因解释、源表证据、Trace 回放、Publish Gate 和发布后验收；它不引入第二套语义资产模型，正式真相仍是已发布 Cube、Ontology、Binding 与 Policy

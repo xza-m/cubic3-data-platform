@@ -1,4 +1,4 @@
-"""建模助手 Agent 应用编排服务。"""
+"""语义模型草稿构建器。"""
 from __future__ import annotations
 
 import re
@@ -10,10 +10,10 @@ from app.application.semantic.cube_modeling_source_service import CubeModelingSo
 from app.application.semantic.modeling_spec_repair import repair_modeling_spec
 
 
-class SemanticModelingAgent:
-    """从建模源和业务意图编排生成 Cube + Ontology 草稿。
+class SemanticModelDraftBuilder:
+    """内部确定性 builder，从建模源和业务意图编排生成 Cube + Ontology 草稿。
 
-    该服务只产出构建输入、草稿和审计快照，不参与正式 Agent 运行时解析。
+    该服务只产出构建输入、草稿和审计快照，不作为独立产品入口暴露。
     """
 
     _SUBJECT_NAME_HINTS = {
@@ -62,7 +62,7 @@ class SemanticModelingAgent:
         self._agent_plan_handler = agent_plan_handler
 
     def create_spec_draft(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """生成用户可编辑的 SemanticModelingAgentSpec 草稿。"""
+        """生成用户可编辑的 SemanticModelDraft spec 草稿。"""
         source_payload = self._normalize_source_payload(payload)
         business = self._build_business_section(payload)
         if self._has_asset_schema_snapshot(source_payload):

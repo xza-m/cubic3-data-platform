@@ -127,7 +127,7 @@ from app.application.services.dashboard.overview_service import DashboardOvervie
 
 # Application - Semantic Layer
 from app.application.semantic.metric_semantics_service import MetricSemanticsService
-from app.application.semantic.semantic_modeling_agent import SemanticModelingAgent
+from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
 from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
 from app.application.semantic.data_asset_service import DataAssetService
@@ -779,14 +779,15 @@ class Container(containers.DeclarativeContainer):
         submission_service=query_submission_service,
     )
 
-    semantic_modeling_agent = providers.Singleton(
-        SemanticModelingAgent,
+    semantic_model_draft_builder = providers.Singleton(
+        SemanticModelDraftBuilder,
         cube_modeling_source_service=cube_modeling_source_service,
         cube_modeling_service=cube_modeling_service,
         ontology_service=ontology_definition_service,
         mapper_service=semantic_mapper_preview_service,
         agent_plan_handler=agent_plan_handler,
     )
+    semantic_modeling_agent = semantic_model_draft_builder
 
     semantic_modeling_copilot_readiness_checker = providers.Singleton(
         PublishReadinessChecker,
@@ -802,7 +803,7 @@ class Container(containers.DeclarativeContainer):
 
     semantic_modeling_copilot_tools = providers.Singleton(
         ModelingToolRegistry,
-        builder=semantic_modeling_agent,
+        builder=semantic_model_draft_builder,
         readiness_checker=semantic_modeling_copilot_readiness_checker,
         source_candidate_recall_service=semantic_modeling_source_recall_service,
     )
@@ -824,7 +825,7 @@ class Container(containers.DeclarativeContainer):
     semantic_modeling_proposal_service = providers.Singleton(
         ModelingProposalService,
         repository=semantic_modeling_proposal_repository,
-        builder=semantic_modeling_agent,
+        builder=semantic_model_draft_builder,
         readiness_checker=semantic_modeling_copilot_readiness_checker,
         asset_registry_repository=semantic_asset_registry_repository,
         release_service=semantic_release_service,

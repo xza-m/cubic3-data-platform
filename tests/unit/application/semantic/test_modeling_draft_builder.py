@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
-from app.application.semantic.semantic_modeling_agent import SemanticModelingAgent
+from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
 from app.shared.exceptions import ApplicationException
 
 
@@ -64,7 +64,7 @@ def _builder(**overrides):
         "name": entity_name,
         "status": "active",
     }
-    return SemanticModelingAgent(
+    return SemanticModelDraftBuilder(
         cube_modeling_source_service=source_service,
         cube_modeling_service=cube_modeling_service,
         ontology_service=ontology_service,
@@ -124,7 +124,7 @@ def test_coerce_business_question_keeps_explicit_source_id():
     source_service.resolve_default_physical_source_id.assert_not_called()
 
 
-def test_modeling_agent_uses_asset_evidence_schema_before_live_adapter():
+def test_model_draft_builder_uses_asset_evidence_schema_before_live_adapter():
     source_service = MagicMock()
     source_service.generate_cube_draft_from_asset_evidence.return_value = _cube_draft()
     builder = _builder(source_service=source_service)

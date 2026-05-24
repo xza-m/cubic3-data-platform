@@ -2,15 +2,24 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TYPE_CHECKING
 
 from app.domain.semantic.modeling_agent_session import AgentSession
+
+if TYPE_CHECKING:
+    from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
 
 
 class ModelingToolRegistry:
     """为建模 Agent 暴露可审计、可测试的确定性工具。"""
 
-    def __init__(self, *, builder: Any, readiness_checker: Any, source_candidate_recall_service: Any = None):
+    def __init__(
+        self,
+        *,
+        builder: "SemanticModelDraftBuilder",
+        readiness_checker: Any,
+        source_candidate_recall_service: Any = None,
+    ):
         self._builder = builder
         self._readiness_checker = readiness_checker
         self._source_candidate_recall_service = source_candidate_recall_service
@@ -282,7 +291,7 @@ class ModelingToolRegistry:
         payload = self._payload_from_context(context, arguments)
         result = self._builder.create_spec_draft(payload)
         return {
-            "summary": "已生成构建期 SemanticModelingAgentSpec 草稿",
+            "summary": "已生成构建期 SemanticModelDraft spec 草稿",
             "spec": result.get("spec") or {},
             "next_actions": result.get("next_actions") or {},
         }
