@@ -37,7 +37,7 @@ class SemanticModelingChatOutput:
     message: str = ""
     workbench_state_patch: Dict[str, Any] = field(default_factory=dict)
     proposal_patch: Dict[str, Any] = field(default_factory=dict)
-    required_confirmations: List[Any] = field(default_factory=list)
+    required_confirmations: List[Dict[str, Any]] = field(default_factory=list)
     suggested_actions: List[str] = field(default_factory=list)
     tool_traces: List[Dict[str, Any]] = field(default_factory=list)
 
