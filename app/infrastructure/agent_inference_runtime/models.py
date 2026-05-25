@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, Index, Integer, String, Text
+from sqlalchemy import BigInteger, Column, DateTime, Index, String, Text
 
 from app.extensions import db
 from app.shared.db_types import JsonType
@@ -58,6 +58,6 @@ class AgentInferenceRuntimeArtifactORM(db.Model):
     title = Column(String(255), nullable=False)
     summary = Column(Text, nullable=False)
     mime_type = Column(String(128), nullable=False)
-    size_bytes = Column(Integer, nullable=False)
+    size_bytes = Column(BigInteger, nullable=False)
     sha256 = Column(String(128), nullable=False)
     created_at = Column(DateTime, nullable=False, default=utcnow)

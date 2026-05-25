@@ -18,6 +18,27 @@ branch_labels = None
 depends_on = None
 
 
+def _existing_indexes(table_name: str) -> set[str]:
+    inspector = sa.inspect(op.get_bind())
+    return {item["name"] for item in inspector.get_indexes(table_name)}
+
+
+def _create_index_if_missing(
+    *,
+    index_name: str,
+    table_name: str,
+    columns: list[str],
+) -> None:
+    if index_name not in _existing_indexes(table_name):
+        op.create_index(index_name, table_name, columns, unique=False)
+
+
+def _drop_index_if_exists(*, index_name: str, table_name: str) -> None:
+    table_exists = table_name in set(sa.inspect(op.get_bind()).get_table_names())
+    if table_exists and index_name in _existing_indexes(table_name):
+        op.drop_index(index_name, table_name=table_name)
+
+
 def upgrade() -> None:
     existing = set(sa.inspect(op.get_bind()).get_table_names())
 
@@ -41,23 +62,22 @@ def upgrade() -> None:
             sa.Column("updated_at", sa.DateTime(), nullable=False),
             sa.PrimaryKeyConstraint("run_id"),
         )
-        op.create_index(
-            "idx_agent_runtime_runs_app_action_created",
-            "agent_inference_runtime_runs",
-            ["app_id", "action", "created_at"],
-            unique=False,
+        existing.add("agent_inference_runtime_runs")
+    if "agent_inference_runtime_runs" in existing:
+        _create_index_if_missing(
+            index_name="idx_agent_runtime_runs_app_action_created",
+            table_name="agent_inference_runtime_runs",
+            columns=["app_id", "action", "created_at"],
         )
-        op.create_index(
-            "idx_agent_runtime_runs_principal_created",
-            "agent_inference_runtime_runs",
-            ["principal_id", "created_at"],
-            unique=False,
+        _create_index_if_missing(
+            index_name="idx_agent_runtime_runs_principal_created",
+            table_name="agent_inference_runtime_runs",
+            columns=["principal_id", "created_at"],
         )
-        op.create_index(
-            "idx_agent_runtime_runs_context",
-            "agent_inference_runtime_runs",
-            ["project_id", "session_id", "thread_id", "turn_id"],
-            unique=False,
+        _create_index_if_missing(
+            index_name="idx_agent_runtime_runs_context",
+            table_name="agent_inference_runtime_runs",
+            columns=["project_id", "session_id", "thread_id", "turn_id"],
         )
 
     if "agent_inference_runtime_artifacts" not in existing:
@@ -75,58 +95,57 @@ def upgrade() -> None:
             sa.Column("title", sa.String(length=255), nullable=False),
             sa.Column("summary", sa.Text(), nullable=False),
             sa.Column("mime_type", sa.String(length=128), nullable=False),
-            sa.Column("size_bytes", sa.Integer(), nullable=False),
+            sa.Column("size_bytes", sa.BigInteger(), nullable=False),
             sa.Column("sha256", sa.String(length=128), nullable=False),
             sa.Column("created_at", sa.DateTime(), nullable=False),
             sa.PrimaryKeyConstraint("artifact_id"),
         )
-        op.create_index(
-            "idx_agent_runtime_artifacts_run_created",
-            "agent_inference_runtime_artifacts",
-            ["run_id", "created_at"],
-            unique=False,
+        existing.add("agent_inference_runtime_artifacts")
+    if "agent_inference_runtime_artifacts" in existing:
+        _create_index_if_missing(
+            index_name="idx_agent_runtime_artifacts_run_created",
+            table_name="agent_inference_runtime_artifacts",
+            columns=["run_id", "created_at"],
         )
-        op.create_index(
-            "idx_agent_runtime_artifacts_owner_run",
-            "agent_inference_runtime_artifacts",
-            ["principal_id", "run_id"],
-            unique=False,
+        _create_index_if_missing(
+            index_name="idx_agent_runtime_artifacts_owner_run",
+            table_name="agent_inference_runtime_artifacts",
+            columns=["principal_id", "run_id"],
         )
-        op.create_index(
-            "idx_agent_runtime_artifacts_context",
-            "agent_inference_runtime_artifacts",
-            ["project_id", "session_id", "thread_id", "turn_id"],
-            unique=False,
+        _create_index_if_missing(
+            index_name="idx_agent_runtime_artifacts_context",
+            table_name="agent_inference_runtime_artifacts",
+            columns=["project_id", "session_id", "thread_id", "turn_id"],
         )
 
 
 def downgrade() -> None:
     existing = set(sa.inspect(op.get_bind()).get_table_names())
     if "agent_inference_runtime_artifacts" in existing:
-        op.drop_index(
-            "idx_agent_runtime_artifacts_context",
+        _drop_index_if_exists(
+            index_name="idx_agent_runtime_artifacts_context",
             table_name="agent_inference_runtime_artifacts",
         )
-        op.drop_index(
-            "idx_agent_runtime_artifacts_owner_run",
+        _drop_index_if_exists(
+            index_name="idx_agent_runtime_artifacts_owner_run",
             table_name="agent_inference_runtime_artifacts",
         )
-        op.drop_index(
-            "idx_agent_runtime_artifacts_run_created",
+        _drop_index_if_exists(
+            index_name="idx_agent_runtime_artifacts_run_created",
             table_name="agent_inference_runtime_artifacts",
         )
         op.drop_table("agent_inference_runtime_artifacts")
     if "agent_inference_runtime_runs" in existing:
-        op.drop_index(
-            "idx_agent_runtime_runs_context",
+        _drop_index_if_exists(
+            index_name="idx_agent_runtime_runs_context",
             table_name="agent_inference_runtime_runs",
         )
-        op.drop_index(
-            "idx_agent_runtime_runs_principal_created",
+        _drop_index_if_exists(
+            index_name="idx_agent_runtime_runs_principal_created",
             table_name="agent_inference_runtime_runs",
         )
-        op.drop_index(
-            "idx_agent_runtime_runs_app_action_created",
+        _drop_index_if_exists(
+            index_name="idx_agent_runtime_runs_app_action_created",
             table_name="agent_inference_runtime_runs",
         )
         op.drop_table("agent_inference_runtime_runs")

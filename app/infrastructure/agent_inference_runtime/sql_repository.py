@@ -54,10 +54,29 @@ class SqlAgentInferenceRuntimeRepository:
         app_id: str,
         principal_id: str | None,
     ) -> None:
+        run_row = self.session.get(AgentInferenceRuntimeRunORM, artifact.run_id)
+        if run_row is None:
+            raise ValueError(f"run not found: {artifact.run_id}")
+        if not self._run_matches_owner(
+            run_row,
+            context_ref=context_ref,
+            app_id=app_id,
+            principal_id=principal_id,
+        ):
+            raise ValueError(f"artifact run ownership mismatch: {artifact.run_id}")
+
         row = self.session.get(AgentInferenceRuntimeArtifactORM, artifact.artifact_id)
         if row is None:
             row = AgentInferenceRuntimeArtifactORM(artifact_id=artifact.artifact_id)
             self.session.add(row)
+        elif not self._artifact_matches_owner(
+            row,
+            run_id=artifact.run_id,
+            context_ref=context_ref,
+            app_id=app_id,
+            principal_id=principal_id,
+        ):
+            raise ValueError(f"artifact ownership mismatch: {artifact.artifact_id}")
 
         row.run_id = artifact.run_id
         row.app_id = app_id
@@ -79,7 +98,16 @@ class SqlAgentInferenceRuntimeRepository:
         *,
         run_id: str,
         principal_id: str | None,
+        app_id: str | None = None,
     ) -> list[AgentInferenceRuntimeArtifact]:
+        run_row = self.session.get(AgentInferenceRuntimeRunORM, run_id)
+        if run_row is None:
+            return []
+        if run_row.principal_id != principal_id:
+            return []
+        if app_id is not None and run_row.app_id != app_id:
+            return []
+
         rows = (
             self.session.query(AgentInferenceRuntimeArtifactORM)
             .filter(
@@ -93,6 +121,42 @@ class SqlAgentInferenceRuntimeRepository:
             .all()
         )
         return [self._artifact_from_row(row) for row in rows]
+
+    def _run_matches_owner(
+        self,
+        row: AgentInferenceRuntimeRunORM,
+        *,
+        context_ref: RuntimeContextRef,
+        app_id: str,
+        principal_id: str | None,
+    ) -> bool:
+        return (
+            row.app_id == app_id
+            and row.principal_id == principal_id
+            and row.project_id == context_ref.project_id
+            and row.session_id == context_ref.session_id
+            and row.thread_id == context_ref.thread_id
+            and row.turn_id == context_ref.turn_id
+        )
+
+    def _artifact_matches_owner(
+        self,
+        row: AgentInferenceRuntimeArtifactORM,
+        *,
+        run_id: str,
+        context_ref: RuntimeContextRef,
+        app_id: str,
+        principal_id: str | None,
+    ) -> bool:
+        return (
+            row.run_id == run_id
+            and row.app_id == app_id
+            and row.principal_id == principal_id
+            and row.project_id == context_ref.project_id
+            and row.session_id == context_ref.session_id
+            and row.thread_id == context_ref.thread_id
+            and row.turn_id == context_ref.turn_id
+        )
 
     def _run_from_row(self, row: AgentInferenceRuntimeRunORM) -> AgentInferenceRuntimeRun:
         return AgentInferenceRuntimeRun(
