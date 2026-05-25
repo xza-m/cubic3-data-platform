@@ -986,8 +986,8 @@ B3 完成标准：
 
 | ID | 任务 | 状态 | 验收证据 |
 | --- | --- | --- | --- |
-| B4-01 | 增加上线前 readiness 报告，汇总 baseline、live smoke、fixture cleanup、PostgreSQL 并发四类补证状态 | DONE | `scripts/checks/semantic_prod_readiness_report.py`、`make semantic-prod-readiness-report`；单测覆盖 URL 脱敏、fixture DB 复用 baseline DB 和 strict 缺项输出 |
-| B4-02 | 对齐 strict guard、Makefile 和文档里的 fixture cleanup fallback 语义 | DONE | `SEMANTIC_FIXTURE_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)`；readiness 报告显式输出 `fixture_database_url_source` |
+| B4-01 | 增加上线前 readiness 报告，汇总 DATABASE_URL、live smoke、fixture cleanup、PostgreSQL 并发补证状态 | DONE | `scripts/checks/semantic_prod_readiness_report.py`、`make semantic-prod-readiness-report`；单测覆盖 URL 脱敏、单一 `DATABASE_URL` strict 输入和缺项输出 |
+| B4-02 | 对齐 strict guard、Makefile 和文档里的单一 PostgreSQL 验证库语义 | DONE | strict gate 使用同一个 `DATABASE_URL` 完成 baseline fingerprint、fixture cleanup 和 PostgreSQL 并发验证 |
 | B4-03 | 在预生产库执行存量库 fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证 | DONE | 按“本地 Docker 主库作为模拟预生产”执行 `make verify-semantic-prod-strict` 通过；覆盖 baseline fingerprint、fixture cleanup、真实 PostgreSQL 并发 |
 | B4-04 | 执行真实 Modeling Copilot live smoke 和真实 datasource metadata / P34 业务链路补证 | DONE | 本地真实 backend / frontend + PostgreSQL datasource metadata 闭环通过；P34 live smoke 断言发布来源为 SQL Registry，并产出 release / runtime snapshot |
 | B4-05 | 产出上线签核记录：版本、补证命令、trace / release_no、cleanup summary、剩余风险确认 | DONE | 已记录模拟预生产 strict 命令、fingerprint、release_no、snapshot_id、audit trace 和 cleanup summary；本地模拟预生产即本次上线前验收环境 |

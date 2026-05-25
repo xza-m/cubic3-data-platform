@@ -15,14 +15,11 @@ from tests.support.semantic_fixture_manager import SemanticTestFixtureManager
 
 
 def test_postgresql_concurrent_publish_serializes_release_numbers_and_active_snapshot():
-    database_url = os.environ.get("SEMANTIC_POSTGRES_DATABASE_URL") or os.environ.get(
-        "SEMANTIC_BASELINE_DATABASE_URL"
-    )
+    database_url = os.environ.get("DATABASE_URL")
     if not database_url:
-        pytest.skip(
-            "set SEMANTIC_POSTGRES_DATABASE_URL or SEMANTIC_BASELINE_DATABASE_URL "
-            "to run PostgreSQL concurrency verification"
-        )
+        pytest.skip("set DATABASE_URL to run PostgreSQL concurrency verification")
+    if not (database_url.startswith("postgresql://") or database_url.startswith("postgresql+")):
+        pytest.skip("semantic release concurrency verification requires PostgreSQL DATABASE_URL")
 
     engine = create_engine(database_url, pool_size=8, max_overflow=4, pool_pre_ping=True)
     if engine.dialect.name != "postgresql":

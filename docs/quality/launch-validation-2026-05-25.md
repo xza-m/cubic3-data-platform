@@ -53,13 +53,11 @@ last_reviewed: 2026-05-25
 
 严格上线门禁 `make verify-semantic-prod-strict` 仍缺少以下外部输入，当前环境不能给出“严格上线通过”的结论：
 
-- `SEMANTIC_BASELINE_DATABASE_URL`
+- PostgreSQL 类型的 `DATABASE_URL`
 - `SEMANTIC_PROD_LIVE=1`
 - `SEMANTIC_FIXTURE_NAMESPACE`
-- `SEMANTIC_FIXTURE_DATABASE_URL` 或 `SEMANTIC_BASELINE_DATABASE_URL`
-- `SEMANTIC_POSTGRES_DATABASE_URL` 或 `SEMANTIC_BASELINE_DATABASE_URL`
 
-这些项属于真实预生产数据库 fingerprint、live smoke、fixture cleanup 和真实 PostgreSQL 并发补证，不应由本地 mock 或空值替代。
+这些项属于真实数据库 fingerprint、live smoke、fixture cleanup 和真实 PostgreSQL 并发补证；本地可以指向 Docker PG，上线时指向独立线上/预生产 PG，不应由 mock 或空值替代。
 
 ## 工程原则复盘
 
