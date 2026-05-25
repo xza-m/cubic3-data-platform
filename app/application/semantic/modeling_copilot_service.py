@@ -1099,6 +1099,7 @@ class SemanticModelingCopilotService:
                 "source_candidate_confirmation_required",
                 "binding_not_approved",
                 "need_source_table",
+                "session_created",
             }
         ] or ["ready_to_save"]
         state["readiness"] = readiness
@@ -1118,7 +1119,7 @@ class SemanticModelingCopilotService:
         readiness["exploratory_ready"] = False
         reasons = [
             str(item) for item in (readiness.get("reasons") or [])
-            if item != "ready_to_save"
+            if item not in {"ready_to_save", "session_created"}
         ]
         if "spec_not_generated" not in reasons:
             reasons.append("spec_not_generated")
@@ -1441,6 +1442,7 @@ class SemanticModelingCopilotService:
         if result.suggested_actions:
             state["suggested_actions"] = result.suggested_actions
         state["agent_message"] = result.message
+        self._reconcile_agent_workbench_state(session, state)
         session.workbench_state = state
         session.tool_traces.extend(result.tool_traces)
 
@@ -1449,22 +1451,81 @@ class SemanticModelingCopilotService:
         """LLM 只能写草稿态工作台，不能伪造服务端治理动作结果。"""
         if not isinstance(patch, dict):
             return {}
-        sanitized = deepcopy(patch)
-        for key in (
-            "publish_result",
-            "post_publish_validation",
-            "publish_gate",
-            "save_result",
-            "proposal_summary",
-        ):
-            sanitized.pop(key, None)
+        allowed_keys = {
+            "agent_message",
+            "semantic_canvas",
+            "candidate_cards",
+            "source_candidates",
+            "evidence_summary",
+            "validation_summary",
+            "suggested_actions",
+            "raw_spec",
+            "proposal_patch",
+            "advanced_refs",
+        }
+        sanitized = {
+            key: deepcopy(value)
+            for key, value in patch.items()
+            if key in allowed_keys
+        }
+        proposal_patch = sanitized.get("proposal_patch")
+        if isinstance(proposal_patch, dict):
+            proposal_patch = SemanticModelingCopilotService._sanitize_agent_proposal_patch(proposal_patch)
+            if proposal_patch:
+                sanitized["proposal_patch"] = proposal_patch
+            else:
+                sanitized.pop("proposal_patch", None)
+        else:
+            sanitized.pop("proposal_patch", None)
         advanced_refs = sanitized.get("advanced_refs")
         if isinstance(advanced_refs, dict):
-            advanced_refs = dict(advanced_refs)
-            for key in ("proposal_id", "proposal_status", "published_asset_id"):
-                advanced_refs.pop(key, None)
+            allowed_ref_keys = {
+                "candidate_source_table",
+                "need_source_table",
+                "source_candidates_available",
+            }
+            advanced_refs = {
+                key: deepcopy(value)
+                for key, value in advanced_refs.items()
+                if key in allowed_ref_keys
+            }
             sanitized["advanced_refs"] = advanced_refs
+        else:
+            sanitized.pop("advanced_refs", None)
         return sanitized
+
+    def _reconcile_agent_workbench_state(self, session: AgentSession, state: Dict[str, Any]) -> None:
+        """根据服务端可验证草稿线索重算 runtime 不可直接写入的治理状态。"""
+        raw_spec = state.get("raw_spec") if isinstance(state.get("raw_spec"), dict) else {}
+        if has_reviewable_spec(raw_spec):
+            self._mark_spec_available(session, state)
+            if state.get("required_confirmations"):
+                readiness = dict(state.get("readiness") or {})
+                readiness["canonical_ready"] = bool((state.get("publish_result") or {}).get("status") == "published")
+                readiness["exploratory_ready"] = True
+                reasons = [
+                    str(reason)
+                    for reason in (readiness.get("reasons") or [])
+                    if str(reason) not in {"ready_to_save", "session_created"}
+                ]
+                if "business_owner_confirmation_required" not in reasons:
+                    reasons.append("business_owner_confirmation_required")
+                readiness["reasons"] = reasons
+                state["readiness"] = readiness
+            return
+
+        if state.get("source_candidates"):
+            self._mark_spec_missing(state, "source_candidate_confirmation_required")
+            state["advanced_refs"] = {
+                **(state.get("advanced_refs") or {}),
+                "source_candidates_available": True,
+            }
+            return
+
+        proposal_patch = state.get("proposal_patch") if isinstance(state.get("proposal_patch"), dict) else {}
+        advanced_refs = state.get("advanced_refs") if isinstance(state.get("advanced_refs"), dict) else {}
+        if proposal_patch.get("need_source_table") or advanced_refs.get("need_source_table"):
+            self._mark_spec_missing(state, "need_source_table")
 
     @staticmethod
     def _sanitize_agent_proposal_patch(patch: Dict[str, Any]) -> Dict[str, Any]:

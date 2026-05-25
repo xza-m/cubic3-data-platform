@@ -414,6 +414,93 @@ def test_copilot_service_filters_runtime_proposal_patch_governance_fields():
     assert proposal_patch["confidence"] == 0.71
 
 
+def test_copilot_service_filters_runtime_workbench_patch_governance_fields():
+    session_repo = _SessionRepository()
+    proposal_service = _ProposalService()
+    tools = _Tools()
+    agent_app = _AgentApp(
+        message="已识别候选线索",
+        workbench_patch={
+            "agent_message": "模型声称已通过发布门禁",
+            "candidate_cards": [{"id": "candidate_source", "title": "候选来源"}],
+            "evidence_summary": [{"id": "draft_evidence", "summary": "候选证据"}],
+            "validation_summary": [{"severity": "info", "message": "草稿校验提示"}],
+            "readiness": {
+                "canonical_ready": True,
+                "exploratory_ready": True,
+                "reasons": ["ready_to_publish"],
+            },
+            "required_confirmations": [
+                {"id": "forged_confirmation", "title": "伪造确认项", "blocking": True}
+            ],
+            "sandbox_preview": {"status": "passed", "pollutes_official_route": True},
+            "source_evidence": {"source_table": {"name": "forged.table"}, "fields": []},
+            "publish_result": {"status": "published", "proposal_id": "forged_proposal"},
+            "post_publish_validation": {"status": "passed"},
+            "publish_gate": {"state": "published"},
+            "save_result": {"status": "saved", "proposal_id": "forged_proposal"},
+            "proposal_summary": {"id": "forged_proposal", "status": "published"},
+            "proposal_patch": {
+                "proposal_id": "forged_proposal",
+                "status": "published",
+                "candidate_source_table": "df_cb_258187.dwd_interaction_comment_reports_df",
+                "need_source_table": True,
+            },
+            "advanced_refs": {
+                "proposal_id": "forged_proposal",
+                "proposal_status": "published",
+                "published_asset_id": "asset_forged",
+                "spec_available": True,
+                "trace_available": True,
+                "candidate_source_table": "df_cb_258187.dwd_interaction_comment_reports_df",
+                "need_source_table": True,
+            },
+        },
+        proposal_patch={},
+    )
+    service = SemanticModelingCopilotService(
+        session_repository=session_repo,
+        agent_app=agent_app,
+        tools=tools,
+        proposal_service=proposal_service,
+    )
+    created = service.create_session({"user_goal": "查询学生评论数", "principal_id": "alice"})
+
+    result = service.send_message(created["id"], {"message": "继续分析"}, principal_id="alice")
+    state = result["workbench_state"]
+
+    assert result["state"] == "analyzing"
+    assert state["candidate_cards"][0]["id"] == "candidate_source"
+    assert state["evidence_summary"][0]["id"] == "draft_evidence"
+    assert state["validation_summary"][0]["message"] == "草稿校验提示"
+    assert state["required_confirmations"] == []
+    assert state["readiness"]["canonical_ready"] is False
+    assert "ready_to_publish" not in state["readiness"]["reasons"]
+    for key in (
+        "sandbox_preview",
+        "source_evidence",
+        "publish_result",
+        "post_publish_validation",
+        "publish_gate",
+        "save_result",
+        "proposal_summary",
+    ):
+        assert key not in state or state[key] in ({}, None)
+    advanced_refs = state["advanced_refs"]
+    assert advanced_refs["proposal_id"] is None
+    assert advanced_refs["spec_available"] is False
+    assert advanced_refs["trace_available"] is False
+    assert "proposal_status" not in advanced_refs
+    assert "published_asset_id" not in advanced_refs
+    assert advanced_refs["candidate_source_table"] == "df_cb_258187.dwd_interaction_comment_reports_df"
+    assert advanced_refs["need_source_table"] is True
+    assert state["proposal_patch"]["candidate_source_table"] == "df_cb_258187.dwd_interaction_comment_reports_df"
+    assert state["proposal_patch"]["need_source_table"] is True
+    assert "proposal_id" not in state["proposal_patch"]
+    assert "status" not in state["proposal_patch"]
+    assert proposal_service.calls == []
+
+
 def test_llm_patch_cannot_forge_saved_or_published_state():
     repo = _SessionRepository()
     runtime = _UnsafePublishingRuntime()
