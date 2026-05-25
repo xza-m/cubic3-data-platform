@@ -26,6 +26,7 @@ import {
   describeCube,
   describeDomain,
   describeView,
+  draftCubeFromCandidates,
   draftSemanticModelingProposal,
   draftCubeFromSource,
   getDomainCanvas,
@@ -51,6 +52,7 @@ import {
   listSemanticModelingCopilotSessions,
   publishSemanticModelingCopilotProposal,
   patchSemanticModelingCopilotSpec,
+  previewFieldCandidates,
   renameSemanticModelingCopilotSession,
   saveSemanticModelingCopilotProposal,
   schemaSyncCube,
@@ -63,8 +65,10 @@ import {
   writeSemanticFile,
   dryRunMetric,
   type CubeCreateBody,
+  type CubeDraftFromCandidatesBody,
   type CubeDraftBody,
   type DomainSummary,
+  type FieldCandidatePreviewBody,
   type FileType,
   type SemanticModelingProposalApproveBody,
   type SemanticModelingProposalCloseRequest,
@@ -151,6 +155,18 @@ export function useDeprecateCube() {
 export function useDraftCubeFromSource() {
   return useMutation({
     mutationFn: (body: CubeDraftBody) => draftCubeFromSource(body),
+  })
+}
+
+export function usePreviewFieldCandidates() {
+  return useMutation({
+    mutationFn: (body: FieldCandidatePreviewBody) => previewFieldCandidates(body),
+  })
+}
+
+export function useDraftCubeFromCandidates() {
+  return useMutation({
+    mutationFn: (body: CubeDraftFromCandidatesBody) => draftCubeFromCandidates(body),
   })
 }
 

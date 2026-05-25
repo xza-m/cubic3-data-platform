@@ -784,6 +784,16 @@ interface ReviewBlocker {
   technicalHint?: unknown
 }
 
+interface FieldCandidateTrace {
+  candidate_set_id?: string
+  measure_count?: number
+  metric_count?: number
+  dimension_count?: number
+  risk_summary?: Record<string, unknown> | string[] | string | null
+  candidates?: Array<Record<string, unknown>>
+  [key: string]: unknown
+}
+
 interface CopilotActionError {
   title: string
   message: string
@@ -903,6 +913,87 @@ function ArtifactPanel({
       </div>
     </aside>
   )
+}
+
+function FieldCandidateTraceBlock({ trace }: { trace?: FieldCandidateTrace | null }) {
+  if (!trace?.candidate_set_id) return null
+  const measureCount = fieldCandidateCount(trace, ['measure', 'metric'])
+  const dimensionCount = fieldCandidateCount(trace, ['dimension'])
+  const riskSummary = formatFieldCandidateRiskSummary(trace.risk_summary)
+
+  return (
+    <div
+      className="rounded-[9px] border px-3 py-2.5"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-semibold text-1">字段候选 Review</div>
+        <Chip tone={riskSummary === '风险 0' ? 'success' : 'warning'}>{riskSummary}</Chip>
+      </div>
+      <div className="mt-2 break-all font-mono text-[11.5px] text-3">{trace.candidate_set_id}</div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Chip>指标 {measureCount}</Chip>
+        <Chip>维度 {dimensionCount}</Chip>
+      </div>
+    </div>
+  )
+}
+
+function fieldCandidateTraceForReview(
+  session: SemanticModelingCopilotSession,
+  review?: SemanticModelingCopilotReview,
+): FieldCandidateTrace | null {
+  const state = session.workbench_state || {}
+  const rawSpec = isRecord(state.raw_spec) ? state.raw_spec : {}
+  const cube = isRecord(rawSpec.cube) ? rawSpec.cube : {}
+  const cubes = Array.isArray(rawSpec.cubes) ? rawSpec.cubes : []
+  const firstCube = isRecord(cubes[0]) ? cubes[0] : {}
+  const reviewRecord = review as Record<string, unknown> | undefined
+  const reviewCube = isRecord(reviewRecord?.cube) ? reviewRecord.cube : {}
+  const workbenchCube = isRecord(state.cube) ? state.cube : {}
+  const cubeDraft = isRecord(state.cube_draft) ? state.cube_draft : {}
+  return (
+    asFieldCandidateTrace(cube.field_candidate_trace) ||
+    asFieldCandidateTrace(firstCube.field_candidate_trace) ||
+    asFieldCandidateTrace(reviewCube.field_candidate_trace) ||
+    asFieldCandidateTrace(reviewRecord?.field_candidate_trace) ||
+    asFieldCandidateTrace(workbenchCube.field_candidate_trace) ||
+    asFieldCandidateTrace(cubeDraft.field_candidate_trace) ||
+    asFieldCandidateTrace(state.field_candidate_trace)
+  )
+}
+
+function asFieldCandidateTrace(value: unknown): FieldCandidateTrace | null {
+  return isRecord(value) && stringValue(value.candidate_set_id) ? (value as FieldCandidateTrace) : null
+}
+
+function fieldCandidateCount(trace: FieldCandidateTrace, roles: string[]): number {
+  const explicit = roles.includes('dimension')
+    ? numberValue(trace.dimension_count)
+    : numberValue(trace.measure_count) || numberValue(trace.metric_count)
+  if (explicit !== undefined) return explicit
+  const candidates = Array.isArray(trace.candidates) ? trace.candidates : []
+  return candidates.filter((candidate) => roles.includes(stringValue(candidate.role))).length
+}
+
+function formatFieldCandidateRiskSummary(value: FieldCandidateTrace['risk_summary']): string {
+  if (!value) return '风险 0'
+  if (typeof value === 'string') return value.trim() ? `风险 ${value.trim()}` : '风险 0'
+  if (Array.isArray(value)) return value.length > 0 ? `风险 ${value.join(' / ')}` : '风险 0'
+  const ordered = ['high', 'medium', 'low']
+  const entries = [
+    ...ordered
+      .filter((key) => value[key] !== undefined)
+      .map((key) => [key, value[key]] as const),
+    ...Object.entries(value).filter(([key]) => !ordered.includes(key)),
+  ].filter(([, count]) => Number(count) > 0)
+  return entries.length > 0
+    ? `风险 ${entries.map(([key, count]) => `${key} ${Number(count)}`).join(' / ')}`
+    : '风险 0'
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function compactArtifactSummary(
@@ -1245,6 +1336,7 @@ function ProposalReviewWorkbench({
   const firstGuide = firstBlocker ? blockerFixGuide(firstBlocker) : null
   const guidance = artifactGuidance(session, review, pendingRunLabel)
   const summary = compactArtifactSummary(session, review)
+  const fieldCandidateTrace = fieldCandidateTraceForReview(session, reviewArtifact)
 
   return (
     <section
@@ -1283,6 +1375,8 @@ function ProposalReviewWorkbench({
           </div>
         ))}
       </div>
+
+      <FieldCandidateTraceBlock trace={fieldCandidateTrace} />
 
       {firstBlocker ? (
         <div className="rounded-[10px] border px-3 py-2.5" style={{ borderColor: 'rgba(245,158,11,0.28)', background: 'rgba(255,251,235,0.58)' }}>

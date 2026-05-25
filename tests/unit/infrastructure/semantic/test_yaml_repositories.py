@@ -1,5 +1,6 @@
 """YamlCubeRepository / YamlViewRepository / YamlRecipeRepository 单元测试"""
 import os
+from pathlib import Path
 import tempfile
 
 import pytest
@@ -144,6 +145,18 @@ class TestYamlCubeRepository:
         repo = YamlCubeRepository(cubes_dir)
         with pytest.raises(ValueError, match="Failed to load Cube YAML"):
             repo.list_all()
+
+    def test_seed_question_stats_keeps_statistic_fields_as_measures(self):
+        cubes_dir = Path("app/infrastructure/semantic/cubes")
+        repo = YamlCubeRepository(str(cubes_dir))
+
+        cube = repo.get("ads_bi_question_base_stats_df")
+
+        assert cube is not None
+        assert "p75_difficulty" not in cube.dimensions
+        assert "avg_p75_difficulty" in cube.measures
+        assert cube.measures["avg_p75_difficulty"].type == "avg"
+        assert cube.measures["avg_p75_difficulty"].non_additive is True
 
 
 # ── YamlViewRepository ──────────────────────

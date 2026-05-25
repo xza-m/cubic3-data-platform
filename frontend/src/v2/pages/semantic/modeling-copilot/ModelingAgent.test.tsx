@@ -851,6 +851,35 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
     expect(screen.getByText('沙盒预演被阻塞：Cube 草稿还没接受')).toBeInTheDocument()
   })
 
+  it('Review 展示字段候选摘要', () => {
+    activeSessionFixture = {
+      ...ANALYZED_SESSION,
+      workbench_state: {
+        ...ANALYZED_SESSION.workbench_state,
+        raw_spec: {
+          ...ANALYZED_SESSION.workbench_state.raw_spec,
+          cube: {
+            ...(ANALYZED_SESSION.workbench_state.raw_spec?.cube as Record<string, unknown>),
+            field_candidate_trace: {
+              candidate_set_id: 'fcs_student_comment',
+              measure_count: 2,
+              dimension_count: 3,
+              risk_summary: { high: 1, medium: 2 },
+            },
+          },
+        },
+      },
+    }
+    renderAt('/semantic/modeling-copilot/session_1')
+
+    const artifacts = screen.getByTestId('artifact-panel')
+    expect(within(artifacts).getByText('字段候选 Review')).toBeInTheDocument()
+    expect(within(artifacts).getByText('fcs_student_comment')).toBeInTheDocument()
+    expect(within(artifacts).getByText('指标 2')).toBeInTheDocument()
+    expect(within(artifacts).getByText('维度 3')).toBeInTheDocument()
+    expect(within(artifacts).getByText('风险 high 1 / medium 2')).toBeInTheDocument()
+  })
+
   it('沙盒预演调 previewSandbox，不污染 runtime', async () => {
     activeSessionFixture = ANALYZED_SESSION
     renderAt('/semantic/modeling-copilot/session_1')

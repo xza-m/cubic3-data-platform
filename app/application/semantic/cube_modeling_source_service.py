@@ -115,18 +115,26 @@ class CubeModelingSourceService:
 
         partitions = self._normalize_schema_partitions(schema_snapshot, columns)
         source_id_for_payload = self._strict_int_source_id(source_id)
-        payload = self._cube_modeling_service.build_cube_draft_payload(
+        candidate_set = self._cube_modeling_service._field_candidate_service.preview_from_evidence_bundle(
+            source_id=str(source_id),
+            database=database,
+            schema=schema or "",
+            table=table,
+            evidence_bundle=evidence_bundle,
+        )
+        payload = self._cube_modeling_service.build_cube_draft_from_candidate_set(
+            candidate_set=candidate_set,
             source_id=source_id_for_payload,
             database=database,
             schema=schema,
             table=table,
-            columns=columns,
             partitions=partitions,
             name=name or table,
             title=title or schema_snapshot.get("title"),
             description=description or schema_snapshot.get("description"),
             comment=schema_snapshot.get("comment"),
             data_source="metadata_snapshot",
+            draft_source_mode="asset_evidence",
         )
         payload["asset_evidence"] = deepcopy(evidence_bundle or {})
         return payload
@@ -186,17 +194,28 @@ class CubeModelingSourceService:
             }
             for field in field_items
         ]
-        payload = self._cube_modeling_service.build_cube_draft_payload(
+        partitions = [
+            field.physical_name
+            for field in field_items
+            if field.business_type in {"partition", "partition_key"}
+        ]
+        candidate_set = self._cube_modeling_service._field_candidate_service.preview_from_columns(
+            source={
+                "source_kind": "dataset_virtual",
+                "source_ref": f"dataset:{dataset.id}",
+                "dataset_id": int(dataset.id),
+                "database": source_database,
+                "table": dataset.dataset_code,
+            },
+            columns=columns,
+        )
+        payload = self._cube_modeling_service.build_cube_draft_from_candidate_set(
+            candidate_set=candidate_set,
             source_id=int(dataset.source_id),
             database=source_database,
             schema=None,
             table=dataset.dataset_code,
-            columns=columns,
-            partitions=[
-                field.physical_name
-                for field in field_items
-                if field.business_type in {"partition", "partition_key"}
-            ],
+            partitions=partitions,
             name=name or dataset.dataset_code,
             title=title or dataset.dataset_name,
             description=description or dataset.description,
@@ -204,6 +223,7 @@ class CubeModelingSourceService:
             source_sql=dataset.sql_query,
             source_dataset_id=int(dataset.id),
             source_dataset_type=dataset.dataset_type,
+            draft_source_mode="dataset_virtual",
         )
         return payload
 

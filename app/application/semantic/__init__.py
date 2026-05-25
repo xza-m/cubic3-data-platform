@@ -1,4 +1,9 @@
 from .cube_modeling_service import CubeModelingService
+from .field_candidates import (
+    PhysicalTypeDescriptor,
+    PhysicalTypeMapper,
+    TypeCompatibilityPolicy,
+)
 from .governance_issue_service import SemanticGovernanceIssueService
 from .metric_semantics_service import MetricSemanticsService
 from .publish_gate_service import PublishGateService
@@ -12,6 +17,9 @@ from .view_publish_service import ViewPublishService
 
 __all__ = [
     "CubeModelingService",
+    "PhysicalTypeDescriptor",
+    "PhysicalTypeMapper",
+    "TypeCompatibilityPolicy",
     "SemanticGovernanceIssueService",
     "MetricSemanticsService",
     "PublishGateService",

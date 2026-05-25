@@ -136,6 +136,7 @@ from app.application.semantic.cube_modeling_source_service import CubeModelingSo
 from app.application.semantic.data_asset_service import DataAssetService
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
+from app.application.semantic.field_candidates import FieldCandidateService
 from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
@@ -571,6 +572,10 @@ class Container(containers.DeclarativeContainer):
         domain_repo=domain_repository,
     )
 
+    semantic_field_candidate_service = providers.Singleton(
+        FieldCandidateService,
+    )
+
     cube_modeling_service = providers.Singleton(
         CubeModelingService,
         cube_repo=cube_repository,
@@ -578,6 +583,7 @@ class Container(containers.DeclarativeContainer):
         definition_service=semantic_definition_service,
         registry_repo=semantic_registry_repository,
         metric_repository=ontology_metric_repository,
+        field_candidate_service=semantic_field_candidate_service,
     )
 
     cube_modeling_source_service = providers.Singleton(

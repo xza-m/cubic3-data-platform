@@ -54,6 +54,7 @@ def create_semantic_blueprint(
     cube_listing_service=None,
     runtime_snapshot_service=None,
     mapper_service=None,
+    field_candidate_service=None,
 ):
     """Blueprint 工厂：依赖在初始化时注入，便于单元测试时传入 Mock。
 
@@ -64,6 +65,10 @@ def create_semantic_blueprint(
         dataset_handler: CreateDatasetHandler 实例
     """
     bp = Blueprint('semantic', __name__, url_prefix='/api/v1/semantic')
+    if field_candidate_service is None:
+        from app.application.semantic.field_candidates import FieldCandidateService
+
+        field_candidate_service = FieldCandidateService()
     if publish_service is None:
         from app.application.semantic.view_publish_service import ViewPublishService
 
@@ -90,6 +95,7 @@ def create_semantic_blueprint(
             runtime_binding_service=runtime_binding,
             definition_service=semantic_service._definition_service,
             registry_repo=registry_repo,
+            field_candidate_service=field_candidate_service,
         )
     if modeling_source_service is None:
         from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
@@ -435,6 +441,36 @@ def create_semantic_blueprint(
             )
         except Exception as exc:
             return error(f"生成 Cube 草稿失败: {str(exc)}")
+        return success(data=result)
+
+    @bp.route('/field-candidates/preview', methods=['POST'])
+    @require_admin
+    def preview_field_candidates():
+        body = request.get_json(silent=True) or {}
+        columns = body.get("columns")
+        if not isinstance(columns, list):
+            return error("请求体字段 columns 必须是 list")
+        try:
+            result = field_candidate_service.preview_from_columns(
+                source=body.get("source") or {},
+                columns=columns,
+                selected_overrides=body.get("selected_overrides") or {},
+            )
+        except Exception as exc:
+            return error(f"字段候选预览失败: {str(exc)}")
+        return success(data=result.to_dict())
+
+    @bp.route('/cubes/draft-from-candidates', methods=['POST'])
+    @require_admin
+    def draft_cube_from_candidates():
+        body = request.get_json(silent=True) or {}
+        builder = getattr(modeling_service, "build_cube_draft_from_inline_candidate_payload", None)
+        if not callable(builder):
+            return error("当前 modeling_service 不支持 draft-from-candidates")
+        try:
+            result = builder(body)
+        except Exception as exc:
+            return error(f"基于字段候选生成 Cube 草稿失败: {str(exc)}")
         return success(data=result)
 
     @bp.route('/cubes', methods=['POST'])

@@ -78,6 +78,7 @@ export interface CubeSummary {
   downstream_bi_count?: number
   last_modified_at?: string | null
   state_summary?: Record<string, unknown>
+  field_candidate_trace?: Record<string, unknown> | null
 }
 
 export interface CubeDetail extends CubeSummary {
@@ -107,7 +108,7 @@ export interface CubeCreateBody {
 }
 
 export interface CubeDraftBody {
-  source_kind: 'dataset' | 'datasource' | string
+  source_kind: 'physical_table' | 'dataset' | 'datasource' | string
   source_id?: string
   dataset_id?: string
   database?: string
@@ -116,6 +117,54 @@ export interface CubeDraftBody {
   name?: string
   title?: string
   description?: string
+}
+
+export interface SemanticFieldCandidate {
+  id: string
+  name: string
+  title?: string | null
+  role: 'measure' | 'dimension' | 'time' | 'unknown' | string
+  data_type?: string | null
+  expr?: string | null
+  agg?: string | null
+  confidence?: 'high' | 'medium' | 'low' | string
+  risk_level?: 'high' | 'medium' | 'low' | 'none' | string
+  risk_reason?: string | null
+  source_field?: string | null
+  evidence?: string[] | string | null
+  [key: string]: unknown
+}
+
+export interface SemanticFieldCandidateSet {
+  candidate_set_id: string
+  candidates: SemanticFieldCandidate[]
+  measure_count?: number
+  dimension_count?: number
+  risk_summary?: Record<string, number> | string[] | string | null
+  [key: string]: unknown
+}
+
+export interface FieldCandidatePreviewBody {
+  source_kind: 'physical_table' | 'dataset' | 'datasource' | string
+  source_id?: string | number | null
+  dataset_id?: string | number | null
+  database?: string | null
+  schema?: string | null
+  table?: string | null
+  name?: string
+  title?: string
+  description?: string
+  [key: string]: unknown
+}
+
+export interface CubeDraftFromCandidatesBody {
+  candidate_set_id: string
+  selected_candidate_ids?: string[]
+  name?: string
+  title?: string
+  description?: string
+  domain_name?: string
+  [key: string]: unknown
 }
 
 // ─── Cube API ───────────────────────────────────────────────────────────────
@@ -143,6 +192,12 @@ export const createCubeRevision = (name: string) =>
 
 export const draftCubeFromSource = (body: CubeDraftBody) =>
   post<CubeDetail>('/semantic/cubes/draft-from-source', body)
+
+export const previewFieldCandidates = (body: FieldCandidatePreviewBody) =>
+  post<SemanticFieldCandidateSet>('/semantic/field-candidates/preview', body)
+
+export const draftCubeFromCandidates = (body: CubeDraftFromCandidatesBody) =>
+  post<CubeDetail>('/semantic/cubes/draft-from-candidates', body)
 
 // ─── 数据资产底座类型 / API ─────────────────────────────────────────────────
 

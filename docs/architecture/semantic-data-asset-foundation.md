@@ -95,6 +95,7 @@ Cube 草案进入 Modeling Copilot Proposal 链路。Cube 工作台从 `Evidence
 - 用户确认候选源后，再补证据包和 schema 校验。
 - 数据资产底座不直接生成 Cube、Ontology 或运行时语义真相，只提供元数据事实、`AssetRef` 与 `EvidenceBundle`。
 - Modeling Copilot 生成草案时优先读取 `EvidenceBundle.schema_snapshot`；证据包缺失 schema 时，才走 datasource adapter fallback 补齐字段事实。
+- 字段进入 Cube 草案前应先经过字段候选层，统一完成物理类型映射、字段角色判断、指标聚合与可加性推断；详细设计见 [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)。
 - 生成的 Cube 仍进入 Modeling Copilot Proposal / 内部 `SemanticModelDraftBuilder` 的 spec / validate / apply / publish 链路。
 
 ### 3.2 桥接 Ontology-Cube Projection
@@ -169,13 +170,15 @@ Schema 漂移必须复用现有三件套，不引入第二套 drift detector：
   -> AssetRef 列表
   -> EvidenceBundle
   -> schema_snapshot 优先 / datasource adapter fallback
-  -> SemanticModelDraftBuilder spec 草稿
+  -> FieldEvidence
+  -> FieldCandidateSet
+  -> Cube / Ontology Proposal 草稿
   -> SchemaSyncService 校验
   -> Modeling Copilot Proposal Review
   -> 发布 Cube / Ontology
 ```
 
-建模链路只把底座当成证据输入。发布后，正式语义运行时只消费已发布资产。
+建模链路只把底座当成证据输入。字段进入 Cube / Ontology 草案前必须经过字段候选层；发布后，正式语义运行时只消费已发布资产，不读取资产底座或候选层。
 
 ### 5.2 投影时
 

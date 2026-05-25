@@ -13,61 +13,12 @@ partition:
   max_range_days: 90
 default_filters: []
 dimensions:
-  active_student_cnt:
-    title: 活跃学生数
-    type: number
-    sql: '{CUBE}.active_student_cnt'
-    description: 活跃学生数
-    source_data_type: bigint
-    primary_key: false
-  ai_scoring_cnt:
-    title: AI批改次数
-    type: number
-    sql: '{CUBE}.ai_scoring_cnt'
-    description: AI批改次数
-    source_data_type: bigint
-    primary_key: false
-  ai_session_cnt:
-    title: AI课会话数
-    type: number
-    sql: '{CUBE}.ai_session_cnt'
-    description: AI课会话数
-    source_data_type: bigint
-    primary_key: false
-  answer_cnt:
-    title: 答题次数
-    type: number
-    sql: '{CUBE}.answer_cnt'
-    description: 答题次数
-    source_data_type: bigint
-    primary_key: false
-  answer_duration:
-    title: 总答题时长
-    type: number
-    sql: '{CUBE}.answer_duration'
-    description: 总答题时长
-    source_data_type: bigint
-    primary_key: false
   class_name:
     title: 班级名称
     type: string
     sql: '{CUBE}.class_name'
     description: 班级名称
     source_data_type: string
-    primary_key: false
-  consolidate_session_cnt:
-    title: 巩固练习会话数
-    type: number
-    sql: '{CUBE}.consolidate_session_cnt'
-    description: 巩固练习会话数
-    source_data_type: bigint
-    primary_key: false
-  correct_answer_cnt:
-    title: 正确答题次数
-    type: number
-    sql: '{CUBE}.correct_answer_cnt'
-    description: 正确答题次数
-    source_data_type: bigint
     primary_key: false
   ds:
     title: 分区日期
@@ -76,26 +27,12 @@ dimensions:
     description: 分区日期
     source_data_type: string
     primary_key: false
-  extend_session_cnt:
-    title: 扩展练习会话数
-    type: number
-    sql: '{CUBE}.extend_session_cnt'
-    description: 扩展练习会话数
-    source_data_type: bigint
-    primary_key: false
   grade_name:
     title: 年级名称
     type: string
     sql: '{CUBE}.grade_name'
     description: 年级名称
     source_data_type: string
-    primary_key: false
-  lesson_cnt:
-    title: 课程数量
-    type: number
-    sql: '{CUBE}.lesson_cnt'
-    description: 课程数量
-    source_data_type: bigint
     primary_key: false
   school_name:
     title: 学校名称
@@ -104,20 +41,6 @@ dimensions:
     description: 学校名称
     source_data_type: string
     primary_key: false
-  session_cnt:
-    title: 会话总数
-    type: number
-    sql: '{CUBE}.session_cnt'
-    description: 会话总数
-    source_data_type: bigint
-    primary_key: false
-  study_duration:
-    title: 总学习时长
-    type: number
-    sql: '{CUBE}.study_duration'
-    description: 总学习时长
-    source_data_type: bigint
-    primary_key: false
   subject_name:
     title: 科目名称
     type: string
@@ -125,140 +48,7 @@ dimensions:
     description: 科目名称
     source_data_type: string
     primary_key: false
-  subjective_answer_cnt:
-    title: 主观题答题次数
-    type: number
-    sql: '{CUBE}.subjective_answer_cnt'
-    description: 主观题答题次数
-    source_data_type: bigint
-    primary_key: false
-  total_student_cnt:
-    title: 总学生数
-    type: number
-    sql: '{CUBE}.total_student_cnt'
-    description: 总学生数
-    source_data_type: bigint
-    primary_key: false
-  video_duration:
-    title: 总视频时长
-    type: number
-    sql: '{CUBE}.video_duration'
-    description: 总视频时长
-    source_data_type: bigint
-    primary_key: false
 measures:
-  sum_active_student_cnt:
-    title: Active Student Cnt 合计
-    type: sum
-    sql: '{CUBE}.active_student_cnt'
-    description: 自动生成的 active_student_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_ai_scoring_cnt:
-    title: Ai Scoring Cnt 合计
-    type: sum
-    sql: '{CUBE}.ai_scoring_cnt'
-    description: 自动生成的 ai_scoring_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_ai_session_cnt:
-    title: Ai Session Cnt 合计
-    type: sum
-    sql: '{CUBE}.ai_session_cnt'
-    description: 自动生成的 ai_session_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_answer_cnt:
-    title: Answer Cnt 合计
-    type: sum
-    sql: '{CUBE}.answer_cnt'
-    description: 自动生成的 answer_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_answer_duration:
-    title: Answer Duration 合计
-    type: sum
-    sql: '{CUBE}.answer_duration'
-    description: 自动生成的 answer_duration 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_consolidate_session_cnt:
-    title: Consolidate Session Cnt 合计
-    type: sum
-    sql: '{CUBE}.consolidate_session_cnt'
-    description: 自动生成的 consolidate_session_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_correct_answer_cnt:
-    title: Correct Answer Cnt 合计
-    type: sum
-    sql: '{CUBE}.correct_answer_cnt'
-    description: 自动生成的 correct_answer_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_extend_session_cnt:
-    title: Extend Session Cnt 合计
-    type: sum
-    sql: '{CUBE}.extend_session_cnt'
-    description: 自动生成的 extend_session_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_lesson_cnt:
-    title: Lesson Cnt 合计
-    type: sum
-    sql: '{CUBE}.lesson_cnt'
-    description: 自动生成的 lesson_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_session_cnt:
-    title: Session Cnt 合计
-    type: sum
-    sql: '{CUBE}.session_cnt'
-    description: 自动生成的 session_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_study_duration:
-    title: Study Duration 合计
-    type: sum
-    sql: '{CUBE}.study_duration'
-    description: 自动生成的 study_duration 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_subjective_answer_cnt:
-    title: Subjective Answer Cnt 合计
-    type: sum
-    sql: '{CUBE}.subjective_answer_cnt'
-    description: 自动生成的 subjective_answer_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_total_student_cnt:
-    title: Total Student Cnt 合计
-    type: sum
-    sql: '{CUBE}.total_student_cnt'
-    description: 自动生成的 total_student_cnt 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
-  sum_video_duration:
-    title: Video Duration 合计
-    type: sum
-    sql: '{CUBE}.video_duration'
-    description: 自动生成的 video_duration 合计指标
-    source_data_type: bigint
-    certified: false
-    non_additive: false
   total_count:
     title: 总数
     type: count
@@ -267,5 +57,145 @@ measures:
     source_data_type: count
     certified: true
     non_additive: false
+  sum_active_student_cnt:
+    title: 活跃学生数
+    type: sum
+    sql: '{CUBE}.active_student_cnt'
+    description: 自动生成的 active_student_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_ai_scoring_cnt:
+    title: AI批改次数
+    type: sum
+    sql: '{CUBE}.ai_scoring_cnt'
+    description: 自动生成的 ai_scoring_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_ai_session_cnt:
+    title: AI课会话数
+    type: sum
+    sql: '{CUBE}.ai_session_cnt'
+    description: 自动生成的 ai_session_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_answer_cnt:
+    title: 答题次数
+    type: sum
+    sql: '{CUBE}.answer_cnt'
+    description: 自动生成的 answer_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_answer_duration:
+    title: 总答题时长
+    type: sum
+    sql: '{CUBE}.answer_duration'
+    description: 自动生成的 answer_duration sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_consolidate_session_cnt:
+    title: 巩固练习会话数
+    type: sum
+    sql: '{CUBE}.consolidate_session_cnt'
+    description: 自动生成的 consolidate_session_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_correct_answer_cnt:
+    title: 正确答题次数
+    type: sum
+    sql: '{CUBE}.correct_answer_cnt'
+    description: 自动生成的 correct_answer_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_extend_session_cnt:
+    title: 扩展练习会话数
+    type: sum
+    sql: '{CUBE}.extend_session_cnt'
+    description: 自动生成的 extend_session_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_lesson_cnt:
+    title: 课程数量
+    type: sum
+    sql: '{CUBE}.lesson_cnt'
+    description: 自动生成的 lesson_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_session_cnt:
+    title: 会话总数
+    type: sum
+    sql: '{CUBE}.session_cnt'
+    description: 自动生成的 session_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_study_duration:
+    title: 总学习时长
+    type: sum
+    sql: '{CUBE}.study_duration'
+    description: 自动生成的 study_duration sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_subjective_answer_cnt:
+    title: 主观题答题次数
+    type: sum
+    sql: '{CUBE}.subjective_answer_cnt'
+    description: 自动生成的 subjective_answer_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_total_student_cnt:
+    title: 总学生数
+    type: sum
+    sql: '{CUBE}.total_student_cnt'
+    description: 自动生成的 total_student_cnt sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
+  sum_video_duration:
+    title: 总视频时长
+    type: sum
+    sql: '{CUBE}.video_duration'
+    description: 自动生成的 video_duration sum指标
+    source_data_type: bigint
+    certified: false
+    non_additive: false
+    synonyms: []
+    tags: []
 segments: {}
 joins: {}

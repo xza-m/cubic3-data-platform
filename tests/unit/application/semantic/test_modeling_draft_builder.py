@@ -42,7 +42,8 @@ def _cube_draft():
 
 def _builder(**overrides):
     source_service = overrides.get("source_service") or MagicMock()
-    source_service.generate_cube_draft_from_source.return_value = _cube_draft()
+    if overrides.get("source_service") is None:
+        source_service.generate_cube_draft_from_source.return_value = _cube_draft()
     cube_modeling_service = overrides.get("cube_modeling_service") or MagicMock()
     cube_modeling_service.create_cube.return_value = SimpleNamespace(
         name="student_comments",
@@ -176,7 +177,9 @@ def test_asset_evidence_source_id_requires_valid_numeric_id():
 
 def test_asset_evidence_source_id_accepts_numeric_string_and_copies_evidence():
     cube_modeling_service = MagicMock()
-    cube_modeling_service.build_cube_draft_payload.return_value = {"name": "comment_cube"}
+    candidate_set = SimpleNamespace(candidate_set_id="fcand_asset")
+    cube_modeling_service._field_candidate_service.preview_from_evidence_bundle.return_value = candidate_set
+    cube_modeling_service.build_cube_draft_from_candidate_set.return_value = {"name": "comment_cube"}
     service = _source_service(cube_modeling_service)
     evidence_bundle = {
         "schema_snapshot": {
@@ -192,9 +195,11 @@ def test_asset_evidence_source_id_accepts_numeric_string_and_copies_evidence():
         evidence_bundle=evidence_bundle,
     )
 
-    kw = cube_modeling_service.build_cube_draft_payload.call_args.kwargs
+    kw = cube_modeling_service.build_cube_draft_from_candidate_set.call_args.kwargs
+    assert kw["candidate_set"] is candidate_set
     assert kw["source_id"] == 7
     assert kw["data_source"] == "metadata_snapshot"
+    assert kw["draft_source_mode"] == "asset_evidence"
     assert result["asset_evidence"] == evidence_bundle
     assert result["asset_evidence"] is not evidence_bundle
     evidence_bundle["schema_snapshot"]["columns"][0]["name"] = "polluted"
@@ -203,7 +208,10 @@ def test_asset_evidence_source_id_accepts_numeric_string_and_copies_evidence():
 
 def test_asset_evidence_normalizes_fields_and_partition_flags():
     cube_modeling_service = MagicMock()
-    cube_modeling_service.build_cube_draft_payload.return_value = {"name": "comment_cube"}
+    cube_modeling_service._field_candidate_service.preview_from_evidence_bundle.return_value = SimpleNamespace(
+        candidate_set_id="fcand_asset"
+    )
+    cube_modeling_service.build_cube_draft_from_candidate_set.return_value = {"name": "comment_cube"}
     service = _source_service(cube_modeling_service)
 
     service.generate_cube_draft_from_asset_evidence(
@@ -221,11 +229,9 @@ def test_asset_evidence_normalizes_fields_and_partition_flags():
         },
     )
 
-    kw = cube_modeling_service.build_cube_draft_payload.call_args.kwargs
-    assert kw["columns"] == [
-        {"name": "school_id", "type": "BIGINT", "comment": "学校ID"},
-        {"name": "ds", "type": "STRING", "comment": ""},
-    ]
+    preview_kw = cube_modeling_service._field_candidate_service.preview_from_evidence_bundle.call_args.kwargs
+    assert preview_kw["evidence_bundle"]["schema_snapshot"]["fields"][0]["field_name"] == "school_id"
+    kw = cube_modeling_service.build_cube_draft_from_candidate_set.call_args.kwargs
     assert kw["partitions"] == ["ds"]
 
 
@@ -271,6 +277,35 @@ def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():
     assert spec["ontology"]["policies"][0]["visibility"] == "restricted"
     assert "comment_content" in spec["governance"]["sensitive_fields"]
     assert result["next_actions"]["default_publish_target"] == "cube_only"
+
+
+def test_spec_draft_preserves_field_candidate_trace_from_cube_draft():
+    source_service = MagicMock()
+    trace = {
+        "candidate_set_id": "fcand_asset",
+        "ruleset_version": "field-candidate-rules-v1",
+        "summary": {"dimensions": 4, "measures": 1, "time_fields": 1},
+        "source": {"source_kind": "asset_evidence"},
+        "draft_source_mode": "asset_evidence",
+    }
+    source_service.generate_cube_draft_from_source.return_value = {**_cube_draft(), "field_candidate_trace": trace}
+    builder = _builder(source_service=source_service)
+
+    result = builder.create_spec_draft(
+        {
+            "source_kind": "physical_table",
+            "source_id": 7,
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+            "business_subject": "学生评论",
+        }
+    )
+
+    spec = result["spec"]
+    assert spec["cube"]["field_candidate_trace"] == trace
+    assert spec["cube"]["field_candidate_trace"] is trace
+    assert spec["governance"]["field_candidate_summary"] == trace["summary"]
+    assert spec["governance"]["field_candidate_trace"] == trace
 
 
 def test_apply_saves_cube_and_ontology_but_does_not_publish():
@@ -382,6 +417,40 @@ def test_validate_blocks_metric_when_measure_ref_is_missing():
     assert any("无法解析 Measure 引用" in issue["message"] for issue in result["issues"])
     assert result["agent_sandbox_preview"]["mode"] == "draft_spec"
     assert result["agent_sandbox_preview"]["pollutes_official_route"] is False
+
+
+def test_validate_blocks_high_risk_field_candidate_issues():
+    builder = _builder()
+    spec = builder.create_spec_draft(
+        {
+            "source_kind": "physical_table",
+            "source_id": 7,
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+            "business_subject": "学生评论",
+        }
+    )["spec"]
+    spec["cube"]["field_candidate_trace"] = {
+        "issues": [
+            {
+                "code": "ratio_sum_risk",
+                "severity": "warning",
+                "path": "measures.ratio",
+                "message": "比例指标不能直接求和，需要人工确认聚合方式",
+            }
+        ]
+    }
+
+    result = builder.validate(spec)
+
+    assert result["status"] == "blocked"
+    assert result["checks"]["field_candidates"] == "failed"
+    assert any(
+        issue["code"] == "ratio_sum_risk"
+        and issue["severity"] == "error"
+        and issue["path"] == "field_candidate.measures.ratio"
+        for issue in result["issues"]
+    )
 
 
 def test_agent_ready_check_requires_active_cube_and_ontology_binding():

@@ -148,6 +148,52 @@ class TestSchemaSyncService:
         assert len(mismatches) == 1
         assert mismatches[0].column == "name"
 
+    def test_number_type_accepts_numeric_physical_type_families(self):
+        cube = _make_cube(dims={
+            "p75_difficulty": DimensionDef(title="P75难度", type="number", sql="{CUBE}.p75_difficulty"),
+            "avg_score": DimensionDef(title="平均分", type="number", sql="{CUBE}.avg_score"),
+            "stddev_score": DimensionDef(title="标准差", type="number", sql="{CUBE}.stddev_score"),
+            "completion_rate": DimensionDef(title="完成率", type="number", sql="{CUBE}.completion_rate"),
+        })
+        inspector = MockInspector(tables={
+            "test_table": [
+                {"name": "p75_difficulty", "type": "DECIMAL(10,4)"},
+                {"name": "avg_score", "type": "DOUBLE PRECISION"},
+                {"name": "stddev_score", "type": "NUMERIC(20,6)"},
+                {"name": "completion_rate", "type": "FLOAT(24)"},
+            ]
+        })
+        svc = SchemaSyncService(MockCubeRepo([cube]), inspector)
+        report = svc.check_all()
+        assert [d for d in report.drifts if d.kind == "type_mismatch"] == []
+
+    def test_measure_only_columns_count_as_cube_references(self):
+        cube = CubeDefinition(
+            name="question_stats",
+            title="题目统计",
+            table="question_stats",
+            dimensions={
+                "subject_id": DimensionDef(title="学科ID", type="string", sql="`subject_id`", primary_key=True),
+            },
+            measures={
+                "avg_p75_difficulty": MeasureDef(
+                    title="P75难度",
+                    type="avg",
+                    sql="AVG(`p75_difficulty`)",
+                    source_data_type="decimal(10,4)",
+                ),
+            },
+        )
+        inspector = MockInspector(tables={
+            "question_stats": [
+                {"name": "subject_id", "type": "STRING"},
+                {"name": "p75_difficulty", "type": "DECIMAL(10,4)"},
+            ]
+        })
+        svc = SchemaSyncService(MockCubeRepo([cube]), inspector)
+        report = svc.check_all()
+        assert report.drifts == []
+
     def test_skipped_when_no_physical_table(self):
         cube = _make_cube()
         inspector = MockInspector(tables={})
@@ -447,3 +493,23 @@ class TestSchemaSyncService:
 
         assert report.drifts == []
         assert SchemaSyncService._extract_column_name("UPPER(name)", "orders") is None
+
+
+def test_schema_sync_uses_shared_type_compatibility_policy_for_numeric_families():
+    cube = _make_cube(dims={
+        "decimal_value": DimensionDef(title="Decimal", type="number", sql="{CUBE}.decimal_value"),
+        "float_value": DimensionDef(title="Float", type="number", sql="{CUBE}.float_value"),
+        "double_value": DimensionDef(title="Double", type="number", sql="{CUBE}.double_value"),
+    })
+    inspector = MockInspector(tables={
+        "test_table": [
+            {"name": "decimal_value", "type": "DECIMAL(10,4)"},
+            {"name": "float_value", "type": "FLOAT(24)"},
+            {"name": "double_value", "type": "DOUBLE PRECISION"},
+        ]
+    })
+    svc = SchemaSyncService(MockCubeRepo([cube]), inspector)
+
+    report = svc.check_all()
+
+    assert [d for d in report.drifts if d.kind == "type_mismatch"] == []

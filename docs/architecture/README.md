@@ -33,8 +33,9 @@ last_reviewed: 2026-05-23
 6. [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)：访问网关到 MaxCompute 的 RAM User、Project Role、CredentialBinding、观测和 smoke 方案
 7. [source-candidate-recall-scoring.md](source-candidate-recall-scoring.md)：建模 Copilot 从业务问题召回候选数据源的本地元数据打分、解释和门槛
 8. [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)：数据资产底座作为元数据事实层，通过 `AssetRef + EvidenceBundle` 桥接 Cube、本体、投影与语义治理，并复用现有 Schema drift 链路
-9. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
-10. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
+9. [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)：拟采纳设计；物理表 / Dataset / 数据资产证据进入 Cube 与本体建模前，统一经过字段候选层做类型映射、角色判断、指标语义推断与 Review
+10. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
+11. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
 
 ## 当前文件
 
@@ -48,6 +49,8 @@ last_reviewed: 2026-05-23
   - ADR 索引与维护规则
 - [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)
   - 数据资产底座只作为元数据事实层，不直接服务语义；通过 `AssetRef + EvidenceBundle` 为 Cube 工作台、Ontology-Cube Projection、本体工作台与语义治理提供证据；Schema 漂移复用 `SchemaSyncService + AssetSnapshotSchemaInspector + SemanticGovernanceIssueService`
+- [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)
+  - 拟采纳设计；字段候选层作为数据资产证据到 Cube / Ontology 草案之间的中间抽象，统一物理类型映射、字段角色判断、指标聚合与可加性推断；Cube 草案应从 `FieldCandidateSet` 生成，不能让物理字段或 Dataset 字段直接成为正式语义真相
 - [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)
   - 当前 Agent-ready 语义规划主链、飞书 SSO 作为身份事实来源、轻量 `Principal` 投影、`PrincipalContext` 兼容、两阶段 `PolicyDecision`、M3/raw 拦截、`TicketPreview / ExecutionTicket`、`ExecutionProfile` 与 gateway / MaxCompute RAM 适配边界
   - 具体 gateway -> MaxCompute RAM User 与 Project Role 方案见 [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)
