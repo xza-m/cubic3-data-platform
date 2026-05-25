@@ -63,6 +63,11 @@ class CodexAppServerRuntimeAdapter:
                 details={"runtime_name": self.runtime_name},
             ) from exc
 
+        status_payload, events, artifacts_payload = _validate_provider_payloads(
+            status_payload,
+            event_page,
+            artifacts_payload,
+        )
         status = _result_status(status_payload)
         return AgentInferenceRuntimeResult(
             run_id=run_id,
@@ -72,7 +77,7 @@ class CodexAppServerRuntimeAdapter:
             structured_output=_dict_payload(status_payload.get("structured_output")),
             artifacts=_artifacts(run_id, artifacts_payload),
             usage=_dict_payload(status_payload.get("usage")),
-            trace=list(event_page.get("events") or []),
+            trace=events,
             error=_result_error(status, status_payload),
         )
 
@@ -114,6 +119,39 @@ def _asset_revision_ref(value: AssetRevisionRef) -> dict[str, Any]:
     return asdict(value)
 
 
+def _validate_provider_payloads(
+    status_payload: Any,
+    event_page: Any,
+    artifacts_payload: Any,
+) -> tuple[
+    dict[str, Any],
+    list[dict[str, Any]],
+    list[dict[str, Any] | AgentInferenceRuntimeArtifact],
+]:
+    if not isinstance(status_payload, dict):
+        raise _invalid_provider_payload("poll_run must return a dict")
+    if not isinstance(event_page, dict):
+        raise _invalid_provider_payload("stream_events must return a dict")
+
+    raw_events = event_page.get("events")
+    if raw_events is None:
+        events: list[dict[str, Any]] = []
+    elif isinstance(raw_events, list) and all(isinstance(event, dict) for event in raw_events):
+        events = [dict(event) for event in raw_events]
+    else:
+        raise _invalid_provider_payload("stream_events.events must be list[dict]")
+
+    if not isinstance(artifacts_payload, list):
+        raise _invalid_provider_payload("collect_artifacts must return a list")
+    for artifact_payload in artifacts_payload:
+        if not isinstance(artifact_payload, (dict, AgentInferenceRuntimeArtifact)):
+            raise _invalid_provider_payload(
+                "collect_artifacts items must be dict or AgentInferenceRuntimeArtifact"
+            )
+
+    return status_payload, events, artifacts_payload
+
+
 def _result_status(status_payload: dict[str, Any]) -> str:
     raw_status = status_payload.get("status")
     if raw_status == "error":
@@ -150,16 +188,27 @@ def _dict_payload(value: Any) -> dict[str, Any]:
     )
 
 
+def _invalid_provider_payload(message: str) -> AgentInferenceRuntimeError:
+    return AgentInferenceRuntimeError(
+        f"Codex app-server runtime provider 返回非法 payload：{message}。",
+        code="RUNTIME_INVALID_OUTPUT",
+        details={"runtime_name": CodexAppServerRuntimeAdapter.runtime_name},
+    )
+
+
 def _artifacts(
     run_id: str,
-    artifacts_payload: list[dict[str, Any]] | list[AgentInferenceRuntimeArtifact],
+    artifacts_payload: list[dict[str, Any] | AgentInferenceRuntimeArtifact],
 ) -> list[AgentInferenceRuntimeArtifact]:
     artifacts: list[AgentInferenceRuntimeArtifact] = []
     for raw_artifact in artifacts_payload or []:
         if isinstance(raw_artifact, AgentInferenceRuntimeArtifact):
             artifacts.append(replace(raw_artifact, run_id=run_id))
             continue
-        artifact_data = dict(raw_artifact)
-        artifact_data["run_id"] = run_id
-        artifacts.append(AgentInferenceRuntimeArtifact(**artifact_data))
+        try:
+            artifact_data = dict(raw_artifact)
+            artifact_data["run_id"] = run_id
+            artifacts.append(AgentInferenceRuntimeArtifact(**artifact_data))
+        except (TypeError, ValueError) as exc:
+            raise _invalid_provider_payload("collect_artifacts item fields are invalid") from exc
     return artifacts

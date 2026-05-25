@@ -4,8 +4,10 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from flask import Flask
 
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.di.container import init_container
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeArtifact,
@@ -23,15 +25,50 @@ from app.infrastructure.agent_inference_runtime.codex_client import (
 from app.infrastructure.agent_inference_runtime.codex_workspace import CodexWorkspaceStore
 
 
+_UNSET = object()
+
+
 class _Client:
-    def __init__(self, *, status_payload: dict | None = None):
+    def __init__(
+        self,
+        *,
+        status_payload=_UNSET,
+        event_page=_UNSET,
+        artifacts_payload=_UNSET,
+    ):
         self.calls: list[str] = []
         self.submitted: list[AgentInferenceRuntimeRequest] = []
-        self.status_payload = status_payload or {
-            "status": "succeeded",
-            "structured_output": {"message": "复审通过", "findings": []},
-            "usage": {"total_tokens": 11},
-        }
+        if status_payload is _UNSET:
+            status_payload = {
+                "status": "succeeded",
+                "structured_output": {"message": "复审通过", "findings": []},
+                "usage": {"total_tokens": 11},
+            }
+        if event_page is _UNSET:
+            event_page = {
+                "events": [
+                    {"event_type": "run.started", "seq": 1},
+                    {"event_type": "run.succeeded", "seq": 2},
+                ],
+                "next_cursor": "2",
+                "has_more": False,
+            }
+        if artifacts_payload is _UNSET:
+            artifacts_payload = [
+                {
+                    "artifact_id": "artifact_1",
+                    "run_id": "provider_run_should_be_rewritten",
+                    "artifact_type": "json",
+                    "title": "复审结果",
+                    "summary": "复审结构化结果",
+                    "mime_type": "application/json",
+                    "size_bytes": 128,
+                    "sha256": "sha256:abc",
+                }
+            ]
+        self.status_payload = status_payload
+        self.event_page = event_page
+        self.artifacts_payload = artifacts_payload
 
     def healthcheck(self):
         self.calls.append("healthcheck")
@@ -56,14 +93,7 @@ class _Client:
 
     def stream_events(self, provider_run_id, *, cursor=None):
         self.calls.append(f"stream_events:{provider_run_id}:{cursor}")
-        return {
-            "events": [
-                {"event_type": "run.started", "seq": 1},
-                {"event_type": "run.succeeded", "seq": 2},
-            ],
-            "next_cursor": "2",
-            "has_more": False,
-        }
+        return self.event_page
 
     def cancel_run(self, provider_run_id):
         self.calls.append(f"cancel_run:{provider_run_id}")
@@ -71,18 +101,7 @@ class _Client:
 
     def collect_artifacts(self, provider_run_id):
         self.calls.append(f"collect_artifacts:{provider_run_id}")
-        return [
-            {
-                "artifact_id": "artifact_1",
-                "run_id": "provider_run_should_be_rewritten",
-                "artifact_type": "json",
-                "title": "复审结果",
-                "summary": "复审结构化结果",
-                "mime_type": "application/json",
-                "size_bytes": 128,
-                "sha256": "sha256:abc",
-            }
-        ]
+        return self.artifacts_payload
 
 
 def _request() -> AgentInferenceRuntimeRequest:
@@ -206,6 +225,44 @@ def test_codex_adapter_maps_failed_provider_status_to_result_error(tmp_path: Pat
     assert result.error == {"code": "PROVIDER_ERROR", "message": "provider failed"}
 
 
+@pytest.mark.parametrize(
+    "client_kwargs",
+    [
+        {"status_payload": None},
+        {"status_payload": []},
+        {"status_payload": {"status": "succeeded", "structured_output": [], "usage": {}}},
+        {
+            "status_payload": {
+                "status": "succeeded",
+                "structured_output": {},
+                "usage": ["bad"],
+            }
+        },
+        {"event_page": None},
+        {"event_page": []},
+        {"event_page": {"events": "bad"}},
+        {"event_page": {"events": [{"event_type": "run.started"}, "bad"]}},
+        {"artifacts_payload": None},
+        {"artifacts_payload": "bad"},
+        {"artifacts_payload": ["bad"]},
+        {"artifacts_payload": [{"artifact_id": "artifact_missing_fields"}]},
+    ],
+)
+def test_codex_adapter_rejects_invalid_provider_payloads(
+    tmp_path: Path,
+    client_kwargs: dict,
+):
+    adapter = CodexAppServerRuntimeAdapter(
+        client=_Client(**client_kwargs),
+        workspace_store=CodexWorkspaceStore(runtime_root=tmp_path),
+    )
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        adapter.invoke(_request())
+
+    assert exc.value.code == "RUNTIME_INVALID_OUTPUT"
+
+
 def test_container_reads_agent_codex_config_without_router_enablement(monkeypatch):
     monkeypatch.setenv("AGENT_CODEX_ENABLED", "true")
     monkeypatch.setenv("AGENT_CODEX_PROJECT_ID", "project_x")
@@ -234,3 +291,23 @@ def test_container_reads_agent_codex_config_without_router_enablement(monkeypatc
     assert container.config.agent_codex.max_concurrency() == 5
     router = container.agent_inference_runtime_router()
     assert [adapter.runtime_name for adapter in router._adapters] == ["openai_compatible"]
+
+
+@pytest.mark.parametrize("raw_value", ["", "bad", "0", "-1"])
+def test_container_falls_back_for_invalid_codex_max_concurrency(
+    monkeypatch,
+    raw_value: str,
+):
+    monkeypatch.setenv("AGENT_CODEX_ENABLED", "false")
+    monkeypatch.setenv("AGENT_CODEX_MAX_CONCURRENCY", raw_value)
+
+    app = Flask(__name__)
+    app.config.update(
+        SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
+        REDIS_URL="redis://localhost:6379/0",
+    )
+
+    container = init_container(app)
+
+    assert container.config.agent_codex.enabled() is False
+    assert container.config.agent_codex.max_concurrency() == 2

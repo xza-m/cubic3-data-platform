@@ -45,6 +45,16 @@ def _parse_bool(value) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_positive_int(value, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed <= 0:
+        return default
+    return parsed
+
+
 def _modeling_session_repository(store: str, session, sessions_dir: str):
     """按环境选择 Copilot 会话仓储。
 
@@ -1418,7 +1428,13 @@ def init_container(app: Flask) -> Container:
             'transport': os.getenv('AGENT_CODEX_TRANSPORT', app.config.get('AGENT_CODEX_TRANSPORT', 'unix_socket')),
             'endpoint': os.getenv('AGENT_CODEX_ENDPOINT', app.config.get('AGENT_CODEX_ENDPOINT', '')),
             'unix_socket': os.getenv('AGENT_CODEX_UNIX_SOCKET', app.config.get('AGENT_CODEX_UNIX_SOCKET', '')),
-            'max_concurrency': int(os.getenv('AGENT_CODEX_MAX_CONCURRENCY', app.config.get('AGENT_CODEX_MAX_CONCURRENCY', 2))),
+            'max_concurrency': _parse_positive_int(
+                os.getenv(
+                    'AGENT_CODEX_MAX_CONCURRENCY',
+                    app.config.get('AGENT_CODEX_MAX_CONCURRENCY', 2),
+                ),
+                default=2,
+            ),
         },
         'query_execution': {
             'spool_dir': os.getenv('QUERY_EXECUTION_SPOOL_DIR', app.config.get('QUERY_EXECUTION_SPOOL_DIR', 'instance/query_execution_results')),
