@@ -1,3 +1,4 @@
+import pytest
 from flask import Flask
 
 from app.extensions import db
@@ -349,8 +350,20 @@ def test_modeling_copilot_review_endpoint_returns_artifact_view():
     assert service.calls[-1][0] == "get_review"
 
 
-def test_modeling_copilot_send_message_maps_agent_runtime_errors():
-    """平台 runtime 不可用时返回 503，其它输出契约错误返回 422。"""
+@pytest.mark.parametrize(
+    ("runtime_code", "expected_status"),
+    [
+        ("RUNTIME_NOT_CONFIGURED", 503),
+        ("RUNTIME_UNAVAILABLE", 503),
+        ("RUNTIME_PROVIDER_ERROR", 503),
+        ("RUNTIME_ADAPTER_NOT_FOUND", 503),
+        ("RUNTIME_CONFIG_INVALID", 503),
+        ("RUNTIME_TIMEOUT", 504),
+        ("RUNTIME_INVALID_OUTPUT", 422),
+    ],
+)
+def test_modeling_copilot_send_message_maps_agent_runtime_errors(runtime_code, expected_status):
+    """常见平台 runtime 错误码映射为明确 HTTP 状态。"""
     from flask import Flask
     from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 
@@ -359,16 +372,10 @@ def test_modeling_copilot_send_message_maps_agent_runtime_errors():
             return {"id": "s_x", "user_goal": payload.get("user_goal")}
 
         def send_message(self, session_id, payload, *, principal_id=None):
-            if session_id == "s_contract":
-                raise AgentInferenceRuntimeError(
-                    "runtime 输出不符合 schema",
-                    code="RUNTIME_INVALID_OUTPUT",
-                    details={"field": "message"},
-                )
             raise AgentInferenceRuntimeError(
-                "未配置平台 Agent Runtime",
-                code="RUNTIME_NOT_CONFIGURED",
-                details={"runtime_name": "openai_compatible"},
+                f"runtime failed: {runtime_code}",
+                code=runtime_code,
+                details={"runtime_name": "openai_compatible", "field": "message"},
             )
 
     app = Flask(__name__)
@@ -380,19 +387,11 @@ def test_modeling_copilot_send_message_maps_agent_runtime_errors():
         "/api/v1/semantic/modeling-copilot/sessions/s_x/messages",
         json={"message": "hi"},
     )
-    assert resp.status_code == 503
+    assert resp.status_code == expected_status
     body = resp.get_json()
-    assert body["details"]["code"] == "RUNTIME_NOT_CONFIGURED"
+    assert body["details"]["code"] == runtime_code
     assert body["details"]["runtime_name"] == "openai_compatible"
-
-    contract_resp = client.post(
-        "/api/v1/semantic/modeling-copilot/sessions/s_contract/messages",
-        json={"message": "hi"},
-    )
-    assert contract_resp.status_code == 422
-    contract_body = contract_resp.get_json()
-    assert contract_body["details"]["code"] == "RUNTIME_INVALID_OUTPUT"
-    assert contract_body["details"]["field"] == "message"
+    assert body["details"]["field"] == "message"
 
 
 def test_modeling_copilot_authenticated_session_paths_pass_current_principal():

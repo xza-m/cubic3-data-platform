@@ -356,6 +356,64 @@ def test_copilot_service_uses_semantic_agent_app_instead_of_private_runtime():
     assert agent_app.calls[0]["session_id"] == created["id"]
 
 
+def test_copilot_service_filters_runtime_proposal_patch_governance_fields():
+    session_repo = _SessionRepository()
+    proposal_service = _ProposalService()
+    tools = _Tools()
+    agent_app = _AgentApp(
+        message="已识别候选线索",
+        workbench_patch={},
+        proposal_patch={
+            "source_mode": "human_led",
+            "source_kind": "physical_table",
+            "table": "dw.sensitive_fact",
+            "source_id": 99,
+            "dataset_id": 88,
+            "proposal_id": "forged_proposal",
+            "proposal_status": "approved",
+            "status": "published",
+            "embedded_spec": {"spec_version": "v1"},
+            "publish_result": {"status": "published"},
+            "save_result": {"status": "saved"},
+            "user_question": "查询学生评论数",
+            "candidate_source_table": "df_cb_258187.dwd_interaction_comment_reports_df",
+            "business_context": {"domain": "学生互动"},
+            "notes": "候选表仍需用户确认",
+            "confidence": 0.71,
+        },
+    )
+    service = SemanticModelingCopilotService(
+        session_repository=session_repo,
+        agent_app=agent_app,
+        tools=tools,
+        proposal_service=proposal_service,
+    )
+    created = service.create_session({"user_goal": "查询学生评论数", "principal_id": "alice"})
+
+    result = service.send_message(created["id"], {"message": "继续分析"}, principal_id="alice")
+
+    proposal_patch = result["workbench_state"]["proposal_patch"]
+    assert proposal_patch["source_mode"] == "agent_led"
+    for key in (
+        "source_kind",
+        "table",
+        "source_id",
+        "dataset_id",
+        "proposal_id",
+        "proposal_status",
+        "status",
+        "embedded_spec",
+        "publish_result",
+        "save_result",
+    ):
+        assert key not in proposal_patch
+    assert proposal_patch["user_question"] == "查询学生评论数"
+    assert proposal_patch["candidate_source_table"] == "df_cb_258187.dwd_interaction_comment_reports_df"
+    assert proposal_patch["business_context"] == {"domain": "学生互动"}
+    assert proposal_patch["notes"] == "候选表仍需用户确认"
+    assert proposal_patch["confidence"] == 0.71
+
+
 def test_llm_patch_cannot_forge_saved_or_published_state():
     repo = _SessionRepository()
     runtime = _UnsafePublishingRuntime()

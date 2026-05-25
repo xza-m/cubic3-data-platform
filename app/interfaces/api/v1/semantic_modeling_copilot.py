@@ -14,6 +14,23 @@ from app.application.agent_inference_runtime.errors import AgentInferenceRuntime
 from app.shared.response import error, success
 
 
+_RUNTIME_SERVICE_UNAVAILABLE_CODES = {
+    "RUNTIME_NOT_CONFIGURED",
+    "RUNTIME_UNAVAILABLE",
+    "RUNTIME_PROVIDER_ERROR",
+    "RUNTIME_ADAPTER_NOT_FOUND",
+    "RUNTIME_CONFIG_INVALID",
+}
+
+
+def _runtime_error_status(code: str) -> int:
+    if code == "RUNTIME_TIMEOUT":
+        return 504
+    if code in _RUNTIME_SERVICE_UNAVAILABLE_CODES:
+        return 503
+    return 422
+
+
 def _require_identity_unless_testing(func: Callable[..., Any]) -> Callable[..., Any]:
     """测试环境允许直接注入 stub，正式环境要求已登录身份。
 
@@ -45,10 +62,9 @@ def _copilot_error(operation: str, exc: Exception):
             details={"code": "COPILOT_FORBIDDEN"},
         )
     if isinstance(exc, AgentInferenceRuntimeError):
-        status = 503 if exc.code in {"RUNTIME_NOT_CONFIGURED", "RUNTIME_UNAVAILABLE"} else 422
         return error(
             str(exc),
-            status=status,
+            status=_runtime_error_status(exc.code),
             details={"code": exc.code, **exc.details},
         )
     if isinstance(exc, LookupError) or (

@@ -1430,7 +1430,12 @@ class SemanticModelingCopilotService:
                 source_mode=str((state.get("proposal_patch") or {}).get("source_mode") or "agent_led"),
             )
         if result.proposal_patch:
-            state["proposal_patch"] = self._deep_merge(state.get("proposal_patch") or {}, result.proposal_patch)
+            sanitized_proposal_patch = self._sanitize_agent_proposal_patch(result.proposal_patch)
+            if sanitized_proposal_patch:
+                state["proposal_patch"] = self._deep_merge(
+                    state.get("proposal_patch") or {},
+                    sanitized_proposal_patch,
+                )
         if result.required_confirmations:
             state["required_confirmations"] = result.required_confirmations
         if result.suggested_actions:
@@ -1460,6 +1465,34 @@ class SemanticModelingCopilotService:
                 advanced_refs.pop(key, None)
             sanitized["advanced_refs"] = advanced_refs
         return sanitized
+
+    @staticmethod
+    def _sanitize_agent_proposal_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
+        """Runtime 只能提供候选线索，不能写入治理归属或服务端状态字段。"""
+        if not isinstance(patch, dict):
+            return {}
+        allowed_keys = {
+            "user_question",
+            "candidate_source_table",
+            "candidate_table",
+            "business_context",
+            "business_subject",
+            "notes",
+            "confidence",
+            "candidate_bindings",
+            "candidate_metrics",
+            "candidate_dimensions",
+            "candidate_objects",
+            "intent_summary",
+            "clarifying_question",
+            "need_source_table",
+            "assumptions",
+        }
+        return {
+            key: deepcopy(value)
+            for key, value in patch.items()
+            if key in allowed_keys
+        }
 
     def _initial_workbench_state(self, user_goal: str, entry_type: str) -> Dict[str, Any]:
         return {
