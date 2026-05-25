@@ -119,6 +119,9 @@ from app.application.conversation.handlers.list_conversations_handler import Lis
 # Infrastructure - LLM Service
 from app.infrastructure.llm.openai_service import OpenAIService
 from app.infrastructure.adapters.llm.openai_compatible import OpenAICompatibleAdapter
+from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import (
+    OpenAICompatibleRuntimeAdapter,
+)
 
 # Application - Agent
 from app.application.agent.services.knowledge_service import KnowledgeService
@@ -343,6 +346,18 @@ class Container(containers.DeclarativeContainer):
         api_base=config.llm.api_base,
         model=config.llm.model,
         timeout=config.llm.timeout
+    )
+
+    # ========================================================================
+    # 基础设施 - Agent 推理 Runtime 适配器
+    # ========================================================================
+
+    agent_openai_runtime_adapter = providers.Singleton(
+        OpenAICompatibleRuntimeAdapter,
+        api_key=config.agent_openai.api_key,
+        api_base=config.agent_openai.api_base,
+        model=config.agent_openai.model,
+        timeout=config.agent_openai.timeout,
     )
     
     # ========================================================================
@@ -1365,6 +1380,12 @@ def init_container(app: Flask) -> Container:
             'api_base': app.config.get('LLM_API_BASE', 'https://api.openai.com/v1'),
             'model': app.config.get('LLM_MODEL', 'gpt-4o-mini'),
             'timeout': app.config.get('LLM_TIMEOUT', 60)
+        },
+        'agent_openai': {
+            'api_key': os.getenv('AGENT_OPENAI_API_KEY', app.config.get('AGENT_OPENAI_API_KEY', '')),
+            'api_base': os.getenv('AGENT_OPENAI_BASE_URL', app.config.get('AGENT_OPENAI_BASE_URL', 'https://api.openai.com/v1')),
+            'model': os.getenv('AGENT_OPENAI_MODEL', app.config.get('AGENT_OPENAI_MODEL', 'gpt-4o-mini')),
+            'timeout': os.getenv('AGENT_OPENAI_TIMEOUT_SECONDS', app.config.get('AGENT_OPENAI_TIMEOUT_SECONDS', 60)),
         },
         'query_execution': {
             'spool_dir': os.getenv('QUERY_EXECUTION_SPOOL_DIR', app.config.get('QUERY_EXECUTION_SPOOL_DIR', 'instance/query_execution_results')),
