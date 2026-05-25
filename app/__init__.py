@@ -162,6 +162,10 @@ def create_app(role: str = "web") -> Flask:
         QueryExecutionJobORM,
         QueryResultObjectORM,
     )
+    from .infrastructure.agent_inference_runtime.models import (  # noqa
+        AgentInferenceRuntimeArtifactORM,
+        AgentInferenceRuntimeRunORM,
+    )
     from .infrastructure.semantic.models import (  # noqa
         DataAssetFieldORM,
         DataAssetLineageORM,
