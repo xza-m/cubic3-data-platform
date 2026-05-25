@@ -1297,14 +1297,30 @@ class SemanticEvidenceBuilder:
         user_message: str,
         request_payload: Dict[str, Any],
     ) -> Dict[str, Any]:
+        conversation_tail = session.conversation[-8:]
         return {
-            "session": session.model_dump(mode="json"),
+            "session": {
+                "id": session.id,
+                "user_goal": session.user_goal,
+                "entry_type": session.entry_type,
+                "state": session.state,
+                "status": session.status,
+                "principal_id": session.principal_id,
+                "current_proposal_id": session.current_proposal_id,
+                "title": session.title,
+            },
             "latest_user_message": user_message,
             "request_payload": dict(request_payload or {}),
             "workbench_state": dict(session.workbench_state or {}),
-            "conversation_tail": list(session.conversation[-8:]),
+            "conversation_tail": [
+                message.model_dump(mode="json") for message in conversation_tail
+            ],
         }
 ```
+
+> 这里不要透传 `session.model_dump()` 全量内容，避免完整 `conversation`、`event_log`
+> 和历史 `tool_traces` 被重复送入 runtime。Evidence Builder 只暴露建模决策需要的
+> session 摘要、当前请求、工作台状态和最近 8 条对话尾部。
 
 - [ ] **Step 4: 新增 SemanticModelingAgentApp**
 
