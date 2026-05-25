@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 from app.domain.agent_inference_runtime.ports import AgentInferenceRuntimePort
@@ -12,7 +13,6 @@ from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeResult,
     RuntimeContextRef,
     RuntimePolicy,
-    RuntimeSelection,
 )
 
 
@@ -83,18 +83,30 @@ def test_service_routes_request_to_fake_runtime_and_returns_trace():
 def test_router_rejects_unknown_runtime_without_silent_fallback():
     adapter = _FakeAdapter()
     router = AgentInferenceRuntimeRouter(adapters=[adapter])
-    request = replace(_request(), preferred_runtime="codex")
+    request = replace(_request(), preferred_runtime="unknown_runtime")
 
-    with pytest.raises(ValueError, match="no runtime adapter"):
+    with pytest.raises(AgentInferenceRuntimeError, match="no runtime adapter") as exc_info:
         router.select(request)
+
+    assert exc_info.value.code == "RUNTIME_ADAPTER_NOT_FOUND"
+    assert exc_info.value.details == {
+        "action": "semantic.modeling.chat",
+        "runtime_name": "unknown_runtime",
+    }
 
 
 def test_router_rejects_missing_default_runtime_without_fallback():
     adapter = _FakeAdapter()
     router = AgentInferenceRuntimeRouter(adapters=[adapter])
 
-    with pytest.raises(ValueError, match="no runtime adapter"):
+    with pytest.raises(AgentInferenceRuntimeError, match="no runtime adapter") as exc_info:
         router.select(_request("semantic.modeling.chat"))
+
+    assert exc_info.value.code == "RUNTIME_ADAPTER_NOT_FOUND"
+    assert exc_info.value.details == {
+        "action": "semantic.modeling.chat",
+        "runtime_name": "openai_compatible",
+    }
 
 
 def test_router_defaults_review_action_to_codex_when_adapter_exists():
@@ -107,3 +119,15 @@ def test_router_defaults_review_action_to_codex_when_adapter_exists():
     selected = router.select(_request("semantic.modeling.review_proposal"))
 
     assert selected.runtime_name == "codex_app_server"
+
+
+def test_router_defaults_preview_action_to_openai_not_codex():
+    codex = _FakeAdapter()
+    codex.runtime_name = "codex_app_server"
+    openai = _FakeAdapter()
+    openai.runtime_name = "openai_compatible"
+    router = AgentInferenceRuntimeRouter(adapters=[codex, openai])
+
+    selected = router.select(_request("semantic.modeling.preview_candidate"))
+
+    assert selected.runtime_name == "openai_compatible"
