@@ -30,6 +30,7 @@ last_reviewed: 2026-05-25
 | `cd frontend && npx playwright test --config tests/e2e-v2/playwright.config.ts smoke/routes-smoke.spec.ts` | passed | `8 passed`，包含新增 R07/R08 配置中心创建路由回归。 |
 | `docker compose build nginx && docker compose up -d nginx` | passed | 生产前端重新构建并替换本地 nginx 容器。 |
 | `curl -i http://localhost:81/api/v1/health` | passed | 返回 HTTP 200，`data.status=ok`。 |
+| `make verify` | passed | 2026-05-25 追加仓库级四层门禁：lint / typecheck / unit / integration / smoke 均通过。首次执行中前端单测出现资源抖动型超时，立即复跑 `npm run test:unit` 通过，随后完整 `make verify` 复跑通过。 |
 
 ## 真实浏览器巡检
 
