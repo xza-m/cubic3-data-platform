@@ -1,4 +1,5 @@
 import pytest
+import jwt
 from flask import Flask
 
 from app.extensions import db
@@ -259,6 +260,33 @@ def test_modeling_copilot_create_session_uses_authenticated_principal_over_body(
     assert resp.status_code == 200
     assert service.calls[0][0] == "create_session"
     assert service.calls[0][1]["principal_id"] == "alice"
+
+
+def test_modeling_copilot_rejects_signed_token_without_principal_over_body_principal():
+    app = Flask(__name__)
+    app.config.update(TESTING=False)
+    service = _CopilotStub()
+    app.register_blueprint(create_semantic_modeling_copilot_blueprint(service))
+    register_error_handlers(app)
+    token = jwt.encode(
+        {"user_name": "No Principal", "roles": ["viewer"]},
+        "your-secret-key",
+        algorithm="HS256",
+    )
+
+    resp = app.test_client().post(
+        "/api/v1/semantic/modeling-copilot/sessions",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "user_goal": "Data Agent 未命中学生评论业务语义",
+            "entry_type": "semantic_gap",
+            "principal_id": "victim",
+        },
+    )
+
+    assert resp.status_code == 401
+    assert resp.get_json()["error_code"] == "MISSING_PRINCIPAL"
+    assert service.calls == []
 
 
 def test_modeling_copilot_requires_login_outside_testing():

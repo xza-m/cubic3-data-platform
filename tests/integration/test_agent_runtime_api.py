@@ -35,6 +35,24 @@ class _Repo:
         self.get_run_ids.append(run_id)
         if run_id == "run_object":
             return _RunObject()
+        if run_id == "run_unowned":
+            return AgentInferenceRuntimeRun(
+                run_id="run_unowned",
+                app_id="semantic_modeling",
+                action="semantic.modeling.chat",
+                runtime_name="openai_compatible",
+                status="succeeded",
+                runtime_context_ref=RuntimeContextRef(
+                    project_id="cubic3-data-platform",
+                    session_id="s_unowned",
+                    thread_id="t_unowned",
+                    turn_id="turn_unowned",
+                ),
+                principal_id=None,
+                provider_ref={"provider_run_id": "provider_unowned"},
+                usage={"total_tokens": 1},
+                error=None,
+            )
         if run_id != "run_1":
             return None
         return AgentInferenceRuntimeRun(
@@ -239,6 +257,22 @@ def test_agent_runtime_api_accepts_authenticated_principal_outside_testing():
 
     assert resp.status_code == 200
     assert resp.get_json()["data"]["principal_id"] == "alice"
+
+
+def test_agent_runtime_api_rejects_signed_token_without_principal_for_unowned_run():
+    token = jwt.encode(
+        {"user_name": "No Principal", "roles": ["viewer"]},
+        "test-secret",
+        algorithm="HS256",
+    )
+
+    resp = _client(lambda: _Repo(), principal_id=None, testing=False).get(
+        "/api/v1/agent-runtime/runs/run_unowned",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 401
+    assert resp.get_json()["error_code"] == "MISSING_PRINCIPAL"
 
 
 def test_agent_runtime_api_uses_repository_provider_per_request():

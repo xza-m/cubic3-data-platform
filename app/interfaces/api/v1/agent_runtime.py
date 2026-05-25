@@ -107,6 +107,8 @@ def _not_found():
 
 
 def _is_owned_by_current_principal(run: Any, principal_id: str | None) -> bool:
+    if not principal_id:
+        return False
     return _value(run, "principal_id") == principal_id
 
 

@@ -228,6 +228,11 @@ def require_identity(func):
             g.principal_id = "internal:test:test_admin"
         else:
             g.principal_id = getattr(g, "principal_id", None) or user_id
+        if not getattr(g, "principal_id", None):
+            raise AuthenticationError(
+                message="Missing authenticated principal",
+                code="MISSING_PRINCIPAL",
+            )
         return func(*args, **kwargs)
 
     return wrapper

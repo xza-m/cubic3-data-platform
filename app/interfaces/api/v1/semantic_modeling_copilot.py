@@ -125,7 +125,7 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
         try:
             payload = _body()
             principal_id = _principal_id()
-            if principal_id:
+            if principal_id or not current_app.config.get("TESTING"):
                 payload["principal_id"] = principal_id
             return success(data=copilot_service.create_session(payload))
         except Exception as exc:
