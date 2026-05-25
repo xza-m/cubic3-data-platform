@@ -1,3 +1,5 @@
+import pytest
+import jwt
 from flask import Flask
 
 from app.extensions import db
@@ -260,6 +262,33 @@ def test_modeling_copilot_create_session_uses_authenticated_principal_over_body(
     assert service.calls[0][1]["principal_id"] == "alice"
 
 
+def test_modeling_copilot_rejects_signed_token_without_principal_over_body_principal():
+    app = Flask(__name__)
+    app.config.update(TESTING=False)
+    service = _CopilotStub()
+    app.register_blueprint(create_semantic_modeling_copilot_blueprint(service))
+    register_error_handlers(app)
+    token = jwt.encode(
+        {"user_name": "No Principal", "roles": ["viewer"]},
+        "your-secret-key",
+        algorithm="HS256",
+    )
+
+    resp = app.test_client().post(
+        "/api/v1/semantic/modeling-copilot/sessions",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "user_goal": "Data Agent 未命中学生评论业务语义",
+            "entry_type": "semantic_gap",
+            "principal_id": "victim",
+        },
+    )
+
+    assert resp.status_code == 401
+    assert resp.get_json()["error_code"] == "MISSING_PRINCIPAL"
+    assert service.calls == []
+
+
 def test_modeling_copilot_requires_login_outside_testing():
     app = Flask(__name__)
     app.config.update(TESTING=False)
@@ -349,32 +378,48 @@ def test_modeling_copilot_review_endpoint_returns_artifact_view():
     assert service.calls[-1][0] == "get_review"
 
 
-def test_modeling_copilot_send_message_returns_llm_required_when_unconfigured():
-    """LLM 未配置时 send_message 返回 503 + LLM_REQUIRED 业务错误码，
-    前端可据此渲染「需配置 LLM」banner 而不是把异常当通用 500 显示。"""
+@pytest.mark.parametrize(
+    ("runtime_code", "expected_status"),
+    [
+        ("RUNTIME_NOT_CONFIGURED", 503),
+        ("RUNTIME_UNAVAILABLE", 503),
+        ("RUNTIME_PROVIDER_ERROR", 503),
+        ("RUNTIME_ADAPTER_NOT_FOUND", 503),
+        ("RUNTIME_CONFIG_INVALID", 503),
+        ("RUNTIME_TIMEOUT", 504),
+        ("RUNTIME_INVALID_OUTPUT", 422),
+    ],
+)
+def test_modeling_copilot_send_message_maps_agent_runtime_errors(runtime_code, expected_status):
+    """常见平台 runtime 错误码映射为明确 HTTP 状态。"""
     from flask import Flask
-    from app.application.semantic.modeling_copilot_runtime import LLMRequiredError
+    from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 
-    class _LLMRequiredStub:
+    class _RuntimeErrorStub:
         def create_session(self, payload):
             return {"id": "s_x", "user_goal": payload.get("user_goal")}
 
         def send_message(self, session_id, payload, *, principal_id=None):
-            raise LLMRequiredError("未配置 LLM_API_KEY", reason="missing_api_key")
+            raise AgentInferenceRuntimeError(
+                f"runtime failed: {runtime_code}",
+                code=runtime_code,
+                details={"runtime_name": "openai_compatible", "field": "message"},
+            )
 
     app = Flask(__name__)
     app.config.update(TESTING=True)
-    app.register_blueprint(create_semantic_modeling_copilot_blueprint(_LLMRequiredStub()))
+    app.register_blueprint(create_semantic_modeling_copilot_blueprint(_RuntimeErrorStub()))
     client = app.test_client()
 
     resp = client.post(
         "/api/v1/semantic/modeling-copilot/sessions/s_x/messages",
         json={"message": "hi"},
     )
-    assert resp.status_code == 503
+    assert resp.status_code == expected_status
     body = resp.get_json()
-    assert body["details"]["code"] == "LLM_REQUIRED"
-    assert body["details"]["reason"] == "missing_api_key"
+    assert body["details"]["code"] == runtime_code
+    assert body["details"]["runtime_name"] == "openai_compatible"
+    assert body["details"]["field"] == "message"
 
 
 def test_modeling_copilot_authenticated_session_paths_pass_current_principal():

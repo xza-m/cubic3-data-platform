@@ -44,6 +44,7 @@ from .interfaces.api.v1.semantic_router import create_semantic_router_blueprint
 from .interfaces.api.v1.execution_compiler import create_execution_compiler_blueprint
 from .interfaces.api.v1.governance import create_governance_blueprint
 from .interfaces.api.v1.agent import create_agent_blueprint
+from .interfaces.api.v1.agent_runtime import create_agent_runtime_blueprint
 from .interfaces.api.v1.query_execution import create_query_execution_blueprint
 from .interfaces.api.v1.scheduled_queries import bp as scheduled_queries_v1_bp
 from .interfaces.api.v1.access import bp as access_v1_bp
@@ -162,6 +163,10 @@ def create_app(role: str = "web") -> Flask:
         QueryExecutionJobORM,
         QueryResultObjectORM,
     )
+    from .infrastructure.agent_inference_runtime.models import (  # noqa
+        AgentInferenceRuntimeArtifactORM,
+        AgentInferenceRuntimeRunORM,
+    )
     from .infrastructure.semantic.models import (  # noqa
         DataAssetFieldORM,
         DataAssetLineageORM,
@@ -253,6 +258,9 @@ def create_app(role: str = "web") -> Flask:
         app.register_blueprint(create_agent_blueprint(
             container.agent_plan_handler(),
             container.agent_semantic_execute_service(),
+        ))
+        app.register_blueprint(create_agent_runtime_blueprint(
+            container.agent_inference_runtime_repository,
         ))
         app.register_blueprint(create_query_execution_blueprint(
             container.query_submission_service(),

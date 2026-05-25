@@ -10,8 +10,25 @@ try:
     from app.interfaces.api.middleware.auth import require_identity  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover - 兼容尚未迁移到 access-principal-identity 的运行时
     from app.interfaces.api.middleware.auth import require_auth as require_identity  # type: ignore[no-redef]
-from app.application.semantic.modeling_copilot_runtime import LLMRequiredError
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.shared.response import error, success
+
+
+_RUNTIME_SERVICE_UNAVAILABLE_CODES = {
+    "RUNTIME_NOT_CONFIGURED",
+    "RUNTIME_UNAVAILABLE",
+    "RUNTIME_PROVIDER_ERROR",
+    "RUNTIME_ADAPTER_NOT_FOUND",
+    "RUNTIME_CONFIG_INVALID",
+}
+
+
+def _runtime_error_status(code: str) -> int:
+    if code == "RUNTIME_TIMEOUT":
+        return 504
+    if code in _RUNTIME_SERVICE_UNAVAILABLE_CODES:
+        return 503
+    return 422
 
 
 def _require_identity_unless_testing(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -44,11 +61,11 @@ def _copilot_error(operation: str, exc: Exception):
             status=403,
             details={"code": "COPILOT_FORBIDDEN"},
         )
-    if isinstance(exc, LLMRequiredError):
+    if isinstance(exc, AgentInferenceRuntimeError):
         return error(
             str(exc),
-            status=503,
-            details={"code": "LLM_REQUIRED", "reason": exc.reason},
+            status=_runtime_error_status(exc.code),
+            details={"code": exc.code, **exc.details},
         )
     if isinstance(exc, LookupError) or (
         isinstance(exc, ValueError) and "not found" in str(exc).lower()
@@ -108,7 +125,7 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
         try:
             payload = _body()
             principal_id = _principal_id()
-            if principal_id:
+            if principal_id or not current_app.config.get("TESTING"):
                 payload["principal_id"] = principal_id
             return success(data=copilot_service.create_session(payload))
         except Exception as exc:

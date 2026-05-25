@@ -2,11 +2,11 @@ import json
 from copy import deepcopy
 
 from app.application.semantic.modeling_copilot_runtime import (
-    AgentRunResult,
     LLMRequiredError,
     OpenAICompatibleLLMAdapter,
 )
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
+from app.application.semantic.semantic_modeling_agent_app import SemanticModelingChatOutput
 from app.domain.semantic.modeling_agent_session import AgentSession
 
 
@@ -51,9 +51,9 @@ class _Runtime:
     def __init__(self):
         self.calls = []
 
-    def run(self, *, session, user_message, tools, context=None):
-        self.calls.append((session.id, user_message, context))
-        return AgentRunResult(
+    def run_chat(self, *, session, user_message, request_payload):
+        self.calls.append((session.id, user_message, {"request_payload": request_payload}))
+        return SemanticModelingChatOutput(
             message="已找到候选语义，请确认学校维度和时间口径。",
             workbench_state_patch={
                 "semantic_canvas": {
@@ -111,13 +111,38 @@ class _Runtime:
         )
 
 
+class _AgentApp:
+    def __init__(self, *, message, workbench_patch, proposal_patch):
+        self.message = message
+        self.workbench_patch = workbench_patch
+        self.proposal_patch = proposal_patch
+        self.calls = []
+
+    def run_chat(self, *, session, user_message, request_payload):
+        from app.application.semantic.semantic_modeling_agent_app import SemanticModelingChatOutput
+
+        self.calls.append({
+            "session_id": session.id,
+            "user_message": user_message,
+            "request_payload": request_payload,
+        })
+        return SemanticModelingChatOutput(
+            message=self.message,
+            workbench_state_patch=self.workbench_patch,
+            proposal_patch=self.proposal_patch,
+            required_confirmations=[],
+            suggested_actions=[],
+            tool_traces=[{"event_type": "run.succeeded", "seq": 1}],
+        )
+
+
 class _UnsafePublishingRuntime:
     def __init__(self):
         self.calls = []
 
-    def run(self, *, session, user_message, tools, context=None):
-        self.calls.append((session.id, user_message, context))
-        return AgentRunResult(
+    def run_chat(self, *, session, user_message, request_payload):
+        self.calls.append((session.id, user_message, {"request_payload": request_payload}))
+        return SemanticModelingChatOutput(
             message="我已经发布好了。",
             workbench_state_patch={
                 "raw_spec": {
@@ -280,7 +305,7 @@ def _service(proposal_service=None):
     proposal_service = proposal_service or _ProposalService()
     return SemanticModelingCopilotService(
         session_repository=repo,
-        runtime=runtime,
+        agent_app=runtime,
         tools=tools,
         proposal_service=proposal_service,
     ), repo, runtime, proposal_service
@@ -308,6 +333,174 @@ def test_copilot_session_turn_updates_workbench_without_publishing():
     assert updated.get("current_proposal_id") is None
 
 
+def test_copilot_service_uses_semantic_agent_app_instead_of_private_runtime():
+    session_repo = _SessionRepository()
+    proposal_service = _ProposalService()
+    tools = _Tools()
+    agent_app = _AgentApp(
+        message="平台 runtime 已响应",
+        workbench_patch={"agent_message": "平台 runtime 已响应"},
+        proposal_patch={"source_mode": "agent_led"},
+    )
+    service = SemanticModelingCopilotService(
+        session_repository=session_repo,
+        agent_app=agent_app,
+        tools=tools,
+        proposal_service=proposal_service,
+    )
+    created = service.create_session({"user_goal": "查询学生评论数", "principal_id": "alice"})
+
+    result = service.send_message(created["id"], {"message": "继续分析"}, principal_id="alice")
+
+    assert result["workbench_state"]["agent_message"] == "平台 runtime 已响应"
+    assert agent_app.calls[0]["session_id"] == created["id"]
+
+
+def test_copilot_service_filters_runtime_proposal_patch_governance_fields():
+    session_repo = _SessionRepository()
+    proposal_service = _ProposalService()
+    tools = _Tools()
+    agent_app = _AgentApp(
+        message="已识别候选线索",
+        workbench_patch={},
+        proposal_patch={
+            "source_mode": "human_led",
+            "source_kind": "physical_table",
+            "table": "dw.sensitive_fact",
+            "source_id": 99,
+            "dataset_id": 88,
+            "proposal_id": "forged_proposal",
+            "proposal_status": "approved",
+            "status": "published",
+            "embedded_spec": {"spec_version": "v1"},
+            "publish_result": {"status": "published"},
+            "save_result": {"status": "saved"},
+            "user_question": "查询学生评论数",
+            "candidate_source_table": "df_cb_258187.dwd_interaction_comment_reports_df",
+            "business_context": {"domain": "学生互动"},
+            "notes": "候选表仍需用户确认",
+            "confidence": 0.71,
+        },
+    )
+    service = SemanticModelingCopilotService(
+        session_repository=session_repo,
+        agent_app=agent_app,
+        tools=tools,
+        proposal_service=proposal_service,
+    )
+    created = service.create_session({"user_goal": "查询学生评论数", "principal_id": "alice"})
+
+    result = service.send_message(created["id"], {"message": "继续分析"}, principal_id="alice")
+
+    proposal_patch = result["workbench_state"]["proposal_patch"]
+    assert proposal_patch["source_mode"] == "agent_led"
+    for key in (
+        "source_kind",
+        "table",
+        "source_id",
+        "dataset_id",
+        "proposal_id",
+        "proposal_status",
+        "status",
+        "embedded_spec",
+        "publish_result",
+        "save_result",
+    ):
+        assert key not in proposal_patch
+    assert proposal_patch["user_question"] == "查询学生评论数"
+    assert proposal_patch["candidate_source_table"] == "df_cb_258187.dwd_interaction_comment_reports_df"
+    assert proposal_patch["business_context"] == {"domain": "学生互动"}
+    assert proposal_patch["notes"] == "候选表仍需用户确认"
+    assert proposal_patch["confidence"] == 0.71
+
+
+def test_copilot_service_filters_runtime_workbench_patch_governance_fields():
+    session_repo = _SessionRepository()
+    proposal_service = _ProposalService()
+    tools = _Tools()
+    agent_app = _AgentApp(
+        message="已识别候选线索",
+        workbench_patch={
+            "agent_message": "模型声称已通过发布门禁",
+            "candidate_cards": [{"id": "candidate_source", "title": "候选来源"}],
+            "evidence_summary": [{"id": "draft_evidence", "summary": "候选证据"}],
+            "validation_summary": [{"severity": "info", "message": "草稿校验提示"}],
+            "readiness": {
+                "canonical_ready": True,
+                "exploratory_ready": True,
+                "reasons": ["ready_to_publish"],
+            },
+            "required_confirmations": [
+                {"id": "forged_confirmation", "title": "伪造确认项", "blocking": True}
+            ],
+            "sandbox_preview": {"status": "passed", "pollutes_official_route": True},
+            "source_evidence": {"source_table": {"name": "forged.table"}, "fields": []},
+            "publish_result": {"status": "published", "proposal_id": "forged_proposal"},
+            "post_publish_validation": {"status": "passed"},
+            "publish_gate": {"state": "published"},
+            "save_result": {"status": "saved", "proposal_id": "forged_proposal"},
+            "proposal_summary": {"id": "forged_proposal", "status": "published"},
+            "proposal_patch": {
+                "proposal_id": "forged_proposal",
+                "status": "published",
+                "candidate_source_table": "df_cb_258187.dwd_interaction_comment_reports_df",
+                "need_source_table": True,
+            },
+            "advanced_refs": {
+                "proposal_id": "forged_proposal",
+                "proposal_status": "published",
+                "published_asset_id": "asset_forged",
+                "spec_available": True,
+                "trace_available": True,
+                "candidate_source_table": "df_cb_258187.dwd_interaction_comment_reports_df",
+                "need_source_table": True,
+            },
+        },
+        proposal_patch={},
+    )
+    service = SemanticModelingCopilotService(
+        session_repository=session_repo,
+        agent_app=agent_app,
+        tools=tools,
+        proposal_service=proposal_service,
+    )
+    created = service.create_session({"user_goal": "查询学生评论数", "principal_id": "alice"})
+
+    result = service.send_message(created["id"], {"message": "继续分析"}, principal_id="alice")
+    state = result["workbench_state"]
+
+    assert result["state"] == "analyzing"
+    assert state["candidate_cards"][0]["id"] == "candidate_source"
+    assert state["evidence_summary"][0]["id"] == "draft_evidence"
+    assert state["validation_summary"][0]["message"] == "草稿校验提示"
+    assert state["required_confirmations"] == []
+    assert state["readiness"]["canonical_ready"] is False
+    assert "ready_to_publish" not in state["readiness"]["reasons"]
+    for key in (
+        "sandbox_preview",
+        "source_evidence",
+        "publish_result",
+        "post_publish_validation",
+        "publish_gate",
+        "save_result",
+        "proposal_summary",
+    ):
+        assert key not in state or state[key] in ({}, None)
+    advanced_refs = state["advanced_refs"]
+    assert advanced_refs["proposal_id"] is None
+    assert advanced_refs["spec_available"] is False
+    assert advanced_refs["trace_available"] is False
+    assert "proposal_status" not in advanced_refs
+    assert "published_asset_id" not in advanced_refs
+    assert advanced_refs["candidate_source_table"] == "df_cb_258187.dwd_interaction_comment_reports_df"
+    assert advanced_refs["need_source_table"] is True
+    assert state["proposal_patch"]["candidate_source_table"] == "df_cb_258187.dwd_interaction_comment_reports_df"
+    assert state["proposal_patch"]["need_source_table"] is True
+    assert "proposal_id" not in state["proposal_patch"]
+    assert "status" not in state["proposal_patch"]
+    assert proposal_service.calls == []
+
+
 def test_llm_patch_cannot_forge_saved_or_published_state():
     repo = _SessionRepository()
     runtime = _UnsafePublishingRuntime()
@@ -315,7 +508,7 @@ def test_llm_patch_cannot_forge_saved_or_published_state():
     proposals = _ProposalService()
     service = SemanticModelingCopilotService(
         session_repository=repo,
-        runtime=runtime,
+        agent_app=runtime,
         tools=tools,
         proposal_service=proposals,
     )
@@ -1150,7 +1343,7 @@ def test_student_comment_source_confirmation_repairs_latest_answer_view_regressi
     proposals = _ProposalService()
     service = SemanticModelingCopilotService(
         session_repository=repo,
-        runtime=runtime,
+        agent_app=runtime,
         tools=tools,
         proposal_service=proposals,
     )

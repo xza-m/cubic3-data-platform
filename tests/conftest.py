@@ -50,6 +50,10 @@ def _register_all_models():
         QueryExecutionEventORM,
         QueryResultObjectORM,
     )
+    from app.infrastructure.agent_inference_runtime.models import (  # noqa
+        AgentInferenceRuntimeArtifactORM,
+        AgentInferenceRuntimeRunORM,
+    )
     from app.infrastructure.semantic.models import (  # noqa
         DataAssetFieldORM,
         DataAssetLineageORM,

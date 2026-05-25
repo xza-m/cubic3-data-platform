@@ -43,6 +43,7 @@ SEMANTIC_PROD_LIVE ?= 0
 	test-semantic-prod-registry \
 	test-semantic-postgres-concurrency \
 	test-agent-runtime \
+	test-platform-agent-runtime \
 	test-query-execution \
 	preflight-agent-runtime \
 	live-agent-runtime \
@@ -108,6 +109,7 @@ help:
 	@printf '  %-26s %s\n' 'make test-semantic-prod-registry' '语义生产化 SQL Registry / Publish Gate / Runtime Snapshot 单元与集成测试'
 	@printf '  %-26s %s\n' 'make test-semantic-postgres-concurrency' '真实 PostgreSQL 发布并发与 active snapshot 约束测试（设置 DATABASE_URL 后执行）'
 	@printf '  %-26s %s\n' 'make test-agent-runtime' 'Agent-first Runtime official 链路测试'
+	@printf '  %-26s %s\n' 'make test-platform-agent-runtime' '平台 Agent 推理 Runtime 适配器、仓储、API 与 Codex opt-in smoke 测试'
 	@printf '  %-26s %s\n' 'make test-query-execution' '统一查询执行面最小链路测试'
 	@printf '  %-26s %s\n' 'make preflight-agent-runtime' '真实环境 Agent Runtime 语义资产预检（不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make live-agent-runtime' '真实 MaxCompute 执行验收（opt-in，不并入默认 verify）'
@@ -343,6 +345,15 @@ test-agent-runtime:
 		tests/unit/application/agent/test_runtime_preflight_service.py \
 		tests/unit/application/test_agent_plan_handler.py::test_agent_plan_handler_orchestrates_semantic_plan_and_ticket_preview \
 		tests/integration/test_agent_semantic_api.py::test_agent_semantic_plan_api_returns_preview_only_ticket
+
+test-platform-agent-runtime:
+	@printf '%s\n' '[layer3][agent-runtime] 运行平台 Agent 推理 Runtime 测试'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
+		tests/unit/application/agent_inference_runtime \
+		tests/unit/infrastructure/agent_inference_runtime \
+		tests/unit/application/semantic/test_semantic_modeling_agent_app.py \
+		tests/integration/test_agent_runtime_api.py \
+		tests/integration/agent_inference_runtime/test_codex_live_smoke.py
 
 test-query-execution:
 	@printf '%s\n' '[layer3][query-execution] 运行统一查询执行面最小链路测试'

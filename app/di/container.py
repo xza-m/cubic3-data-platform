@@ -37,6 +37,24 @@ def _create_engine_smart(database_url: str, **pg_kwargs):
     return create_engine(database_url, **pg_kwargs)
 
 
+def _parse_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_positive_int(value, *, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed <= 0:
+        return default
+    return parsed
+
+
 def _modeling_session_repository(store: str, session, sessions_dir: str):
     """按环境选择 Copilot 会话仓储。
 
@@ -119,6 +137,14 @@ from app.application.conversation.handlers.list_conversations_handler import Lis
 # Infrastructure - LLM Service
 from app.infrastructure.llm.openai_service import OpenAIService
 from app.infrastructure.adapters.llm.openai_compatible import OpenAICompatibleAdapter
+from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import (
+    OpenAICompatibleRuntimeAdapter,
+)
+from app.infrastructure.agent_inference_runtime.sql_repository import (
+    SqlAgentInferenceRuntimeRepository,
+)
+from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
+from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 
 # Application - Agent
 from app.application.agent.services.knowledge_service import KnowledgeService
@@ -137,7 +163,6 @@ from app.application.semantic.data_asset_service import DataAssetService
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
 from app.application.semantic.field_candidates import FieldCandidateService
-from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_proposal_service import ModelingProposalService
@@ -147,6 +172,8 @@ from app.application.semantic.runtime_snapshot_service import RuntimeSnapshotSer
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
 from app.application.semantic.semantic_query_service import SemanticQueryService
+from app.application.semantic.semantic_evidence_builder import SemanticEvidenceBuilder
+from app.application.semantic.semantic_modeling_agent_app import SemanticModelingAgentApp
 from app.application.semantic.semantic_release_service import SemanticReleaseService
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
 from app.application.semantic.semantic_service import SemanticLayerService
@@ -343,6 +370,33 @@ class Container(containers.DeclarativeContainer):
         api_base=config.llm.api_base,
         model=config.llm.model,
         timeout=config.llm.timeout
+    )
+
+    # ========================================================================
+    # 基础设施 - Agent 推理 Runtime 适配器
+    # ========================================================================
+
+    agent_openai_runtime_adapter = providers.Singleton(
+        OpenAICompatibleRuntimeAdapter,
+        api_key=config.agent_openai.api_key,
+        api_base=config.agent_openai.api_base,
+        model=config.agent_openai.model,
+        timeout=config.agent_openai.timeout,
+    )
+
+    agent_inference_runtime_router = providers.Singleton(
+        AgentInferenceRuntimeRouter,
+        adapters=providers.List(agent_openai_runtime_adapter),
+    )
+
+    agent_inference_runtime_service = providers.Singleton(
+        AgentInferenceRuntimeService,
+        router=agent_inference_runtime_router,
+    )
+
+    agent_inference_runtime_repository = providers.Factory(
+        SqlAgentInferenceRuntimeRepository,
+        session=db_session,
     )
     
     # ========================================================================
@@ -840,16 +894,18 @@ class Container(containers.DeclarativeContainer):
         release_service=semantic_release_service,
     )
 
-    semantic_modeling_copilot_runtime = providers.Singleton(
-        OpenAIAgentsSdkAdapter,
-        enable_sdk=providers.Callable(lambda api_key: bool(api_key), config.llm.api_key),
-        model=config.llm.model,
+    semantic_evidence_builder = providers.Singleton(SemanticEvidenceBuilder)
+
+    semantic_modeling_agent_app = providers.Singleton(
+        SemanticModelingAgentApp,
+        runtime=agent_inference_runtime_service,
+        evidence_builder=semantic_evidence_builder,
     )
 
     semantic_modeling_copilot = providers.Singleton(
         SemanticModelingCopilotService,
         session_repository=semantic_modeling_agent_session_repository,
-        runtime=semantic_modeling_copilot_runtime,
+        agent_app=semantic_modeling_agent_app,
         tools=semantic_modeling_copilot_tools,
         proposal_service=semantic_modeling_proposal_service,
     )
@@ -1365,6 +1421,28 @@ def init_container(app: Flask) -> Container:
             'api_base': app.config.get('LLM_API_BASE', 'https://api.openai.com/v1'),
             'model': app.config.get('LLM_MODEL', 'gpt-4o-mini'),
             'timeout': app.config.get('LLM_TIMEOUT', 60)
+        },
+        'agent_openai': {
+            'api_key': os.getenv('AGENT_OPENAI_API_KEY', app.config.get('AGENT_OPENAI_API_KEY', '')),
+            'api_base': os.getenv('AGENT_OPENAI_BASE_URL', app.config.get('AGENT_OPENAI_BASE_URL', 'https://api.openai.com/v1')),
+            'model': os.getenv('AGENT_OPENAI_MODEL', app.config.get('AGENT_OPENAI_MODEL', 'gpt-4o-mini')),
+            'timeout': os.getenv('AGENT_OPENAI_TIMEOUT_SECONDS', app.config.get('AGENT_OPENAI_TIMEOUT_SECONDS', 60)),
+        },
+        'agent_codex': {
+            'enabled': _parse_bool(os.getenv('AGENT_CODEX_ENABLED', app.config.get('AGENT_CODEX_ENABLED', False))),
+            'project_id': os.getenv('AGENT_CODEX_PROJECT_ID', app.config.get('AGENT_CODEX_PROJECT_ID', 'cubic3-data-platform')),
+            'project_root': os.getenv('AGENT_CODEX_PROJECT_ROOT', app.config.get('AGENT_CODEX_PROJECT_ROOT', os.getcwd())),
+            'runtime_root': os.getenv('AGENT_CODEX_RUNTIME_ROOT', app.config.get('AGENT_CODEX_RUNTIME_ROOT', '.cubic3/agent-codex')),
+            'transport': os.getenv('AGENT_CODEX_TRANSPORT', app.config.get('AGENT_CODEX_TRANSPORT', 'unix_socket')),
+            'endpoint': os.getenv('AGENT_CODEX_ENDPOINT', app.config.get('AGENT_CODEX_ENDPOINT', '')),
+            'unix_socket': os.getenv('AGENT_CODEX_UNIX_SOCKET', app.config.get('AGENT_CODEX_UNIX_SOCKET', '')),
+            'max_concurrency': _parse_positive_int(
+                os.getenv(
+                    'AGENT_CODEX_MAX_CONCURRENCY',
+                    app.config.get('AGENT_CODEX_MAX_CONCURRENCY', 2),
+                ),
+                default=2,
+            ),
         },
         'query_execution': {
             'spool_dir': os.getenv('QUERY_EXECUTION_SPOOL_DIR', app.config.get('QUERY_EXECUTION_SPOOL_DIR', 'instance/query_execution_results')),

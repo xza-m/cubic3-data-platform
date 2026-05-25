@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from app.application.semantic.modeling_copilot_runtime import AgentRunResult, LLMRequiredError, ModelingAgentRuntimePort
+from app.application.semantic.semantic_modeling_agent_app import SemanticModelingChatOutput
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_spec_repair import has_reviewable_spec, repair_modeling_spec
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
@@ -22,13 +22,13 @@ class SemanticModelingCopilotService:
         self,
         *,
         session_repository: IModelingAgentSessionRepository,
-        runtime: ModelingAgentRuntimePort,
+        agent_app: Any,
         tools: ModelingToolRegistry,
         proposal_service: Any,
         source_scoring_config: Optional[SourceCandidateScoringConfig] = None,
     ):
         self._sessions = session_repository
-        self._runtime = runtime
+        self._agent_app = agent_app
         self._tools = tools
         self._proposal_service = proposal_service
         self._source_scoring_config = source_scoring_config or SourceCandidateScoringConfig.default()
@@ -473,11 +473,10 @@ class SemanticModelingCopilotService:
             session.add_message(role="assistant", content=source_recall_reply)
             self._save_session(session)
             return self._dump(session)
-        result = self._runtime.run(
+        result = self._agent_app.run_chat(
             session=session,
             user_message=message,
-            tools=self._tools,
-            context={"request_payload": payload},
+            request_payload=payload,
         )
         self._apply_agent_result(session, result)
         session.add_message(role="assistant", content=result.message)
@@ -1100,6 +1099,7 @@ class SemanticModelingCopilotService:
                 "source_candidate_confirmation_required",
                 "binding_not_approved",
                 "need_source_table",
+                "session_created",
             }
         ] or ["ready_to_save"]
         state["readiness"] = readiness
@@ -1119,7 +1119,7 @@ class SemanticModelingCopilotService:
         readiness["exploratory_ready"] = False
         reasons = [
             str(item) for item in (readiness.get("reasons") or [])
-            if item != "ready_to_save"
+            if item not in {"ready_to_save", "session_created"}
         ]
         if "spec_not_generated" not in reasons:
             reasons.append("spec_not_generated")
@@ -1421,7 +1421,7 @@ class SemanticModelingCopilotService:
                 return deepcopy(candidate)
         return {}
 
-    def _apply_agent_result(self, session: AgentSession, result: AgentRunResult) -> None:
+    def _apply_agent_result(self, session: AgentSession, result: SemanticModelingChatOutput) -> None:
         state = deepcopy(session.workbench_state)
         state = self._deep_merge(state, self._sanitize_agent_workbench_patch(result.workbench_state_patch))
         if has_reviewable_spec(state.get("raw_spec")):
@@ -1431,12 +1431,18 @@ class SemanticModelingCopilotService:
                 source_mode=str((state.get("proposal_patch") or {}).get("source_mode") or "agent_led"),
             )
         if result.proposal_patch:
-            state["proposal_patch"] = self._deep_merge(state.get("proposal_patch") or {}, result.proposal_patch)
+            sanitized_proposal_patch = self._sanitize_agent_proposal_patch(result.proposal_patch)
+            if sanitized_proposal_patch:
+                state["proposal_patch"] = self._deep_merge(
+                    state.get("proposal_patch") or {},
+                    sanitized_proposal_patch,
+                )
         if result.required_confirmations:
             state["required_confirmations"] = result.required_confirmations
         if result.suggested_actions:
             state["suggested_actions"] = result.suggested_actions
         state["agent_message"] = result.message
+        self._reconcile_agent_workbench_state(session, state)
         session.workbench_state = state
         session.tool_traces.extend(result.tool_traces)
 
@@ -1445,22 +1451,109 @@ class SemanticModelingCopilotService:
         """LLM 只能写草稿态工作台，不能伪造服务端治理动作结果。"""
         if not isinstance(patch, dict):
             return {}
-        sanitized = deepcopy(patch)
-        for key in (
-            "publish_result",
-            "post_publish_validation",
-            "publish_gate",
-            "save_result",
-            "proposal_summary",
-        ):
-            sanitized.pop(key, None)
+        allowed_keys = {
+            "agent_message",
+            "semantic_canvas",
+            "candidate_cards",
+            "source_candidates",
+            "evidence_summary",
+            "validation_summary",
+            "suggested_actions",
+            "raw_spec",
+            "proposal_patch",
+            "advanced_refs",
+        }
+        sanitized = {
+            key: deepcopy(value)
+            for key, value in patch.items()
+            if key in allowed_keys
+        }
+        proposal_patch = sanitized.get("proposal_patch")
+        if isinstance(proposal_patch, dict):
+            proposal_patch = SemanticModelingCopilotService._sanitize_agent_proposal_patch(proposal_patch)
+            if proposal_patch:
+                sanitized["proposal_patch"] = proposal_patch
+            else:
+                sanitized.pop("proposal_patch", None)
+        else:
+            sanitized.pop("proposal_patch", None)
         advanced_refs = sanitized.get("advanced_refs")
         if isinstance(advanced_refs, dict):
-            advanced_refs = dict(advanced_refs)
-            for key in ("proposal_id", "proposal_status", "published_asset_id"):
-                advanced_refs.pop(key, None)
+            allowed_ref_keys = {
+                "candidate_source_table",
+                "need_source_table",
+                "source_candidates_available",
+            }
+            advanced_refs = {
+                key: deepcopy(value)
+                for key, value in advanced_refs.items()
+                if key in allowed_ref_keys
+            }
             sanitized["advanced_refs"] = advanced_refs
+        else:
+            sanitized.pop("advanced_refs", None)
         return sanitized
+
+    def _reconcile_agent_workbench_state(self, session: AgentSession, state: Dict[str, Any]) -> None:
+        """根据服务端可验证草稿线索重算 runtime 不可直接写入的治理状态。"""
+        raw_spec = state.get("raw_spec") if isinstance(state.get("raw_spec"), dict) else {}
+        if has_reviewable_spec(raw_spec):
+            self._mark_spec_available(session, state)
+            if state.get("required_confirmations"):
+                readiness = dict(state.get("readiness") or {})
+                readiness["canonical_ready"] = bool((state.get("publish_result") or {}).get("status") == "published")
+                readiness["exploratory_ready"] = True
+                reasons = [
+                    str(reason)
+                    for reason in (readiness.get("reasons") or [])
+                    if str(reason) not in {"ready_to_save", "session_created"}
+                ]
+                if "business_owner_confirmation_required" not in reasons:
+                    reasons.append("business_owner_confirmation_required")
+                readiness["reasons"] = reasons
+                state["readiness"] = readiness
+            return
+
+        if state.get("source_candidates"):
+            self._mark_spec_missing(state, "source_candidate_confirmation_required")
+            state["advanced_refs"] = {
+                **(state.get("advanced_refs") or {}),
+                "source_candidates_available": True,
+            }
+            return
+
+        proposal_patch = state.get("proposal_patch") if isinstance(state.get("proposal_patch"), dict) else {}
+        advanced_refs = state.get("advanced_refs") if isinstance(state.get("advanced_refs"), dict) else {}
+        if proposal_patch.get("need_source_table") or advanced_refs.get("need_source_table"):
+            self._mark_spec_missing(state, "need_source_table")
+
+    @staticmethod
+    def _sanitize_agent_proposal_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
+        """Runtime 只能提供候选线索，不能写入治理归属或服务端状态字段。"""
+        if not isinstance(patch, dict):
+            return {}
+        allowed_keys = {
+            "user_question",
+            "candidate_source_table",
+            "candidate_table",
+            "business_context",
+            "business_subject",
+            "notes",
+            "confidence",
+            "candidate_bindings",
+            "candidate_metrics",
+            "candidate_dimensions",
+            "candidate_objects",
+            "intent_summary",
+            "clarifying_question",
+            "need_source_table",
+            "assumptions",
+        }
+        return {
+            key: deepcopy(value)
+            for key, value in patch.items()
+            if key in allowed_keys
+        }
 
     def _initial_workbench_state(self, user_goal: str, entry_type: str) -> Dict[str, Any]:
         return {
