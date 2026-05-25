@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from flask import Flask
+import jwt
+from flask import Flask, g
 
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeArtifact,
     AgentInferenceRuntimeRun,
     RuntimeContextRef,
 )
+from app.interfaces.api.middleware.error_handler import register_error_handlers
 from app.interfaces.api.v1.agent_runtime import create_agent_runtime_blueprint
 
 
@@ -27,8 +29,10 @@ class _RepositoryArtifact:
 class _Repo:
     def __init__(self) -> None:
         self.artifact_principal_ids: list[str | None] = []
+        self.get_run_ids: list[str] = []
 
     def get_run(self, run_id: str):
+        self.get_run_ids.append(run_id)
         if run_id == "run_object":
             return _RunObject()
         if run_id != "run_1":
@@ -100,15 +104,38 @@ class _RunObject:
     error = {"code": "CODEX_RUNTIME_UNAVAILABLE"}
 
 
-def _client(repo: _Repo | None = None):
+class _RepoProvider:
+    def __init__(self, repos: list[_Repo]) -> None:
+        self.repos = repos
+        self.calls = 0
+
+    def __call__(self) -> _Repo:
+        repo = self.repos[self.calls]
+        self.calls += 1
+        return repo
+
+
+def _client(
+    repository_provider,
+    *,
+    principal_id: str | None = "alice",
+    testing: bool = True,
+):
     app = Flask(__name__)
-    app.config.update(TESTING=True)
-    app.register_blueprint(create_agent_runtime_blueprint(repo or _Repo()))
+    app.config.update(TESTING=testing, JWT_SECRET="test-secret")
+    register_error_handlers(app)
+
+    if testing and principal_id is not None:
+        @app.before_request
+        def _inject_principal():
+            g.principal_id = principal_id
+
+    app.register_blueprint(create_agent_runtime_blueprint(repository_provider))
     return app.test_client()
 
 
 def test_agent_runtime_api_returns_run_detail():
-    resp = _client().get("/api/v1/agent-runtime/runs/run_1")
+    resp = _client(lambda: _Repo()).get("/api/v1/agent-runtime/runs/run_1")
 
     assert resp.status_code == 200
     data = resp.get_json()["data"]
@@ -120,7 +147,7 @@ def test_agent_runtime_api_returns_run_detail():
 
 
 def test_agent_runtime_api_returns_not_found_code():
-    resp = _client().get("/api/v1/agent-runtime/runs/missing")
+    resp = _client(lambda: _Repo()).get("/api/v1/agent-runtime/runs/missing")
 
     assert resp.status_code == 404
     body = resp.get_json()
@@ -131,10 +158,10 @@ def test_agent_runtime_api_returns_not_found_code():
 def test_agent_runtime_api_returns_artifacts_and_passes_principal_id():
     repo = _Repo()
 
-    resp = _client(repo).get("/api/v1/agent-runtime/runs/run_1/artifacts")
+    resp = _client(lambda: repo).get("/api/v1/agent-runtime/runs/run_1/artifacts")
 
     assert resp.status_code == 200
-    assert repo.artifact_principal_ids == [None]
+    assert repo.artifact_principal_ids == ["alice"]
     data = resp.get_json()["data"]
     assert data["items"] == [
         {
@@ -151,7 +178,9 @@ def test_agent_runtime_api_returns_artifacts_and_passes_principal_id():
 
 
 def test_agent_runtime_api_serializes_repository_returned_objects():
-    resp = _client().get("/api/v1/agent-runtime/runs/run_object")
+    resp = _client(lambda: _Repo(), principal_id="bob").get(
+        "/api/v1/agent-runtime/runs/run_object"
+    )
 
     assert resp.status_code == 200
     data = resp.get_json()["data"]
@@ -159,6 +188,68 @@ def test_agent_runtime_api_serializes_repository_returned_objects():
     assert data["runtime_context_ref"]["session_id"] == "s2"
     assert data["error"]["code"] == "CODEX_RUNTIME_UNAVAILABLE"
 
-    artifacts_resp = _client().get("/api/v1/agent-runtime/runs/run_object/artifacts")
+    artifacts_resp = _client(lambda: _Repo(), principal_id="bob").get(
+        "/api/v1/agent-runtime/runs/run_object/artifacts"
+    )
     assert artifacts_resp.status_code == 200
     assert artifacts_resp.get_json()["data"]["items"][0]["artifact_id"] == "artifact_obj"
+
+
+def test_agent_runtime_api_hides_cross_user_run_to_prevent_enumeration():
+    resp = _client(lambda: _Repo(), principal_id="mallory").get(
+        "/api/v1/agent-runtime/runs/run_1"
+    )
+
+    assert resp.status_code == 404
+    assert resp.get_json()["details"]["code"] == "RUNTIME_RUN_NOT_FOUND"
+
+
+def test_agent_runtime_api_hides_cross_user_artifacts_before_listing():
+    repo = _Repo()
+
+    resp = _client(lambda: repo, principal_id="mallory").get(
+        "/api/v1/agent-runtime/runs/run_1/artifacts"
+    )
+
+    assert resp.status_code == 404
+    assert resp.get_json()["details"]["code"] == "RUNTIME_RUN_NOT_FOUND"
+    assert repo.artifact_principal_ids == []
+
+
+def test_agent_runtime_api_requires_identity_outside_testing():
+    resp = _client(lambda: _Repo(), principal_id=None, testing=False).get(
+        "/api/v1/agent-runtime/runs/run_1"
+    )
+
+    assert resp.status_code == 401
+    assert resp.get_json()["error_code"] == "MISSING_TOKEN"
+
+
+def test_agent_runtime_api_accepts_authenticated_principal_outside_testing():
+    token = jwt.encode(
+        {"user_id": "u1", "principal_id": "alice", "user_name": "Alice"},
+        "test-secret",
+        algorithm="HS256",
+    )
+
+    resp = _client(lambda: _Repo(), principal_id=None, testing=False).get(
+        "/api/v1/agent-runtime/runs/run_1",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["principal_id"] == "alice"
+
+
+def test_agent_runtime_api_uses_repository_provider_per_request():
+    repos = [_Repo(), _Repo()]
+    provider = _RepoProvider(repos)
+    client = _client(provider)
+
+    assert provider.calls == 0
+    client.get("/api/v1/agent-runtime/runs/run_1")
+    client.get("/api/v1/agent-runtime/runs/run_1")
+
+    assert provider.calls == 2
+    assert repos[0].get_run_ids == ["run_1"]
+    assert repos[1].get_run_ids == ["run_1"]

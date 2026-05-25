@@ -260,7 +260,7 @@ def create_app(role: str = "web") -> Flask:
             container.agent_semantic_execute_service(),
         ))
         app.register_blueprint(create_agent_runtime_blueprint(
-            container.agent_inference_runtime_repository(),
+            container.agent_inference_runtime_repository,
         ))
         app.register_blueprint(create_query_execution_blueprint(
             container.query_submission_service(),

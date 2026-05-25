@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
-from typing import Any, Mapping
+from functools import wraps
+from typing import Any, Callable, Mapping
 
-from flask import Blueprint
+from flask import Blueprint, current_app, g
 
+try:
+    from app.interfaces.api.middleware.auth import require_identity  # type: ignore[attr-defined]
+except ImportError:  # pragma: no cover - 兼容旧认证模块名
+    from app.interfaces.api.middleware.auth import require_auth as require_identity  # type: ignore[no-redef]
 from app.shared.response import error, success
 
 
@@ -79,23 +84,60 @@ def _artifact_payload(artifact: Any) -> dict[str, Any]:
     }
 
 
-def create_agent_runtime_blueprint(repository: Any) -> Blueprint:
+def _require_identity_unless_testing(func: Callable[..., Any]) -> Callable[..., Any]:
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any):
+        if current_app.config.get("TESTING"):
+            return func(*args, **kwargs)
+        return require_identity(func)(*args, **kwargs)
+
+    return wrapper
+
+
+def _principal_id() -> str | None:
+    return getattr(g, "principal_id", None) or getattr(g, "user_id", None)
+
+
+def _not_found():
+    return error(
+        "Agent runtime run not found",
+        status=404,
+        details={"code": "RUNTIME_RUN_NOT_FOUND"},
+    )
+
+
+def _is_owned_by_current_principal(run: Any, principal_id: str | None) -> bool:
+    return _value(run, "principal_id") == principal_id
+
+
+def _resolve_repository(repository_provider: Any) -> Any:
+    if callable(repository_provider):
+        return repository_provider()
+    return repository_provider
+
+
+def create_agent_runtime_blueprint(repository_provider: Any) -> Blueprint:
     bp = Blueprint("agent_runtime", __name__, url_prefix="/api/v1/agent-runtime")
 
     @bp.route("/runs/<run_id>", methods=["GET"])
+    @_require_identity_unless_testing
     def get_run(run_id: str):
+        repository = _resolve_repository(repository_provider)
+        principal_id = _principal_id()
         run = repository.get_run(run_id)
-        if run is None:
-            return error(
-                "Agent runtime run not found",
-                status=404,
-                details={"code": "RUNTIME_RUN_NOT_FOUND"},
-            )
+        if run is None or not _is_owned_by_current_principal(run, principal_id):
+            return _not_found()
         return success(data=_run_payload(run))
 
     @bp.route("/runs/<run_id>/artifacts", methods=["GET"])
+    @_require_identity_unless_testing
     def list_artifacts(run_id: str):
-        artifacts = repository.list_artifacts(run_id=run_id, principal_id=None)
+        repository = _resolve_repository(repository_provider)
+        principal_id = _principal_id()
+        run = repository.get_run(run_id)
+        if run is None or not _is_owned_by_current_principal(run, principal_id):
+            return _not_found()
+        artifacts = repository.list_artifacts(run_id=run_id, principal_id=principal_id)
         return success(data={"items": [_artifact_payload(item) for item in artifacts]})
 
     return bp
