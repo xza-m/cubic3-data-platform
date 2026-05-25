@@ -38,7 +38,7 @@ class SemanticModelingChatOutput:
     proposal_patch: Dict[str, Any] = field(default_factory=dict)
     required_confirmations: List[Any] = field(default_factory=list)
     suggested_actions: List[str] = field(default_factory=list)
-    trace: List[Dict[str, Any]] = field(default_factory=list)
+    tool_traces: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class SemanticModelingAgentApp:
@@ -77,7 +77,7 @@ class SemanticModelingAgentApp:
             principal_id=session.principal_id,
             input={
                 "message": user_message,
-                "request_payload": dict(request_payload or {}),
+                "user_goal": session.user_goal,
             },
             context_pack=context_pack,
             output_schema="semantic.modeling.chat.output.v1",
@@ -106,7 +106,10 @@ class SemanticModelingAgentApp:
                 str(action)
                 for action in _list_or_default(structured_output.get("suggested_actions"))
             ],
-            trace=_trace_or_default(result.trace),
+            tool_traces=_tool_traces_or_default(
+                structured_output.get("tool_traces"),
+                fallback=result.trace,
+            ),
         )
 
 
@@ -122,7 +125,8 @@ def _list_or_default(value: Any) -> List[Any]:
     return list(value) if isinstance(value, list) else []
 
 
-def _trace_or_default(value: Any) -> List[Dict[str, Any]]:
-    if not isinstance(value, list):
+def _tool_traces_or_default(value: Any, *, fallback: Any) -> List[Dict[str, Any]]:
+    traces = value if isinstance(value, list) else fallback
+    if not isinstance(traces, list):
         return []
-    return [item for item in value if isinstance(item, dict)]
+    return [item for item in traces if isinstance(item, dict)]

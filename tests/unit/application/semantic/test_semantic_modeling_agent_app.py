@@ -32,10 +32,11 @@ class _Runtime:
                 },
                 "required_confirmations": [],
                 "suggested_actions": ["provide_source_table"],
+                "tool_traces": [{"tool": "llm.chat"}],
             },
             artifacts=[],
             usage={"total_tokens": 7},
-            trace=[{"event_type": "run.succeeded", "seq": 1}],
+            trace=[{"event_type": "runtime.trace", "seq": 1}],
             error=None,
         )
 
@@ -86,12 +87,17 @@ def test_semantic_modeling_agent_app_builds_runtime_request_and_output():
     assert output.message == "已识别学生评论分析诉求"
     assert output.workbench_state_patch["agent_message"] == "已识别学生评论分析诉求"
     assert output.suggested_actions == ["provide_source_table"]
+    assert output.tool_traces == [{"tool": "llm.chat"}]
     request = runtime.requests[0]
     assert request.app_id == "semantic_modeling"
     assert request.action == "semantic.modeling.chat"
     assert request.runtime_context_ref.session_id == "session_1"
     assert request.runtime_context_ref.turn_id.startswith("turn_")
     assert request.output_schema == "semantic.modeling.chat.output.v1"
+    assert request.input == {
+        "message": "按学校汇总",
+        "user_goal": "查询最近 7 天学生评论数",
+    }
 
 
 def test_semantic_evidence_builder_includes_session_message_payload_and_tail():
@@ -137,4 +143,4 @@ def test_semantic_modeling_agent_app_treats_non_dict_structured_output_as_empty(
     assert output.proposal_patch == {}
     assert output.required_confirmations == []
     assert output.suggested_actions == []
-    assert output.trace == [{"event_type": "run.succeeded", "seq": 1}]
+    assert output.tool_traces == [{"event_type": "run.succeeded", "seq": 1}]
