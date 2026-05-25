@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Protocol
 from uuid import uuid4
 
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.application.semantic.semantic_evidence_builder import SemanticEvidenceBuilder
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeRequest,
@@ -92,41 +93,88 @@ class SemanticModelingAgentApp:
 
     def _to_chat_output(self, result: AgentInferenceRuntimeResult) -> SemanticModelingChatOutput:
         raw_output = result.structured_output
-        structured_output = raw_output if isinstance(raw_output, dict) else {}
+        if not isinstance(raw_output, dict):
+            raise _invalid_output("structured_output must be an object")
+        message = _required_message(raw_output.get("message"))
         return SemanticModelingChatOutput(
-            message=_string_or_default(structured_output.get("message")),
-            workbench_state_patch=_dict_or_default(
-                structured_output.get("workbench_state_patch")
+            message=message,
+            workbench_state_patch=_optional_dict(raw_output.get("workbench_state_patch")),
+            proposal_patch=_optional_dict(raw_output.get("proposal_patch")),
+            required_confirmations=_optional_dict_list(
+                raw_output.get("required_confirmations"),
+                field_name="required_confirmations",
             ),
-            proposal_patch=_dict_or_default(structured_output.get("proposal_patch")),
-            required_confirmations=_list_or_default(
-                structured_output.get("required_confirmations")
-            ),
-            suggested_actions=[
-                str(action)
-                for action in _list_or_default(structured_output.get("suggested_actions"))
-            ],
+            suggested_actions=_optional_string_list(raw_output.get("suggested_actions")),
             tool_traces=_tool_traces_or_default(
-                structured_output.get("tool_traces"),
+                raw_output.get("tool_traces"),
                 fallback=result.trace,
             ),
         )
 
 
-def _string_or_default(value: Any) -> str:
-    return value if isinstance(value, str) else ""
+def _invalid_output(message: str, *, field_name: str | None = None) -> AgentInferenceRuntimeError:
+    details = {"field": field_name} if field_name else {}
+    return AgentInferenceRuntimeError(message, code="RUNTIME_INVALID_OUTPUT", details=details)
 
 
-def _dict_or_default(value: Any) -> Dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
+def _required_message(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise _invalid_output(
+            "structured_output.message must be a non-empty string",
+            field_name="message",
+        )
+    return value
 
 
-def _list_or_default(value: Any) -> List[Any]:
-    return list(value) if isinstance(value, list) else []
+def _optional_dict(value: Any) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise _invalid_output("structured output field must be an object")
+    return dict(value)
 
 
 def _tool_traces_or_default(value: Any, *, fallback: Any) -> List[Dict[str, Any]]:
-    traces = value if isinstance(value, list) else fallback
-    if not isinstance(traces, list):
+    traces = fallback if value is None else value
+    return _dict_list(traces, field_name="tool_traces")
+
+
+def _optional_dict_list(value: Any, *, field_name: str) -> List[Dict[str, Any]]:
+    if value is None:
         return []
-    return [item for item in traces if isinstance(item, dict)]
+    return _dict_list(value, field_name=field_name)
+
+
+def _dict_list(value: Any, *, field_name: str) -> List[Dict[str, Any]]:
+    if not isinstance(value, list):
+        raise _invalid_output(
+            f"structured_output.{field_name} must be a list",
+            field_name=field_name,
+        )
+    if not all(isinstance(item, dict) for item in value):
+        raise _invalid_output(
+            f"structured_output.{field_name} must contain only objects",
+            field_name=field_name,
+        )
+    return [dict(item) for item in value]
+
+
+def _optional_string_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise _invalid_output(
+            "structured_output.suggested_actions must be a list",
+            field_name="suggested_actions",
+        )
+    actions: List[str] = []
+    for action in value:
+        if not isinstance(action, str):
+            raise _invalid_output(
+                "structured_output.suggested_actions must contain only strings",
+                field_name="suggested_actions",
+            )
+        normalized = action.strip()
+        if normalized:
+            actions.append(normalized)
+    return actions

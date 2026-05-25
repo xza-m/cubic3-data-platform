@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.application.semantic.semantic_evidence_builder import SemanticEvidenceBuilder
 from app.application.semantic.semantic_modeling_agent_app import SemanticModelingAgentApp
 from app.domain.agent_inference_runtime.types import AgentInferenceRuntimeResult
@@ -100,15 +103,21 @@ def test_semantic_modeling_agent_app_builds_runtime_request_and_output():
     }
 
 
-def test_semantic_evidence_builder_includes_session_message_payload_and_tail():
+def test_semantic_evidence_builder_uses_session_summary_and_limited_tail():
     session = AgentSession(
         id="session_1",
         user_goal="查询最近 7 天学生评论数",
+        entry_type="business_question",
+        state="analyzing",
         principal_id="alice",
+        title="评论数分析",
+        current_proposal_id="proposal_1",
         workbench_state={"readiness": {"exploratory_ready": False}},
+        tool_traces=[{"tool": "legacy.trace"}],
+        event_log=[{"type": "session_action"}],
     )
-    session.add_message(role="user", content="第一轮")
-    session.add_message(role="assistant", content="请提供来源表")
+    for index in range(10):
+        session.add_message(role="user", content=f"第 {index} 轮")
 
     context_pack = SemanticEvidenceBuilder().build(
         session=session,
@@ -116,15 +125,39 @@ def test_semantic_evidence_builder_includes_session_message_payload_and_tail():
         request_payload={"source": "chat"},
     )
 
-    assert context_pack["session"]["id"] == "session_1"
+    assert context_pack["session"] == {
+        "id": "session_1",
+        "user_goal": "查询最近 7 天学生评论数",
+        "entry_type": "business_question",
+        "state": "analyzing",
+        "status": "active",
+        "principal_id": "alice",
+        "current_proposal_id": "proposal_1",
+        "title": "评论数分析",
+    }
+    assert "conversation" not in context_pack["session"]
+    assert "tool_traces" not in context_pack["session"]
+    assert "event_log" not in context_pack["session"]
     assert context_pack["latest_user_message"] == "按学校汇总"
     assert context_pack["request_payload"] == {"source": "chat"}
     assert context_pack["workbench_state"] == {"readiness": {"exploratory_ready": False}}
-    assert context_pack["conversation_tail"][-1]["content"] == "请提供来源表"
+    assert len(context_pack["conversation_tail"]) == 8
+    assert context_pack["conversation_tail"][0]["content"] == "第 2 轮"
+    assert context_pack["conversation_tail"][-1]["content"] == "第 9 轮"
     assert context_pack["evidence"] == []
 
 
-def test_semantic_modeling_agent_app_treats_non_dict_structured_output_as_empty():
+@pytest.mark.parametrize(
+    "structured_output",
+    [
+        [("message", "不要用 dict(list) 误解析")],
+        {},
+        {"message": ""},
+        {"message": "   "},
+        {"message": 123},
+    ],
+)
+def test_semantic_modeling_agent_app_rejects_invalid_structured_output(structured_output):
     session = AgentSession(
         id="session_1",
         user_goal="查询最近 7 天学生评论数",
@@ -132,15 +165,34 @@ def test_semantic_modeling_agent_app_treats_non_dict_structured_output_as_empty(
         principal_id="alice",
     )
     app = SemanticModelingAgentApp(
-        runtime=_RuntimeWithOutput([("message", "不要用 dict(list) 误解析")]),
+        runtime=_RuntimeWithOutput(structured_output),
         evidence_builder=_EvidenceBuilder(),
     )
 
-    output = app.run_chat(session=session, user_message="按学校汇总", request_payload={})
+    with pytest.raises(AgentInferenceRuntimeError) as exc_info:
+        app.run_chat(session=session, user_message="按学校汇总", request_payload={})
 
-    assert output.message == ""
-    assert output.workbench_state_patch == {}
-    assert output.proposal_patch == {}
-    assert output.required_confirmations == []
-    assert output.suggested_actions == []
-    assert output.tool_traces == [{"event_type": "run.succeeded", "seq": 1}]
+    assert exc_info.value.code == "RUNTIME_INVALID_OUTPUT"
+
+
+def test_semantic_modeling_agent_app_rejects_malformed_required_confirmations():
+    session = AgentSession(
+        id="session_1",
+        user_goal="查询最近 7 天学生评论数",
+        entry_type="business_question",
+        principal_id="alice",
+    )
+    app = SemanticModelingAgentApp(
+        runtime=_RuntimeWithOutput(
+            {
+                "message": "已识别学生评论分析诉求",
+                "required_confirmations": ["confirm_source_candidate"],
+            }
+        ),
+        evidence_builder=_EvidenceBuilder(),
+    )
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc_info:
+        app.run_chat(session=session, user_message="按学校汇总", request_payload={})
+
+    assert exc_info.value.code == "RUNTIME_INVALID_OUTPUT"

@@ -23,7 +23,7 @@ class SemanticEvidenceBuilder:
         payload = dict(request_payload or {})
         conversation_tail = session.conversation[-self._conversation_tail_limit :]
         return {
-            "session": session.model_dump(mode="json"),
+            "session": _session_summary(session),
             "latest_user_message": user_message,
             "request_payload": deepcopy(payload),
             "workbench_state": deepcopy(session.workbench_state or {}),
@@ -32,3 +32,16 @@ class SemanticEvidenceBuilder:
             ],
             "evidence": [],
         }
+
+
+def _session_summary(session: AgentSession) -> Dict[str, Any]:
+    return {
+        "id": session.id,
+        "user_goal": session.user_goal,
+        "entry_type": session.entry_type,
+        "state": session.state,
+        "status": session.status,
+        "principal_id": session.principal_id,
+        "current_proposal_id": session.current_proposal_id,
+        "title": session.title,
+    }
