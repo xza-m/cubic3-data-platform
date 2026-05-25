@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from app.application.semantic.modeling_copilot_runtime import AgentRunResult, LLMRequiredError, ModelingAgentRuntimePort
+from app.application.semantic.semantic_modeling_agent_app import SemanticModelingChatOutput
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_spec_repair import has_reviewable_spec, repair_modeling_spec
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
@@ -22,13 +22,13 @@ class SemanticModelingCopilotService:
         self,
         *,
         session_repository: IModelingAgentSessionRepository,
-        runtime: ModelingAgentRuntimePort,
+        agent_app: Any,
         tools: ModelingToolRegistry,
         proposal_service: Any,
         source_scoring_config: Optional[SourceCandidateScoringConfig] = None,
     ):
         self._sessions = session_repository
-        self._runtime = runtime
+        self._agent_app = agent_app
         self._tools = tools
         self._proposal_service = proposal_service
         self._source_scoring_config = source_scoring_config or SourceCandidateScoringConfig.default()
@@ -473,11 +473,10 @@ class SemanticModelingCopilotService:
             session.add_message(role="assistant", content=source_recall_reply)
             self._save_session(session)
             return self._dump(session)
-        result = self._runtime.run(
+        result = self._agent_app.run_chat(
             session=session,
             user_message=message,
-            tools=self._tools,
-            context={"request_payload": payload},
+            request_payload=payload,
         )
         self._apply_agent_result(session, result)
         session.add_message(role="assistant", content=result.message)
@@ -1421,7 +1420,7 @@ class SemanticModelingCopilotService:
                 return deepcopy(candidate)
         return {}
 
-    def _apply_agent_result(self, session: AgentSession, result: AgentRunResult) -> None:
+    def _apply_agent_result(self, session: AgentSession, result: SemanticModelingChatOutput) -> None:
         state = deepcopy(session.workbench_state)
         state = self._deep_merge(state, self._sanitize_agent_workbench_patch(result.workbench_state_patch))
         if has_reviewable_spec(state.get("raw_spec")):

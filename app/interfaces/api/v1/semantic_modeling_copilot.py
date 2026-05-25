@@ -10,7 +10,7 @@ try:
     from app.interfaces.api.middleware.auth import require_identity  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover - 兼容尚未迁移到 access-principal-identity 的运行时
     from app.interfaces.api.middleware.auth import require_auth as require_identity  # type: ignore[no-redef]
-from app.application.semantic.modeling_copilot_runtime import LLMRequiredError
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.shared.response import error, success
 
 
@@ -44,11 +44,12 @@ def _copilot_error(operation: str, exc: Exception):
             status=403,
             details={"code": "COPILOT_FORBIDDEN"},
         )
-    if isinstance(exc, LLMRequiredError):
+    if isinstance(exc, AgentInferenceRuntimeError):
+        status = 503 if exc.code in {"RUNTIME_NOT_CONFIGURED", "RUNTIME_UNAVAILABLE"} else 422
         return error(
             str(exc),
-            status=503,
-            details={"code": "LLM_REQUIRED", "reason": exc.reason},
+            status=status,
+            details={"code": exc.code, **exc.details},
         )
     if isinstance(exc, LookupError) or (
         isinstance(exc, ValueError) and "not found" in str(exc).lower()

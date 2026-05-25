@@ -1,16 +1,8 @@
-"""语义建模 Copilot 的 Agent Runtime 端口与 LLM 适配器。
+"""旧语义建模 Copilot runtime 实现。
 
-设计要点：
-- LLM 只负责「理解用户意图 + 综合工具结果 + 决定下一步问什么」三件事；不直接调工具
-- 后端 service 层先跑确定性工具（search_ontology / search_cube / inspect_schema），
-  把结果作为 context 喂给 LLM；LLM 输出 structured JSON（message + 抽取信号 + 候选项）
-- 后端再根据 LLM 抽到的 candidate_source_table 决定是否调 generate_cube_draft_from_source
-  生成完整 spec；这一步是确定性的，不让 LLM 直接写 spec
-- 未配置 LLM_API_KEY 时，run() 抛 LLMRequiredError，前端给"需配置 LLM"提示而不是假装能跑
-
-LLM 兼容性：
-- 通过 LLM_API_BASE 可对接 OpenAI / DeepSeek / Qwen / 飞书 / 任意 OpenAI Chat Completions 协议兼容服务
-- LLM_API_KEY 必填；LLM_MODEL 默认 gpt-4o-mini
+新主链已迁移到 app.application.semantic.semantic_modeling_agent_app 和
+app.application.agent_inference_runtime。该文件仅在删除旧单元测试前保留
+历史 adapter 测试，不再由 DI 容器注入。
 """
 from __future__ import annotations
 

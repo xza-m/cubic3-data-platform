@@ -2,11 +2,11 @@ import json
 from copy import deepcopy
 
 from app.application.semantic.modeling_copilot_runtime import (
-    AgentRunResult,
     LLMRequiredError,
     OpenAICompatibleLLMAdapter,
 )
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
+from app.application.semantic.semantic_modeling_agent_app import SemanticModelingChatOutput
 from app.domain.semantic.modeling_agent_session import AgentSession
 
 
@@ -51,9 +51,9 @@ class _Runtime:
     def __init__(self):
         self.calls = []
 
-    def run(self, *, session, user_message, tools, context=None):
-        self.calls.append((session.id, user_message, context))
-        return AgentRunResult(
+    def run_chat(self, *, session, user_message, request_payload):
+        self.calls.append((session.id, user_message, {"request_payload": request_payload}))
+        return SemanticModelingChatOutput(
             message="已找到候选语义，请确认学校维度和时间口径。",
             workbench_state_patch={
                 "semantic_canvas": {
@@ -111,13 +111,38 @@ class _Runtime:
         )
 
 
+class _AgentApp:
+    def __init__(self, *, message, workbench_patch, proposal_patch):
+        self.message = message
+        self.workbench_patch = workbench_patch
+        self.proposal_patch = proposal_patch
+        self.calls = []
+
+    def run_chat(self, *, session, user_message, request_payload):
+        from app.application.semantic.semantic_modeling_agent_app import SemanticModelingChatOutput
+
+        self.calls.append({
+            "session_id": session.id,
+            "user_message": user_message,
+            "request_payload": request_payload,
+        })
+        return SemanticModelingChatOutput(
+            message=self.message,
+            workbench_state_patch=self.workbench_patch,
+            proposal_patch=self.proposal_patch,
+            required_confirmations=[],
+            suggested_actions=[],
+            tool_traces=[{"event_type": "run.succeeded", "seq": 1}],
+        )
+
+
 class _UnsafePublishingRuntime:
     def __init__(self):
         self.calls = []
 
-    def run(self, *, session, user_message, tools, context=None):
-        self.calls.append((session.id, user_message, context))
-        return AgentRunResult(
+    def run_chat(self, *, session, user_message, request_payload):
+        self.calls.append((session.id, user_message, {"request_payload": request_payload}))
+        return SemanticModelingChatOutput(
             message="我已经发布好了。",
             workbench_state_patch={
                 "raw_spec": {
@@ -280,7 +305,7 @@ def _service(proposal_service=None):
     proposal_service = proposal_service or _ProposalService()
     return SemanticModelingCopilotService(
         session_repository=repo,
-        runtime=runtime,
+        agent_app=runtime,
         tools=tools,
         proposal_service=proposal_service,
     ), repo, runtime, proposal_service
@@ -308,6 +333,29 @@ def test_copilot_session_turn_updates_workbench_without_publishing():
     assert updated.get("current_proposal_id") is None
 
 
+def test_copilot_service_uses_semantic_agent_app_instead_of_private_runtime():
+    session_repo = _SessionRepository()
+    proposal_service = _ProposalService()
+    tools = _Tools()
+    agent_app = _AgentApp(
+        message="平台 runtime 已响应",
+        workbench_patch={"agent_message": "平台 runtime 已响应"},
+        proposal_patch={"source_mode": "agent_led"},
+    )
+    service = SemanticModelingCopilotService(
+        session_repository=session_repo,
+        agent_app=agent_app,
+        tools=tools,
+        proposal_service=proposal_service,
+    )
+    created = service.create_session({"user_goal": "查询学生评论数", "principal_id": "alice"})
+
+    result = service.send_message(created["id"], {"message": "继续分析"}, principal_id="alice")
+
+    assert result["workbench_state"]["agent_message"] == "平台 runtime 已响应"
+    assert agent_app.calls[0]["session_id"] == created["id"]
+
+
 def test_llm_patch_cannot_forge_saved_or_published_state():
     repo = _SessionRepository()
     runtime = _UnsafePublishingRuntime()
@@ -315,7 +363,7 @@ def test_llm_patch_cannot_forge_saved_or_published_state():
     proposals = _ProposalService()
     service = SemanticModelingCopilotService(
         session_repository=repo,
-        runtime=runtime,
+        agent_app=runtime,
         tools=tools,
         proposal_service=proposals,
     )
@@ -1150,7 +1198,7 @@ def test_student_comment_source_confirmation_repairs_latest_answer_view_regressi
     proposals = _ProposalService()
     service = SemanticModelingCopilotService(
         session_repository=repo,
-        runtime=runtime,
+        agent_app=runtime,
         tools=tools,
         proposal_service=proposals,
     )

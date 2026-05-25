@@ -349,22 +349,31 @@ def test_modeling_copilot_review_endpoint_returns_artifact_view():
     assert service.calls[-1][0] == "get_review"
 
 
-def test_modeling_copilot_send_message_returns_llm_required_when_unconfigured():
-    """LLM 未配置时 send_message 返回 503 + LLM_REQUIRED 业务错误码，
-    前端可据此渲染「需配置 LLM」banner 而不是把异常当通用 500 显示。"""
+def test_modeling_copilot_send_message_maps_agent_runtime_errors():
+    """平台 runtime 不可用时返回 503，其它输出契约错误返回 422。"""
     from flask import Flask
-    from app.application.semantic.modeling_copilot_runtime import LLMRequiredError
+    from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 
-    class _LLMRequiredStub:
+    class _RuntimeErrorStub:
         def create_session(self, payload):
             return {"id": "s_x", "user_goal": payload.get("user_goal")}
 
         def send_message(self, session_id, payload, *, principal_id=None):
-            raise LLMRequiredError("未配置 LLM_API_KEY", reason="missing_api_key")
+            if session_id == "s_contract":
+                raise AgentInferenceRuntimeError(
+                    "runtime 输出不符合 schema",
+                    code="RUNTIME_INVALID_OUTPUT",
+                    details={"field": "message"},
+                )
+            raise AgentInferenceRuntimeError(
+                "未配置平台 Agent Runtime",
+                code="RUNTIME_NOT_CONFIGURED",
+                details={"runtime_name": "openai_compatible"},
+            )
 
     app = Flask(__name__)
     app.config.update(TESTING=True)
-    app.register_blueprint(create_semantic_modeling_copilot_blueprint(_LLMRequiredStub()))
+    app.register_blueprint(create_semantic_modeling_copilot_blueprint(_RuntimeErrorStub()))
     client = app.test_client()
 
     resp = client.post(
@@ -373,8 +382,17 @@ def test_modeling_copilot_send_message_returns_llm_required_when_unconfigured():
     )
     assert resp.status_code == 503
     body = resp.get_json()
-    assert body["details"]["code"] == "LLM_REQUIRED"
-    assert body["details"]["reason"] == "missing_api_key"
+    assert body["details"]["code"] == "RUNTIME_NOT_CONFIGURED"
+    assert body["details"]["runtime_name"] == "openai_compatible"
+
+    contract_resp = client.post(
+        "/api/v1/semantic/modeling-copilot/sessions/s_contract/messages",
+        json={"message": "hi"},
+    )
+    assert contract_resp.status_code == 422
+    contract_body = contract_resp.get_json()
+    assert contract_body["details"]["code"] == "RUNTIME_INVALID_OUTPUT"
+    assert contract_body["details"]["field"] == "message"
 
 
 def test_modeling_copilot_authenticated_session_paths_pass_current_principal():

@@ -122,6 +122,8 @@ from app.infrastructure.adapters.llm.openai_compatible import OpenAICompatibleAd
 from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import (
     OpenAICompatibleRuntimeAdapter,
 )
+from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
+from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 
 # Application - Agent
 from app.application.agent.services.knowledge_service import KnowledgeService
@@ -140,7 +142,6 @@ from app.application.semantic.data_asset_service import DataAssetService
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
 from app.application.semantic.field_candidates import FieldCandidateService
-from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_proposal_service import ModelingProposalService
@@ -150,6 +151,8 @@ from app.application.semantic.runtime_snapshot_service import RuntimeSnapshotSer
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
 from app.application.semantic.semantic_query_service import SemanticQueryService
+from app.application.semantic.semantic_evidence_builder import SemanticEvidenceBuilder
+from app.application.semantic.semantic_modeling_agent_app import SemanticModelingAgentApp
 from app.application.semantic.semantic_release_service import SemanticReleaseService
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
 from app.application.semantic.semantic_service import SemanticLayerService
@@ -358,6 +361,16 @@ class Container(containers.DeclarativeContainer):
         api_base=config.agent_openai.api_base,
         model=config.agent_openai.model,
         timeout=config.agent_openai.timeout,
+    )
+
+    agent_inference_runtime_router = providers.Singleton(
+        AgentInferenceRuntimeRouter,
+        adapters=providers.List(agent_openai_runtime_adapter),
+    )
+
+    agent_inference_runtime_service = providers.Singleton(
+        AgentInferenceRuntimeService,
+        router=agent_inference_runtime_router,
     )
     
     # ========================================================================
@@ -855,16 +868,18 @@ class Container(containers.DeclarativeContainer):
         release_service=semantic_release_service,
     )
 
-    semantic_modeling_copilot_runtime = providers.Singleton(
-        OpenAIAgentsSdkAdapter,
-        enable_sdk=providers.Callable(lambda api_key: bool(api_key), config.llm.api_key),
-        model=config.llm.model,
+    semantic_evidence_builder = providers.Singleton(SemanticEvidenceBuilder)
+
+    semantic_modeling_agent_app = providers.Singleton(
+        SemanticModelingAgentApp,
+        runtime=agent_inference_runtime_service,
+        evidence_builder=semantic_evidence_builder,
     )
 
     semantic_modeling_copilot = providers.Singleton(
         SemanticModelingCopilotService,
         session_repository=semantic_modeling_agent_session_repository,
-        runtime=semantic_modeling_copilot_runtime,
+        agent_app=semantic_modeling_agent_app,
         tools=semantic_modeling_copilot_tools,
         proposal_service=semantic_modeling_proposal_service,
     )
