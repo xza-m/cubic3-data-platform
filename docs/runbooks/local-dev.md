@@ -3,7 +3,7 @@ doc_type: runbook
 status: current
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-05-25
 ---
 
 # 本地开发运行手册
@@ -92,6 +92,34 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 - `PostgreSQL + MaxCompute` 数据源接入
 - `physical / virtual / file` 三类数据集注册
 - `CSV / XLS / XLSX` 文件数据集上传与预览
+
+### 2.4 Agent Runtime 本地配置
+
+本地默认只启用 OpenAI-compatible runtime，不默认连接真实 Codex app-server。Codex 当前是 workspace / client / adapter skeleton 与 fake tests；真实 live smoke 必须显式 opt-in，避免普通开发启动时创建长任务工作区或连接本机 app-server。
+
+```bash
+export AGENT_OPENAI_API_KEY=...
+export AGENT_OPENAI_BASE_URL=https://api.openai.com/v1
+export AGENT_OPENAI_MODEL=gpt-4o-mini
+export AGENT_OPENAI_TIMEOUT_SECONDS=60
+export AGENT_CODEX_ENABLED=false
+export AGENT_CODEX_RUNTIME_ROOT=.cubic3/agent-codex
+```
+
+如需只验证平台 runtime 的本地回归，使用：
+
+```bash
+make test-platform-agent-runtime
+```
+
+如需运行真实 Codex app-server smoke，必须同时开启 live 标志并提供 endpoint 或 Unix socket：
+
+```bash
+export AGENT_CODEX_LIVE=1
+export AGENT_CODEX_ENDPOINT=http://127.0.0.1:8799
+# 或：export AGENT_CODEX_UNIX_SOCKET=.cubic3/agent-codex/codex.sock
+PYTHONPATH=. python -m pytest --no-cov tests/integration/agent_inference_runtime/test_codex_live_smoke.py -q
+```
 
 ## 3. 开发就绪检查
 

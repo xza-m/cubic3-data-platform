@@ -140,6 +140,9 @@ from app.infrastructure.adapters.llm.openai_compatible import OpenAICompatibleAd
 from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import (
     OpenAICompatibleRuntimeAdapter,
 )
+from app.infrastructure.agent_inference_runtime.sql_repository import (
+    SqlAgentInferenceRuntimeRepository,
+)
 from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 
@@ -389,6 +392,11 @@ class Container(containers.DeclarativeContainer):
     agent_inference_runtime_service = providers.Singleton(
         AgentInferenceRuntimeService,
         router=agent_inference_runtime_router,
+    )
+
+    agent_inference_runtime_repository = providers.Factory(
+        SqlAgentInferenceRuntimeRepository,
+        session=db_session,
     )
     
     # ========================================================================

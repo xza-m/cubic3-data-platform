@@ -1,7 +1,7 @@
 ---
 doc_type: architecture-design
-status: proposed
-source_of_truth: target
+status: current
+source_of_truth: primary
 owner: engineering
 last_reviewed: 2026-05-25
 ---
@@ -10,7 +10,16 @@ last_reviewed: 2026-05-25
 
 本文定义 Cubic3 数据平台的统一 Agent 推理 Runtime 目标设计。它是跨业务模块复用的生成式推理与工作区任务能力层，不是语义中心或建模助手的私有实现。
 
-当前实现仍以语义建模 Copilot 内部 runtime adapter 为主，本文描述的是已确认的目标架构和迁移方向。实现落地后，应再同步更新 [TECH_STACK_AND_ARCHITECTURE.md](../TECH_STACK_AND_ARCHITECTURE.md)、[backend.md](backend.md) 与相关 ADR。
+当前实现已经形成平台内 `AgentInferenceRuntimeService`、OpenAI-compatible adapter、语义建模首个 consumer、最小 SQL run / artifact 仓储和只读查询 API。Codex app-server 仍处于 workspace / client / adapter skeleton 阶段，已由 fake tests 覆盖基础契约；真实 Codex app-server live smoke 只在显式设置 `AGENT_CODEX_LIVE=1` 且配置 endpoint 或 Unix socket 后运行，默认开发和 CI 不连接真实 Codex。
+
+## Implementation Status
+
+- Phase 1 contract / router / fake runtime：已实现。
+- Phase 2 OpenAI-compatible adapter：已通过 `AGENT_OPENAI_*` 接入，作为当前低延迟主链。
+- Phase 3 Semantic Modeling Agent App：已实现，语义建模 Copilot 通过平台 runtime consumer 调用生成式能力。
+- Phase 4 Codex app-server adapter：当前是 workspace / client / adapter skeleton 和 fake tests；真实 app-server 未并入默认主链。
+- 查询 API：`/api/v1/agent-runtime/runs/<run_id>` 与 `/api/v1/agent-runtime/runs/<run_id>/artifacts` 只提供 observability/read-only 查询，不触发 runtime 执行或业务副作用。
+- 验证入口：`make test-platform-agent-runtime` 覆盖平台 runtime 单测、仓储/adapter 测试、语义建模 consumer、查询 API 和默认跳过的 Codex live smoke guard。
 
 ## 1. 背景与问题
 
@@ -970,7 +979,8 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 ### E2E / Live Smoke
 
 - OpenAI runtime live smoke：配置 API Key 后验证一次结构化输出。
-- Codex app-server live smoke：验证进程 / server 可用、能返回 artifact、timeout 生效、cancel 生效、并发上限生效、stale recovery 生效、artifact 越权被拒、命令拒绝生效、CLI fallback disabled。
+- 当前 Codex app-server live smoke：`tests/integration/agent_inference_runtime/test_codex_live_smoke.py` 默认 skip；只有 `AGENT_CODEX_LIVE=1` 时才要求 `AGENT_CODEX_ENDPOINT` 或 `AGENT_CODEX_UNIX_SOCKET`，用于阻止普通验证误连真实 Codex。
+- 目标 Codex app-server live smoke：验证进程 / server 可用、能返回 artifact、timeout 生效、cancel 生效、并发上限生效、stale recovery 生效、artifact 越权被拒、命令拒绝生效、CLI fallback disabled。
 - 语义建模复审 E2E：生成 Proposal 后触发 Codex 复审，返回只读 review artifact。
 - 数据资产二号消费者 smoke：字段语义推断只生成候选，不写正式资产事实。
 - Codex live smoke 默认 opt-in，不进入本地默认 `make verify`；CI 只跑 fake process manager 和 contract 测试。
@@ -994,6 +1004,7 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 - YAGNI：第一阶段不建设 marketplace、复杂多租户 runtime 编排和跨产品 gateway 主链依赖。
 - SOLID：runtime adapter 只负责 runtime 调用，业务 Agent App 负责业务语义，服务层负责状态和副作用。
 - DRY：context、tool、policy、trace、错误码和 artifact 统一复用。
+- 当前查询 API 的原则落点：GET 端点只读 repository，不复用 invoke/service 执行路径，避免把观测面和执行面耦合；Codex live smoke 保持 opt-in，避免为了未接入的真实 app-server 预留默认副作用。
 
 ## 23. 完成判定
 
