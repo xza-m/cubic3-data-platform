@@ -30,26 +30,10 @@ def _request() -> AgentInferenceRuntimeRequest:
     )
 
 
-def test_openai_adapter_uses_agent_openai_config_not_legacy_llm_env(monkeypatch):
-    monkeypatch.setenv("LLM_API_KEY", "legacy-key")
-    monkeypatch.delenv("AGENT_OPENAI_API_KEY", raising=False)
-
-    adapter = OpenAICompatibleRuntimeAdapter()
-
-    assert adapter.runtime_name == "openai_compatible"
-    assert adapter.is_configured is False
-    with pytest.raises(AgentInferenceRuntimeError) as exc:
-        adapter.invoke(_request())
-    assert exc.value.code == "RUNTIME_NOT_CONFIGURED"
-
-
-def test_openai_adapter_parses_json_response(monkeypatch):
-    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
-    monkeypatch.setenv("AGENT_OPENAI_MODEL", "stub-model")
-
+def _patch_openai_response(monkeypatch, content: str):
     class _Completion:
         choices = [
-            type("Choice", (), {"message": type("Msg", (), {"content": '{"message":"ok"}'})()})
+            type("Choice", (), {"message": type("Msg", (), {"content": content})()})
         ]
         usage = type("Usage", (), {"model_dump": lambda self: {"total_tokens": 7}})()
 
@@ -73,9 +57,48 @@ def test_openai_adapter_parses_json_response(monkeypatch):
         _Client,
     )
 
+
+def test_openai_adapter_uses_agent_openai_config_not_legacy_llm_env(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "legacy-key")
+    monkeypatch.delenv("AGENT_OPENAI_API_KEY", raising=False)
+
+    adapter = OpenAICompatibleRuntimeAdapter()
+
+    assert adapter.runtime_name == "openai_compatible"
+    assert adapter.is_configured is False
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        adapter.invoke(_request())
+    assert exc.value.code == "RUNTIME_NOT_CONFIGURED"
+
+
+def test_openai_adapter_parses_json_response(monkeypatch):
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    monkeypatch.setenv("AGENT_OPENAI_MODEL", "stub-model")
+    _patch_openai_response(monkeypatch, '{"message":"ok"}')
+
     result = OpenAICompatibleRuntimeAdapter().invoke(_request())
 
     assert result.status == "succeeded"
     assert result.runtime_name == "openai_compatible"
     assert result.structured_output == {"message": "ok"}
     assert result.usage == {"total_tokens": 7}
+
+
+def test_openai_adapter_rejects_non_json_response(monkeypatch):
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    _patch_openai_response(monkeypatch, "not-json")
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        OpenAICompatibleRuntimeAdapter().invoke(_request())
+
+    assert exc.value.code == "RUNTIME_INVALID_OUTPUT"
+
+
+def test_openai_adapter_rejects_json_array_response(monkeypatch):
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    _patch_openai_response(monkeypatch, "[]")
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        OpenAICompatibleRuntimeAdapter().invoke(_request())
+
+    assert exc.value.code == "RUNTIME_INVALID_OUTPUT"
