@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import datetime
+
 import pytest
 
 from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
@@ -30,7 +33,15 @@ def _request() -> AgentInferenceRuntimeRequest:
     )
 
 
-def _patch_openai_response(monkeypatch, content: str):
+def _patch_openai_response(
+    monkeypatch,
+    content: str,
+    *,
+    error: Exception | None = None,
+    init_error: Exception | None = None,
+):
+    clients = []
+
     class _Completion:
         choices = [
             type("Choice", (), {"message": type("Msg", (), {"content": content})()})
@@ -39,7 +50,11 @@ def _patch_openai_response(monkeypatch, content: str):
 
     class _Client:
         def __init__(self, **kwargs):
+            if init_error is not None:
+                raise init_error
             self.kwargs = kwargs
+            self.create_kwargs = None
+            clients.append(self)
             self.chat = type(
                 "Chat",
                 (),
@@ -47,15 +62,22 @@ def _patch_openai_response(monkeypatch, content: str):
                     "completions": type(
                         "Completions",
                         (),
-                        {"create": lambda *_args, **_kwargs: _Completion()},
+                        {"create": self._create},
                     )()
                 },
             )()
+
+        def _create(self, *_args, **kwargs):
+            self.create_kwargs = kwargs
+            if error is not None:
+                raise error
+            return _Completion()
 
     monkeypatch.setattr(
         "app.infrastructure.agent_inference_runtime.openai_compatible_adapter.OpenAI",
         _Client,
     )
+    return clients
 
 
 def test_openai_adapter_uses_agent_openai_config_not_legacy_llm_env(monkeypatch):
@@ -102,3 +124,80 @@ def test_openai_adapter_rejects_json_array_response(monkeypatch):
         OpenAICompatibleRuntimeAdapter().invoke(_request())
 
     assert exc.value.code == "RUNTIME_INVALID_OUTPUT"
+
+
+def test_openai_adapter_wraps_provider_errors(monkeypatch):
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    _patch_openai_response(monkeypatch, '{"message":"ok"}', error=RuntimeError("provider down"))
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        OpenAICompatibleRuntimeAdapter().invoke(_request())
+
+    assert exc.value.code == "RUNTIME_PROVIDER_ERROR"
+    assert exc.value.details["runtime_name"] == "openai_compatible"
+
+
+def test_openai_adapter_wraps_client_init_errors(monkeypatch):
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    _patch_openai_response(monkeypatch, '{"message":"ok"}', init_error=RuntimeError("bad client"))
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        OpenAICompatibleRuntimeAdapter().invoke(_request())
+
+    assert exc.value.code == "RUNTIME_PROVIDER_ERROR"
+    assert exc.value.details["runtime_name"] == "openai_compatible"
+
+
+def test_openai_adapter_wraps_timeout_errors(monkeypatch):
+    class _TimeoutError(Exception):
+        pass
+
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    monkeypatch.setattr(
+        "app.infrastructure.agent_inference_runtime.openai_compatible_adapter.APITimeoutError",
+        _TimeoutError,
+    )
+    _patch_openai_response(monkeypatch, '{"message":"ok"}', error=_TimeoutError("timeout"))
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        OpenAICompatibleRuntimeAdapter().invoke(_request())
+
+    assert exc.value.code == "RUNTIME_TIMEOUT"
+    assert exc.value.details["runtime_name"] == "openai_compatible"
+
+
+@pytest.mark.parametrize("kwargs", [{"timeout": "abc"}, {}])
+def test_openai_adapter_rejects_invalid_timeout(monkeypatch, kwargs):
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    if not kwargs:
+        monkeypatch.setenv("AGENT_OPENAI_TIMEOUT_SECONDS", "abc")
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        OpenAICompatibleRuntimeAdapter(**kwargs)
+
+    assert exc.value.code == "RUNTIME_CONFIG_INVALID"
+    assert exc.value.details["runtime_name"] == "openai_compatible"
+
+
+def test_openai_adapter_accepts_numeric_string_timeout_without_network(monkeypatch):
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    clients = _patch_openai_response(monkeypatch, '{"message":"ok"}')
+
+    OpenAICompatibleRuntimeAdapter(timeout="30").invoke(_request())
+
+    assert clients[0].kwargs["timeout"] == 30.0
+
+
+def test_openai_adapter_serializes_non_json_native_context_values(monkeypatch):
+    monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
+    clients = _patch_openai_response(monkeypatch, '{"message":"ok"}')
+    request = replace(
+        _request(),
+        context_pack={"generated_at": datetime(2026, 5, 25, 18, 40)},
+    )
+
+    result = OpenAICompatibleRuntimeAdapter().invoke(request)
+
+    assert result.status == "succeeded"
+    user_message = clients[0].create_kwargs["messages"][1]["content"]
+    assert "2026-05-25 18:40:00" in user_message
