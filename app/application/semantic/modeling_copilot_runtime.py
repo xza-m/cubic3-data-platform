@@ -529,7 +529,7 @@ class OpenAICompatibleLLMAdapter(ModelingAgentRuntimePort):
                 "status": "candidate",
             })
 
-        # 从 spec 里也补对象/指标（spec 是 SemanticModelingAgent 生成的，更完整）
+        # 从 spec 里也补对象/指标（spec 是 SemanticModelDraftBuilder 生成的，更完整）
         spec_ontology = (spec.get("ontology") or {})
         spec_object = spec_ontology.get("object") or {}
         if spec_object and not any(o.get("name") == spec_object.get("name") for o in objects):

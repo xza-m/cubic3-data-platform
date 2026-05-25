@@ -37,11 +37,13 @@ class SourceCandidateRecallService:
         datasource_repository: Any = None,
         table_cache_service: Any = None,
         dataset_repository: Any = None,
+        data_asset_service: Any = None,
         scoring_config: Optional[SourceCandidateScoringConfig] = None,
     ):
         self._datasource_repository = datasource_repository
         self._table_cache_service = table_cache_service
         self._dataset_repository = dataset_repository
+        self._data_asset_service = data_asset_service
         self._scoring_config = scoring_config or SourceCandidateScoringConfig.default()
 
     def recall(
@@ -59,6 +61,7 @@ class SourceCandidateRecallService:
         active_ids = self._active_datasource_ids(accessible_datasource_ids)
         candidates: List[Dict[str, Any]] = []
         candidates.extend(self._semantic_candidates(semantic_assets or {}, terms))
+        candidates.extend(self._data_asset_candidates(terms))
         candidates.extend(self._dataset_candidates(terms, active_ids))
         candidates.extend(self._table_candidates(terms, active_ids))
         candidates = [self._apply_intent_adjustment(candidate, query, terms) for candidate in candidates]
@@ -154,6 +157,60 @@ class SourceCandidateRecallService:
                     "matched_terms": matched,
                     "evidence": ["已有语义资产名称或标题与业务问题匹配"],
                 })
+        return candidates
+
+    def _data_asset_candidates(self, terms: Sequence[str]) -> List[Dict[str, Any]]:
+        if self._data_asset_service is None:
+            return []
+        candidates: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for term in terms:
+            if len(term) < 2:
+                continue
+            try:
+                page = self._data_asset_service.list_tables(keyword=term, page=1, page_size=20)
+            except Exception:
+                continue
+            for item in page.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                table_id = str(item.get("id") or "")
+                if not table_id or table_id in seen:
+                    continue
+                text = self._candidate_text(
+                    {
+                        "name": item.get("name"),
+                        "title": item.get("title"),
+                        "description": item.get("description"),
+                        "table": item.get("qualified_name") or item.get("name"),
+                    }
+                )
+                score, matched = self._score_candidate(terms, text)
+                if score <= 0:
+                    continue
+                evidence_bundle = self._build_asset_evidence(table_id)
+                asset_ref = self._first_asset_ref(evidence_bundle)
+                candidates.append({
+                    "id": f"asset:{table_id}",
+                    "asset_type": "data_asset_table",
+                    "source_kind": "physical_table",
+                    "source_id": item.get("source_id"),
+                    "database": item.get("database"),
+                    "schema": item.get("schema"),
+                    "table": item.get("name"),
+                    "name": item.get("qualified_name") or self._qualified_table_name(item),
+                    "title": item.get("title") or item.get("name"),
+                    "description": item.get("description"),
+                    "score": min(0.99, 0.58 + score),
+                    "score_breakdown": self._score_breakdown(0.58, score),
+                    "confidence": self._confidence(0.58 + score),
+                    "matched_terms": matched,
+                    "evidence": ["数据资产底座命中物理表快照、画像或使用证据"],
+                    "asset_ref": asset_ref,
+                    "evidence_bundle": evidence_bundle,
+                    "profile_summary": (evidence_bundle or {}).get("sample_profile") if isinstance(evidence_bundle, dict) else {},
+                })
+                seen.add(table_id)
         return candidates
 
     def _dataset_candidates(self, terms: Sequence[str], active_ids: Optional[set[int]]) -> List[Dict[str, Any]]:
@@ -385,7 +442,7 @@ class SourceCandidateRecallService:
 
     @staticmethod
     def _asset_priority(asset_type: str) -> int:
-        return {"cube": 4, "dataset": 3, "table": 2, "metric": 1, "semantic_object": 1}.get(asset_type, 0)
+        return {"data_asset_table": 5, "cube": 4, "dataset": 3, "table": 2, "metric": 1, "semantic_object": 1}.get(asset_type, 0)
 
     @staticmethod
     def _parse_table_ref(ref: str) -> Tuple[str, Optional[str], str]:
@@ -502,3 +559,28 @@ class SourceCandidateRecallService:
             sign = "+" if number >= 0 else ""
             parts.append(f"{key} {sign}{round(number, 4)}")
         return " · ".join(parts)
+
+    def _build_asset_evidence(self, table_id: str) -> Dict[str, Any]:
+        builder = getattr(self._data_asset_service, "build_table_evidence", None)
+        if not callable(builder):
+            return {}
+        try:
+            evidence = builder(table_id)
+            return evidence if isinstance(evidence, dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _first_asset_ref(evidence_bundle: Dict[str, Any]) -> Dict[str, Any]:
+        refs = evidence_bundle.get("asset_refs") if isinstance(evidence_bundle, dict) else None
+        if isinstance(refs, list) and refs and isinstance(refs[0], dict):
+            return refs[0]
+        return {}
+
+    @staticmethod
+    def _qualified_table_name(item: Dict[str, Any]) -> str:
+        return ".".join(
+            str(part)
+            for part in (item.get("database"), item.get("schema"), item.get("name"))
+            if part not in (None, "")
+        )

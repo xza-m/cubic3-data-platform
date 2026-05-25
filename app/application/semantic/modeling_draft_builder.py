@@ -1,4 +1,4 @@
-"""建模助手 Agent 应用编排服务。"""
+"""语义模型草稿构建器。"""
 from __future__ import annotations
 
 import re
@@ -10,10 +10,10 @@ from app.application.semantic.cube_modeling_source_service import CubeModelingSo
 from app.application.semantic.modeling_spec_repair import repair_modeling_spec
 
 
-class SemanticModelingAgent:
-    """从建模源和业务意图编排生成 Cube + Ontology 草稿。
+class SemanticModelDraftBuilder:
+    """内部确定性 builder，从建模源和业务意图编排生成 Cube + Ontology 草稿。
 
-    该服务只产出构建输入、草稿和审计快照，不参与正式 Agent 运行时解析。
+    该服务只产出构建输入、草稿和审计快照，不作为独立产品入口暴露。
     """
 
     _SUBJECT_NAME_HINTS = {
@@ -45,6 +45,14 @@ class SemanticModelingAgent:
         "身份证",
         "敏感",
     )
+    _BLOCKING_FIELD_CANDIDATE_ISSUE_CODES = {
+        "field_type_unknown",
+        "metric_aggregation_missing",
+        "non_additive_unconfirmed",
+        "candidate_snapshot_stale",
+        "dimension_metric_conflict",
+        "ratio_sum_risk",
+    }
 
     def __init__(
         self,
@@ -62,22 +70,40 @@ class SemanticModelingAgent:
         self._agent_plan_handler = agent_plan_handler
 
     def create_spec_draft(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """生成用户可编辑的 SemanticModelingAgentSpec 草稿。"""
+        """生成用户可编辑的 SemanticModelDraft spec 草稿。"""
         source_payload = self._normalize_source_payload(payload)
         business = self._build_business_section(payload)
-        cube = self._cube_modeling_source_service.generate_cube_draft_from_source(
-            source_kind=source_payload["source_kind"],
-            source_id=source_payload.get("source_id"),
-            dataset_id=source_payload.get("dataset_id"),
-            database=source_payload.get("database"),
-            schema=source_payload.get("schema"),
-            table=source_payload.get("table"),
-            name=source_payload.get("name"),
-            title=source_payload.get("title") or business["subject"],
-            description=source_payload.get("description"),
-        )
+        if self._has_asset_schema_snapshot(source_payload):
+            cube = self._cube_modeling_source_service.generate_cube_draft_from_asset_evidence(
+                source_id=source_payload.get("source_id"),
+                database=source_payload.get("database"),
+                schema=source_payload.get("schema"),
+                table=source_payload.get("table"),
+                evidence_bundle=source_payload["evidence_bundle"],
+                name=source_payload.get("name"),
+                title=source_payload.get("title") or business["subject"],
+                description=source_payload.get("description"),
+            )
+        else:
+            cube = self._cube_modeling_source_service.generate_cube_draft_from_source(
+                source_kind=source_payload["source_kind"],
+                source_id=source_payload.get("source_id"),
+                dataset_id=source_payload.get("dataset_id"),
+                database=source_payload.get("database"),
+                schema=source_payload.get("schema"),
+                table=source_payload.get("table"),
+                name=source_payload.get("name"),
+                title=source_payload.get("title") or business["subject"],
+                description=source_payload.get("description"),
+            )
         ontology = self._build_ontology_from_cube(cube, business)
         sensitive_fields = self._detect_sensitive_fields(cube)
+        field_candidate_trace = cube.get("field_candidate_trace") if isinstance(cube, dict) else None
+        field_candidate_summary = (
+            field_candidate_trace.get("summary")
+            if isinstance(field_candidate_trace, dict)
+            else None
+        )
         spec = {
             "spec_version": "v1",
             "source": source_payload,
@@ -88,6 +114,8 @@ class SemanticModelingAgent:
                 "sensitivity_level": business["sensitivity_level"],
                 "sensitive_fields": sensitive_fields,
                 "official_agent_consumes_spec": False,
+                "field_candidate_summary": field_candidate_summary,
+                "field_candidate_trace": field_candidate_trace,
             },
             "audit": self._audit_snapshot("spec_draft"),
             "sample_questions": self._sample_questions(business["subject"], ontology["metrics"]),
@@ -98,6 +126,14 @@ class SemanticModelingAgent:
             user_goal=str(payload.get("user_question") or payload.get("business_subject") or business["subject"]),
             source_mode=str(payload.get("source_mode") or ""),
         )
+        if field_candidate_trace is not None:
+            repaired_cube = spec.setdefault("cube", {})
+            if isinstance(repaired_cube, dict):
+                repaired_cube["field_candidate_trace"] = field_candidate_trace
+            governance = spec.setdefault("governance", {})
+            if isinstance(governance, dict):
+                governance["field_candidate_summary"] = field_candidate_summary
+                governance["field_candidate_trace"] = field_candidate_trace
         return {
             "spec": spec,
             "next_actions": {
@@ -134,6 +170,8 @@ class SemanticModelingAgent:
         if not measures:
             issues.append(self._issue("error", "cube.measures", "Cube 缺少 measure，无法发布指标语义"))
 
+        issues.extend(self._field_candidate_issues(cube))
+
         for metric in ontology.get("metrics") or []:
             refs = metric.get("measure_refs") or []
             if not refs:
@@ -167,6 +205,7 @@ class SemanticModelingAgent:
             "checks": {
                 "cube_structure": "failed" if any(i["path"].startswith("cube") for i in blocking) else "passed",
                 "metric_binding": "failed" if any("measure_refs" in i["path"] for i in blocking) else "passed",
+                "field_candidates": "failed" if any(i["path"].startswith("field_candidate.") for i in blocking) else "passed",
                 "ontology_publish": "warning" if any(i["severity"] == "warning" for i in issues) else "passed",
                 "projection": "passed" if not blocking else "failed",
                 "permission_impact": self._permission_impact(spec),
@@ -343,6 +382,8 @@ class SemanticModelingAgent:
             "name": name,
             "title": title,
             "description": description,
+            "evidence_bundle": deepcopy(payload.get("evidence_bundle")),
+            "asset_ref": deepcopy(payload.get("asset_ref")),
         }
 
     @staticmethod
@@ -353,6 +394,16 @@ class SemanticModelingAgent:
             if ref and "." in ref:
                 return ref
         return ""
+
+    @staticmethod
+    def _has_asset_schema_snapshot(source_payload: Dict[str, Any]) -> bool:
+        if source_payload.get("source_kind") != "physical_table":
+            return False
+        evidence_bundle = source_payload.get("evidence_bundle")
+        if not isinstance(evidence_bundle, dict):
+            return False
+        schema_snapshot = evidence_bundle.get("schema_snapshot")
+        return isinstance(schema_snapshot, dict) and bool(schema_snapshot)
 
     def _build_business_section(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         subject = str(payload.get("business_subject") or payload.get("subject") or payload.get("title") or "业务对象").strip()
@@ -617,8 +668,34 @@ class SemanticModelingAgent:
         cube_name, measure_name = measure_ref.split(".", 1)
         return cube_name, measure_name
 
-    def _issue(self, severity: str, path: str, message: str) -> Dict[str, str]:
-        return {"severity": severity, "path": path, "message": message}
+    def _field_candidate_issues(self, cube: Dict[str, Any]) -> List[Dict[str, str]]:
+        trace = cube.get("field_candidate_trace") if isinstance(cube, dict) else None
+        if not isinstance(trace, dict):
+            return []
+
+        issues: List[Dict[str, str]] = []
+        for issue in trace.get("issues") or []:
+            if not isinstance(issue, dict):
+                continue
+            code = str(issue.get("code") or "field_candidate_issue")
+            severity = (
+                "error"
+                if code in self._BLOCKING_FIELD_CANDIDATE_ISSUE_CODES or issue.get("severity") == "error"
+                else "warning"
+            )
+            path = str(issue.get("path") or "unknown").strip(".")
+            message = str(issue.get("message") or "字段候选存在待确认问题")
+            issues.append(self._issue(severity, f"field_candidate.{path}", message, code=code))
+        return issues
+
+    def _issue(
+        self,
+        severity: str,
+        path: str,
+        message: str,
+        code: str = "validation_issue",
+    ) -> Dict[str, str]:
+        return {"severity": severity, "path": path, "message": message, "code": code}
 
     def _audit_snapshot(self, action: str) -> Dict[str, str]:
         return {

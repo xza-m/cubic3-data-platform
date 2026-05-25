@@ -53,6 +53,7 @@ services:
       - LLM_API_BASE=${LLM_API_BASE:-https://api.openai.com/v1}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+      - SEMANTIC_MODELING_COPILOT_STORE=${SEMANTIC_MODELING_COPILOT_STORE:-yaml}
       - GUNICORN_WORKERS=1
     depends_on:
       postgres:
@@ -89,6 +90,7 @@ services:
       - LLM_API_BASE=${LLM_API_BASE:-https://api.openai.com/v1}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+      - SEMANTIC_MODELING_COPILOT_STORE=${SEMANTIC_MODELING_COPILOT_STORE:-yaml}
     depends_on:
       - redis
       - postgres

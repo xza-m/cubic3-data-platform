@@ -70,7 +70,7 @@ def main() -> int:
 
     try:
         source = _resolve_source(page)
-        goto_semantic(page, "/semantic/modeling-agent/new")
+        goto_semantic(page, "/semantic/modeling-copilot/new")
         page.get_by_role("heading", name="建模助手 Agent").wait_for(timeout=10_000)
 
         page.get_by_label("数据源 ID").fill(source["source_id"])

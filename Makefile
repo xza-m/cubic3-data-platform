@@ -15,11 +15,9 @@ SEMANTIC_PREFLIGHT_CUBE ?= student_comment_cube
 SEMANTIC_PREFLIGHT_MEASURE ?= comment_count
 SEMANTIC_PREFLIGHT_TABLE ?= df_cb_258187.dwd_interaction_comment_reports_df
 AGENT_RUNTIME_LIVE_QUESTION ?= 查询最近7天学生评论数，按学校汇总
-SEMANTIC_BASELINE_DATABASE_URL ?=
-SEMANTIC_FIXTURE_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)
+DATABASE_URL ?=
 SEMANTIC_FIXTURE_NAMESPACE ?=
 SEMANTIC_PROD_LIVE ?= 0
-SEMANTIC_POSTGRES_DATABASE_URL ?= $(SEMANTIC_BASELINE_DATABASE_URL)
 
 .PHONY: \
 	help \
@@ -104,16 +102,16 @@ help:
 	@printf '  %-26s %s\n' 'make review' '审阅前总入口（verify + docs-health + docs-impact）'
 	@printf '  %-26s %s\n' 'make verify-semantic' '语义中心专项总入口（共享层 + 语义 smoke）'
 	@printf '  %-26s %s\n' 'make verify-semantic-prod' '语义平台生产候选闸门（迁移 / nginx build / semantic verify / live opt-in / cleanup）'
-	@printf '  %-26s %s\n' 'make verify-semantic-prod-strict' '语义平台上线前严格闸门（要求预发 DB / live smoke / fixture cleanup / PG 并发）'
+	@printf '  %-26s %s\n' 'make verify-semantic-prod-strict' '语义平台上线前严格闸门（要求 DATABASE_URL / live smoke / fixture cleanup / PG 并发）'
 	@printf '  %-26s %s\n' 'make semantic-prod-env-required' '校验严格上线前验证所需环境变量'
 	@printf '  %-26s %s\n' 'make semantic-prod-readiness-report' '输出语义平台上线前补证 readiness 报告'
 	@printf '  %-26s %s\n' 'make test-semantic-prod-registry' '语义生产化 SQL Registry / Publish Gate / Runtime Snapshot 单元与集成测试'
-	@printf '  %-26s %s\n' 'make test-semantic-postgres-concurrency' '真实 PostgreSQL 发布并发与 active snapshot 约束测试（设置 SEMANTIC_POSTGRES_DATABASE_URL 后执行）'
+	@printf '  %-26s %s\n' 'make test-semantic-postgres-concurrency' '真实 PostgreSQL 发布并发与 active snapshot 约束测试（设置 DATABASE_URL 后执行）'
 	@printf '  %-26s %s\n' 'make test-agent-runtime' 'Agent-first Runtime official 链路测试'
 	@printf '  %-26s %s\n' 'make test-query-execution' '统一查询执行面最小链路测试'
 	@printf '  %-26s %s\n' 'make preflight-agent-runtime' '真实环境 Agent Runtime 语义资产预检（不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make live-agent-runtime' '真实 MaxCompute 执行验收（opt-in，不并入默认 verify）'
-	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Agent 与 Domain 上下文最小链路测试'
+	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Copilot 与 Domain 上下文最小链路测试'
 	@printf '  %-26s %s\n' 'make smoke-semantic' '语义中心关键路径运行验证'
 	@printf '  %-26s %s\n' 'make smoke-semantic-live' 'Modeling Copilot live smoke（SEMANTIC_PROD_LIVE=1 时执行）'
 	@printf '  %-26s %s\n' 'make coverage' 'coverage 聚合入口（backend + frontend，可选，不并入默认四层）'
@@ -252,6 +250,7 @@ smoke-semantic:
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-smoke
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-publish-smoke
 	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:governance-issues-smoke
+	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:data-assets-smoke
 	cd $(FRONTEND_DIR) && $(NPM) run e2e:modeling-agent-smoke
 
 verify: lint typecheck test smoke
@@ -300,16 +299,15 @@ verify-changed:
 	$(PYTHON) scripts/checks/changed_validation.py --execute $(VERIFY_CONTEXT) $(VERIFY_FILES)
 
 test-modeling-agent:
-	@printf '%s\n' '[layer3][modeling-agent] 运行建模助手 Agent 与 Domain 上下文最小链路测试'
+	@printf '%s\n' '[layer3][modeling-copilot] 运行建模 Copilot 与 Domain 上下文最小链路测试'
 	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
 		tests/unit/domain/semantic/test_entities.py::TestDomainEntities::test_domain_definition_accepts_context_fields_without_join_truth \
 		tests/unit/application/semantic/test_domain_modeling_service.py::test_domain_context_preview_returns_candidate_scope_without_join_truth \
 		tests/integration/test_semantic_api.py::TestDomainsEndpoint::test_domain_context_preview_returns_candidate_scope \
-		tests/unit/application/semantic/test_semantic_modeling_agent.py \
-		tests/integration/test_semantic_modeling_agent_api.py \
+		tests/unit/application/semantic/test_modeling_draft_builder.py \
 		tests/unit/application/semantic/test_modeling_copilot_service.py \
 		tests/integration/test_semantic_modeling_copilot_api.py
-	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-agent/ModelingAgent.test.tsx
+	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-copilot/ModelingAgent.test.tsx
 
 test-semantic-prod-registry:
 	@printf '%s\n' '[layer3][semantic-prod-registry] 运行 SQL Registry / Publish Gate / Release Snapshot 生产化收敛测试'
@@ -325,13 +323,12 @@ test-semantic-prod-registry:
 		tests/integration/semantic/test_semantic_registry_release_flow.py
 
 test-semantic-postgres-concurrency:
-	@if [ -n "$(SEMANTIC_POSTGRES_DATABASE_URL)" ] || [ -n "$(SEMANTIC_BASELINE_DATABASE_URL)" ]; then \
+	@if [ -n "$(DATABASE_URL)" ]; then \
 		printf '%s\n' '[layer3][semantic-prod-postgres] 运行真实 PostgreSQL 并发发布验证'; \
-		SEMANTIC_POSTGRES_DATABASE_URL="$(SEMANTIC_POSTGRES_DATABASE_URL)" \
-		SEMANTIC_BASELINE_DATABASE_URL="$(SEMANTIC_BASELINE_DATABASE_URL)" \
+		DATABASE_URL="$(DATABASE_URL)" \
 		PYTHONPATH=. $(PYTHON) -m pytest --no-cov tests/integration/semantic/test_semantic_postgres_concurrency.py; \
 	else \
-		printf '%s\n' '[layer3][semantic-prod-postgres] skip: 未设置 SEMANTIC_POSTGRES_DATABASE_URL 或 SEMANTIC_BASELINE_DATABASE_URL'; \
+		printf '%s\n' '[layer3][semantic-prod-postgres] skip: 未设置 DATABASE_URL'; \
 	fi
 
 test-agent-runtime:
@@ -375,11 +372,11 @@ live-agent-runtime:
 verify-semantic: test-agent-runtime test-query-execution test-modeling-agent verify-backend verify-frontend smoke-semantic
 
 semantic-baseline-dry-run:
-	@if [ -n "$(SEMANTIC_BASELINE_DATABASE_URL)" ]; then \
+	@if [ -n "$(DATABASE_URL)" ]; then \
 		printf '%s\n' '[semantic-prod][baseline] 校验存量库 schema fingerprint'; \
-		PYTHONPATH=. $(PYTHON) scripts/checks/semantic_alembic_baseline.py --database-url "$(SEMANTIC_BASELINE_DATABASE_URL)"; \
+		PYTHONPATH=. $(PYTHON) scripts/checks/semantic_alembic_baseline.py --database-url "$(DATABASE_URL)"; \
 	else \
-		printf '%s\n' '[semantic-prod][baseline] skip: 未设置 SEMANTIC_BASELINE_DATABASE_URL，仅执行离线 Alembic 拓扑检查'; \
+		printf '%s\n' '[semantic-prod][baseline] skip: 未设置 DATABASE_URL，仅执行离线 Alembic 拓扑检查'; \
 	fi
 
 semantic-prod-readiness-report:
@@ -394,21 +391,19 @@ smoke-semantic-live:
 	fi
 
 semantic-fixture-cleanup:
-	@if [ -n "$(SEMANTIC_FIXTURE_NAMESPACE)" ] && [ -n "$(SEMANTIC_FIXTURE_DATABASE_URL)" ]; then \
+	@if [ -n "$(SEMANTIC_FIXTURE_NAMESPACE)" ] && [ -n "$(DATABASE_URL)" ]; then \
 		printf '%s\n' '[semantic-prod][cleanup] 清理语义测试 namespace: $(SEMANTIC_FIXTURE_NAMESPACE)'; \
 		PYTHONPATH=. $(PYTHON) scripts/checks/semantic_fixture_cleanup.py \
-			--database-url "$(SEMANTIC_FIXTURE_DATABASE_URL)" \
+			--database-url "$(DATABASE_URL)" \
 			--namespace "$(SEMANTIC_FIXTURE_NAMESPACE)"; \
 	else \
-		printf '%s\n' '[semantic-prod][cleanup] skip: 未设置 SEMANTIC_FIXTURE_NAMESPACE 或 SEMANTIC_FIXTURE_DATABASE_URL，未执行外部清理'; \
+		printf '%s\n' '[semantic-prod][cleanup] skip: 未设置 SEMANTIC_FIXTURE_NAMESPACE 或 DATABASE_URL，未执行外部清理'; \
 	fi
 
 semantic-prod-env-required:
-	@SEMANTIC_BASELINE_DATABASE_URL="$(SEMANTIC_BASELINE_DATABASE_URL)" \
-	SEMANTIC_FIXTURE_DATABASE_URL="$(SEMANTIC_FIXTURE_DATABASE_URL)" \
+	@DATABASE_URL="$(DATABASE_URL)" \
 	SEMANTIC_FIXTURE_NAMESPACE="$(SEMANTIC_FIXTURE_NAMESPACE)" \
 	SEMANTIC_PROD_LIVE="$(SEMANTIC_PROD_LIVE)" \
-	SEMANTIC_POSTGRES_DATABASE_URL="$(SEMANTIC_POSTGRES_DATABASE_URL)" \
 	$(PYTHON) scripts/checks/semantic_prod_env_guard.py \
 		--require-baseline \
 		--require-live \

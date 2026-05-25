@@ -9,6 +9,7 @@ from datetime import datetime
 import re
 from typing import Any, Dict, List, Optional, Set
 
+from app.application.semantic.field_candidates import TypeCompatibilityPolicy
 from app.application.semantic.semantic_runtime_binding_service import (
     SemanticRuntimeBindingService,
 )
@@ -71,14 +72,6 @@ class SyncReport:
         }
 
 
-_CUBE_TYPE_MAP = {
-    "string": {"STRING", "VARCHAR", "CHAR"},
-    "number": {"BIGINT", "INT", "DOUBLE", "FLOAT", "DECIMAL", "TINYINT", "SMALLINT"},
-    "time": {"DATETIME", "TIMESTAMP", "DATE", "STRING"},
-    "boolean": {"BOOLEAN", "TINYINT"},
-}
-
-
 class SchemaSyncService:
 
     def __init__(
@@ -94,6 +87,7 @@ class SchemaSyncService:
         self._view_repo = view_repo
         self._registry_repo = registry_repo
         self._runtime_binding_service = runtime_binding_service
+        self._type_policy = TypeCompatibilityPolicy()
 
     def check_all(self) -> SyncReport:
         cubes = self._cube_repo.list_all()
@@ -158,15 +152,14 @@ class SchemaSyncService:
                             detail=f"Dimension '{dim_name}' references column '{col}' not found in physical table",
                         ))
                     else:
-                        physical_type = physical_map[lower_col]
-                        expected = _CUBE_TYPE_MAP.get(dim.type, set())
-                        if expected and physical_type not in expected:
+                        raw_physical_type = physical_map[lower_col]
+                        if not self._type_policy.is_compatible(raw_physical_type, dim.type):
                             report.drifts.append(DriftItem(
                                 cube=cube.name,
                                 table=cube.table,
                                 kind="type_mismatch",
                                 column=col,
-                                detail=f"Dimension '{dim_name}' type='{dim.type}' but physical is '{physical_type}'",
+                                detail=f"Dimension '{dim_name}' type='{dim.type}' but physical is '{raw_physical_type}'",
                             ))
                 if dim.enum_source:
                     enums = inspector.fetch_dict_enums(dim.enum_source.dict_type)
@@ -181,6 +174,18 @@ class SchemaSyncService:
                                 f"'{dim.enum_source.dict_type}' but no enum entries were loaded"
                             ),
                             severity="warn",
+                        ))
+
+            for measure_name, measure in cube.measures.items():
+                for col in self._extract_column_names(measure.sql, cube.name):
+                    cube_col_names.add(col.lower())
+                    if col.lower() not in physical_names:
+                        report.drifts.append(DriftItem(
+                            cube=cube.name,
+                            table=cube.table,
+                            kind="missing_in_physical",
+                            column=col,
+                            detail=f"Measure '{measure_name}' references column '{col}' not found in physical table",
                         ))
 
             self._check_joins(cube, physical_map, report)
@@ -430,13 +435,20 @@ class SchemaSyncService:
     @staticmethod
     def _extract_column_name(sql_expr: str, cube_name: str) -> Optional[str]:
         """从 {CUBE}.column_name 形式提取列名"""
+        columns = SchemaSyncService._extract_column_names(sql_expr, cube_name)
+        return next(iter(columns), None)
+
+    @staticmethod
+    def _extract_column_names(sql_expr: str, cube_name: str) -> Set[str]:
+        """从简单列引用或聚合表达式中提取物理列名。"""
         resolved = sql_expr.replace("{CUBE}", cube_name)
-        if f"{cube_name}." in resolved:
-            parts = resolved.split(f"{cube_name}.")
-            if len(parts) >= 2:
-                col = parts[1].strip().split()[0].rstrip(",)")
-                return col
-        return None
+        columns: Set[str] = set()
+        qualified_pattern = rf"`?{re.escape(cube_name)}`?\.`?([A-Za-z_][A-Za-z0-9_]*)`?"
+        columns.update(re.findall(qualified_pattern, resolved))
+        for backtick_col in re.findall(r"`([^`]+)`", resolved):
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", backtick_col):
+                columns.add(backtick_col)
+        return columns
 
     @staticmethod
     def _extract_join_columns(

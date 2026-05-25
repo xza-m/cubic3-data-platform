@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app.application.semantic.semantic_modeling_agent import SemanticModelingAgent
+import pytest
+
+from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
+from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
+from app.shared.exceptions import ApplicationException
 
 
 def _cube_draft():
@@ -38,7 +42,8 @@ def _cube_draft():
 
 def _builder(**overrides):
     source_service = overrides.get("source_service") or MagicMock()
-    source_service.generate_cube_draft_from_source.return_value = _cube_draft()
+    if overrides.get("source_service") is None:
+        source_service.generate_cube_draft_from_source.return_value = _cube_draft()
     cube_modeling_service = overrides.get("cube_modeling_service") or MagicMock()
     cube_modeling_service.create_cube.return_value = SimpleNamespace(
         name="student_comments",
@@ -60,10 +65,18 @@ def _builder(**overrides):
         "name": entity_name,
         "status": "active",
     }
-    return SemanticModelingAgent(
+    return SemanticModelDraftBuilder(
         cube_modeling_source_service=source_service,
         cube_modeling_service=cube_modeling_service,
         ontology_service=ontology_service,
+    )
+
+
+def _source_service(cube_modeling_service=None):
+    return CubeModelingSourceService(
+        cube_modeling_service=cube_modeling_service or MagicMock(),
+        dataset_repository=MagicMock(),
+        datasource_repository=MagicMock(),
     )
 
 
@@ -112,6 +125,129 @@ def test_coerce_business_question_keeps_explicit_source_id():
     source_service.resolve_default_physical_source_id.assert_not_called()
 
 
+def test_model_draft_builder_uses_asset_evidence_schema_before_live_adapter():
+    source_service = MagicMock()
+    source_service.generate_cube_draft_from_asset_evidence.return_value = _cube_draft()
+    builder = _builder(source_service=source_service)
+    evidence_bundle = {
+        "runtime_truth": False,
+        "schema_snapshot": {
+            "columns": [
+                {"name": "school_id", "type": "BIGINT", "comment": "学校ID"},
+                {"name": "comment_id", "type": "STRING", "comment": "评论ID"},
+            ]
+        },
+    }
+
+    result = builder.create_spec_draft(
+        {
+            "source_kind": "physical_table",
+            "source_id": "maxcompute-prod",
+            "database": "df_cb_258187",
+            "schema": "dw",
+            "table": "dwd_interaction_comment_reports_df",
+            "business_subject": "学生评论",
+            "evidence_bundle": evidence_bundle,
+        }
+    )
+
+    source_service.generate_cube_draft_from_asset_evidence.assert_called_once()
+    source_service.generate_cube_draft_from_source.assert_not_called()
+    assert result["spec"]["source"]["evidence_bundle"] == evidence_bundle
+    assert result["spec"]["source"]["evidence_bundle"] is not evidence_bundle
+    evidence_bundle["schema_snapshot"]["columns"][0]["name"] = "polluted"
+    assert result["spec"]["source"]["evidence_bundle"]["schema_snapshot"]["columns"][0]["name"] == "school_id"
+
+
+def test_asset_evidence_source_id_requires_valid_numeric_id():
+    cube_modeling_service = MagicMock()
+    service = _source_service(cube_modeling_service)
+
+    with pytest.raises(ApplicationException, match="source_id 必须映射到有效数据源 ID"):
+        service.generate_cube_draft_from_asset_evidence(
+            source_id="maxcompute-prod",
+            database="df_cb_258187",
+            schema="dw",
+            table="dwd_interaction_comment_reports_df",
+            evidence_bundle={"schema_snapshot": {"columns": [{"name": "school_id", "type": "BIGINT"}]}},
+        )
+
+    cube_modeling_service.build_cube_draft_payload.assert_not_called()
+
+
+def test_asset_evidence_source_id_accepts_numeric_string_and_copies_evidence():
+    cube_modeling_service = MagicMock()
+    candidate_set = SimpleNamespace(candidate_set_id="fcand_asset")
+    cube_modeling_service._field_candidate_service.preview_from_evidence_bundle.return_value = candidate_set
+    cube_modeling_service.build_cube_draft_from_candidate_set.return_value = {"name": "comment_cube"}
+    service = _source_service(cube_modeling_service)
+    evidence_bundle = {
+        "schema_snapshot": {
+            "columns": [{"name": "school_id", "type": "BIGINT", "comment": "学校ID"}],
+        }
+    }
+
+    result = service.generate_cube_draft_from_asset_evidence(
+        source_id="7",
+        database="df_cb_258187",
+        schema="dw",
+        table="dwd_interaction_comment_reports_df",
+        evidence_bundle=evidence_bundle,
+    )
+
+    kw = cube_modeling_service.build_cube_draft_from_candidate_set.call_args.kwargs
+    assert kw["candidate_set"] is candidate_set
+    assert kw["source_id"] == 7
+    assert kw["data_source"] == "metadata_snapshot"
+    assert kw["draft_source_mode"] == "asset_evidence"
+    assert result["asset_evidence"] == evidence_bundle
+    assert result["asset_evidence"] is not evidence_bundle
+    evidence_bundle["schema_snapshot"]["columns"][0]["name"] = "polluted"
+    assert result["asset_evidence"]["schema_snapshot"]["columns"][0]["name"] == "school_id"
+
+
+def test_asset_evidence_normalizes_fields_and_partition_flags():
+    cube_modeling_service = MagicMock()
+    cube_modeling_service._field_candidate_service.preview_from_evidence_bundle.return_value = SimpleNamespace(
+        candidate_set_id="fcand_asset"
+    )
+    cube_modeling_service.build_cube_draft_from_candidate_set.return_value = {"name": "comment_cube"}
+    service = _source_service(cube_modeling_service)
+
+    service.generate_cube_draft_from_asset_evidence(
+        source_id=7,
+        database="df_cb_258187",
+        schema="dw",
+        table="dwd_interaction_comment_reports_df",
+        evidence_bundle={
+            "schema_snapshot": {
+                "fields": [
+                    {"field_name": "school_id", "data_type": "BIGINT", "display_name": "学校ID"},
+                    {"field_name": "ds", "data_type": "STRING", "is_partition": True},
+                ]
+            }
+        },
+    )
+
+    preview_kw = cube_modeling_service._field_candidate_service.preview_from_evidence_bundle.call_args.kwargs
+    assert preview_kw["evidence_bundle"]["schema_snapshot"]["fields"][0]["field_name"] == "school_id"
+    kw = cube_modeling_service.build_cube_draft_from_candidate_set.call_args.kwargs
+    assert kw["partitions"] == ["ds"]
+
+
+def test_asset_evidence_requires_schema_columns_or_fields():
+    service = _source_service()
+
+    with pytest.raises(ApplicationException, match="缺少 columns 或 fields"):
+        service.generate_cube_draft_from_asset_evidence(
+            source_id=7,
+            database="df_cb_258187",
+            schema="dw",
+            table="dwd_interaction_comment_reports_df",
+            evidence_bundle={"schema_snapshot": {"columns": []}},
+        )
+
+
 def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():
     builder = _builder()
 
@@ -141,6 +277,35 @@ def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():
     assert spec["ontology"]["policies"][0]["visibility"] == "restricted"
     assert "comment_content" in spec["governance"]["sensitive_fields"]
     assert result["next_actions"]["default_publish_target"] == "cube_only"
+
+
+def test_spec_draft_preserves_field_candidate_trace_from_cube_draft():
+    source_service = MagicMock()
+    trace = {
+        "candidate_set_id": "fcand_asset",
+        "ruleset_version": "field-candidate-rules-v1",
+        "summary": {"dimensions": 4, "measures": 1, "time_fields": 1},
+        "source": {"source_kind": "asset_evidence"},
+        "draft_source_mode": "asset_evidence",
+    }
+    source_service.generate_cube_draft_from_source.return_value = {**_cube_draft(), "field_candidate_trace": trace}
+    builder = _builder(source_service=source_service)
+
+    result = builder.create_spec_draft(
+        {
+            "source_kind": "physical_table",
+            "source_id": 7,
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+            "business_subject": "学生评论",
+        }
+    )
+
+    spec = result["spec"]
+    assert spec["cube"]["field_candidate_trace"] == trace
+    assert spec["cube"]["field_candidate_trace"] is trace
+    assert spec["governance"]["field_candidate_summary"] == trace["summary"]
+    assert spec["governance"]["field_candidate_trace"] == trace
 
 
 def test_apply_saves_cube_and_ontology_but_does_not_publish():
@@ -252,6 +417,40 @@ def test_validate_blocks_metric_when_measure_ref_is_missing():
     assert any("无法解析 Measure 引用" in issue["message"] for issue in result["issues"])
     assert result["agent_sandbox_preview"]["mode"] == "draft_spec"
     assert result["agent_sandbox_preview"]["pollutes_official_route"] is False
+
+
+def test_validate_blocks_high_risk_field_candidate_issues():
+    builder = _builder()
+    spec = builder.create_spec_draft(
+        {
+            "source_kind": "physical_table",
+            "source_id": 7,
+            "database": "dw",
+            "table": "dwd_student_comment_events",
+            "business_subject": "学生评论",
+        }
+    )["spec"]
+    spec["cube"]["field_candidate_trace"] = {
+        "issues": [
+            {
+                "code": "ratio_sum_risk",
+                "severity": "warning",
+                "path": "measures.ratio",
+                "message": "比例指标不能直接求和，需要人工确认聚合方式",
+            }
+        ]
+    }
+
+    result = builder.validate(spec)
+
+    assert result["status"] == "blocked"
+    assert result["checks"]["field_candidates"] == "failed"
+    assert any(
+        issue["code"] == "ratio_sum_risk"
+        and issue["severity"] == "error"
+        and issue["path"] == "field_candidate.measures.ratio"
+        for issue in result["issues"]
+    )
 
 
 def test_agent_ready_check_requires_active_cube_and_ontology_binding():

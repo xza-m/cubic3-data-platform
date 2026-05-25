@@ -648,7 +648,7 @@ B1-B3 本地收敛后，B4 只处理上线前证据和门禁可操作性：
 
 - [x] B4-01 新增 `scripts/checks/semantic_prod_readiness_report.py` 和 `make semantic-prod-readiness-report`。
 - [x] B4-02 readiness report 对 DB URL 做脱敏，避免签核日志泄露密码。
-- [x] B4-03 readiness report 显式输出 `SEMANTIC_FIXTURE_DATABASE_URL` fallback 到 `SEMANTIC_BASELINE_DATABASE_URL` 的来源。
+- [x] B4-03 readiness report 显式输出单一 `DATABASE_URL` 的脱敏结果，baseline fingerprint、fixture cleanup 和 PostgreSQL 并发共用同一个验证库。
 - [x] B4-04 在模拟预生产库执行 baseline fingerprint、fixture cleanup 和真实 PostgreSQL 并发验证。
 - [x] B4-05 执行真实 Modeling Copilot live smoke，并保留 release / snapshot / audit trace 证据。
 - [x] B4-06 汇总上线签核记录；本地模拟预生产作为本次上线前验收环境。

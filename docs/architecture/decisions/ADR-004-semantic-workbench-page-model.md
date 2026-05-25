@@ -39,7 +39,7 @@ last_reviewed: 2026-05-05
 当前具体页面映射为：
 
 - `Ontology Workbench` -> `/semantic/ontology` 及其对象、指标、关系、治理子路由
-- `Modeling Assistant` -> `/semantic/modeling-agent/new`
+- `Modeling Assistant` -> `/semantic/modeling-copilot/new`
 - `Inventory` -> `/semantic/cubes`、`/semantic/views/:name`
 - `Canvas` -> `/semantic/domains`、`/semantic/domains/:id`、`/semantic/relations`
 - `Diagnostics` -> `/semantic/workbench`
@@ -67,7 +67,7 @@ Phase 2 同时固定对象落点：`Cube` 是分析执行真相源，`Ontology` 
 - 新的语义能力优先落到当前 `Modeling Assistant / Ontology Workbench / Inventory / Canvas / Diagnostics` 页面模型中，而不是直接新增一级资产中心
 - `/semantic/modeling` 是旧兼容入口，当前重定向到 `/semantic/domains`
 - `/semantic/ontology` 是业务语义主入口；`/semantic/workbench` 是语义诊断入口
-- `/semantic/modeling-agent/new` 是建模助手 Agent 顶层任务流，不归属 `/semantic/cubes/new`
+- `/semantic/modeling-copilot/new` 是建模助手 Copilot 顶层任务流，不归属 `/semantic/cubes/new`
 - `Domain.cubes[]` / 业务上下文资产画布只作为 `Cube <-> Domain` 资产归属和候选范围事实；`Cube.domain_id` 只允许作为兼容投影字段存在
 - Domain 不作为指标、关系、动作或 Join 的第三套真相源；正式业务语义以 `Ontology` 为准，分析执行以 `Cube` 为准
 - 业务上下文资产画布不再维护关系边，Domain 数据模型、YAML 与 API 不再保留 `joins` / `join_count`；执行 Join 只在 `Cube.joins` 中建模，业务关系只在 `Ontology BusinessRelation` 中建模

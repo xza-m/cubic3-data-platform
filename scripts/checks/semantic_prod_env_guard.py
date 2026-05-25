@@ -10,34 +10,21 @@ from collections.abc import Mapping
 
 def check_env(args: argparse.Namespace, env: Mapping[str, str]) -> list[str]:
     problems: list[str] = []
-    baseline_url = _value(env, "SEMANTIC_BASELINE_DATABASE_URL")
-    fixture_url = _value(env, "SEMANTIC_FIXTURE_DATABASE_URL") or baseline_url
-    postgres_url = _value(env, "SEMANTIC_POSTGRES_DATABASE_URL") or baseline_url
+    database_url = _value(env, "DATABASE_URL")
 
-    if args.require_baseline and not baseline_url:
-        problems.append(
-            "SEMANTIC_BASELINE_DATABASE_URL is required for pre-production schema fingerprint"
-        )
+    if args.require_baseline and not database_url:
+        problems.append("DATABASE_URL is required for semantic schema fingerprint verification")
     if args.require_live and _value(env, "SEMANTIC_PROD_LIVE") != "1":
         problems.append("SEMANTIC_PROD_LIVE must be set to 1 for live semantic smoke")
     if args.require_fixture:
         if not _value(env, "SEMANTIC_FIXTURE_NAMESPACE"):
             problems.append("SEMANTIC_FIXTURE_NAMESPACE is required for fixture cleanup")
-        if not fixture_url:
-            problems.append(
-                "SEMANTIC_FIXTURE_DATABASE_URL or SEMANTIC_BASELINE_DATABASE_URL is required "
-                "for fixture cleanup"
-            )
-    if args.require_postgres_concurrency and not postgres_url:
-        problems.append(
-            "SEMANTIC_POSTGRES_DATABASE_URL or SEMANTIC_BASELINE_DATABASE_URL is required "
-            "for PostgreSQL concurrency verification"
-        )
-    elif args.require_postgres_concurrency and not _is_postgresql_url(postgres_url):
-        problems.append(
-            "SEMANTIC_POSTGRES_DATABASE_URL or SEMANTIC_BASELINE_DATABASE_URL must be a "
-            "PostgreSQL URL for concurrency verification"
-        )
+        if not database_url:
+            problems.append("DATABASE_URL is required for fixture cleanup")
+    if args.require_postgres_concurrency and not database_url:
+        problems.append("DATABASE_URL is required for PostgreSQL concurrency verification")
+    elif args.require_postgres_concurrency and not _is_postgresql_url(database_url):
+        problems.append("DATABASE_URL must be a PostgreSQL URL for semantic production verification")
     return problems
 
 

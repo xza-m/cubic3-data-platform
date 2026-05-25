@@ -3,7 +3,7 @@
 // 新建 Cube 页面。
 // 接口：
 //   POST /api/v1/semantic/cubes               — 直接创建
-//   POST /api/v1/semantic/cubes/draft-from-source — 从数据源生成草稿
+//   POST /api/v1/semantic/cubes/draft-from-source — 兼容入口，内部先生成字段候选再生成草稿
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -36,6 +36,7 @@ export default function CubeCreate() {
   const [database, setDatabase] = useState('')
   const [schema, setSchema] = useState('')
   const [table, setTable] = useState('')
+  const [createStatusError, setCreateStatusError] = useState(false)
 
   const createMutation = useCreateCube()
   const draftMutation = useDraftCubeFromSource()
@@ -54,6 +55,7 @@ export default function CubeCreate() {
   }, [setTopBarActions, navigate])
 
   const handleCreate = async () => {
+    setCreateStatusError(false)
     if (mode === 'manual') {
       if (!name.trim() || !title.trim()) return
       const result = await createMutation.mutateAsync({
@@ -76,7 +78,19 @@ export default function CubeCreate() {
         title: title.trim() || undefined,
         description: description.trim() || undefined,
       })
-      navigate(`/semantic/cubes/${result.name}/edit`)
+      const resultName = typeof result.name === 'string' && result.name.trim() ? result.name.trim() : ''
+      if (!resultName) {
+        setCreateStatusError(true)
+        return
+      }
+      if (result.field_candidate_trace) {
+        try {
+          sessionStorage.setItem(`cube-draft-field-candidates:${resultName}`, JSON.stringify(result.field_candidate_trace))
+        } catch {
+          // sessionStorage 不可用时不阻断草稿创建主流程。
+        }
+      }
+      navigate(`/semantic/cubes/${resultName}/edit`)
     }
   }
 
@@ -97,13 +111,14 @@ export default function CubeCreate() {
             {(
               [
                 { id: 'manual', icon: Plus, label: t('cube.mode.manual', '手动创建'), desc: t('cube.mode.manualDesc', '从空白开始手动填写字段') },
-                { id: 'from-dataset', icon: Database, label: t('cube.mode.fromDataset', '从数据集生成'), desc: t('cube.mode.fromDatasetDesc', '基于已注册的数据集自动生成 Cube 草稿') },
-                { id: 'from-datasource', icon: Database, label: t('cube.mode.fromDatasource', '从数据源生成'), desc: t('cube.mode.fromDatasourceDesc', '指定数据库 / 表，自动生成 Cube 草稿') },
+                { id: 'from-dataset', icon: Database, label: t('cube.mode.fromDatasetCandidates', '从数据集候选生成'), desc: t('cube.mode.fromDatasetCandidatesDesc', '先生成字段候选并进行风险确认，再生成 Cube 草稿') },
+                { id: 'from-datasource', icon: Database, label: t('cube.mode.fromDatasourceCandidates', '从数据源候选生成'), desc: t('cube.mode.fromDatasourceCandidatesDesc', '先生成字段候选并进行风险确认，再生成 Cube 草稿') },
               ] as const
             ).map(({ id, icon: Icon, label, desc }) => (
               <button
                 key={id}
                 type="button"
+                aria-label={label}
                 onClick={() => setMode(id as Mode)}
                 className="flex w-full items-start gap-3 rounded-md border px-3 py-3 text-left transition-colors"
                 style={{
@@ -231,7 +246,7 @@ export default function CubeCreate() {
         ) : null}
 
         {/* 操作按钮 */}
-        {createMutation.isError || draftMutation.isError ? (
+        {createMutation.isError || draftMutation.isError || createStatusError ? (
           <p className="text-xs text-danger">
             {t('error.createFailed', '创建失败，请检查输入后重试')}
           </p>

@@ -2,35 +2,24 @@ import { describe, expect, it } from 'vitest'
 import { createApiClient } from './client'
 
 describe('browser E2E fixture client', () => {
-  it('serves modeling-agent shell and task APIs without a live backend', async () => {
+  it('serves modeling-copilot session APIs without a live backend', async () => {
     const client = createApiClient('/api/v1', { browserE2eFixtures: true })
 
     const prefs = await client.get('/access/me/preferences')
     expect(prefs.data.data.default_landing).toBe('/dashboard')
 
-    const specDraft = await client.post('/semantic/modeling-agent/spec-draft', {
-      source_kind: 'physical_table',
-      source_id: '1',
-      database: 'dw',
-      schema: 'dwd',
-      table: 'dwd_student_comment_events',
-      business_subject: '学生评论',
-      default_roles: ['teacher_ops', 'content_audit'],
-      sensitivity_level: 'restricted',
+    const created = await client.post('/semantic/modeling-copilot/sessions', {
+      user_goal: '创建学生评论语义模型',
+      entry_type: 'business_question',
     })
-    const spec = specDraft.data.data.spec
-    expect(spec.cube.name).toBe('student_comment_events')
-    expect(spec.ontology.object.name).toBe('student_comment')
+    const session = created.data.data
+    expect(session.id).toBe('fixture_modeling_session')
+    expect(session.workbench_state).toBeTruthy()
 
-    const validation = await client.post('/semantic/modeling-agent/validate', { spec })
-    expect(validation.data.data.status).toBe('ready')
-
-    const ready = await client.post('/semantic/modeling-agent/agent-ready-check', { spec })
-    expect(ready.data.data.status).toBe('ready')
-    expect(ready.data.data.truth_sources).toMatchObject({
-      business: 'ontology',
-      execution: 'cube',
-      domain: 'business_context',
+    const replied = await client.post(`/semantic/modeling-copilot/sessions/${session.id}/messages`, {
+      message: '继续生成草稿',
     })
+    expect(replied.data.data.workbench_state).toBeTruthy()
+    expect(replied.data.data.workbench_state.semantic_canvas.objects[0].name).toBe('student_comment')
   })
 })

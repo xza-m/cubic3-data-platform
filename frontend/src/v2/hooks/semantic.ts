@@ -13,23 +13,20 @@ import {
   activateCube,
   addCubeToDomain,
   acceptSemanticModelingCopilotCubeDraft,
-  applySemanticModelingAgent,
   applySemanticModelingProposal,
   approveSemanticModelingProposal,
-  checkSemanticModelingAgentReady,
   closeSemanticModelingProposal,
   compileDsl,
   confirmSemanticModelingCopilotAssumption,
   createCube,
   createDomain,
-  createSemanticModelingAgentSpecDraft,
   createSemanticModelingCopilotSession,
   createSemanticModelingProposal,
   deprecateCube,
   describeCube,
   describeDomain,
   describeView,
-  draftSemanticModelingAgentFromSpec,
+  draftCubeFromCandidates,
   draftSemanticModelingProposal,
   draftCubeFromSource,
   getDomainCanvas,
@@ -47,7 +44,6 @@ import {
   listViews,
   materializeView,
   publishDomain,
-  publishSemanticModelingAgent,
   publishSemanticModelingProposal,
   previewSemanticModelingCopilotSandbox,
   previewDomainContext,
@@ -56,21 +52,23 @@ import {
   listSemanticModelingCopilotSessions,
   publishSemanticModelingCopilotProposal,
   patchSemanticModelingCopilotSpec,
+  previewFieldCandidates,
   renameSemanticModelingCopilotSession,
   saveSemanticModelingCopilotProposal,
   schemaSyncCube,
   sendSemanticModelingCopilotMessage,
   updateCube,
   updateDomain,
-  validateSemanticModelingAgent,
   validateSemanticModelingProposal,
   validateCubeFields,
   validateSemanticFile,
   writeSemanticFile,
   dryRunMetric,
   type CubeCreateBody,
+  type CubeDraftFromCandidatesBody,
   type CubeDraftBody,
   type DomainSummary,
+  type FieldCandidatePreviewBody,
   type FileType,
   type SemanticModelingProposalApproveBody,
   type SemanticModelingProposalCloseRequest,
@@ -81,9 +79,6 @@ import {
   type SemanticModelingCopilotReview,
   type SemanticModelingCopilotSendMessageBody,
   type SemanticModelingCopilotSessionList,
-  type SemanticModelingAgentPublishRequest,
-  type SemanticModelingAgentSpec,
-  type SemanticModelingAgentSpecDraftBody,
 } from '@v2/api/semantic'
 
 // ─── Cubes ──────────────────────────────────────────────────────────────────
@@ -163,49 +158,15 @@ export function useDraftCubeFromSource() {
   })
 }
 
-// ─── 建模助手 Agent ─────────────────────────────────────────────────────────
-
-export function useCreateSemanticModelingAgentSpecDraft() {
+export function usePreviewFieldCandidates() {
   return useMutation({
-    mutationFn: (body: SemanticModelingAgentSpecDraftBody) => createSemanticModelingAgentSpecDraft(body),
+    mutationFn: (body: FieldCandidatePreviewBody) => previewFieldCandidates(body),
   })
 }
 
-export function useDraftSemanticModelingAgentFromSpec() {
+export function useDraftCubeFromCandidates() {
   return useMutation({
-    mutationFn: (spec: SemanticModelingAgentSpec) => draftSemanticModelingAgentFromSpec(spec),
-  })
-}
-
-export function useValidateSemanticModelingAgent() {
-  return useMutation({
-    mutationFn: (spec: SemanticModelingAgentSpec) => validateSemanticModelingAgent(spec),
-  })
-}
-
-export function useCheckSemanticModelingAgentReady() {
-  return useMutation({
-    mutationFn: (spec: SemanticModelingAgentSpec) => checkSemanticModelingAgentReady(spec),
-  })
-}
-
-export function useApplySemanticModelingAgent() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (spec: SemanticModelingAgentSpec) => applySemanticModelingAgent(spec),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
-  })
-}
-
-export function usePublishSemanticModelingAgent() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (body: SemanticModelingAgentPublishRequest) => publishSemanticModelingAgent(body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
+    mutationFn: (body: CubeDraftFromCandidatesBody) => draftCubeFromCandidates(body),
   })
 }
 

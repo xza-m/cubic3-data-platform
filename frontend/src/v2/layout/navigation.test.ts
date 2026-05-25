@@ -39,7 +39,7 @@ describe('findLayout', () => {
     expect(resolved.hideBreadcrumbs).toBe(false)
   })
 
-  it('语义中心默认双栏，但 modeling-agent 子路由切到 fullBleed', () => {
+  it('语义中心默认双栏，但 modeling-copilot 子路由切到 fullBleed', () => {
     const semantic = NAV_MODULES.find((m) => m.id === 'semantic')!
     const ontology = findLayout('/semantic/ontology', semantic)
     expect(ontology).toEqual({
@@ -48,7 +48,7 @@ describe('findLayout', () => {
       hideBreadcrumbs: false,
     })
 
-    const copilot = findLayout('/semantic/modeling-agent/new', semantic)
+    const copilot = findLayout('/semantic/modeling-copilot/new', semantic)
     expect(copilot).toEqual({
       secondarySidebar: false,
       inspector: false,
@@ -58,7 +58,7 @@ describe('findLayout', () => {
 
   it('byPathPrefix 命中前缀完全相等也算', () => {
     const semantic = NAV_MODULES.find((m) => m.id === 'semantic')!
-    const exact = findLayout('/semantic/modeling-agent', semantic)
+    const exact = findLayout('/semantic/modeling-copilot', semantic)
     expect(exact.secondarySidebar).toBe(false)
     expect(exact.hideBreadcrumbs).toBe(true)
   })
@@ -75,12 +75,38 @@ describe('findLayout', () => {
 })
 
 describe('findModule + findLayout 组合', () => {
-  it('/semantic/modeling-agent/new 命中 semantic 模块并应用 fullBleed', () => {
-    const module = findModule('/semantic/modeling-agent/new')
+  it('/semantic/modeling-copilot/new 命中 semantic 模块并应用 fullBleed', () => {
+    const module = findModule('/semantic/modeling-copilot/new')
     expect(module?.id).toBe('semantic')
-    const layout = findLayout('/semantic/modeling-agent/new', module!)
+    const layout = findLayout('/semantic/modeling-copilot/new', module!)
     expect(layout.secondarySidebar).toBe(false)
     expect(layout.inspector).toBe(false)
     expect(layout.hideBreadcrumbs).toBe(true)
+  })
+})
+
+describe('数据资产底座导航', () => {
+  it('语义中心只保留数据资产底座分组和六个资产页面', () => {
+    const semantic = NAV_MODULES.find((module) => module.id === 'semantic')
+    const assetItems = semantic?.subnav?.filter((item) => item.section === '数据资产底座') ?? []
+    const buildItems = semantic?.subnav?.filter((item) => item.section === '语义构建') ?? []
+
+    expect(buildItems.map((item) => item.label)).toEqual(['建模助手 Copilot'])
+    expect(assetItems.map((item) => item.label)).toEqual([
+      '资产雷达',
+      '物理表',
+      '表画像',
+      '字段画像',
+      '血缘使用',
+      '元数据同步',
+    ])
+    expect(assetItems.map((item) => item.path)).toEqual([
+      '/semantic/assets',
+      '/semantic/assets/tables',
+      '/semantic/assets/table-profile',
+      '/semantic/assets/field-profile',
+      '/semantic/assets/lineage-usage',
+      '/semantic/assets/sync',
+    ])
   })
 })

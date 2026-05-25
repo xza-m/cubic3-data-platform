@@ -54,6 +54,7 @@ def create_semantic_blueprint(
     cube_listing_service=None,
     runtime_snapshot_service=None,
     mapper_service=None,
+    field_candidate_service=None,
 ):
     """Blueprint 工厂：依赖在初始化时注入，便于单元测试时传入 Mock。
 
@@ -64,6 +65,10 @@ def create_semantic_blueprint(
         dataset_handler: CreateDatasetHandler 实例
     """
     bp = Blueprint('semantic', __name__, url_prefix='/api/v1/semantic')
+    if field_candidate_service is None:
+        from app.application.semantic.field_candidates import FieldCandidateService
+
+        field_candidate_service = FieldCandidateService()
     if publish_service is None:
         from app.application.semantic.view_publish_service import ViewPublishService
 
@@ -90,6 +95,7 @@ def create_semantic_blueprint(
             runtime_binding_service=runtime_binding,
             definition_service=semantic_service._definition_service,
             registry_repo=registry_repo,
+            field_candidate_service=field_candidate_service,
         )
     if modeling_source_service is None:
         from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
@@ -130,7 +136,22 @@ def create_semantic_blueprint(
             return None, None
         return query_adapter_getter()
 
-    def _build_schema_sync_service():
+    def _resolve_data_asset_repository():
+        container = getattr(current_app, "container", None)
+        provider = (
+            getattr(container, "data_asset_repository", None)
+            if container is not None
+            else None
+        )
+        if provider is None:
+            return None
+        try:
+            return provider() if callable(provider) else provider
+        except Exception as exc:
+            logger.warning("resolve_data_asset_repository_failed", error=str(exc))
+            return None
+
+    def _build_schema_sync_service(schema_source=None):
         from app.application.semantic.schema_sync_service import SchemaSyncService
         from app.domain.semantic.ports.schema_inspector import ISchemaInspector
 
@@ -146,12 +167,24 @@ def create_semantic_blueprint(
             "_runtime_binding_service",
             None,
         )
-        adapter, database = _resolve_query_adapter()
-        if adapter is not None:
-            from app.infrastructure.semantic.maxcompute_schema_inspector import MaxComputeSchemaInspector
-            inspector = MaxComputeSchemaInspector(adapter=adapter, database=database)
+        if schema_source == "asset_snapshot":
+            from app.infrastructure.semantic.asset_snapshot_schema_inspector import (
+                AssetSnapshotSchemaInspector,
+            )
+
+            repository = _resolve_data_asset_repository()
+            inspector = (
+                AssetSnapshotSchemaInspector.from_repository(repository)
+                if repository is not None
+                else _NullInspector()
+            )
         else:
-            inspector = _NullInspector()
+            adapter, database = _resolve_query_adapter()
+            if adapter is not None:
+                from app.infrastructure.semantic.maxcompute_schema_inspector import MaxComputeSchemaInspector
+                inspector = MaxComputeSchemaInspector(adapter=adapter, database=database)
+            else:
+                inspector = _NullInspector()
         return SchemaSyncService(
             cube_repo=semantic_service._cube_repo,
             inspector=inspector,
@@ -160,8 +193,8 @@ def create_semantic_blueprint(
             runtime_binding_service=runtime_binding_service,
         )
 
-    def _build_schema_report(cube_name=None):
-        sync_service = _build_schema_sync_service()
+    def _build_schema_report(cube_name=None, *, schema_source=None):
+        sync_service = _build_schema_sync_service(schema_source=schema_source)
         if cube_name:
             return sync_service.check_cube(cube_name)
         return sync_service.check_all()
@@ -197,6 +230,23 @@ def create_semantic_blueprint(
             return payload if isinstance(payload, dict) else None
         except Exception as exc:
             logger.warning("semantic_mapper_stale_check_failed", error=str(exc))
+            return None
+
+    def _build_data_asset_summary_payload():
+        container = getattr(current_app, "container", None)
+        provider = (
+            getattr(container, "data_asset_service", None)
+            if container is not None
+            else None
+        )
+        if provider is None:
+            return None
+        try:
+            service = provider() if callable(provider) else provider
+            radar_summary = getattr(service, "radar_summary", None)
+            return radar_summary() if callable(radar_summary) else None
+        except Exception as exc:
+            logger.warning("semantic_data_asset_summary_failed", error=str(exc))
             return None
 
     def _parse_positive_int_arg(name, *, default, maximum=None):
@@ -391,6 +441,36 @@ def create_semantic_blueprint(
             )
         except Exception as exc:
             return error(f"生成 Cube 草稿失败: {str(exc)}")
+        return success(data=result)
+
+    @bp.route('/field-candidates/preview', methods=['POST'])
+    @require_admin
+    def preview_field_candidates():
+        body = request.get_json(silent=True) or {}
+        columns = body.get("columns")
+        if not isinstance(columns, list):
+            return error("请求体字段 columns 必须是 list")
+        try:
+            result = field_candidate_service.preview_from_columns(
+                source=body.get("source") or {},
+                columns=columns,
+                selected_overrides=body.get("selected_overrides") or {},
+            )
+        except Exception as exc:
+            return error(f"字段候选预览失败: {str(exc)}")
+        return success(data=result.to_dict())
+
+    @bp.route('/cubes/draft-from-candidates', methods=['POST'])
+    @require_admin
+    def draft_cube_from_candidates():
+        body = request.get_json(silent=True) or {}
+        builder = getattr(modeling_service, "build_cube_draft_from_inline_candidate_payload", None)
+        if not callable(builder):
+            return error("当前 modeling_service 不支持 draft-from-candidates")
+        try:
+            result = builder(body)
+        except Exception as exc:
+            return error(f"基于字段候选生成 Cube 草稿失败: {str(exc)}")
         return success(data=result)
 
     @bp.route('/cubes', methods=['POST'])
@@ -1086,13 +1166,16 @@ def create_semantic_blueprint(
     def governance_issues():
         """返回语义治理问题聚合结果。"""
         cube_name = (request.args.get("cube_name") or "").strip() or None
+        schema_source = (request.args.get("schema_source") or "").strip() or None
         from app.application.semantic.governance_issue_service import SemanticGovernanceIssueService
 
-        schema_report = _build_schema_report(cube_name)
+        schema_report = _build_schema_report(cube_name, schema_source=schema_source)
         mapper_stale_payload = _build_mapper_stale_payload()
+        data_asset_summary = _build_data_asset_summary_payload()
         payload = SemanticGovernanceIssueService().build_payload(
             schema_report=schema_report,
             mapper_stale_payload=mapper_stale_payload,
+            data_asset_summary=data_asset_summary,
         )
         return success(data=payload)
 

@@ -78,6 +78,7 @@ export interface CubeSummary {
   downstream_bi_count?: number
   last_modified_at?: string | null
   state_summary?: Record<string, unknown>
+  field_candidate_trace?: Record<string, unknown> | null
 }
 
 export interface CubeDetail extends CubeSummary {
@@ -107,7 +108,7 @@ export interface CubeCreateBody {
 }
 
 export interface CubeDraftBody {
-  source_kind: 'dataset' | 'datasource' | string
+  source_kind: 'physical_table' | 'dataset' | 'datasource' | string
   source_id?: string
   dataset_id?: string
   database?: string
@@ -116,6 +117,54 @@ export interface CubeDraftBody {
   name?: string
   title?: string
   description?: string
+}
+
+export interface SemanticFieldCandidate {
+  id: string
+  name: string
+  title?: string | null
+  role: 'measure' | 'dimension' | 'time' | 'unknown' | string
+  data_type?: string | null
+  expr?: string | null
+  agg?: string | null
+  confidence?: 'high' | 'medium' | 'low' | string
+  risk_level?: 'high' | 'medium' | 'low' | 'none' | string
+  risk_reason?: string | null
+  source_field?: string | null
+  evidence?: string[] | string | null
+  [key: string]: unknown
+}
+
+export interface SemanticFieldCandidateSet {
+  candidate_set_id: string
+  candidates: SemanticFieldCandidate[]
+  measure_count?: number
+  dimension_count?: number
+  risk_summary?: Record<string, number> | string[] | string | null
+  [key: string]: unknown
+}
+
+export interface FieldCandidatePreviewBody {
+  source_kind: 'physical_table' | 'dataset' | 'datasource' | string
+  source_id?: string | number | null
+  dataset_id?: string | number | null
+  database?: string | null
+  schema?: string | null
+  table?: string | null
+  name?: string
+  title?: string
+  description?: string
+  [key: string]: unknown
+}
+
+export interface CubeDraftFromCandidatesBody {
+  candidate_set_id: string
+  selected_candidate_ids?: string[]
+  name?: string
+  title?: string
+  description?: string
+  domain_name?: string
+  [key: string]: unknown
 }
 
 // ─── Cube API ───────────────────────────────────────────────────────────────
@@ -143,6 +192,285 @@ export const createCubeRevision = (name: string) =>
 
 export const draftCubeFromSource = (body: CubeDraftBody) =>
   post<CubeDetail>('/semantic/cubes/draft-from-source', body)
+
+export const previewFieldCandidates = (body: FieldCandidatePreviewBody) =>
+  post<SemanticFieldCandidateSet>('/semantic/field-candidates/preview', body)
+
+export const draftCubeFromCandidates = (body: CubeDraftFromCandidatesBody) =>
+  post<CubeDetail>('/semantic/cubes/draft-from-candidates', body)
+
+// ─── 数据资产底座类型 / API ─────────────────────────────────────────────────
+
+export type DataAssetSyncStatus = 'synced' | 'pending' | 'failed' | 'unknown' | string
+
+export interface DataAssetRadarSummary {
+  physical_table_count: number
+  synced_table_count: number
+  field_count: number
+  lineage_edge_count: number
+  quality_issue_count: number
+  last_sync_at?: string | null
+}
+
+export interface DataAssetRadarHealth {
+  score: number
+  level: 'healthy' | 'warning' | 'critical' | string
+  label: string
+}
+
+export interface DataAssetRadarResponse {
+  summary: DataAssetRadarSummary
+  health: DataAssetRadarHealth
+}
+
+interface DataAssetRadarApiResponse {
+  table_count: number
+  field_count: number
+  failed_sync_count: number
+  stale_profile_count: number
+  drift_risk_count: number
+  last_sync_at?: string | null
+  status?: string
+}
+
+export interface DataAssetPhysicalTable {
+  id: string
+  datasource_name: string
+  database?: string | null
+  schema?: string | null
+  table_name: string
+  display_name?: string | null
+  owner?: string | null
+  sync_status: DataAssetSyncStatus
+  field_count: number
+  row_count?: number | null
+  updated_at?: string | null
+}
+
+export interface DataAssetPhysicalTableListResponse {
+  tables: DataAssetPhysicalTable[]
+  total: number
+  page: number
+  page_size: number
+  page_count: number
+}
+
+export interface DataAssetPhysicalTableListParams {
+  q?: string
+  page?: number
+  page_size?: number
+  limit?: number
+  source_id?: string
+  database?: string
+  schema?: string
+  sync_status?: string
+  lifecycle_status?: string
+}
+
+interface DataAssetTableApiItem {
+  id: string
+  source_id: string
+  database?: string | null
+  schema?: string | null
+  name: string
+  title?: string | null
+  owner?: string | null
+  sync_status?: string | null
+  field_count?: number | null
+  row_count?: number | null
+  updated_at?: string | null
+}
+
+interface DataAssetTableApiListResponse {
+  items: DataAssetTableApiItem[]
+  total: number
+  page?: number
+  page_size?: number
+  page_count?: number
+}
+
+export interface DataAssetMetadataSyncRequest {
+  scope: 'all' | 'tables' | 'fields' | string
+  source_id?: string
+  database?: string
+  schema?: string
+  tables?: unknown[]
+}
+
+export interface DataAssetMetadataSyncResponse {
+  sync_run_id: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | string
+  submitted_at?: string | null
+  finished_at?: string | null
+  error_message?: string | null
+  stats?: Record<string, unknown> | null
+}
+
+export interface DataAssetFieldProfile {
+  id: string
+  name: string
+  data_type: string
+  nullable?: boolean
+  comment?: string | null
+  profile?: {
+    null_rate?: number | null
+    cardinality?: number | null
+    [key: string]: unknown
+  } | null
+}
+
+export interface DataAssetFieldListResponse {
+  items: DataAssetFieldProfile[]
+  total: number
+}
+
+export interface DataAssetEvidenceBundle {
+  runtime_truth: false
+  asset_refs?: Array<Record<string, unknown>>
+  schema_snapshot?: Record<string, unknown>
+  sample_profile?: Record<string, unknown>
+  usage_evidence?: Array<Record<string, unknown>>
+  lineage_evidence?: Array<Record<string, unknown>>
+  drift_evidence?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface DataAssetSyncRun {
+  id: string
+  source_id?: string | null
+  status: string
+  started_at?: string | null
+  finished_at?: string | null
+  stats?: Record<string, unknown> | null
+  error_message?: string | null
+}
+
+export interface DataAssetSyncRunListResponse {
+  items: DataAssetSyncRun[]
+  total: number
+}
+
+export interface SemanticGovernanceIssue {
+  id: string
+  code: string
+  severity: string
+  title?: string | null
+  message?: string | null
+  object_type?: string | null
+  object_name?: string | null
+  metadata?: Record<string, unknown> | null
+  [key: string]: unknown
+}
+
+export interface SemanticGovernanceIssueResponse {
+  issues: SemanticGovernanceIssue[]
+  summary?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+interface SemanticGovernanceIssueRawResponse {
+  items?: SemanticGovernanceIssue[]
+  issues?: SemanticGovernanceIssue[]
+  summary?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export const getDataAssetRadar = () =>
+  get<DataAssetRadarApiResponse>('/semantic/assets/radar').then((data) => {
+    const issueCount = (data.failed_sync_count ?? 0) + (data.stale_profile_count ?? 0) + (data.drift_risk_count ?? 0)
+    const level = data.status === 'error' ? 'critical' : data.status === 'warn' ? 'warning' : 'healthy'
+    return {
+      summary: {
+        physical_table_count: data.table_count ?? 0,
+        synced_table_count: Math.max((data.table_count ?? 0) - (data.failed_sync_count ?? 0), 0),
+        field_count: data.field_count ?? 0,
+        lineage_edge_count: 0,
+        quality_issue_count: issueCount,
+        last_sync_at: data.last_sync_at ?? null,
+      },
+      health: {
+        score: level === 'healthy' ? 100 : level === 'warning' ? 72 : 35,
+        level,
+        label: level === 'healthy' ? '健康' : level === 'warning' ? '关注' : '异常',
+      },
+    } satisfies DataAssetRadarResponse
+  })
+
+export const listDataAssetPhysicalTables = (params: DataAssetPhysicalTableListParams = {}) => {
+  const pageSize = params.page_size ?? params.limit
+  return get<DataAssetTableApiListResponse>('/semantic/assets/tables', {
+    keyword: params.q,
+    q: params.q,
+    page: params.page,
+    page_size: pageSize,
+    limit: params.limit,
+    source_id: params.source_id,
+    database: params.database,
+    schema: params.schema,
+    sync_status: params.sync_status,
+    lifecycle_status: params.lifecycle_status,
+  }).then((data) => ({
+    tables: (data.items ?? []).map((item) => ({
+      id: item.id,
+      datasource_name: item.source_id,
+      database: item.database,
+      schema: item.schema,
+      table_name: item.name,
+      display_name: item.title,
+      owner: item.owner,
+      sync_status: normalizeDataAssetSyncStatus(item.sync_status),
+      field_count: item.field_count ?? 0,
+      row_count: item.row_count,
+      updated_at: item.updated_at,
+    })),
+    total: data.total ?? 0,
+    page: data.page ?? params.page ?? 1,
+    page_size: data.page_size ?? pageSize ?? (data.items?.length ?? 0),
+    page_count: data.page_count ?? Math.max(1, Math.ceil((data.total ?? 0) / Math.max(pageSize ?? 1, 1))),
+  }))
+}
+
+export const getDataAssetTableFields = (tableId: string) =>
+  get<DataAssetFieldListResponse>(`/semantic/assets/tables/${encodeURIComponent(tableId)}/fields`)
+
+export const getDataAssetTableEvidence = (tableId: string) =>
+  get<DataAssetEvidenceBundle>(`/semantic/assets/tables/${encodeURIComponent(tableId)}/evidence`)
+
+export const listDataAssetSyncRuns = (params?: { limit?: number }) =>
+  get<DataAssetSyncRunListResponse>('/semantic/assets/sync-runs', { limit: params?.limit })
+
+export const getSemanticGovernanceIssues = (
+  params: { cube_name?: string; schema_source?: 'asset_snapshot' | string } = {},
+) => get<SemanticGovernanceIssueRawResponse>('/semantic/governance/issues', params).then((raw) => ({
+  ...raw,
+  issues: raw.issues ?? raw.items ?? [],
+}))
+
+export const getDataAssetSyncRun = (syncRunId: string) =>
+  get<DataAssetSyncRun>(`/semantic/assets/sync-runs/${encodeURIComponent(syncRunId)}`)
+
+export const syncDataAssetMetadata = (body: DataAssetMetadataSyncRequest) =>
+  post<{
+    id: string
+    status: string
+    started_at?: string | null
+    finished_at?: string | null
+    error_message?: string | null
+    stats?: Record<string, unknown> | null
+  }>('/semantic/assets/sync-runs', body).then((data) => ({
+    sync_run_id: data.id,
+    status: data.status,
+    submitted_at: data.started_at,
+    finished_at: data.finished_at,
+    error_message: data.error_message,
+    stats: data.stats,
+  }))
+
+function normalizeDataAssetSyncStatus(status: string | null | undefined): DataAssetSyncStatus {
+  if (status === 'success') return 'synced'
+  if (status === 'running') return 'pending'
+  return status || 'unknown'
+}
 
 // ─── 建模助手 Agent 类型 / API ──────────────────────────────────────────────
 
@@ -203,63 +531,6 @@ export interface SemanticModelingAgentValidationResult {
   checks?: Record<string, unknown>
   agent_sandbox_preview?: Record<string, unknown>
 }
-
-export interface SemanticModelingAgentReadyResult {
-  status: 'ready' | 'pending_validation' | 'blocked' | string
-  cube_status?: string
-  ontology_status?: string
-  bindings?: Record<string, unknown>
-  issues?: SemanticModelingAgentValidationIssue[]
-  checks?: Record<string, unknown>
-  truth_sources?: {
-    business?: string
-    execution?: string
-    domain?: string
-    [key: string]: unknown
-  }
-}
-
-export interface SemanticModelingAgentApplyResult {
-  published: boolean
-  assets: Record<string, unknown>
-  spec?: SemanticModelingAgentSpec
-  audit?: Record<string, unknown>
-}
-
-export interface SemanticModelingAgentPublishRequest {
-  spec: SemanticModelingAgentSpec
-  publish_targets?: {
-    cube?: boolean
-    ontology?: boolean
-  }
-}
-
-export interface SemanticModelingAgentPublishResult {
-  publish_targets: {
-    cube: boolean
-    ontology: boolean
-  }
-  published?: Record<string, unknown>
-  audit?: Record<string, unknown>
-}
-
-export const createSemanticModelingAgentSpecDraft = (body: SemanticModelingAgentSpecDraftBody) =>
-  post<SemanticModelingAgentSpecDraftResult>('/semantic/modeling-agent/spec-draft', body)
-
-export const draftSemanticModelingAgentFromSpec = (spec: SemanticModelingAgentSpec) =>
-  post<SemanticModelingAgentDraftResult>('/semantic/modeling-agent/draft-from-spec', { spec })
-
-export const validateSemanticModelingAgent = (spec: SemanticModelingAgentSpec) =>
-  post<SemanticModelingAgentValidationResult>('/semantic/modeling-agent/validate', { spec })
-
-export const checkSemanticModelingAgentReady = (spec: SemanticModelingAgentSpec) =>
-  post<SemanticModelingAgentReadyResult>('/semantic/modeling-agent/agent-ready-check', { spec })
-
-export const applySemanticModelingAgent = (spec: SemanticModelingAgentSpec) =>
-  post<SemanticModelingAgentApplyResult>('/semantic/modeling-agent/apply', { spec })
-
-export const publishSemanticModelingAgent = (body: SemanticModelingAgentPublishRequest) =>
-  post<SemanticModelingAgentPublishResult>('/semantic/modeling-agent/publish', body)
 
 export type SemanticModelingProposalStatus =
   | 'created'

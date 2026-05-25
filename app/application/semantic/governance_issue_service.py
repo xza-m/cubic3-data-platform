@@ -66,12 +66,15 @@ class SemanticGovernanceIssueService:
         *,
         schema_report: Optional[SyncReport] = None,
         mapper_stale_payload: Optional[Dict[str, Any]] = None,
+        data_asset_summary: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         issues: List[GovernanceIssue] = []
         if schema_report is not None:
             issues.extend(self.from_schema_report(schema_report))
         if mapper_stale_payload is not None:
             issues.extend(self.from_mapper_stale_payload(mapper_stale_payload))
+        if data_asset_summary is not None:
+            issues.extend(self.from_data_asset_summary(data_asset_summary))
 
         items = [issue.to_dict() for issue in issues]
         return {"summary": self._summary(issues), "items": items}
@@ -119,6 +122,52 @@ class SemanticGovernanceIssueService:
                         "cube": cube_name,
                         "kind": "skipped",
                     },
+                )
+            )
+        return issues
+
+    def from_data_asset_summary(self, summary: Dict[str, Any]) -> List[GovernanceIssue]:
+        issues: List[GovernanceIssue] = []
+        failed_sync_count = int(summary.get("failed_sync_count") or 0)
+        stale_profile_count = int(summary.get("stale_profile_count") or 0)
+        drift_risk_count = int(summary.get("drift_risk_count") or 0)
+        if failed_sync_count:
+            issues.append(
+                GovernanceIssue(
+                    code="data_asset_sync_failed",
+                    source="data_asset",
+                    object_type="data_asset_foundation",
+                    object_name="metadata_sync",
+                    severity="warn",
+                    resource_ref="metadata_sync",
+                    message=f"数据资产底座存在 {failed_sync_count} 个失败的元数据同步批次",
+                    metadata={"failed_sync_count": failed_sync_count},
+                )
+            )
+        if stale_profile_count:
+            issues.append(
+                GovernanceIssue(
+                    code="data_asset_profile_stale",
+                    source="data_asset",
+                    object_type="data_asset_foundation",
+                    object_name="table_profile",
+                    severity="warn",
+                    resource_ref="table_profile",
+                    message=f"数据资产底座存在 {stale_profile_count} 张画像陈旧的物理表",
+                    metadata={"stale_profile_count": stale_profile_count},
+                )
+            )
+        if drift_risk_count:
+            issues.append(
+                GovernanceIssue(
+                    code="data_asset_schema_drift_risk",
+                    source="data_asset",
+                    object_type="data_asset_foundation",
+                    object_name="schema_snapshot",
+                    severity="warn",
+                    resource_ref="schema_snapshot",
+                    message=f"数据资产底座存在 {drift_risk_count} 张 Schema 漂移风险表",
+                    metadata={"drift_risk_count": drift_risk_count},
                 )
             )
         return issues

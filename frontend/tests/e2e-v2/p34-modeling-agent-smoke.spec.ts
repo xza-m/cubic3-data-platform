@@ -602,7 +602,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('P34 对话原生 Copilot 从业务问题应用并发布语义 @smoke @p34', async ({ page }) => {
-  await gotoV2(page, '/semantic/modeling-agent/new')
+  await gotoV2(page, '/semantic/modeling-copilot/new')
 
   // 空态：示例引导
   await expect(page.getByText('告诉我你想分析什么数据')).toBeVisible()
@@ -758,7 +758,7 @@ test('P34 候选来源确认后确定性生成 spec @smoke @p34', async ({ page 
     },
   )
 
-  await gotoV2(page, '/semantic/modeling-agent/session_source_candidate_1')
+  await gotoV2(page, '/semantic/modeling-copilot/session_source_candidate_1')
 
   await expect(page.getByTestId('chat-workspace').getByText('推荐数据来源')).toBeVisible()
   await expect(page.getByText('班级活跃事实表')).toBeVisible()

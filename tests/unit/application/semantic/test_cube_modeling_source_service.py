@@ -65,11 +65,14 @@ def test_generate_from_physical_dataset_uses_underlying_table():
 
 def test_generate_from_virtual_dataset_builds_sql_backed_cube_draft():
     cube_modeling_service = MagicMock()
-    cube_modeling_service.build_cube_draft_payload.return_value = {
+    candidate_set = SimpleNamespace(candidate_set_id="fcand_dataset")
+    cube_modeling_service._field_candidate_service.preview_from_columns.return_value = candidate_set
+    cube_modeling_service.build_cube_draft_from_candidate_set.return_value = {
         "name": "dataset_10",
         "status": "draft",
         "source_sql": "SELECT * FROM orders",
         "source_dataset_type": "virtual",
+        "field_candidate_trace": {"candidate_set_id": "fcand_dataset"},
     }
     dataset_repo = MagicMock()
     dataset_repo.find_by_id.return_value = _dataset(
@@ -93,12 +96,81 @@ def test_generate_from_virtual_dataset_builds_sql_backed_cube_draft():
     result = service.generate_cube_draft_from_source(source_kind="dataset", dataset_id=10)
 
     assert result["source_dataset_type"] == "virtual"
-    cube_modeling_service.build_cube_draft_payload.assert_called_once()
-    payload = cube_modeling_service.build_cube_draft_payload.call_args.kwargs
+    cube_modeling_service._field_candidate_service.preview_from_columns.assert_called_once()
+    preview = cube_modeling_service._field_candidate_service.preview_from_columns.call_args.kwargs
+    assert preview["source"]["source_kind"] == "dataset_virtual"
+    assert preview["source"]["source_ref"] == "dataset:10"
+    assert preview["source"]["dataset_id"] == 10
+    assert preview["source"]["database"] == "dw"
+    assert preview["source"]["table"] == "dataset_10"
+    cube_modeling_service.build_cube_draft_from_candidate_set.assert_called_once()
+    payload = cube_modeling_service.build_cube_draft_from_candidate_set.call_args.kwargs
+    assert payload["candidate_set"] is candidate_set
     assert payload["database"] == "dw"
     assert payload["table"] == "dataset_10"
     assert payload["source_sql"] == "SELECT * FROM orders"
     assert payload["source_dataset_type"] == "virtual"
+    assert payload["draft_source_mode"] == "dataset_virtual"
+
+
+def test_asset_evidence_generates_candidate_trace_before_cube_draft():
+    cube_modeling_service = MagicMock()
+    candidate_set = SimpleNamespace(candidate_set_id="fcand_asset")
+    cube_modeling_service._field_candidate_service.preview_from_evidence_bundle.return_value = candidate_set
+    cube_modeling_service.build_cube_draft_from_candidate_set.return_value = {
+        "name": "comment_cube",
+        "field_candidate_trace": {
+            "candidate_set_id": "fcand_asset",
+            "draft_source_mode": "asset_evidence",
+        },
+    }
+    service = CubeModelingSourceService(
+        cube_modeling_service=cube_modeling_service,
+        dataset_repository=MagicMock(),
+        datasource_repository=MagicMock(),
+    )
+    evidence_bundle = {
+        "schema_snapshot": {
+            "columns": [{"name": "school_id", "type": "BIGINT", "comment": "学校ID"}],
+            "partitions": ["ds"],
+        }
+    }
+
+    result = service.generate_cube_draft_from_asset_evidence(
+        source_id="7",
+        database="df_cb_258187",
+        schema="dw",
+        table="dwd_interaction_comment_reports_df",
+        evidence_bundle=evidence_bundle,
+        name="comment_cube",
+        title="评论",
+        description="评论事实",
+    )
+
+    cube_modeling_service._field_candidate_service.preview_from_evidence_bundle.assert_called_once_with(
+        source_id="7",
+        database="df_cb_258187",
+        schema="dw",
+        table="dwd_interaction_comment_reports_df",
+        evidence_bundle=evidence_bundle,
+    )
+    cube_modeling_service.build_cube_draft_from_candidate_set.assert_called_once()
+    cube_modeling_service.build_cube_draft_payload.assert_not_called()
+    payload = cube_modeling_service.build_cube_draft_from_candidate_set.call_args.kwargs
+    assert payload["candidate_set"] is candidate_set
+    assert payload["source_id"] == 7
+    assert payload["database"] == "df_cb_258187"
+    assert payload["schema"] == "dw"
+    assert payload["table"] == "dwd_interaction_comment_reports_df"
+    assert payload["partitions"] == ["ds"]
+    assert payload["name"] == "comment_cube"
+    assert payload["title"] == "评论"
+    assert payload["description"] == "评论事实"
+    assert payload["data_source"] == "metadata_snapshot"
+    assert payload["draft_source_mode"] == "asset_evidence"
+    assert result["field_candidate_trace"]["candidate_set_id"] == "fcand_asset"
+    assert result["asset_evidence"] == evidence_bundle
+    assert result["asset_evidence"] is not evidence_bundle
 
 
 def test_generate_from_file_dataset_is_rejected():

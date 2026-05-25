@@ -540,6 +540,66 @@ def test_build_cube_payload_covers_optional_fields_partition_and_measure_helpers
     assert service._is_likely_measure("custom_field", "") is False
 
 
+def test_build_cube_payload_keeps_statistic_fields_out_of_dimensions():
+    service = CubeModelingService(
+        cube_repo=_InMemoryCubeRepo(),
+        runtime_binding_service=_FakeRuntime(),
+    )
+
+    payload = service.build_cube_draft_payload(
+        source_id=11,
+        database="df_cb_258187",
+        schema=None,
+        table="ads_bi_question_base_stats_df",
+        columns=[
+            {"name": "subject_id", "type": "string", "comment": "学科ID"},
+            {"name": "subject_name", "type": "string", "comment": "学科名称"},
+            {"name": "p75_difficulty", "type": "decimal(10,4)", "comment": "p75难度"},
+            {"name": "avg_difficulty", "type": "decimal(10,4)", "comment": "平均难度"},
+            {"name": "stddev_difficulty", "type": "decimal(10,4)", "comment": "难度方差"},
+            {"name": "question_cnt_wow", "type": "decimal(10,4)", "comment": "总题量周环比"},
+            {"name": "question_cnt", "type": "bigint", "comment": "总题量"},
+        ],
+    )
+
+    assert set(payload["dimensions"].keys()) == {"subject_id", "subject_name"}
+    assert payload["measures"]["avg_p75_difficulty"]["type"] == "avg"
+    assert payload["measures"]["avg_p75_difficulty"]["non_additive"] is True
+    assert payload["measures"]["avg_difficulty"]["type"] == "avg"
+    assert payload["measures"]["avg_stddev_difficulty"]["type"] == "avg"
+    assert payload["measures"]["avg_question_cnt_wow"]["type"] == "avg"
+    assert payload["measures"]["sum_question_cnt"]["type"] == "sum"
+
+
+def test_build_cube_payload_uses_candidate_set_trace_and_roles():
+    service = CubeModelingService(
+        cube_repo=_InMemoryCubeRepo(),
+        runtime_binding_service=_FakeRuntime(),
+    )
+
+    payload = service.build_cube_draft_payload(
+        source_id=11,
+        database="df_cb_258187",
+        schema=None,
+        table="ads_bi_question_base_stats_df",
+        columns=[
+            {"name": "subject_id", "type": "string", "comment": "学科ID"},
+            {"name": "subject_name", "type": "string", "comment": "学科名称"},
+            {"name": "p75_difficulty", "type": "decimal(10,4)", "comment": "P75难度"},
+            {"name": "completion_rate", "type": "double", "comment": "完成率"},
+            {"name": "score", "type": "double", "comment": "得分"},
+        ],
+    )
+
+    assert "p75_difficulty" not in payload["dimensions"]
+    assert "completion_rate" not in payload["dimensions"]
+    assert payload["measures"]["avg_p75_difficulty"]["type"] == "avg"
+    assert payload["measures"]["avg_completion_rate"]["non_additive"] is True
+    assert payload["measures"]["sum_score"]["type"] == "sum"
+    assert payload["field_candidate_trace"]["draft_source_mode"] == "candidate_facade"
+    assert payload["field_candidate_trace"]["candidate_set_id"].startswith("fcand_")
+
+
 def test_create_cube_revision_and_activation_cover_remaining_helper_branches(monkeypatch):
     cube_repo = _InMemoryCubeRepo()
     cube_repo.save(

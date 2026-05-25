@@ -2,15 +2,24 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TYPE_CHECKING
 
 from app.domain.semantic.modeling_agent_session import AgentSession
+
+if TYPE_CHECKING:
+    from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
 
 
 class ModelingToolRegistry:
     """为建模 Agent 暴露可审计、可测试的确定性工具。"""
 
-    def __init__(self, *, builder: Any, readiness_checker: Any, source_candidate_recall_service: Any = None):
+    def __init__(
+        self,
+        *,
+        builder: "SemanticModelDraftBuilder",
+        readiness_checker: Any,
+        source_candidate_recall_service: Any = None,
+    ):
         self._builder = builder
         self._readiness_checker = readiness_checker
         self._source_candidate_recall_service = source_candidate_recall_service
@@ -282,7 +291,7 @@ class ModelingToolRegistry:
         payload = self._payload_from_context(context, arguments)
         result = self._builder.create_spec_draft(payload)
         return {
-            "summary": "已生成构建期 SemanticModelingAgentSpec 草稿",
+            "summary": "已生成构建期 SemanticModelDraft spec 草稿",
             "spec": result.get("spec") or {},
             "next_actions": result.get("next_actions") or {},
         }
@@ -338,6 +347,10 @@ class ModelingToolRegistry:
             "business_subject": request_payload.get("business_subject") or self._subject_from_text(goal),
             "sensitivity_level": request_payload.get("sensitivity_level") or "restricted",
         }
+        context_request_payload = context.get("request_payload") if isinstance(context.get("request_payload"), dict) else {}
+        for key in ("evidence_bundle", "asset_ref"):
+            if key not in payload and key in context_request_payload:
+                payload[key] = deepcopy(context_request_payload[key])
         if not payload.get("candidate_table") and not payload.get("table"):
             candidate_source = self._candidate_source_from_assets({"candidates": self._candidate_assets(goal)})
             candidate_table = str(candidate_source.get("candidate_table") or candidate_source.get("table") or "")
@@ -372,6 +385,11 @@ class ModelingToolRegistry:
             schema = candidate.get("schema")
             table = str(candidate.get("table") or "").strip()
             name = str(candidate.get("name") or "").strip()
+            extra_evidence = {}
+            if isinstance(candidate.get("asset_ref"), dict):
+                extra_evidence["asset_ref"] = deepcopy(candidate["asset_ref"])
+            if isinstance(candidate.get("evidence_bundle"), dict):
+                extra_evidence["evidence_bundle"] = deepcopy(candidate["evidence_bundle"])
             if source_kind == "dataset" and dataset_id:
                 return {
                     "source_kind": "dataset",
@@ -381,6 +399,7 @@ class ModelingToolRegistry:
                     "schema": schema,
                     "table": table or None,
                     "candidate_table": name or table,
+                    **extra_evidence,
                 }
             if source_kind == "physical_table" and table:
                 return {
@@ -390,6 +409,7 @@ class ModelingToolRegistry:
                     "schema": schema,
                     "table": table,
                     "candidate_table": f"{database}.{table}" if database and "." not in table else table,
+                    **extra_evidence,
                 }
             asset_type = str(candidate.get("asset_type") or "").strip()
             if asset_type == "table" and name:

@@ -22,15 +22,18 @@ def _create_engine_smart(database_url: str, **pg_kwargs):
     """根据数据库 URL 选择合适的引擎参数。
 
     SQLite 不支持连接池参数（max_overflow / pool_timeout 等），
-    需要使用 StaticPool 或直接省略这些参数。
+    内存库需要 StaticPool 保持 schema；文件库使用独立连接以支持本地
+    threaded smoke 并发请求。
     """
     if database_url.startswith('sqlite'):
-        from sqlalchemy.pool import StaticPool
-        return create_engine(
-            database_url,
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
+        if ":memory:" in database_url or database_url.rstrip("/") == "sqlite:":
+            from sqlalchemy.pool import StaticPool
+            return create_engine(
+                database_url,
+                connect_args={"check_same_thread": False},
+                poolclass=StaticPool,
+            )
+        return create_engine(database_url, connect_args={"check_same_thread": False})
     return create_engine(database_url, **pg_kwargs)
 
 
@@ -127,11 +130,13 @@ from app.application.services.dashboard.overview_service import DashboardOvervie
 
 # Application - Semantic Layer
 from app.application.semantic.metric_semantics_service import MetricSemanticsService
-from app.application.semantic.semantic_modeling_agent import SemanticModelingAgent
+from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
 from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
+from app.application.semantic.data_asset_service import DataAssetService
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
+from app.application.semantic.field_candidates import FieldCandidateService
 from app.application.semantic.modeling_copilot_runtime import OpenAIAgentsSdkAdapter
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
@@ -170,6 +175,7 @@ from app.infrastructure.semantic.sql_modeling_proposal_repository import (
     SqlModelingProposalRepository,
 )
 from app.infrastructure.semantic.sql_asset_registry_repository import SqlAssetRegistryRepository
+from app.infrastructure.semantic.sql_data_asset_repository import SqlDataAssetRepository
 from app.infrastructure.semantic.yaml_view_repository import YamlViewRepository
 from app.infrastructure.semantic.yaml_recipe_repository import YamlRecipeRepository
 from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
@@ -448,6 +454,11 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    data_asset_repository = providers.Factory(
+        SqlDataAssetRepository,
+        session=db_session,
+    )
+
     publish_gate_service = providers.Factory(
         PublishGateService.production,
     )
@@ -470,6 +481,12 @@ class Container(containers.DeclarativeContainer):
     datasource_repository = providers.Factory(
         DatasourceRepository,
         session=db_session
+    )
+
+    data_asset_service = providers.Factory(
+        DataAssetService,
+        repository=data_asset_repository,
+        datasource_repository=datasource_repository,
     )
     
     dataset_repository = providers.Factory(
@@ -555,6 +572,10 @@ class Container(containers.DeclarativeContainer):
         domain_repo=domain_repository,
     )
 
+    semantic_field_candidate_service = providers.Singleton(
+        FieldCandidateService,
+    )
+
     cube_modeling_service = providers.Singleton(
         CubeModelingService,
         cube_repo=cube_repository,
@@ -562,6 +583,7 @@ class Container(containers.DeclarativeContainer):
         definition_service=semantic_definition_service,
         registry_repo=semantic_registry_repository,
         metric_repository=ontology_metric_repository,
+        field_candidate_service=semantic_field_candidate_service,
     )
 
     cube_modeling_source_service = providers.Singleton(
@@ -766,14 +788,15 @@ class Container(containers.DeclarativeContainer):
         submission_service=query_submission_service,
     )
 
-    semantic_modeling_agent = providers.Singleton(
-        SemanticModelingAgent,
+    semantic_model_draft_builder = providers.Singleton(
+        SemanticModelDraftBuilder,
         cube_modeling_source_service=cube_modeling_source_service,
         cube_modeling_service=cube_modeling_service,
         ontology_service=ontology_definition_service,
         mapper_service=semantic_mapper_preview_service,
         agent_plan_handler=agent_plan_handler,
     )
+    semantic_modeling_agent = semantic_model_draft_builder
 
     semantic_modeling_copilot_readiness_checker = providers.Singleton(
         PublishReadinessChecker,
@@ -784,11 +807,12 @@ class Container(containers.DeclarativeContainer):
         datasource_repository=datasource_repository,
         table_cache_service=table_cache_service,
         dataset_repository=dataset_repository,
+        data_asset_service=data_asset_service,
     )
 
     semantic_modeling_copilot_tools = providers.Singleton(
         ModelingToolRegistry,
-        builder=semantic_modeling_agent,
+        builder=semantic_model_draft_builder,
         readiness_checker=semantic_modeling_copilot_readiness_checker,
         source_candidate_recall_service=semantic_modeling_source_recall_service,
     )
@@ -810,7 +834,7 @@ class Container(containers.DeclarativeContainer):
     semantic_modeling_proposal_service = providers.Singleton(
         ModelingProposalService,
         repository=semantic_modeling_proposal_repository,
-        builder=semantic_modeling_agent,
+        builder=semantic_model_draft_builder,
         readiness_checker=semantic_modeling_copilot_readiness_checker,
         asset_registry_repository=semantic_asset_registry_repository,
         release_service=semantic_release_service,

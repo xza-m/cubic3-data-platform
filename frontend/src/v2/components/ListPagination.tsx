@@ -12,6 +12,7 @@ interface ListPaginationProps {
   total: number
   onPageChange: (page: number) => void
   className?: string
+  alwaysShow?: boolean
 }
 
 export function ListPagination({
@@ -20,12 +21,13 @@ export function ListPagination({
   total,
   onPageChange,
   className = '',
+  alwaysShow = false,
 }: ListPaginationProps) {
-  if (total <= pageSize) return null
+  if (!alwaysShow && total <= pageSize) return null
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const safePage = Math.min(Math.max(page, 1), pageCount)
-  const start = (safePage - 1) * pageSize + 1
+  const start = total === 0 ? 0 : (safePage - 1) * pageSize + 1
   const end = Math.min(total, safePage * pageSize)
 
   return (

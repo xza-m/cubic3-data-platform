@@ -1,4 +1,4 @@
-// frontend/src/v2/pages/semantic/modeling-agent/ModelingAgent.tsx
+// frontend/src/v2/pages/semantic/modeling-copilot/ModelingAgent.tsx
 //
 // 语义建模 Copilot · 对话原生工作台。
 // 设计要点（脱离传统 dashboard）：
@@ -185,7 +185,7 @@ export default function ModelingAgent() {
   // ── 会话不存在时回到新建页 ──────────────────────────────────────────────
   useEffect(() => {
     if (sessionQ.isError) {
-      navigate('/semantic/modeling-agent/new', { replace: true })
+      navigate('/semantic/modeling-copilot/new', { replace: true })
     }
   }, [sessionQ.isError, navigate])
 
@@ -206,7 +206,7 @@ export default function ModelingAgent() {
           user_goal: text,
           entry_type: inferEntryType(text),
         })
-        navigate(`/semantic/modeling-agent/${target.id}`)
+        navigate(`/semantic/modeling-copilot/${target.id}`)
       }
       await sendMessage.mutateAsync({ sessionId: target.id, message: text })
       setDraft('')
@@ -347,7 +347,7 @@ export default function ModelingAgent() {
       await deleteSession.mutateAsync(target.id)
       toast.show({ tone: 'success', title: '会话已删除' })
       if (target.id === activeSessionId) {
-        navigate('/semantic/modeling-agent/new')
+        navigate('/semantic/modeling-copilot/new')
       }
     } catch (error) {
       toast.show({
@@ -483,13 +483,13 @@ export default function ModelingAgent() {
               请联系管理员在后端环境变量中配置 <code>LLM_API_KEY / LLM_API_BASE / LLM_MODEL</code>。
             </div>
             <div className="mt-1 text-[12.5px]">
-              你也可以临时使用旧的{' '}
+              你可以返回{' '}
               <button
                 type="button"
-                onClick={() => navigate('/semantic/modeling-agent/spec/new')}
+                onClick={() => navigate('/semantic/modeling-copilot/new')}
                 className="underline underline-offset-2 hover:text-red-700"
               >
-                Spec Wizard 模式建模
+                新建建模会话
               </button>
               。
             </div>
@@ -552,7 +552,7 @@ export default function ModelingAgent() {
             type="button"
             className="group flex w-full items-center gap-2.5 rounded-[10px] border px-3 py-2.5 text-left transition hover:border-[color:var(--accent)]"
             style={{ borderColor: 'rgba(37,99,235,0.22)', background: 'var(--accent-soft)' }}
-            onClick={() => navigate('/semantic/modeling-agent/new')}
+            onClick={() => navigate('/semantic/modeling-copilot/new')}
           >
             <span
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-white"
@@ -585,7 +585,7 @@ export default function ModelingAgent() {
                   key={s.id}
                   session={s}
                   active={s.id === activeSessionId}
-                  onSelect={() => navigate(`/semantic/modeling-agent/${s.id}`)}
+                  onSelect={() => navigate(`/semantic/modeling-copilot/${s.id}`)}
                   onRename={() => void handleRenameSession(s)}
                   onDelete={() => void handleDeleteSession(s)}
                 />
@@ -784,6 +784,16 @@ interface ReviewBlocker {
   technicalHint?: unknown
 }
 
+interface FieldCandidateTrace {
+  candidate_set_id?: string
+  measure_count?: number
+  metric_count?: number
+  dimension_count?: number
+  risk_summary?: Record<string, unknown> | string[] | string | null
+  candidates?: Array<Record<string, unknown>>
+  [key: string]: unknown
+}
+
 interface CopilotActionError {
   title: string
   message: string
@@ -903,6 +913,87 @@ function ArtifactPanel({
       </div>
     </aside>
   )
+}
+
+function FieldCandidateTraceBlock({ trace }: { trace?: FieldCandidateTrace | null }) {
+  if (!trace?.candidate_set_id) return null
+  const measureCount = fieldCandidateCount(trace, ['measure', 'metric'])
+  const dimensionCount = fieldCandidateCount(trace, ['dimension'])
+  const riskSummary = formatFieldCandidateRiskSummary(trace.risk_summary)
+
+  return (
+    <div
+      className="rounded-[9px] border px-3 py-2.5"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="font-semibold text-1">字段候选 Review</div>
+        <Chip tone={riskSummary === '风险 0' ? 'success' : 'warning'}>{riskSummary}</Chip>
+      </div>
+      <div className="mt-2 break-all font-mono text-[11.5px] text-3">{trace.candidate_set_id}</div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Chip>指标 {measureCount}</Chip>
+        <Chip>维度 {dimensionCount}</Chip>
+      </div>
+    </div>
+  )
+}
+
+function fieldCandidateTraceForReview(
+  session: SemanticModelingCopilotSession,
+  review?: SemanticModelingCopilotReview,
+): FieldCandidateTrace | null {
+  const state = session.workbench_state || {}
+  const rawSpec = isRecord(state.raw_spec) ? state.raw_spec : {}
+  const cube = isRecord(rawSpec.cube) ? rawSpec.cube : {}
+  const cubes = Array.isArray(rawSpec.cubes) ? rawSpec.cubes : []
+  const firstCube = isRecord(cubes[0]) ? cubes[0] : {}
+  const reviewRecord = review as Record<string, unknown> | undefined
+  const reviewCube = isRecord(reviewRecord?.cube) ? reviewRecord.cube : {}
+  const workbenchCube = isRecord(state.cube) ? state.cube : {}
+  const cubeDraft = isRecord(state.cube_draft) ? state.cube_draft : {}
+  return (
+    asFieldCandidateTrace(cube.field_candidate_trace) ||
+    asFieldCandidateTrace(firstCube.field_candidate_trace) ||
+    asFieldCandidateTrace(reviewCube.field_candidate_trace) ||
+    asFieldCandidateTrace(reviewRecord?.field_candidate_trace) ||
+    asFieldCandidateTrace(workbenchCube.field_candidate_trace) ||
+    asFieldCandidateTrace(cubeDraft.field_candidate_trace) ||
+    asFieldCandidateTrace(state.field_candidate_trace)
+  )
+}
+
+function asFieldCandidateTrace(value: unknown): FieldCandidateTrace | null {
+  return isRecord(value) && stringValue(value.candidate_set_id) ? (value as FieldCandidateTrace) : null
+}
+
+function fieldCandidateCount(trace: FieldCandidateTrace, roles: string[]): number {
+  const explicit = roles.includes('dimension')
+    ? numberValue(trace.dimension_count)
+    : numberValue(trace.measure_count) || numberValue(trace.metric_count)
+  if (explicit !== undefined) return explicit
+  const candidates = Array.isArray(trace.candidates) ? trace.candidates : []
+  return candidates.filter((candidate) => roles.includes(stringValue(candidate.role))).length
+}
+
+function formatFieldCandidateRiskSummary(value: FieldCandidateTrace['risk_summary']): string {
+  if (!value) return '风险 0'
+  if (typeof value === 'string') return value.trim() ? `风险 ${value.trim()}` : '风险 0'
+  if (Array.isArray(value)) return value.length > 0 ? `风险 ${value.join(' / ')}` : '风险 0'
+  const ordered = ['high', 'medium', 'low']
+  const entries = [
+    ...ordered
+      .filter((key) => value[key] !== undefined)
+      .map((key) => [key, value[key]] as const),
+    ...Object.entries(value).filter(([key]) => !ordered.includes(key)),
+  ].filter(([, count]) => Number(count) > 0)
+  return entries.length > 0
+    ? `风险 ${entries.map(([key, count]) => `${key} ${Number(count)}`).join(' / ')}`
+    : '风险 0'
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function compactArtifactSummary(
@@ -1245,6 +1336,7 @@ function ProposalReviewWorkbench({
   const firstGuide = firstBlocker ? blockerFixGuide(firstBlocker) : null
   const guidance = artifactGuidance(session, review, pendingRunLabel)
   const summary = compactArtifactSummary(session, review)
+  const fieldCandidateTrace = fieldCandidateTraceForReview(session, reviewArtifact)
 
   return (
     <section
@@ -1283,6 +1375,8 @@ function ProposalReviewWorkbench({
           </div>
         ))}
       </div>
+
+      <FieldCandidateTraceBlock trace={fieldCandidateTrace} />
 
       {firstBlocker ? (
         <div className="rounded-[10px] border px-3 py-2.5" style={{ borderColor: 'rgba(245,158,11,0.28)', background: 'rgba(255,251,235,0.58)' }}>
@@ -3076,6 +3170,7 @@ function SourceCandidateCard({
             (Array.isArray(candidate.evidence) ? candidate.evidence[0] : '')
           const matched = Array.isArray(candidate.matched_terms) ? candidate.matched_terms.slice(0, 3).join(' / ') : ''
           const scoreBreakdown = formatScoreBreakdown(candidate.score_breakdown)
+          const dataAssetEvidence = dataAssetEvidenceForCandidate(candidate)
           return (
             <div
               key={String(candidate.id ?? name)}
@@ -3103,6 +3198,9 @@ function SourceCandidateCard({
                   {scoreBreakdown ? (
                     <div className="mt-1 text-[11px] leading-5 text-4">评分明细：{scoreBreakdown}</div>
                   ) : null}
+                  {dataAssetEvidence ? (
+                    <DataAssetCandidateEvidence evidence={dataAssetEvidence} />
+                  ) : null}
                   <div className="mt-2">
                     <Button size="sm" variant="primary" onClick={() => onConfirm(candidate)}>
                       <CheckCircle2 size={12} /> 使用此来源
@@ -3116,6 +3214,76 @@ function SourceCandidateCard({
       </div>
     </CardShell>
   )
+}
+
+interface DataAssetCandidateEvidenceModel {
+  assetType: string
+  qualifiedName: string
+  hasEvidenceBundle: boolean
+  runtimeTruth?: boolean
+  rowCount: string
+  partitionCount: string
+  profileStatus: string
+}
+
+function DataAssetCandidateEvidence({ evidence }: { evidence: DataAssetCandidateEvidenceModel }) {
+  return (
+    <div
+      data-testid="data-asset-candidate-evidence"
+      className="mt-2 rounded-[8px] border px-3 py-2"
+      style={{ borderColor: 'rgba(37,99,235,0.18)', background: 'rgba(239,246,255,0.48)' }}
+    >
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Chip tone="accent">{evidence.assetType}</Chip>
+        {evidence.hasEvidenceBundle ? <Chip>EvidenceBundle</Chip> : null}
+        {typeof evidence.runtimeTruth === 'boolean' ? (
+          <Chip tone={evidence.runtimeTruth ? 'success' : 'warning'}>
+            runtime_truth={String(evidence.runtimeTruth)}
+          </Chip>
+        ) : null}
+      </div>
+      {evidence.qualifiedName ? (
+        <div className="mt-1.5 break-all text-[11.5px] text-3">
+          资产引用：<code className="font-mono text-1">{evidence.qualifiedName}</code>
+        </div>
+      ) : null}
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-3">
+        {evidence.rowCount ? <span>行数：{evidence.rowCount}</span> : null}
+        {evidence.partitionCount ? <span>分区数：{evidence.partitionCount}</span> : null}
+        {evidence.profileStatus ? <span>画像状态：{evidence.profileStatus}</span> : null}
+      </div>
+    </div>
+  )
+}
+
+function dataAssetEvidenceForCandidate(candidate: CopilotSourceCandidate): DataAssetCandidateEvidenceModel | null {
+  const assetRef = isRecord(candidate.asset_ref) ? candidate.asset_ref : null
+  const evidenceBundle = isRecord(candidate.evidence_bundle) ? candidate.evidence_bundle : null
+  const profileSummary = isRecord(candidate.profile_summary) ? candidate.profile_summary : null
+  const sampleProfile = isRecord(evidenceBundle?.sample_profile) ? evidenceBundle.sample_profile : profileSummary
+  const assetType = stringValue(candidate.asset_type)
+  const qualifiedName = stringValue(assetRef?.qualified_name) || stringValue(candidate.qualified_name)
+  const hasDataAssetEvidence = assetType === 'data_asset_table' || Boolean(assetRef || evidenceBundle || profileSummary)
+  if (!hasDataAssetEvidence) return null
+
+  const runtimeTruth = typeof evidenceBundle?.runtime_truth === 'boolean' ? evidenceBundle.runtime_truth : undefined
+  return {
+    assetType: assetType || 'data_asset_table',
+    qualifiedName,
+    hasEvidenceBundle: Boolean(evidenceBundle),
+    runtimeTruth,
+    rowCount: formatProfileNumber(sampleProfile?.row_count),
+    partitionCount: formatProfileNumber(sampleProfile?.partition_count),
+    profileStatus: stringValue(sampleProfile?.profile_status),
+  }
+}
+
+function formatProfileNumber(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Intl.NumberFormat('zh-CN').format(value)
+  }
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return ''
 }
 
 function formatScoreBreakdown(value: unknown): string {

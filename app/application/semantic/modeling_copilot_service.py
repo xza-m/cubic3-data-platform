@@ -689,6 +689,10 @@ class SemanticModelingCopilotService:
             "user_question": session.user_goal,
             "candidate_table": self._candidate_table_label(source_payload, candidate),
         }
+        if isinstance(candidate.get("asset_ref"), dict):
+            proposal_patch["asset_ref"] = deepcopy(candidate["asset_ref"])
+        if isinstance(candidate.get("evidence_bundle"), dict):
+            proposal_patch["evidence_bundle"] = deepcopy(candidate["evidence_bundle"])
         state["proposal_patch"] = proposal_patch
         state["selected_source_candidate"] = candidate
         state["source_candidates"] = self._source_candidates_with_selection(
@@ -1048,6 +1052,11 @@ class SemanticModelingCopilotService:
     @staticmethod
     def _source_payload_from_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
         source_kind = str(candidate.get("source_kind") or "").strip()
+        extra_payload: Dict[str, Any] = {}
+        if isinstance(candidate.get("asset_ref"), dict):
+            extra_payload["asset_ref"] = deepcopy(candidate["asset_ref"])
+        if isinstance(candidate.get("evidence_bundle"), dict):
+            extra_payload["evidence_bundle"] = deepcopy(candidate["evidence_bundle"])
         if source_kind == "dataset" and candidate.get("dataset_id"):
             return {
                 "source_kind": "dataset",
@@ -1056,6 +1065,7 @@ class SemanticModelingCopilotService:
                 "database": candidate.get("database"),
                 "schema": candidate.get("schema"),
                 "table": candidate.get("table"),
+                **extra_payload,
             }
         if source_kind == "physical_table" and candidate.get("source_id") and candidate.get("database") and candidate.get("table"):
             return {
@@ -1064,6 +1074,7 @@ class SemanticModelingCopilotService:
                 "database": candidate.get("database"),
                 "schema": candidate.get("schema"),
                 "table": candidate.get("table"),
+                **extra_payload,
             }
         return {}
 

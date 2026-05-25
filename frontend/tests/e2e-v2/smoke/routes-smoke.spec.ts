@@ -1,6 +1,6 @@
 // frontend/tests/e2e-v2/smoke/routes-smoke.spec.ts
 //
-// 路由与页面"可达性/非空白"冒烟（R01~R06）。
+// 路由与页面"可达性/非空白"冒烟（R01~R08）。
 //
 // 触发背景：2026-04-22 人工验证发现 5 个基础功能问题（见会话记录）：
 //   - 总览数据空（res.data vs res.data.data）
@@ -258,4 +258,28 @@ test('R06 /data-center/datasets 虚拟表行显示查看 SQL 按钮 @smoke', asy
   const viewSqlBtn = page.getByRole('button', { name: /查看\s*SQL/ }).first()
   await expect(viewSqlBtn).toBeVisible()
   await expect(viewSqlBtn).toBeEnabled()
+})
+
+// ── R07  /config/channels/new 可达（静态 new 不被 :id 捕获）────────────────
+test('R07 /config/channels/new 渠道创建页可达 @smoke', async ({ page }) => {
+  await prepareV2Page(page)
+  await installApiCatchAll(page)
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
+
+  await gotoV2(page, '/config/channels/new')
+
+  await expect(page.getByRole('heading', { name: /接入新渠道/ })).toBeVisible()
+  await expect(page.getByText('非法的渠道 ID')).not.toBeVisible()
+})
+
+// ── R08  /config/subscriptions/new 可达（静态 new 不被 :id 捕获）──────────────
+test('R08 /config/subscriptions/new 订阅创建页可达 @smoke', async ({ page }) => {
+  await prepareV2Page(page)
+  await installApiCatchAll(page)
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
+
+  await gotoV2(page, '/config/subscriptions/new')
+
+  await expect(page.getByRole('heading', { name: /新建订阅/ })).toBeVisible()
+  await expect(page.getByText('非法的订阅 ID')).not.toBeVisible()
 })

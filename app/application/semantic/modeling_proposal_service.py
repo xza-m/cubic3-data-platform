@@ -5,7 +5,7 @@ from copy import deepcopy
 from datetime import datetime
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from uuid import uuid4
 
 from app.application.semantic.modeling_coverage_analyzer import CoverageAnalyzer
@@ -16,6 +16,9 @@ from app.domain.semantic.asset_registry import SemanticAsset
 from app.domain.semantic.modeling_proposal import ModelingProposal
 from app.domain.semantic.ports.modeling_proposal_repository import IModelingProposalRepository
 
+if TYPE_CHECKING:
+    from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
+
 
 class ModelingProposalService:
     """用有状态 Proposal 包装现有建模助手动作链。"""
@@ -24,7 +27,7 @@ class ModelingProposalService:
         self,
         *,
         repository: IModelingProposalRepository,
-        builder: Any,
+        builder: "SemanticModelDraftBuilder",
         readiness_checker: PublishReadinessChecker,
         asset_registry_repository: Any = None,
         release_service: Any = None,
@@ -144,7 +147,7 @@ class ModelingProposalService:
     def draft(self, proposal_id: str) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
         payload = deepcopy(proposal.source_context.get("request_payload") or {})
-        # Copilot / 会话工作台已生成完整 SemanticModelingAgentSpec 时，附带 embedded_spec，
+        # Copilot / 会话工作台已生成完整 SemanticModelDraft spec 时，附带 embedded_spec，
         # 避免再次用 source_kind=business_question 走 create_spec_draft（会触发「不支持的建模源类型」）。
         embedded_spec = payload.pop("embedded_spec", None)
         spec_result: Dict[str, Any]

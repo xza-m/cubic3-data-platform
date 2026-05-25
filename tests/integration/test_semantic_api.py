@@ -240,6 +240,7 @@ def mock_modeling_source_service():
         "status": "draft",
         "dimensions": {"id": {"title": "ID", "type": "string", "sql": "{CUBE}.id"}},
         "measures": {"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        "field_candidate_trace": {"draft_source_mode": "compatibility_facade"},
     }
     return service
 
@@ -433,6 +434,7 @@ class TestCubesEndpoint:
         assert resp.status_code == 200
         data = resp.get_json()["data"]
         assert data["status"] == "draft"
+        assert data["field_candidate_trace"]["draft_source_mode"] == "compatibility_facade"
         mock_modeling_source_service.generate_cube_draft_from_source.assert_called_once()
 
     def test_create_cube_returns_201(self, semantic_client, mock_modeling_service):

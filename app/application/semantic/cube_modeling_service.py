@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+from app.application.semantic.field_candidates import FieldCandidateService, FieldCandidateSet
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
 from app.domain.semantic.entities import CubeDefinition, MeasureDef
 from app.domain.semantic.ports.cube_repository import ICubeRepository
@@ -21,12 +22,14 @@ class CubeModelingService:
         definition_service: Any = None,
         registry_repo: Optional[ISemanticRegistryRepository] = None,
         metric_repository: Any = None,
+        field_candidate_service: Optional[FieldCandidateService] = None,
     ):
         self._cube_repo = cube_repo
         self._runtime = runtime_binding_service
         self._definition_service = definition_service
         self._registry_repo = registry_repo
         self._metric_repository = metric_repository
+        self._field_candidate_service = field_candidate_service or FieldCandidateService()
 
     def generate_cube_draft(
         self,
@@ -88,10 +91,61 @@ class CubeModelingService:
         source_dataset_id: Optional[int] = None,
         source_dataset_type: Optional[str] = None,
     ) -> Dict[str, Any]:
+        namespace = ".".join(part for part in (database, schema, table) if part)
+        candidate_set = self._field_candidate_service.preview_from_columns(
+            source={
+                "source_kind": "raw_columns_facade",
+                "source_ref": f"{source_id}:{namespace}",
+                "database": database,
+                "schema": schema,
+                "table": table,
+            },
+            columns=[self._column_with_candidate_source(column) for column in columns],
+        )
+        return self.build_cube_draft_from_candidate_set(
+            candidate_set=candidate_set,
+            source_id=source_id,
+            database=database,
+            schema=schema,
+            table=table,
+            partitions=partitions,
+            name=name,
+            title=title,
+            description=description,
+            comment=comment,
+            data_source=data_source,
+            source_sql=source_sql,
+            source_dataset_id=source_dataset_id,
+            source_dataset_type=source_dataset_type,
+            draft_source_mode="candidate_facade",
+        )
+
+    def build_cube_draft_from_candidate_set(
+        self,
+        *,
+        candidate_set: FieldCandidateSet,
+        source_id: int,
+        database: Optional[str],
+        schema: Optional[str],
+        table: str,
+        partitions: Optional[List[Any]] = None,
+        name: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        comment: Optional[str] = None,
+        data_source: str = "maxcompute",
+        source_sql: Optional[str] = None,
+        source_dataset_id: Optional[int] = None,
+        source_dataset_type: Optional[str] = None,
+        partition: Optional[Dict[str, Any]] = None,
+        entity_key: Optional[str] = None,
+        grain: Optional[str] = None,
+        draft_source_mode: str = "candidate_set",
+    ) -> Dict[str, Any]:
         cube_name = self._normalize_name(name or table)
         cube_title = title or self._humanize_name(table)
-        dimensions = self._build_dimensions(columns)
-        measures = self._build_measures(columns, dimensions)
+        dimensions = self._build_dimensions_from_candidate_set(candidate_set)
+        measures = self._build_measures_from_candidate_set(candidate_set, dimensions)
         if not measures and dimensions:
             first_dim = next(iter(dimensions.keys()))
             measures["total_count"] = MeasureDef(
@@ -116,6 +170,13 @@ class CubeModelingService:
             "measures": {key: measure.model_dump(exclude_none=True) for key, measure in measures.items()},
             "segments": {},
             "joins": {},
+            "field_candidate_trace": {
+                "candidate_set_id": candidate_set.candidate_set_id,
+                "ruleset_version": candidate_set.ruleset_version,
+                "summary": candidate_set.summary,
+                "source": candidate_set.source,
+                "draft_source_mode": draft_source_mode,
+            },
         }
         if source_sql:
             payload["source_sql"] = source_sql
@@ -123,8 +184,10 @@ class CubeModelingService:
             payload["source_dataset_id"] = int(source_dataset_id)
         if source_dataset_type:
             payload["source_dataset_type"] = source_dataset_type
+        if partition:
+            payload["partition"] = partition
         normalized_partitions = partitions or []
-        if normalized_partitions:
+        if normalized_partitions and "partition" not in payload:
             first_partition = normalized_partitions[0]
             part_field = str(first_partition.get("name") if isinstance(first_partition, dict) else first_partition)
             payload["partition"] = {
@@ -133,11 +196,56 @@ class CubeModelingService:
                 "format": "yyyyMMdd" if "ds" in part_field.lower() else "yyyy-MM-dd",
                 "max_range_days": 90,
             }
-        primary_key = next((field_name for field_name, dim in dimensions.items() if dim.get("primary_key")), None)
+        primary_key = entity_key or next((field_name for field_name, dim in dimensions.items() if dim.get("primary_key")), None)
         if primary_key:
             payload["entity_key"] = primary_key
-            payload["grain"] = primary_key
+            payload["grain"] = grain or primary_key
+        elif grain:
+            payload["grain"] = grain
         return payload
+
+    def build_cube_draft_from_inline_candidate_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        candidate_set_payload = dict(payload.get("candidate_set") or {})
+        fields = candidate_set_payload.get("fields") or []
+        if not isinstance(fields, list):
+            raise ApplicationException("candidate_set.fields 必须是 list")
+        source = dict(candidate_set_payload.get("source") or {})
+        source.setdefault("source_kind", "inline_candidate")
+        incoming_candidate_set_id = candidate_set_payload.get("candidate_set_id") or payload.get("candidate_set_id")
+        if incoming_candidate_set_id:
+            source["incoming_candidate_set_id"] = incoming_candidate_set_id
+
+        columns = [self._column_from_inline_candidate(field) for field in fields]
+        selected_overrides = {
+            str(field.get("field") or field.get("name")): field.get("selected_role")
+            for field in fields
+            if isinstance(field, dict) and field.get("selected_role") and (field.get("field") or field.get("name"))
+        }
+        candidate_set = self._field_candidate_service.preview_from_columns(
+            source=source,
+            columns=columns,
+            selected_overrides=selected_overrides,
+        )
+        return self.build_cube_draft_from_candidate_set(
+            candidate_set=candidate_set,
+            source_id=payload.get("source_id") or source.get("source_id") or 0,
+            database=payload.get("database") or source.get("database"),
+            schema=payload.get("schema") or source.get("schema"),
+            table=payload.get("table") or source.get("table") or payload.get("name") or "inline_candidate",
+            partitions=payload.get("partitions"),
+            name=payload.get("name"),
+            title=payload.get("title"),
+            description=payload.get("description"),
+            comment=payload.get("comment"),
+            data_source=payload.get("data_source") or source.get("data_source") or "maxcompute",
+            source_sql=payload.get("source_sql"),
+            source_dataset_id=payload.get("source_dataset_id"),
+            source_dataset_type=payload.get("source_dataset_type"),
+            partition=payload.get("partition"),
+            entity_key=payload.get("entity_key"),
+            grain=payload.get("grain"),
+            draft_source_mode="inline_candidate",
+        )
 
     def create_cube(self, payload: Dict[str, Any]) -> CubeDefinition:
         cube = CubeDefinition(**payload)
@@ -256,6 +364,124 @@ class CubeModelingService:
                 + ", ".join(missing_refs)
             )
 
+    def _build_dimensions_from_candidate_set(self, candidate_set: FieldCandidateSet) -> Dict[str, Dict[str, Any]]:
+        dimensions: Dict[str, Dict[str, Any]] = {}
+        for candidate in candidate_set.fields:
+            if not str(candidate.selected_role or "").startswith("dimension."):
+                continue
+            field_name = str(candidate.field or "").strip()
+            if not field_name:
+                continue
+            source_type = candidate.physical_type.raw_type or candidate.physical_type.normalized_type
+            dimensions[field_name] = {
+                "title": self._candidate_title(candidate),
+                "type": self._candidate_dimension_type(candidate.semantic_type),
+                "sql": f"`{field_name}`",
+                "description": self._candidate_description(candidate, candidate_set),
+                "source_data_type": source_type,
+                "primary_key": candidate.selected_role == "dimension.identifier",
+            }
+        return dimensions
+
+    def _build_measures_from_candidate_set(
+        self,
+        candidate_set: FieldCandidateSet,
+        dimensions: Dict[str, Dict[str, Any]],
+    ) -> Dict[str, MeasureDef]:
+        measures: Dict[str, MeasureDef] = {}
+        count_basis = next(
+            (name for name, dim in dimensions.items() if dim.get("primary_key")),
+            next(iter(dimensions.keys()), "id"),
+        )
+        measures["total_count"] = MeasureDef(
+            title="总数",
+            type="count",
+            sql=f"COUNT(`{count_basis}`)",
+            description="自动生成的记录总数指标",
+            source_data_type="count",
+            certified=True,
+        )
+        for candidate in candidate_set.fields:
+            if not str(candidate.selected_role or "").startswith("measure."):
+                continue
+            field_name = str(candidate.field or "").strip()
+            if not field_name:
+                continue
+            semantics = candidate.measure_semantics
+            raw_agg = str(getattr(semantics, "aggregation", "") or "sum")
+            agg_type = "avg" if raw_agg == "percentile" else raw_agg
+            if agg_type not in {"sum", "avg", "min", "max", "count", "count_distinct", "number"}:
+                agg_type = "sum"
+            measure_name = self._build_measure_name(agg_type, field_name)
+            source_type = candidate.physical_type.raw_type or candidate.physical_type.normalized_type
+            additivity = str(getattr(semantics, "additivity", "") or "")
+            is_ratio = bool(getattr(semantics, "is_ratio", False))
+            measures[measure_name] = MeasureDef(
+                title=self._candidate_title(candidate),
+                type=agg_type,
+                sql=f"{agg_type.upper()}(`{field_name}`)",
+                description=self._candidate_description(candidate, candidate_set),
+                source_data_type=source_type,
+                format=getattr(semantics, "default_format", None),
+                unit=getattr(semantics, "unit", None),
+                non_additive=is_ratio or additivity == "non_additive" or raw_agg == "percentile",
+                tags=list(candidate.issue_codes or []),
+            )
+        return measures
+
+    @staticmethod
+    def _candidate_dimension_type(semantic_type: str) -> str:
+        if semantic_type in {"string", "number", "time", "boolean"}:
+            return semantic_type
+        return "string"
+
+    @staticmethod
+    def _candidate_title(candidate: Any) -> str:
+        source = dict(getattr(candidate, "source", {}) or {})
+        return str(source.get("comment") or source.get("description") or CubeModelingService._humanize_name(candidate.field))
+
+    @staticmethod
+    def _candidate_description(candidate: Any, candidate_set: FieldCandidateSet) -> str:
+        parts = [f"来自字段候选集 {candidate_set.candidate_set_id}，角色 {candidate.selected_role}"]
+        if candidate.warnings:
+            parts.append("警告：" + "；".join(candidate.warnings))
+        if candidate.issue_codes:
+            parts.append("问题码：" + "，".join(candidate.issue_codes))
+        return "；".join(parts)
+
+    @staticmethod
+    def _column_with_candidate_source(column: Dict[str, Any]) -> Dict[str, Any]:
+        enriched = dict(column)
+        source = dict(enriched.get("source") or {})
+        for key in ("comment", "description", "display_name"):
+            if enriched.get(key) is not None:
+                source.setdefault(key, enriched.get(key))
+        if source:
+            enriched["source"] = source
+        return enriched
+
+    @staticmethod
+    def _column_from_inline_candidate(field: Any) -> Dict[str, Any]:
+        if not isinstance(field, dict):
+            return {"name": "", "type": ""}
+        physical_type = field.get("physical_type") or {}
+        if isinstance(physical_type, dict):
+            raw_type = physical_type.get("raw_type") or physical_type.get("normalized_type")
+        else:
+            raw_type = getattr(physical_type, "raw_type", None) or getattr(physical_type, "normalized_type", None)
+        source = dict(field.get("source") or {})
+        for key in ("comment", "description", "display_name"):
+            if field.get(key) is not None:
+                source.setdefault(key, field.get(key))
+        column = {
+            "name": field.get("field") or field.get("name") or field.get("physical_name") or "",
+            "type": raw_type or field.get("type") or field.get("data_type") or "",
+            "comment": field.get("comment") or field.get("description") or field.get("display_name") or "",
+        }
+        if source:
+            column["source"] = source
+        return column
+
     @staticmethod
     def _normalize_name(name: str) -> str:
         cleaned = re.sub(r"[^a-zA-Z0-9_]+", "_", name.strip()).strip("_").lower()
@@ -293,8 +519,6 @@ class CubeModelingService:
         columns: List[Dict[str, Any]],
         dimensions: Dict[str, Dict[str, Any]],
     ) -> Dict[str, MeasureDef]:
-        RATE_SUFFIXES = ('_rate', '_ratio', '_pct', '_percent')
-
         measures: Dict[str, MeasureDef] = {}
         count_basis = next(
             (name for name, dim in dimensions.items() if dim.get("primary_key")),
@@ -320,14 +544,8 @@ class CubeModelingService:
             if not self._is_likely_measure(lower_name, comment):
                 continue
 
-            if any(lower_name.endswith(s) for s in RATE_SUFFIXES):
-                agg_type = "avg"
-                prefix = "avg"
-            else:
-                agg_type = "sum"
-                prefix = "sum"
-
-            measure_name = f"{prefix}_{field_name}"
+            agg_type = self._infer_measure_aggregation(lower_name, comment)
+            measure_name = self._build_measure_name(agg_type, field_name)
             measure_title = comment if comment else f"{self._humanize_name(field_name)} 合计"
 
             measures[measure_name] = MeasureDef(
@@ -336,6 +554,7 @@ class CubeModelingService:
                 sql=f"{agg_type.upper()}(`{field_name}`)",
                 description=f"自动生成的 {field_name} {agg_type}指标",
                 source_data_type=column_type,
+                non_additive=agg_type == "avg",
             )
         return measures
 
@@ -376,19 +595,68 @@ class CubeModelingService:
             '_score', '_weight', '_duration', '_cost', '_fee',
             '_salary', '_revenue', '_profit', '_balance', '_income',
             '_expense', '_size', '_length', '_area', '_distance',
-            '_energy', '_power', '_times',
+            '_energy', '_power', '_times', '_avg', '_mean', '_median',
+            '_stddev', '_variance', '_wow', '_mom', '_yoy',
+        )
+        MEASURE_NAME_PREFIXES = (
+            'avg_', 'mean_', 'median_', 'stddev_', 'std_', 'variance_', 'var_',
+            'max_', 'min_',
         )
         MEASURE_COMMENT_KEYWORDS = (
             '金额', '数量', '比率', '比例', '百分比', '时长', '次数',
             '分数', '价格', '重量', '面积', '距离', '能量', '功率',
             '费用', '成本', '收入', '支出', '利润', '余额', '工资',
-            '总计', '合计', '累计', '均值', '平均', '得分',
+            '总计', '合计', '累计', '均值', '平均', '得分', '难度',
+            '分位', '中位数', '标准差', '方差', '环比', '同比',
         )
         if any(lower_name.endswith(s) for s in MEASURE_NAME_SIGNALS):
             return True
+        if any(lower_name.startswith(p) for p in MEASURE_NAME_PREFIXES):
+            return True
+        if re.match(r"^p\d{1,3}(_|$)", lower_name) or re.search(r"_p\d{1,3}(_|$)", lower_name):
+            return True
         if comment and any(kw in comment for kw in MEASURE_COMMENT_KEYWORDS):
             return True
+        if comment and re.search(r"[Pp]\d{1,3}", comment):
+            return True
         return False
+
+    @staticmethod
+    def _infer_measure_aggregation(lower_name: str, comment: str) -> str:
+        if lower_name.startswith("max_") or lower_name.endswith("_max"):
+            return "max"
+        if lower_name.startswith("min_") or lower_name.endswith("_min"):
+            return "min"
+
+        non_additive_suffixes = (
+            '_rate', '_ratio', '_pct', '_percent', '_avg', '_mean',
+            '_median', '_stddev', '_variance', '_wow', '_mom', '_yoy',
+        )
+        non_additive_prefixes = (
+            'avg_', 'mean_', 'median_', 'stddev_', 'std_', 'variance_', 'var_',
+        )
+        non_additive_keywords = (
+            '比率', '比例', '百分比', '均值', '平均', '分位', '中位数',
+            '标准差', '方差', '环比', '同比',
+        )
+        if any(lower_name.endswith(s) for s in non_additive_suffixes):
+            return "avg"
+        if any(lower_name.startswith(p) for p in non_additive_prefixes):
+            return "avg"
+        if re.match(r"^p\d{1,3}(_|$)", lower_name) or re.search(r"_p\d{1,3}(_|$)", lower_name):
+            return "avg"
+        if comment and any(kw in comment for kw in non_additive_keywords):
+            return "avg"
+        if comment and re.search(r"[Pp]\d{1,3}", comment):
+            return "avg"
+        return "sum"
+
+    @staticmethod
+    def _build_measure_name(prefix: str, field_name: str) -> str:
+        lower_name = field_name.lower()
+        if lower_name.startswith(f"{prefix}_") or lower_name.endswith(f"_{prefix}"):
+            return field_name
+        return f"{prefix}_{field_name}"
 
     @staticmethod
     def _infer_dimension_type(field_name: str, db_type: str) -> str:
