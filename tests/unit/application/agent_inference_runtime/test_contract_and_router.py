@@ -70,8 +70,9 @@ def test_service_routes_request_to_fake_runtime_and_returns_trace():
     adapter = _FakeAdapter()
     router = AgentInferenceRuntimeRouter(adapters=[adapter])
     service = AgentInferenceRuntimeService(router=router)
+    request = replace(_request(), preferred_runtime="fake")
 
-    result = service.invoke(_request())
+    result = service.invoke(request)
 
     assert result.status == "succeeded"
     assert result.runtime_name == "fake"
@@ -86,6 +87,14 @@ def test_router_rejects_unknown_runtime_without_silent_fallback():
 
     with pytest.raises(ValueError, match="no runtime adapter"):
         router.select(request)
+
+
+def test_router_rejects_missing_default_runtime_without_fallback():
+    adapter = _FakeAdapter()
+    router = AgentInferenceRuntimeRouter(adapters=[adapter])
+
+    with pytest.raises(ValueError, match="no runtime adapter"):
+        router.select(_request("semantic.modeling.chat"))
 
 
 def test_router_defaults_review_action_to_codex_when_adapter_exists():

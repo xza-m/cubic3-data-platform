@@ -16,10 +16,6 @@ class AgentInferenceRuntimeRouter:
         for adapter in self._adapters:
             if adapter.runtime_name == desired and adapter.can_handle(request):
                 return adapter
-        if request.preferred_runtime is None:
-            for adapter in self._adapters:
-                if adapter.can_handle(request):
-                    return adapter
         raise ValueError(f"no runtime adapter for action={request.action} runtime={desired}")
 
     @staticmethod
