@@ -481,7 +481,7 @@ Trace 存储建议分两层：
 - Runtime Request 的身份事实只能来自平台归一后的 `PrincipalContext`。
 - 用户请求体中的角色、scope、tenant 不参与授权事实。
 - Context Pack 默认脱敏，密钥、AccessKey、连接串和 token 不进入 runtime。
-- Codex app-server 使用项目级隔离工作区和独立 `CODEX_HOME`。
+- Codex app-server 使用项目级隔离工作区和独立 `AGENT_CODEX_RUNTIME_ROOT`。
 - Runtime Adapter 不持有业务数据库写权限。
 - 所有工具调用必须经过 `ToolSpec Adapter + RuntimePolicy` 校验。
 
@@ -510,21 +510,62 @@ Codex app-server runtime：
 
 ```text
 AGENT_CODEX_ENABLED=false
-AGENT_CODEX_COMMAND=...
-AGENT_CODEX_WORKSPACE_ROOT=...
 AGENT_CODEX_PROJECT_ID=cubic3-data-platform
+AGENT_CODEX_PROJECT_ROOT=/path/to/cubic3-data-platform
+AGENT_CODEX_RUNTIME_ROOT=/path/to/cubic3-data-platform/.cubic3/agent-codex
 AGENT_CODEX_TIMEOUT_SECONDS=120
 AGENT_CODEX_MAX_RUNTIME_SECONDS=600
 ```
 
-旧配置迁移：
+Codex app-server 验证通过后的运行态以本地目录为主。配置只暴露项目根和 runtime 根目录，session / thread / turn / artifact 目录由平台按 `project_id / session_id / thread_id / turn_id / run_id` 派生，避免用户手动配置多层路径。
 
-- `AGENT_OPENAI_*` 优先级高于 `LLM_*` / `OPENAI_*`。如果同时存在且值不同，启动时记录 deprecation warning，并以 `AGENT_OPENAI_*` 为准。
-- 第一阶段必须保留 `LLM_API_KEY` / `OPENAI_API_KEY` 兼容读取，不改变现有本地、CI 和 Docker 默认行为。
-- `AGENT_CODEX_*` 优先级高于 `SEMANTIC_MODELING_CODEX_*`。如果只配置旧变量，继续兼容读取并记录 warning。
-- `env.sample`、`QUICK_START.md`、`STARTUP_GUIDE.md` 和 `config_schema.py` 必须在配置迁移任务中同步更新。
-- 回滚策略：清空 `AGENT_*` 变量后，系统应回到旧 `LLM_*` / `SEMANTIC_MODELING_CODEX_*` 读取路径。
-- 弃用窗口：MVP 阶段双读不删除旧变量；Platform GA 后再评估是否移除旧变量。
+推荐目录结构：
+
+```text
+${AGENT_CODEX_RUNTIME_ROOT}/
+  projects/
+    ${AGENT_CODEX_PROJECT_ID}/
+      project.json
+      sessions/
+        ${session_id}/
+          session.json
+          threads/
+            ${thread_id}/
+              thread.json
+              turns/
+                ${turn_id}/
+                  request.json
+                  context_pack.json
+                  runtime_policy.json
+                  result.json
+                  events.ndjson
+                  artifacts/
+                    ${artifact_id}/
+                      manifest.json
+                      payload.*
+      runs/
+        ${run_id}/
+          run.json
+          stdout.log
+          stderr.log
+```
+
+粒度约束：
+
+- `project`：绑定一个平台项目和本地 workspace，记录 `project_id`、`project_root`、runtime 版本和 app-server 能力摘要。
+- `session`：对应业务产品会话，例如一次建模 Copilot session；保存调用方、principal、业务对象和默认 context pin。
+- `thread`：对应同一 session 下的 agent 对话 / 推理线程；承接多轮上下文和 Codex app-server thread 标识。
+- `turn`：对应一次用户输入或一次系统触发的 runtime action；保存 request、context pack、policy、结构化 result 和事件流。
+- `run`：对应平台调度的一次执行，可被同步或异步消费；`run_id` 是 trace、artifact 和状态查询的主键。
+- `artifact`：只保存引用、manifest 和可审计 payload；读取时必须重新校验 principal、app_id、session_id 和 run ownership。
+
+配置收敛：
+
+- 项目尚未上线，不引入长期双读或弃用窗口。
+- LLM API 相关配置统一迁移为 `AGENT_OPENAI_*`，实现落地后不再读取 `LLM_API_KEY`、`OPENAI_API_KEY`、`LLM_API_BASE`、`LLM_MODEL`。
+- Codex app-server 相关配置统一迁移为 `AGENT_CODEX_*`，实现落地后不再读取 `SEMANTIC_MODELING_CODEX_*`。
+- `env.sample`、`QUICK_START.md`、`STARTUP_GUIDE.md` 和 `config_schema.py` 必须在同一任务中同步更新。
+- 缺少必需 `AGENT_*` 配置时 fail fast，返回明确配置错误，而不是隐式回退到旧变量。
 
 ## 16. 建议目录结构
 
@@ -574,7 +615,6 @@ flowchart TD
   Service --> App["SemanticModelingAgentApp"]
   App --> Evidence["SemanticEvidenceBuilder"]
   App --> Runtime["AgentInferenceRuntimeService"]
-  App --> Shim["SemanticModelingRuntimeShim"]
   App --> Proposal["ModelingProposalService"]
   Proposal --> Gate["Publish Gate / Validation"]
 ```
@@ -584,23 +624,24 @@ flowchart TD
 - `SemanticModelingCopilotService` 继续负责 session、chat、artifact 投影和用户动作。
 - `SemanticModelingAgentApp` 负责把建模业务 action 转换成平台 runtime request。
 - `SemanticEvidenceBuilder` 统一构建资产、Cube、Ontology、校验结果和发布门禁证据。
-- `SemanticModelingRuntimeShim` 负责把通用 `AgentInferenceRuntimeResult` 转回现有 Copilot 可消费的 `AgentRunResult` 兼容结构，并保留当前 `workbench_state_patch`、`proposal_patch`、`required_confirmations`、`tool_traces` 和副作用清洗逻辑。
-- 当前 `modeling_copilot_runtime.py` 中的 LLM 调用、工具编排、确定性 fast path 应逐步拆出。
+- `SemanticModelingAgentApp` 直接消费 `AgentInferenceRuntimeResult.structured_output`，并按 action schema 转成建模领域命令、review artifact 或 repair suggestion。
+- 当前 `AgentRunResult` 兼容结构不再作为长期目标；实现时直接迁到 `AgentInferenceRuntimeResult` 和 action output schema，避免保留第二套运行时契约。
+- 当前 `modeling_copilot_runtime.py` 中的 LLM 调用、工具编排、确定性 fast path 应拆入平台 runtime adapter、ToolSpec 适配层和确定性应用服务。
 
 语义建模 action 级 schema：
 
-| Action | Output schema | 兼容输出 |
+| Action | Output schema | 领域输出 |
 |---|---|---|
-| `semantic.modeling.chat` | `semantic.modeling.chat.output.v1` | `message`、`workbench_state_patch`、`tool_traces` |
-| `semantic.modeling.generate_candidate` | `semantic.modeling.candidate.output.v1` | `proposal_patch`、`evidence_refs`、`required_confirmations` |
+| `semantic.modeling.chat` | `semantic.modeling.chat.output.v1` | `message`、`state_updates`、`tool_traces` |
+| `semantic.modeling.generate_candidate` | `semantic.modeling.candidate.output.v1` | `proposal_delta`、`evidence_refs`、`required_confirmations` |
 | `semantic.modeling.review_proposal` | `semantic.modeling.review.output.v1` | `findings`、`blocking_issues`、`artifacts`、`required_confirmations` |
-| `semantic.modeling.repair_validation_failure` | `semantic.modeling.repair.output.v1` | `proposal_patch`、`repair_steps`、`required_confirmations` |
+| `semantic.modeling.repair_validation_failure` | `semantic.modeling.repair.output.v1` | `proposal_delta`、`repair_steps`、`required_confirmations` |
 | `semantic.modeling.explain_publish_blocker` | `semantic.modeling.blocker_explanation.output.v1` | `message`、`blocking_issues`、`next_actions` |
 
-迁移约束：
+实现约束：
 
-- Phase 3 不能直接删除现有 `AgentRunResult`，必须先通过 shim 保持 Copilot session API 和前端 artifact 投影兼容。
-- `proposal_patch` 与 `workbench_state_patch` 继续经过现有副作用字段清洗；runtime 输出不能绕过 `SemanticModelingCopilotService` 的状态保护。
+- 不新增 `SemanticModelingRuntimeShim`。当前项目未上线，直接以新 contract 重写建模 Copilot runtime 接入。
+- `proposal_delta` 与 `state_updates` 必须经过 `SemanticModelingAgentApp` 的领域校验；runtime 输出不能绕过 `SemanticModelingCopilotService` 的状态保护。
 - schema 校验失败时返回 `RUNTIME_INVALID_OUTPUT`，不写入 session 草稿态。
 
 保留约束：
@@ -632,8 +673,9 @@ flowchart TD
 
 - 将服务命名固定为 `AgentInferenceRuntimeService`，避免与 official Semantic Runtime 混淆。
 - 补齐 `AgentInferenceRuntimeRun` 异步生命周期、Codex app-server process contract 和 artifact 权限模型。
-- 补齐配置双读优先级、弃用窗口、回滚策略和文档同步清单。
-- 补齐 `semantic.modeling.*` action 级 output schema 与 `SemanticModelingRuntimeShim`。
+- 补齐 `AGENT_OPENAI_*`、`AGENT_CODEX_*` 配置收敛规则和文档同步清单，不引入旧变量双读。
+- 补齐 Codex app-server 本地目录运行态，明确 project / session / thread / turn / run / artifact 粒度。
+- 补齐 `semantic.modeling.*` action 级 output schema，直接替代旧 `AgentRunResult` 契约。
 - 补齐最小 trace / artifact 持久化模型。
 
 Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项映射这些验收口径，不能直接跳到 Codex app-server 或跨模块平台化实现。
@@ -657,13 +699,14 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 - 新增 `SemanticModelingAgentApp`。
 - 抽出 `SemanticEvidenceBuilder`。
 - 让 Copilot service 通过平台 `AgentInferenceRuntimeService` 调用 runtime。
-- 通过 `SemanticModelingRuntimeShim` 保持现有 Copilot session API、artifact 投影和 patch 清洗逻辑不变。
+- 直接以 `AgentInferenceRuntimeResult` 和 action output schema 改造 Copilot session API、artifact 投影和 patch 校验逻辑，不保留 shim。
 - 移除语义服务对具体 OpenAI adapter 的直接依赖。
 
 ### Phase 4：Codex app-server 接入
 
 - 新增 `CodexAppServerRuntimeAdapter`、client、process manager。
-- 支持 per-project workspace、project-level `CODEX_HOME`、timeout、artifact 和 run trace。
+- 支持 `AGENT_CODEX_PROJECT_ROOT`、`AGENT_CODEX_RUNTIME_ROOT`、timeout、artifact 和 run trace。
+- 按 runtime 根目录派生 project / session / thread / turn / run / artifact 目录，不再把 Codex 配置设计成普通 command provider 配置。
 - 先只接入 `review_proposal` 和 `repair_validation_failure`。
 - Codex 不参与低延迟主对话默认链路。
 - 明确 transport：优先使用本地 app-server HTTP / WebSocket client；CLI 进程只作为开发期 fallback。
@@ -695,8 +738,8 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 - RuntimePolicy 降级和阻断。
 - ToolSpec 适配层权限校验。
 - Adapter 输出结构校验。
-- `AGENT_*` 与旧 `LLM_*` / `SEMANTIC_MODELING_CODEX_*` 配置双读优先级。
-- `SemanticModelingRuntimeShim` 对现有 `AgentRunResult` 兼容字段的映射。
+- `AGENT_OPENAI_*`、`AGENT_CODEX_*` 配置收敛和缺失 fail-fast。
+- `semantic.modeling.*` action output schema 到 Copilot session 状态的直接映射。
 
 ### 集成测试
 
@@ -724,7 +767,7 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 | Codex 长任务阻塞 Web 请求 | Codex action 默认走异步 run，经 RQ worker 或受监管 sidecar 执行 |
 | 结构化输出不稳定 | 强制 output schema 校验，失败只返回错误，不应用 patch |
 | 权限越界 | runtime 无写权限，所有副作用回到业务服务 |
-| 配置混乱 | 新配置统一 `AGENT_*`，旧配置只做兼容读取 |
+| 配置混乱 | 统一使用 `AGENT_*`，同一任务同步配置 schema、env sample 和启动文档 |
 | 与 official Semantic Runtime 混淆 | 服务命名固定为 `AgentInferenceRuntimeService`，正式查询执行继续走 QueryDSL / ExecutionTicket 链 |
 
 ## 22. 工程原则落实
@@ -739,11 +782,11 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 ### 23.1 MVP 完成判定
 
 1. 文档完成 Phase 0 修订，并明确 official Semantic Runtime 与 Agent Inference Runtime 边界。
-2. 语义建模 Copilot 不再直接依赖具体 OpenAI adapter，而是通过 `AgentInferenceRuntimeService` 和 `SemanticModelingRuntimeShim` 调用。
+2. 语义建模 Copilot 不再直接依赖具体 OpenAI adapter，而是通过 `AgentInferenceRuntimeService` 和 action output schema 调用。
 3. OpenAI-compatible runtime 和 fake runtime 实现平台 `AgentInferenceRuntimePort`。
 4. Runtime run 有可查询 trace、usage、错误码和最小 artifact 引用。
 5. 所有 runtime 输出都经过 action schema 校验和业务服务二次确认。
-6. `AGENT_*` 与旧配置双读验证通过，回滚路径可用。
+6. `AGENT_OPENAI_*` 与 `AGENT_CODEX_*` 配置收敛完成，旧 LLM / Codex 变量不再作为运行时输入。
 7. `make test-platform-agent-runtime` 与建模 Copilot 现有回归测试通过。
 
 ### 23.2 Platform GA 完成判定
