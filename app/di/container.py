@@ -37,6 +37,14 @@ def _create_engine_smart(database_url: str, **pg_kwargs):
     return create_engine(database_url, **pg_kwargs)
 
 
+def _parse_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _modeling_session_repository(store: str, session, sessions_dir: str):
     """按环境选择 Copilot 会话仓储。
 
@@ -1401,6 +1409,16 @@ def init_container(app: Flask) -> Container:
             'api_base': os.getenv('AGENT_OPENAI_BASE_URL', app.config.get('AGENT_OPENAI_BASE_URL', 'https://api.openai.com/v1')),
             'model': os.getenv('AGENT_OPENAI_MODEL', app.config.get('AGENT_OPENAI_MODEL', 'gpt-4o-mini')),
             'timeout': os.getenv('AGENT_OPENAI_TIMEOUT_SECONDS', app.config.get('AGENT_OPENAI_TIMEOUT_SECONDS', 60)),
+        },
+        'agent_codex': {
+            'enabled': _parse_bool(os.getenv('AGENT_CODEX_ENABLED', app.config.get('AGENT_CODEX_ENABLED', False))),
+            'project_id': os.getenv('AGENT_CODEX_PROJECT_ID', app.config.get('AGENT_CODEX_PROJECT_ID', 'cubic3-data-platform')),
+            'project_root': os.getenv('AGENT_CODEX_PROJECT_ROOT', app.config.get('AGENT_CODEX_PROJECT_ROOT', os.getcwd())),
+            'runtime_root': os.getenv('AGENT_CODEX_RUNTIME_ROOT', app.config.get('AGENT_CODEX_RUNTIME_ROOT', '.cubic3/agent-codex')),
+            'transport': os.getenv('AGENT_CODEX_TRANSPORT', app.config.get('AGENT_CODEX_TRANSPORT', 'unix_socket')),
+            'endpoint': os.getenv('AGENT_CODEX_ENDPOINT', app.config.get('AGENT_CODEX_ENDPOINT', '')),
+            'unix_socket': os.getenv('AGENT_CODEX_UNIX_SOCKET', app.config.get('AGENT_CODEX_UNIX_SOCKET', '')),
+            'max_concurrency': int(os.getenv('AGENT_CODEX_MAX_CONCURRENCY', app.config.get('AGENT_CODEX_MAX_CONCURRENCY', 2))),
         },
         'query_execution': {
             'spool_dir': os.getenv('QUERY_EXECUTION_SPOOL_DIR', app.config.get('QUERY_EXECUTION_SPOOL_DIR', 'instance/query_execution_results')),
