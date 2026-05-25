@@ -519,6 +519,35 @@ AGENT_CODEX_MAX_RUNTIME_SECONDS=600
 
 Codex app-server 验证通过后的运行态以本地目录为主。配置只暴露项目根和 runtime 根目录，session / thread / turn / artifact 目录由平台按 `project_id / session_id / thread_id / turn_id / run_id` 派生，避免用户手动配置多层路径。
 
+### 15.1 Command Provider 与 Codex Runtime 的区别
+
+普通 command provider 的抽象是“一次命令执行”，典型配置是 `command / args / cwd / timeout`，典型结果是 `exit_code / stdout / stderr`。它适合 `sqlfluff`、`pytest`、`odpscmd` 或一次性脚本，不适合承载 Codex app-server。
+
+Codex app-server 的抽象是“agent 工作区会话”，核心对象是 `project / session / thread / turn / run / artifact`。平台需要管理长任务状态、事件流、artifact、权限和可恢复 trace，而不是只等待一个子进程输出。
+
+| 维度 | 普通 command provider | Codex app-server runtime |
+|---|---|---|
+| 核心对象 | command、args、cwd、timeout | project、session、thread、turn、run、artifact |
+| 调用形态 | 启动一次进程并等待结果 | 通过 app-server client 创建 / 续接 thread 和 run |
+| 状态模型 | exit code、stdout、stderr | queued / running / succeeded / failed / timeout / cancelled / expired |
+| 上下文 | stdin 或临时文件 | context pack、runtime policy、tool spec、events |
+| 产物 | 命令输出文件 | artifact manifest、payload、事件流、trace |
+| 适用场景 | 短任务、一次性工具 | 长上下文复审、修复建议、工作区任务 |
+
+因此 `AGENT_CODEX_*` 不设计 `COMMAND / ARGS` 作为主配置。CLI 只能作为开发期 fallback，正式集成优先使用本地 app-server HTTP / WebSocket client。
+
+Codex adapter 的映射关系：
+
+| 平台对象 | Codex runtime 映射 |
+|---|---|
+| `AgentInferenceRuntimeRequest` | 一次 turn 的 `request.json`、`context_pack.json`、`runtime_policy.json` |
+| `AgentInferenceRuntimeRun` | `runs/{run_id}/run.json` 与 app-server run 状态 |
+| `session_id` | 业务产品会话，例如一次建模 Copilot session |
+| `thread_id` | Codex app-server thread 或平台侧线程投影 |
+| `turn_id` | 一次用户输入或系统触发 action |
+| `AgentInferenceRuntimeResult` | `turns/{turn_id}/result.json` 与 artifact refs |
+| `events.ndjson` | app-server 事件流的可审计镜像 |
+
 推荐目录结构：
 
 ```text
@@ -709,7 +738,8 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 - 按 runtime 根目录派生 project / session / thread / turn / run / artifact 目录，不再把 Codex 配置设计成普通 command provider 配置。
 - 先只接入 `review_proposal` 和 `repair_validation_failure`。
 - Codex 不参与低延迟主对话默认链路。
-- 明确 transport：优先使用本地 app-server HTTP / WebSocket client；CLI 进程只作为开发期 fallback。
+- 明确 transport：优先使用本地 app-server HTTP / WebSocket client；CLI 进程只作为开发期 fallback，不能成为正式 runtime contract。
+- 明确对象映射：`AgentInferenceRuntimeRequest -> turn`，`AgentInferenceRuntimeRun -> run`，`AgentInferenceRuntimeResult -> result / artifact refs`。
 - 明确进程生命周期：`ensure_started`、`healthcheck`、`submit_run`、`cancel_run`、`collect_artifacts`、`cleanup_workspace`。
 - 并发隔离：同一 project 内按 `run_id` 创建隔离工作区；并发上限由配置控制，超限返回 `RUNTIME_POLICY_BLOCKED` 或排队。
 - Approval / command allowlist：默认不允许执行写入型命令；需要命令执行时必须由 ToolSpec / RuntimePolicy 显式授权。
