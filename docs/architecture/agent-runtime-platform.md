@@ -223,10 +223,19 @@ class AssetRevisionRef:
 
 
 @dataclass(frozen=True)
+class RuntimeContextRef:
+    project_id: str
+    session_id: str
+    thread_id: str
+    turn_id: str
+
+
+@dataclass(frozen=True)
 class AgentInferenceRuntimeRequest:
     run_id: str
     app_id: str
     action: str
+    runtime_context_ref: RuntimeContextRef
     user_message: str | None
     context_pack: Mapping[str, Any]
     tools: Sequence["ToolSpec"]
@@ -244,6 +253,7 @@ class AgentInferenceRuntimeRequest:
 - `run_id`：平台生成的 runtime run 标识，用于审计、trace 和幂等。
 - `app_id`：调用方，例如 `semantic_modeling`、`asset_governance`。
 - `action`：业务 action，决定 runtime 路由和输出契约。
+- `runtime_context_ref`：平台自有运行态上下文引用，显式包含 `project_id / session_id / thread_id / turn_id`，不能藏在 `context_pack` 中。
 - `context_pack`：业务模块构建的上下文包，只读输入。
 - `tools`：本次允许 runtime 使用的工具清单。
 - `output_schema`：结构化输出约束。
@@ -291,6 +301,7 @@ class AgentInferenceRuntimeRun:
     run_id: str
     app_id: str
     action: str
+    runtime_context_ref: RuntimeContextRef
     runtime: str
     status: Literal[
         "queued",
@@ -307,6 +318,7 @@ class AgentInferenceRuntimeRun:
     artifact_ready: bool
     result_ref: str | None
     error_code: str | None
+    provider_ref: Mapping[str, str] | None
 ```
 
 生命周期操作：
@@ -325,6 +337,8 @@ class AgentInferenceRuntimeRun:
 - Codex app-server action 默认 `async`，由 RQ worker 或受监管 sidecar 执行。
 - `idempotency_key` 命中未完成 run 时返回既有 `run_id`，避免重复提交。
 - 异步 run 的 artifact 权限检查必须发生在 `read_result` 阶段，而不是只在生成阶段。
+- `run` 必须外键关联 `turn`，同一个 `turn_id` 下可以存在多个 retry / fallback run，但只有一个 run 可被标记为最终结果。
+- 平台领域层只暴露平台自有 `session_id / thread_id / turn_id / run_id / artifact_id`；Codex 原生 `provider_thread_id / provider_run_id / provider_artifact_id` 只能写入 `provider_ref`、adapter manifest 或 infra state，不能泄漏到业务领域模型。
 
 ## 8. Runtime 路由策略
 
@@ -467,8 +481,8 @@ Trace 存储建议分两层：
 
 | 表 / 存储 | 关键字段 | 用途 |
 |---|---|---|
-| `agent_inference_runtime_runs` | `run_id`、`app_id`、`action`、`runtime`、`status`、`principal_id`、`semantic_snapshot_id`、`context_hash`、`output_hash`、`latency_ms`、`usage_json`、`error_code`、`created_at`、`finished_at` | run 摘要、审计、排障 |
-| `agent_inference_runtime_artifacts` | `artifact_id`、`run_id`、`artifact_type`、`storage_uri`、`content_hash`、`expires_at`、`created_at` | 大上下文、复审报告、patch、工作区产物引用 |
+| `agent_inference_runtime_runs` | `run_id`、`project_id`、`session_id`、`thread_id`、`turn_id`、`app_id`、`action`、`runtime`、`status`、`principal_id`、`semantic_snapshot_id`、`context_hash`、`output_hash`、`latency_ms`、`usage_json`、`error_code`、`provider_ref_json`、`created_at`、`finished_at` | run 摘要、审计、排障 |
+| `agent_inference_runtime_artifacts` | `artifact_id`、`run_id`、`project_id`、`session_id`、`thread_id`、`turn_id`、`app_id`、`principal_id`、`artifact_type`、`storage_uri`、`content_hash`、`expires_at`、`created_at` | 大上下文、复审报告、patch、工作区产物引用 |
 
 保留策略：
 
@@ -513,6 +527,15 @@ AGENT_CODEX_ENABLED=false
 AGENT_CODEX_PROJECT_ID=cubic3-data-platform
 AGENT_CODEX_PROJECT_ROOT=/path/to/cubic3-data-platform
 AGENT_CODEX_RUNTIME_ROOT=/path/to/cubic3-data-platform/.cubic3/agent-codex
+AGENT_CODEX_TRANSPORT=unix_socket
+AGENT_CODEX_ENDPOINT=http://127.0.0.1:0
+AGENT_CODEX_UNIX_SOCKET=/path/to/cubic3-data-platform/.cubic3/agent-codex/codex.sock
+AGENT_CODEX_HEALTH_PATH=/health
+AGENT_CODEX_CAPABILITIES_PATH=/capabilities
+AGENT_CODEX_SERVER_MANAGED=true
+AGENT_CODEX_SERVER_COMMAND=codex-app-server
+AGENT_CODEX_CLI_FALLBACK=false
+AGENT_CODEX_MAX_CONCURRENCY=2
 AGENT_CODEX_TIMEOUT_SECONDS=120
 AGENT_CODEX_MAX_RUNTIME_SECONDS=600
 ```
@@ -536,6 +559,43 @@ Codex app-server 的抽象是“agent 工作区会话”，核心对象是 `proj
 
 因此 `AGENT_CODEX_*` 不设计 `COMMAND / ARGS` 作为主配置。CLI 只能作为开发期 fallback，正式集成优先使用本地 app-server HTTP / WebSocket client。
 
+### 15.2 Codex Transport Contract
+
+Codex app-server transport 必须显式配置，不允许 adapter 猜测连接方式。
+
+| 配置 | 说明 |
+|---|---|
+| `AGENT_CODEX_TRANSPORT` | `unix_socket`、`http` 或 `websocket_events`；MVP 推荐 `unix_socket` 或本机 HTTP，WebSocket 仅作为事件通道 |
+| `AGENT_CODEX_ENDPOINT` | 本机 HTTP endpoint；当使用 Unix socket 时仅作为逻辑 base URL |
+| `AGENT_CODEX_UNIX_SOCKET` | Unix socket 路径；本机集成优先使用它降低端口冲突和暴露面 |
+| `AGENT_CODEX_HEALTH_PATH` | 健康检查路径，返回 app-server 状态、版本和当前 project readiness |
+| `AGENT_CODEX_CAPABILITIES_PATH` | 能力发现路径，返回 protocol version、支持的 action、artifact、events 和 command policy 能力 |
+| `AGENT_CODEX_SERVER_MANAGED` | 是否由平台 process manager 启动 per-project app-server |
+| `AGENT_CODEX_SERVER_COMMAND` | 仅在 `SERVER_MANAGED=true` 时使用；用于启动本地 app-server，不等同于 command provider |
+| `AGENT_CODEX_CLI_FALLBACK` | 仅允许开发环境开启；生产必须 fail-closed |
+| `AGENT_CODEX_MAX_CONCURRENCY` | 每 project 并发 run 上限 |
+
+最小 client 接口：
+
+```python
+class CodexAppServerClient(Protocol):
+    def healthcheck(self) -> CodexHealth: ...
+    def capabilities(self) -> CodexCapabilities: ...
+    def ensure_thread(self, ref: RuntimeContextRef) -> ProviderThreadRef: ...
+    def submit_run(self, request: AgentInferenceRuntimeRequest) -> ProviderRunRef: ...
+    def poll_run(self, provider_run_id: str) -> ProviderRunStatus: ...
+    def stream_events(self, provider_run_id: str, cursor: str | None) -> EventPage: ...
+    def cancel_run(self, provider_run_id: str) -> None: ...
+    def collect_artifacts(self, provider_run_id: str) -> Sequence[ProviderArtifactRef]: ...
+```
+
+协议约束：
+
+- `healthcheck` 与 `capabilities` 必须在启动和每次正式 run 前校验 protocol version。
+- `websocket_events` 只用于事件增量推送；`submit / poll / cancel / collect_artifacts` 的最小 contract 仍需可由 HTTP / Unix socket 完成。
+- CLI fallback 必须由 `AGENT_CODEX_CLI_FALLBACK=true` 显式开启，并且只在开发环境允许；生产环境开启时启动失败。
+- app-server 原生 provider id 只保存在 adapter manifest，不进入平台领域 id。
+
 Codex adapter 的映射关系：
 
 | 平台对象 | Codex runtime 映射 |
@@ -543,7 +603,7 @@ Codex adapter 的映射关系：
 | `AgentInferenceRuntimeRequest` | 一次 turn 的 `request.json`、`context_pack.json`、`runtime_policy.json` |
 | `AgentInferenceRuntimeRun` | `runs/{run_id}/run.json` 与 app-server run 状态 |
 | `session_id` | 业务产品会话，例如一次建模 Copilot session |
-| `thread_id` | Codex app-server thread 或平台侧线程投影 |
+| `thread_id` | 平台侧推理线程 id；Codex 原生 thread id 写入 provider manifest |
 | `turn_id` | 一次用户输入或系统触发 action |
 | `AgentInferenceRuntimeResult` | `turns/{turn_id}/result.json` 与 artifact refs |
 | `events.ndjson` | app-server 事件流的可审计镜像 |
@@ -563,11 +623,13 @@ ${AGENT_CODEX_RUNTIME_ROOT}/
               thread.json
               turns/
                 ${turn_id}/
+                  turn.json
                   request.json
                   context_pack.json
                   runtime_policy.json
                   result.json
                   events.ndjson
+                  run_index.json
                   artifacts/
                     ${artifact_id}/
                       manifest.json
@@ -575,6 +637,8 @@ ${AGENT_CODEX_RUNTIME_ROOT}/
       runs/
         ${run_id}/
           run.json
+          provider_ref.json
+          turn_ref.json
           stdout.log
           stderr.log
 ```
@@ -587,6 +651,124 @@ ${AGENT_CODEX_RUNTIME_ROOT}/
 - `turn`：对应一次用户输入或一次系统触发的 runtime action；保存 request、context pack、policy、结构化 result 和事件流。
 - `run`：对应平台调度的一次执行，可被同步或异步消费；`run_id` 是 trace、artifact 和状态查询的主键。
 - `artifact`：只保存引用、manifest 和可审计 payload；读取时必须重新校验 principal、app_id、session_id 和 run ownership。
+
+### 15.3 Workspace Store 一致性协议
+
+状态事实源固定如下：
+
+| 数据 | 事实源 | 本地目录角色 |
+|---|---|---|
+| run 摘要、状态、权限校验字段 | PostgreSQL `agent_inference_runtime_runs` | 镜像与排障材料 |
+| artifact 元数据、下载授权字段 | PostgreSQL `agent_inference_runtime_artifacts` | payload / manifest 存储引用 |
+| 事件流、stdout、stderr、provider manifest | 本地 runtime 目录 | 可恢复 trace 与排障材料 |
+| app-server 原生 thread/run 状态 | Codex app-server | 仅由 adapter 同步为 provider manifest |
+
+写入协议：
+
+- 所有 JSON 文件采用 `write tmp -> fsync -> atomic rename`，禁止原地覆盖。
+- 同一 `run_id` 写入必须持有 run lock，例如 `runs/{run_id}/.lock`；同一 `turn_id` 更新 `run_index.json` 必须持有 turn lock。
+- `events.ndjson` 每行必须包含 `seq`、`event_id`、`run_id`、`turn_id`、`event_type`、`created_at` 和 `payload_hash`；写入按 `seq` 单调递增。
+- `run_index.json` 记录同一 turn 下所有 retry / fallback run，包含 `current_run_id`、`final_run_id` 和 `run_ids`。
+- `turn_ref.json` 记录 `project_id / session_id / thread_id / turn_id`，用于从 `runs/{run_id}` 反查 turn。
+- crash recovery 优先读取 PostgreSQL run 状态，再用本地 `run.json / events.ndjson / provider_ref.json` 补齐缺失 trace；本地目录不能反向覆盖已完成的数据库状态。
+- stale run 恢复规则：`running` 超过 `AGENT_CODEX_MAX_RUNTIME_SECONDS` 且 app-server 查询不到活跃 provider run 时，标记为 `timeout` 或 `expired`，并记录 recovery event。
+
+### 15.4 Artifact 安全模型
+
+artifact 必须通过平台 artifact service 读取，不能把本地文件路径直接返回给前端或业务模块。
+
+artifact manifest 最小字段：
+
+```json
+{
+  "artifact_id": "art_...",
+  "run_id": "run_...",
+  "project_id": "cubic3-data-platform",
+  "session_id": "session_...",
+  "thread_id": "thread_...",
+  "turn_id": "turn_...",
+  "artifact_type": "review_report",
+  "storage_uri": "local://projects/.../artifacts/art_...",
+  "content_hash": "sha256:...",
+  "content_type": "application/json",
+  "size_bytes": 1234,
+  "created_at": "2026-05-25T00:00:00Z",
+  "expires_at": "2026-06-24T00:00:00Z"
+}
+```
+
+安全约束：
+
+- 下载 API 输入只能是 `artifact_id`，不能接受任意 path。
+- 读取前必须校验 principal、app_id、project_id、session_id、thread_id、turn_id 和 run ownership。
+- 本地路径必须 canonicalize，并确认位于 `AGENT_CODEX_RUNTIME_ROOT` 之下；拒绝 `..`、symlink escape、hardlink escape 和绝对路径注入。
+- payload 必须校验 `content_hash`，hash 不一致返回 `RUNTIME_ARTIFACT_UNAVAILABLE`。
+- artifact 默认 TTL 清理；清理只删除 payload，不删除 run 摘要。
+- app-server 生成的文件进入平台 artifact store 时必须复制或登记为平台 manifest，不能直接暴露 provider 临时路径。
+
+### 15.5 事件流消费 Contract
+
+长任务不能只有 `poll`。平台需要提供增量事件读取，前端和排障工具都通过统一 contract 消费。
+
+事件页结构：
+
+```json
+{
+  "run_id": "run_...",
+  "cursor": "seq:42",
+  "next_cursor": "seq:57",
+  "has_more": true,
+  "events": [
+    {
+      "seq": 43,
+      "event_id": "evt_...",
+      "event_type": "run.started",
+      "created_at": "2026-05-25T00:00:00Z",
+      "payload": {}
+    }
+  ]
+}
+```
+
+事件约束：
+
+- `seq` 在同一 run 内单调递增；`event_id` 全局唯一。
+- 支持按 cursor 增量读取，cursor 过期时返回可恢复错误并提示从最新 snapshot 继续。
+- 事件类型至少包含 `run.queued`、`run.started`、`tool.requested`、`approval.required`、`artifact.created`、`run.succeeded`、`run.failed`、`run.cancelled`、`run.timeout`。
+- WebSocket 只作为事件推送优化；HTTP cursor 读取必须可独立完成全部状态恢复。
+- 大 payload 进入 artifact，事件中只放摘要和 artifact ref。
+
+### 15.6 Command Allowlist 与 Approval
+
+Codex runtime 默认不允许写入型命令。需要命令执行时，必须通过 `ToolSpec + RuntimePolicy` 显式授权。
+
+命令策略最小 schema：
+
+```json
+{
+  "policy_id": "readonly_review_v1",
+  "allowed_commands": [
+    {
+      "command": "python",
+      "args_pattern": ["-m", "pytest", "tests/unit/**"],
+      "cwd_policy": "project_root_only",
+      "env_policy": "redacted",
+      "network": "disabled",
+      "read_paths": ["."],
+      "write_paths": [".cubic3/agent-codex/**"],
+      "requires_approval": true
+    }
+  ]
+}
+```
+
+执行约束：
+
+- 默认 `network=disabled`，默认不允许写项目源码、配置、密钥或数据库。
+- `cwd` 必须位于 `AGENT_CODEX_PROJECT_ROOT` 或隔离 run workspace 下。
+- env 只允许白名单变量，密钥默认脱敏且不写入事件流。
+- 需要 approval 的命令必须记录 approver、approved_at、command_hash、policy_id 和 reason。
+- 未命中 allowlist 返回 `RUNTIME_TOOL_FORBIDDEN`，不得降级为 CLI fallback。
 
 配置收敛：
 
@@ -704,6 +886,7 @@ flowchart TD
 - 补齐 `AgentInferenceRuntimeRun` 异步生命周期、Codex app-server process contract 和 artifact 权限模型。
 - 补齐 `AGENT_OPENAI_*`、`AGENT_CODEX_*` 配置收敛规则和文档同步清单，不引入旧变量双读。
 - 补齐 Codex app-server 本地目录运行态，明确 project / session / thread / turn / run / artifact 粒度。
+- 补齐 `RuntimeContextRef`、平台 ID / provider ID 隔离、transport contract、workspace store 一致性、事件流消费、command allowlist 和 artifact 安全模型。
 - 补齐 `semantic.modeling.*` action 级 output schema，直接替代旧 `AgentRunResult` 契约。
 - 补齐最小 trace / artifact 持久化模型。
 
@@ -734,16 +917,17 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 ### Phase 4：Codex app-server 接入
 
 - 新增 `CodexAppServerRuntimeAdapter`、client、process manager。
-- 支持 `AGENT_CODEX_PROJECT_ROOT`、`AGENT_CODEX_RUNTIME_ROOT`、timeout、artifact 和 run trace。
+- 支持 `AGENT_CODEX_PROJECT_ROOT`、`AGENT_CODEX_RUNTIME_ROOT`、`AGENT_CODEX_TRANSPORT`、endpoint / socket、timeout、artifact 和 run trace。
 - 按 runtime 根目录派生 project / session / thread / turn / run / artifact 目录，不再把 Codex 配置设计成普通 command provider 配置。
 - 先只接入 `review_proposal` 和 `repair_validation_failure`。
 - Codex 不参与低延迟主对话默认链路。
-- 明确 transport：优先使用本地 app-server HTTP / WebSocket client；CLI 进程只作为开发期 fallback，不能成为正式 runtime contract。
+- 明确 transport：MVP 优先使用本地 HTTP + Unix socket / local bridge；WebSocket 仅作为事件通道；CLI 进程只作为开发期 fallback，不能成为正式 runtime contract。
 - 明确对象映射：`AgentInferenceRuntimeRequest -> turn`，`AgentInferenceRuntimeRun -> run`，`AgentInferenceRuntimeResult -> result / artifact refs`。
 - 明确进程生命周期：`ensure_started`、`healthcheck`、`submit_run`、`cancel_run`、`collect_artifacts`、`cleanup_workspace`。
+- 明确最小管理面：Phase 4 必须提供 `submit / poll / cancel / read_result / read_events / read_artifact`，不能只测 adapter 内部。
 - 并发隔离：同一 project 内按 `run_id` 创建隔离工作区；并发上限由配置控制，超限返回 `RUNTIME_POLICY_BLOCKED` 或排队。
-- Approval / command allowlist：默认不允许执行写入型命令；需要命令执行时必须由 ToolSpec / RuntimePolicy 显式授权。
-- artifact 权限：artifact 只返回引用和摘要，读取时再次校验 principal、app_id 与 run ownership。
+- Approval / command allowlist：默认不允许执行写入型命令；需要命令执行时必须由 ToolSpec / RuntimePolicy 显式授权，并记录 approval 审计。
+- artifact 权限：artifact 只返回引用和摘要，读取时再次校验 principal、app_id、session_id、thread_id、turn_id 与 run ownership。
 - 失败恢复：app-server 不可用返回 `RUNTIME_UNAVAILABLE`；进程超时返回 `RUNTIME_TIMEOUT`；workspace 清理失败记录 warning，不影响业务状态回滚。
 
 ### Phase 5：第二个业务消费者验证复用（Platform GA）
@@ -770,6 +954,9 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 - Adapter 输出结构校验。
 - `AGENT_OPENAI_*`、`AGENT_CODEX_*` 配置收敛和缺失 fail-fast。
 - `semantic.modeling.*` action output schema 到 Copilot session 状态的直接映射。
+- Codex workspace store 原子写、锁、事件序号、run-turn 索引、stale recovery。
+- Artifact path traversal / symlink escape / hash 校验 / TTL 清理。
+- Command allowlist、approval 审计和未授权命令拒绝。
 
 ### 集成测试
 
@@ -778,11 +965,12 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 - Codex adapter 在未启用时返回 `RUNTIME_NOT_CONFIGURED`。
 - fake runtime 可支撑本地 CI。
 - 新增独立验证入口 `make test-platform-agent-runtime`，只覆盖本文定义的 Agent Inference Runtime；现有 `make test-agent-runtime` 继续表示 official Semantic Runtime / QueryDSL / Agent plan API，不复用名称。
+- fake Codex adapter 覆盖 `submit / poll / cancel / read_result / read_events / read_artifact`。
 
 ### E2E / Live Smoke
 
 - OpenAI runtime live smoke：配置 API Key 后验证一次结构化输出。
-- Codex app-server live smoke：验证进程 / server 可用、能返回 artifact、timeout 生效。
+- Codex app-server live smoke：验证进程 / server 可用、能返回 artifact、timeout 生效、cancel 生效、并发上限生效、stale recovery 生效、artifact 越权被拒、命令拒绝生效、CLI fallback disabled。
 - 语义建模复审 E2E：生成 Proposal 后触发 Codex 复审，返回只读 review artifact。
 - 数据资产二号消费者 smoke：字段语义推断只生成候选，不写正式资产事实。
 - Codex live smoke 默认 opt-in，不进入本地默认 `make verify`；CI 只跑 fake process manager 和 contract 测试。
