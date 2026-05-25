@@ -14,6 +14,30 @@ from app.infrastructure.agent_inference_runtime.codex_workspace import CodexWork
 from app.infrastructure.agent_inference_runtime.command_policy import CommandPolicy
 
 
+def _repo_root(tmp_path: Path, *, create_unit_dir: bool = True) -> Path:
+    repo_root = tmp_path / "repo"
+    tests_root = repo_root / "tests"
+    tests_root.mkdir(parents=True)
+    if create_unit_dir:
+        (tests_root / "unit").mkdir()
+    return repo_root
+
+
+def _pytest_policy_payload(repo_root: Path, args_pattern: list[str] | None = None) -> dict:
+    return {
+        "project_root": str(repo_root),
+        "allowed_commands": [
+            {
+                "id": "pytest_tail",
+                "command": "python",
+                "args_pattern": args_pattern or ["-m", "pytest", "**"],
+                "requires_approval": False,
+            }
+        ],
+        "network": "disabled",
+    }
+
+
 def test_codex_workspace_writes_turn_contract(tmp_path: Path):
     store = CodexWorkspaceStore(runtime_root=tmp_path)
     ref = RuntimeContextRef("cubic3-data-platform", "session_1", "thread_1", "turn_1")
@@ -132,44 +156,31 @@ def test_codex_workspace_wraps_json_serialization_error_with_target_path(tmp_pat
         store.prepare_turn(ref, request_payload={"bad": object()}, runtime_policy={})
 
 
-def test_command_policy_star_matches_single_argument_only():
+def test_command_policy_star_matches_single_argument_only(tmp_path: Path):
+    repo_root = _repo_root(tmp_path)
     policy = CommandPolicy.from_dict(
-        {
-            "allowed_commands": [
-                {
-                    "command": "python",
-                    "args_pattern": ["-m", "pytest", "*"],
-                    "requires_approval": False,
-                }
-            ],
-            "network": "disabled",
-        }
+        _pytest_policy_payload(repo_root, ["-m", "pytest", "*"])
     )
 
-    policy.assert_allowed(["python", "-m", "pytest", "tests/unit"], cwd="/repo")
+    policy.assert_allowed(["python", "-m", "pytest", "tests/unit"], cwd=str(repo_root))
     with pytest.raises(PermissionError, match="RUNTIME_TOOL_FORBIDDEN"):
-        policy.assert_allowed(["python", "-m", "pytest", "tests/unit", "-q"], cwd="/repo")
+        policy.assert_allowed(
+            ["python", "-m", "pytest", "tests/unit", "-q"],
+            cwd=str(repo_root),
+        )
 
     with pytest.raises(PermissionError, match="RUNTIME_TOOL_FORBIDDEN"):
-        policy.assert_allowed(["rm", "-rf", "app"], cwd="/repo")
+        policy.assert_allowed(["rm", "-rf", "app"], cwd=str(repo_root))
 
 
-def test_command_policy_double_star_allows_valid_pytest_tail_only():
-    policy = CommandPolicy.from_dict(
-        {
-            "allowed_commands": [
-                {
-                    "id": "pytest_tail",
-                    "command": "python",
-                    "args_pattern": ["-m", "pytest", "**"],
-                    "requires_approval": False,
-                }
-            ],
-            "network": "disabled",
-        }
+def test_command_policy_double_star_allows_valid_pytest_tail_only(tmp_path: Path):
+    repo_root = _repo_root(tmp_path)
+    policy = CommandPolicy.from_dict(_pytest_policy_payload(repo_root))
+
+    policy.assert_allowed(
+        ["python", "-m", "pytest", "tests/unit", "-q"],
+        cwd=str(repo_root),
     )
-
-    policy.assert_allowed(["python", "-m", "pytest", "tests/unit", "-q"], cwd="/repo")
 
     blocked_argvs = [
         ["python", "-m", "pytest", "/tmp/evil_tests"],
@@ -180,12 +191,66 @@ def test_command_policy_double_star_allows_valid_pytest_tail_only():
     ]
     for argv in blocked_argvs:
         with pytest.raises(PermissionError, match="RUNTIME_TOOL_FORBIDDEN"):
-            policy.assert_allowed(argv, cwd="/repo")
+            policy.assert_allowed(argv, cwd=str(repo_root))
 
 
-def test_command_policy_requires_approval_is_not_silent_allow():
+def test_command_policy_allows_pytest_under_trusted_repo_root(tmp_path: Path):
+    repo_root = _repo_root(tmp_path)
+    policy = CommandPolicy.from_dict(_pytest_policy_payload(repo_root))
+
+    decision = policy.evaluate(["python", "-m", "pytest", "tests/unit"], cwd=str(repo_root))
+
+    assert decision.allowed is True
+    assert decision.requires_approval is False
+    assert decision.rule_id == "pytest_tail"
+
+
+@pytest.mark.parametrize("root_key", ["runtime_root", "allowed_cwd_roots"])
+def test_command_policy_supports_trusted_root_aliases(
+    tmp_path: Path,
+    root_key: str,
+):
+    repo_root = _repo_root(tmp_path)
+    payload = _pytest_policy_payload(repo_root)
+    payload.pop("project_root")
+    payload[root_key] = [str(repo_root)] if root_key == "allowed_cwd_roots" else str(repo_root)
+    policy = CommandPolicy.from_dict(payload)
+
+    decision = policy.evaluate(["python", "-m", "pytest", "tests/unit"], cwd=str(repo_root))
+
+    assert decision.allowed is True
+
+
+def test_command_policy_rejects_pytest_from_untrusted_cwd(tmp_path: Path):
+    repo_root = _repo_root(tmp_path)
+    policy = CommandPolicy.from_dict(_pytest_policy_payload(repo_root))
+
+    decision = policy.evaluate(["python", "-m", "pytest", "tests/unit"], cwd="/tmp/untrusted")
+
+    assert decision.allowed is False
+    assert "cwd outside trusted roots" in decision.reason
+
+
+def test_command_policy_rejects_pytest_symlink_escape(tmp_path: Path):
+    repo_root = _repo_root(tmp_path, create_unit_dir=False)
+    external_tests = tmp_path / "external-tests"
+    external_tests.mkdir()
+    link_path = repo_root / "tests" / "unit"
+    try:
+        link_path.symlink_to(external_tests, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"当前环境不支持 symlink: {exc}")
+    policy = CommandPolicy.from_dict(_pytest_policy_payload(repo_root))
+
+    with pytest.raises(PermissionError, match="pytest path outside trusted tests directory"):
+        policy.assert_allowed(["python", "-m", "pytest", "tests/unit"], cwd=str(repo_root))
+
+
+def test_command_policy_requires_approval_is_not_silent_allow(tmp_path: Path):
+    repo_root = _repo_root(tmp_path)
     policy = CommandPolicy.from_dict(
         {
+            "project_root": str(repo_root),
             "allowed_commands": [
                 {
                     "id": "pytest_approval",
@@ -198,13 +263,13 @@ def test_command_policy_requires_approval_is_not_silent_allow():
         }
     )
 
-    decision = policy.evaluate(["python", "-m", "pytest", "tests/unit"], cwd="/repo")
+    decision = policy.evaluate(["python", "-m", "pytest", "tests/unit"], cwd=str(repo_root))
 
     assert decision.allowed is False
     assert decision.requires_approval is True
     assert decision.rule_id == "pytest_approval"
     with pytest.raises(PermissionError, match="RUNTIME_TOOL_APPROVAL_REQUIRED"):
-        policy.assert_allowed(["python", "-m", "pytest", "tests/unit"], cwd="/repo")
+        policy.assert_allowed(["python", "-m", "pytest", "tests/unit"], cwd=str(repo_root))
 
 
 def test_codex_client_provider_refs_are_contract_values():

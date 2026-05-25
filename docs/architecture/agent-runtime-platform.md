@@ -348,6 +348,10 @@ class AgentInferenceRuntimeRun:
 
 ### 8.2 降级策略
 
+当前实现不执行自动 runtime fallback：`RuntimePolicy.fallback_runtime` 只是契约字段和 provider payload 透传字段，不驱动 router 降级。
+
+目标演进：
+
 - OpenAI Agents SDK 不可用时，可按 action 降级到 OpenAI-compatible LLM runtime。
 - Codex app-server 不可用时，不自动降级为 OpenAI 主链复审，除非 action 明确允许 `fallback_runtime=openai`。
 - 发布、保存、执行查询、同步元数据等确定性动作不允许 runtime fallback。
@@ -362,7 +366,7 @@ class AgentInferenceRuntimeRun:
 - `allow_network`
 - `allowed_tools`
 - `command_policy`
-- `fallback_runtime`
+- `fallback_runtime`：预留 / 透传字段，当前不触发自动降级。
 
 目标演进再补：
 
@@ -535,26 +539,18 @@ Trace 存储目标分两层：
 
 ## 15. 配置建议
 
-平台级配置：
+当前实现配置：
+
+OpenAI-compatible runtime 当前只读取以下 `AGENT_OPENAI_*` 字段；没有实现 `AGENT_OPENAI_ENABLED` 开关。
 
 ```text
-AGENT_INFERENCE_RUNTIME_ENABLED=true
-AGENT_INFERENCE_RUNTIME_DEFAULT=openai_agents
-AGENT_INFERENCE_RUNTIME_TRACE_ENABLED=true
-AGENT_INFERENCE_RUNTIME_ARTIFACT_STORE=local
-```
-
-OpenAI runtime：
-
-```text
-AGENT_OPENAI_ENABLED=true
 AGENT_OPENAI_API_KEY=...
 AGENT_OPENAI_BASE_URL=...
 AGENT_OPENAI_MODEL=...
 AGENT_OPENAI_TIMEOUT_SECONDS=30
 ```
 
-Codex app-server runtime：
+Codex app-server skeleton 当前只读取以下 `AGENT_CODEX_*` 字段；真实 app-server 默认不启用。
 
 ```text
 AGENT_CODEX_ENABLED=false
@@ -562,14 +558,30 @@ AGENT_CODEX_PROJECT_ID=cubic3-data-platform
 AGENT_CODEX_PROJECT_ROOT=/path/to/cubic3-data-platform
 AGENT_CODEX_RUNTIME_ROOT=/path/to/cubic3-data-platform/.cubic3/agent-codex
 AGENT_CODEX_TRANSPORT=unix_socket
-AGENT_CODEX_ENDPOINT=http://127.0.0.1:0
+AGENT_CODEX_ENDPOINT=http://127.0.0.1:8799
 AGENT_CODEX_UNIX_SOCKET=/path/to/cubic3-data-platform/.cubic3/agent-codex/codex.sock
+AGENT_CODEX_MAX_CONCURRENCY=2
+```
+
+Codex live smoke 的测试开关是 opt-in 验证字段，不属于默认运行时配置：
+
+```text
+AGENT_CODEX_LIVE=1
+```
+
+目标演进配置，尚未作为当前实现能力声明：
+
+```text
+AGENT_INFERENCE_RUNTIME_ENABLED=true
+AGENT_INFERENCE_RUNTIME_DEFAULT=openai_agents
+AGENT_INFERENCE_RUNTIME_TRACE_ENABLED=true
+AGENT_INFERENCE_RUNTIME_ARTIFACT_STORE=local
+AGENT_OPENAI_ENABLED=true
 AGENT_CODEX_HEALTH_PATH=/health
 AGENT_CODEX_CAPABILITIES_PATH=/capabilities
 AGENT_CODEX_SERVER_MANAGED=true
 AGENT_CODEX_SERVER_COMMAND=codex-app-server
 AGENT_CODEX_CLI_FALLBACK=false
-AGENT_CODEX_MAX_CONCURRENCY=2
 AGENT_CODEX_TIMEOUT_SECONDS=120
 AGENT_CODEX_MAX_RUNTIME_SECONDS=600
 ```
@@ -591,11 +603,11 @@ Codex app-server 的抽象是“agent 工作区会话”，核心对象是 `proj
 | 产物 | 命令输出文件 | artifact manifest、payload、事件流、trace |
 | 适用场景 | 短任务、一次性工具 | 长上下文复审、修复建议、工作区任务 |
 
-因此 `AGENT_CODEX_*` 不设计 `COMMAND / ARGS` 作为主配置。CLI 只能作为开发期 fallback，正式集成优先使用本地 app-server HTTP / WebSocket client。
+因此 `AGENT_CODEX_*` 不设计 `COMMAND / ARGS` 作为主配置。目标上 CLI 只能作为开发期 fallback，正式集成优先使用本地 app-server HTTP / WebSocket client；当前实现尚未提供 CLI fallback。
 
 ### 15.2 Codex Transport Contract
 
-Codex app-server transport 必须显式配置，不允许 adapter 猜测连接方式。
+Codex app-server transport 必须显式配置，不允许 adapter 猜测连接方式。当前实现只读取 `AGENT_CODEX_TRANSPORT`、`AGENT_CODEX_ENDPOINT` 和 `AGENT_CODEX_UNIX_SOCKET` 字段；health / capabilities / server-managed / CLI fallback 仍是目标演进。
 
 | 配置 | 说明 |
 |---|---|
@@ -627,7 +639,7 @@ class CodexAppServerClient(Protocol):
 
 - `healthcheck` 与 `capabilities` 必须在启动和每次正式 run 前校验 protocol version。
 - `websocket_events` 只用于事件增量推送；`submit / poll / cancel / collect_artifacts` 的最小 contract 仍需可由 HTTP / Unix socket 完成。
-- CLI fallback 必须由 `AGENT_CODEX_CLI_FALLBACK=true` 显式开启，并且只在开发环境允许；生产环境开启时启动失败。
+- 目标演进：CLI fallback 必须由 `AGENT_CODEX_CLI_FALLBACK=true` 显式开启，并且只在开发环境允许；生产环境开启时启动失败。
 - app-server 原生 provider id 只保存在 adapter manifest，不进入平台领域 id。
 
 Codex adapter 的映射关系：
@@ -705,7 +717,7 @@ ${AGENT_CODEX_RUNTIME_ROOT}/
 - `run_index.json` 记录同一 turn 下所有 retry / fallback run，包含 `current_run_id`、`final_run_id` 和 `run_ids`。
 - `turn_ref.json` 记录 `project_id / session_id / thread_id / turn_id`，用于从 `runs/{run_id}` 反查 turn。
 - crash recovery 优先读取 PostgreSQL run 状态，再用本地 `run.json / events.ndjson / provider_ref.json` 补齐缺失 trace；本地目录不能反向覆盖已完成的数据库状态。
-- stale run 恢复规则：`running` 超过 `AGENT_CODEX_MAX_RUNTIME_SECONDS` 且 app-server 查询不到活跃 provider run 时，标记为 `timeout` 或 `expired`，并记录 recovery event。
+- 目标演进 stale run 恢复规则：`running` 超过 `AGENT_CODEX_MAX_RUNTIME_SECONDS` 且 app-server 查询不到活跃 provider run 时，标记为 `timeout` 或 `expired`，并记录 recovery event。
 
 ### 15.4 Artifact 安全模型
 
@@ -781,6 +793,12 @@ Codex runtime 默认不允许写入型命令。需要命令执行时，必须通
 ```json
 {
   "policy_id": "readonly_review_v1",
+  "project_root": "/path/to/cubic3-data-platform",
+  "runtime_root": "/path/to/cubic3-data-platform/.cubic3/agent-codex",
+  "allowed_cwd_roots": [
+    "/path/to/cubic3-data-platform",
+    "/path/to/cubic3-data-platform/.cubic3/agent-codex"
+  ],
   "allowed_commands": [
     {
       "command": "python",
@@ -799,7 +817,8 @@ Codex runtime 默认不允许写入型命令。需要命令执行时，必须通
 执行约束：
 
 - 默认 `network=disabled`，默认不允许写项目源码、配置、密钥或数据库。
-- `cwd` 必须位于 `AGENT_CODEX_PROJECT_ROOT` 或隔离 run workspace 下。
+- `cwd` 必须位于 `project_root`、`runtime_root` 或 `allowed_cwd_roots` 声明的可信根下。
+- `pytest` 这类项目内验证命令必须显式配置可信根；测试路径按 `cwd` 解析真实路径后仍必须位于可信根的 `tests/` 目录下，拒绝 symlink escape。
 - env 只允许白名单变量，密钥默认脱敏且不写入事件流。
 - 需要 approval 的命令必须记录 approver、approved_at、command_hash、policy_id 和 reason。
 - 未命中 allowlist 返回 `RUNTIME_TOOL_FORBIDDEN`，不得降级为 CLI fallback。

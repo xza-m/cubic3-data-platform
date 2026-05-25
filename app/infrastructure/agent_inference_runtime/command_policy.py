@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatch
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Dict, List
 
 
@@ -26,9 +26,16 @@ class CommandDecision:
 class CommandPolicy:
     """只校验命令是否在 allowlist 中，不执行 approval 流程。"""
 
-    def __init__(self, *, rules: List[CommandRule], network: str):
+    def __init__(
+        self,
+        *,
+        rules: List[CommandRule],
+        network: str,
+        trusted_cwd_roots: List[Path] | None = None,
+    ):
         self._rules = rules
         self._network = network
+        self._trusted_cwd_roots = tuple(trusted_cwd_roots or [])
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "CommandPolicy":
@@ -41,18 +48,28 @@ class CommandPolicy:
             )
             for index, item in enumerate(payload.get("allowed_commands") or [])
         ]
-        return cls(rules=rules, network=str(payload.get("network") or "disabled"))
+        return cls(
+            rules=rules,
+            network=str(payload.get("network") or "disabled"),
+            trusted_cwd_roots=_trusted_cwd_roots_from_payload(payload),
+        )
 
     def evaluate(self, argv: List[str], *, cwd: str) -> CommandDecision:
         if not argv:
             return CommandDecision(False, False, None, "empty command")
+        if not cwd:
+            return CommandDecision(False, False, None, "cwd is required")
+        cwd_path = Path(cwd).expanduser().resolve(strict=False)
         command = argv[0]
         args = argv[1:]
         for rule in self._rules:
             if rule.command != command:
                 continue
             if self._matches(args, rule.args_pattern):
-                forbidden_reason = self._validate_rule_specific_args(command, args)
+                cwd_reason = self._validate_cwd(command, args, cwd_path)
+                if cwd_reason is not None:
+                    return CommandDecision(False, False, rule.rule_id, cwd_reason)
+                forbidden_reason = self._validate_rule_specific_args(command, args, cwd_path)
                 if forbidden_reason is not None:
                     return CommandDecision(False, False, rule.rule_id, forbidden_reason)
                 if rule.requires_approval:
@@ -92,10 +109,83 @@ class CommandPolicy:
         return arg_index == len(args)
 
     @staticmethod
-    def _validate_rule_specific_args(command: str, args: List[str]) -> str | None:
-        if command == "python" and len(args) >= 2 and args[:2] == ["-m", "pytest"]:
-            return _validate_pytest_args(args[2:])
+    def _is_pytest_command(command: str, args: List[str]) -> bool:
+        return command == "python" and len(args) >= 2 and args[:2] == ["-m", "pytest"]
+
+    def _validate_cwd(self, command: str, args: List[str], cwd_path: Path) -> str | None:
+        if self._trusted_cwd_roots:
+            if not _is_relative_to_any(cwd_path, self._trusted_cwd_roots):
+                return f"cwd outside trusted roots: {cwd_path}"
+            return None
+        if self._is_pytest_command(command, args):
+            return "trusted cwd root is required for pytest"
         return None
+
+    def _validate_rule_specific_args(
+        self,
+        command: str,
+        args: List[str],
+        cwd_path: Path,
+    ) -> str | None:
+        if self._is_pytest_command(command, args):
+            return _validate_pytest_args(
+                args[2:],
+                cwd_path=cwd_path,
+                trusted_cwd_roots=self._trusted_cwd_roots,
+            )
+        return None
+
+
+def _trusted_cwd_roots_from_payload(payload: Dict[str, Any]) -> List[Path]:
+    project_root = _resolve_configured_root(payload.get("project_root"), base_root=None)
+    roots: list[Path] = []
+    if project_root is not None:
+        roots.append(project_root)
+
+    runtime_root = _resolve_configured_root(payload.get("runtime_root"), base_root=project_root)
+    if runtime_root is not None:
+        roots.append(runtime_root)
+
+    raw_allowed_roots = payload.get("allowed_cwd_roots") or []
+    if isinstance(raw_allowed_roots, (str, bytes)):
+        raw_allowed_roots = [raw_allowed_roots]
+    for raw_root in raw_allowed_roots:
+        root = _resolve_configured_root(raw_root, base_root=project_root)
+        if root is not None:
+            roots.append(root)
+    return _deduplicate_paths(roots)
+
+
+def _resolve_configured_root(value: Any, *, base_root: Path | None) -> Path | None:
+    if value is None:
+        return None
+    raw_value = str(value).strip()
+    if not raw_value:
+        return None
+    path = Path(raw_value).expanduser()
+    if base_root is not None and not path.is_absolute():
+        path = base_root / path
+    return path.resolve(strict=False)
+
+
+def _deduplicate_paths(paths: List[Path]) -> List[Path]:
+    deduplicated: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduplicated.append(path)
+    return deduplicated
+
+
+def _is_relative_to_any(path: Path, roots: tuple[Path, ...]) -> bool:
+    return any(_is_relative_to(path, root) for root in roots)
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
 
 
 _DANGEROUS_PYTEST_OPTIONS = {
@@ -108,7 +198,12 @@ _DANGEROUS_PYTEST_OPTIONS = {
 }
 
 
-def _validate_pytest_args(args: List[str]) -> str | None:
+def _validate_pytest_args(
+    args: List[str],
+    *,
+    cwd_path: Path,
+    trusted_cwd_roots: tuple[Path, ...],
+) -> str | None:
     if not args:
         return "pytest path is required"
     has_test_path = False
@@ -120,7 +215,11 @@ def _validate_pytest_args(args: List[str]) -> str | None:
             return f"unsafe pytest option value: {option_name}"
         if arg.startswith("-"):
             continue
-        path_reason = _validate_pytest_path(arg)
+        path_reason = _validate_pytest_path(
+            arg,
+            cwd_path=cwd_path,
+            trusted_cwd_roots=trusted_cwd_roots,
+        )
         if path_reason is not None:
             return path_reason
         has_test_path = True
@@ -147,7 +246,12 @@ def _contains_path_escape(value: str) -> bool:
     )
 
 
-def _validate_pytest_path(value: str) -> str | None:
+def _validate_pytest_path(
+    value: str,
+    *,
+    cwd_path: Path,
+    trusted_cwd_roots: tuple[Path, ...],
+) -> str | None:
     raw_path = value.split("::", 1)[0]
     normalized = raw_path.replace("\\", "/")
     segments = normalized.split("/")
@@ -160,4 +264,8 @@ def _validate_pytest_path(value: str) -> str | None:
         return f"unsafe pytest path: {value}"
     if segments[0] != "tests":
         return f"pytest path outside allowed directories: {value}"
+    target_path = (cwd_path / normalized).resolve(strict=False)
+    trusted_tests_roots = tuple(root / "tests" for root in trusted_cwd_roots)
+    if not _is_relative_to_any(target_path, trusted_tests_roots):
+        return f"pytest path outside trusted tests directory: {value}"
     return None
