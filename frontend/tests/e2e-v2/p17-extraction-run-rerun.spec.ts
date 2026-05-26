@@ -54,6 +54,7 @@ test('P17 抽取 Run 日志可见 + 重跑 @p17', async ({ page }) => {
   const row9001 = page.getByText(/^#9001$/)
   await expect(row9001).toBeVisible()
   await expect(page.getByTestId('run-rerun-9001')).toBeEnabled()
+  await expect(page.getByText('Run #undefined')).toHaveCount(0)
 
   // ── 打开 Peek，确认日志面板里能看到 INFO / WARNING / ERROR ───────────
   await row9001.click()

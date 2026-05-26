@@ -104,6 +104,7 @@ class TestEnrichInstanceWithHealth:
         session.execute.side_effect = Exception("no such table: instance_heartbeats")
         result = enrich_instance_with_health({"id": 1}, session, 60, 180)
         assert result["health"] == "unhealthy"
+        session.rollback.assert_called_once()
 
 
 # ===========================================================================

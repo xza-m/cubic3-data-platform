@@ -86,7 +86,7 @@ const learningModules = [
     subtitle: '从数据目录选择表，编写 SQL，运行并保存查询',
     href: '/tutorials/self-service-query.html',
     icon: Search,
-    level: 'Beginner',
+    level: '入门',
     tone: 'var(--accent)',
   },
   {
@@ -94,7 +94,7 @@ const learningModules = [
     subtitle: '用业务问题生成 Cube 与本体草稿，校验后发布给 Agent',
     href: '/tutorials/semantic-modeling.html',
     icon: Brain,
-    level: 'Intermediate',
+    level: '进阶',
     tone: '#7c3aed',
   },
   {
@@ -102,7 +102,7 @@ const learningModules = [
     subtitle: '配置应用实例、渠道、订阅和执行监控闭环',
     href: '/tutorials/app-development.html',
     icon: Code2,
-    level: 'Beginner',
+    level: '入门',
     tone: '#0f766e',
   },
   {
@@ -110,7 +110,7 @@ const learningModules = [
     subtitle: '给成员配置平台角色和数据访问权限，校验审计链路',
     href: '/tutorials/access-governance.html',
     icon: ShieldCheck,
-    level: 'Admin',
+    level: '管理员',
     tone: '#b91c1c',
   },
 ]
@@ -240,14 +240,14 @@ export default function Dashboard() {
 
         <Card>
           <CardHead
-            title={<h2 className="flex items-center gap-2 text-[13px] font-semibold text-1"><BookOpen size={14} /> Start learning</h2>}
-            subtitle="按真实工作流学习查询、建模、应用和权限治理，每个教程都是可独立打开的静态指南。"
+            title={<h2 className="flex items-center gap-2 text-[13px] font-semibold text-1"><BookOpen size={14} /> 开始学习</h2>}
+            subtitle="按真实工作流学习查询、建模、应用和权限治理。每个教程都可独立打开。"
           />
           <CardBody className="!p-0">
             <div className="grid grid-cols-1 divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0" style={{ borderColor: 'var(--border)' }}>
               <div>
                 <div className="border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-3" style={{ borderColor: 'var(--border)' }}>
-                  Courses
+                  基础课程
                 </div>
                 {learningModules.slice(0, 2).map((item) => (
                   <LearningRow key={item.href} item={item} />
@@ -255,7 +255,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <div className="border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-3" style={{ borderColor: 'var(--border)' }}>
-                  Interactive demos
+                  场景练习
                 </div>
                 {learningModules.slice(2).map((item) => (
                   <LearningRow key={item.href} item={item} />

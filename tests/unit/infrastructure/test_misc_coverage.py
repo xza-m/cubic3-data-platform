@@ -11,6 +11,7 @@ from app.infrastructure.scheduler import (
     execute_platform_datasource_catalog_sync,
     init_jobs,
     register_platform_datasource_catalog_sync_job,
+    register_query_export_cleanup_job,
 )
 from app.interfaces.api.docs import _get_schemas, index, openapi_spec, redoc_ui, swagger_ui
 
@@ -107,6 +108,29 @@ class TestScheduler:
         with patch("app.infrastructure.scheduler.scheduler", fake_scheduler):
             with patch("app.di.container.get_container", side_effect=RuntimeError("boom")):
                 init_jobs()
+
+    def test_scheduler_callbacks_keep_app_context(self, app):
+        fake_scheduler = MagicMock()
+
+        with patch("app.infrastructure.scheduler.scheduler", fake_scheduler):
+            with app.app_context():
+                register_query_export_cleanup_job()
+
+        job_func = fake_scheduler.add_job.call_args.kwargs["func"]
+        def _assert_context_then_stop():
+            from flask import has_app_context
+
+            assert has_app_context()
+            raise RuntimeError("stop after context check")
+
+        with patch(
+            "app.infrastructure.tasks.jobs.query_export_cleanup_job.get_db_session",
+            side_effect=_assert_context_then_stop,
+        ):
+            try:
+                job_func()
+            except RuntimeError as exc:
+                assert str(exc) == "stop after context check"
 
 
 class TestOpenApiConfigAndDocs:

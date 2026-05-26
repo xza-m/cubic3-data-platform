@@ -1,8 +1,27 @@
 import logging
+from collections.abc import Callable
+from typing import Any
+
+from flask import current_app, has_app_context
+
 from app.extensions import scheduler
 
 logger = logging.getLogger(__name__)
 PLATFORM_DATASOURCE_CATALOG_SYNC_CRON = "0 2 * * *"
+
+
+def _with_current_app_context(func: Callable[..., Any]) -> Callable[..., Any]:
+    """为 APScheduler 线程保留当前 Flask app context。"""
+    if not has_app_context():
+        return func
+
+    app = current_app._get_current_object()
+
+    def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        with app.app_context():
+            return func(*args, **kwargs)
+
+    return _wrapped
 
 
 def execute_platform_datasource_catalog_sync():
@@ -31,7 +50,7 @@ def register_platform_datasource_catalog_sync_job():
     """注册平台级固定周期目录同步任务。"""
     scheduler.add_job(
         id='platform_datasource_catalog_sync',
-        func=execute_platform_datasource_catalog_sync,
+        func=_with_current_app_context(execute_platform_datasource_catalog_sync),
         trigger='cron',
         hour=2,
         minute=0,
@@ -47,7 +66,7 @@ def register_query_export_cleanup_job():
 
     scheduler.add_job(
         id='query_export_cleanup',
-        func=execute_query_export_cleanup_job,
+        func=_with_current_app_context(execute_query_export_cleanup_job),
         trigger='cron',
         minute=5,  # 每小时 :05 执行，避开整点
         replace_existing=True,

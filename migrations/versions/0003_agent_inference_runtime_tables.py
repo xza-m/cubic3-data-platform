@@ -1,6 +1,6 @@
 """add agent inference runtime trace tables
 
-Revision ID: 0003_agent_inference_runtime_tables
+Revision ID: 0003_agent_runtime_tables
 Revises: 0002_data_asset_tables
 Create Date: 2026-05-25
 """
@@ -12,7 +12,7 @@ from alembic import op
 from app.shared import db_types
 
 
-revision = "0003_agent_inference_runtime_tables"
+revision = "0003_agent_runtime_tables"
 down_revision = "0002_data_asset_tables"
 branch_labels = None
 depends_on = None

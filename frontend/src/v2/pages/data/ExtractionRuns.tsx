@@ -230,7 +230,7 @@ export default function ExtractionRuns() {
           open={!!peekRow}
           onClose={() => setPeekId(null)}
           onOpenFull={peekRow ? () => openInTab(peekRow) : undefined}
-          title={`Run #${peekRow?.id}`}
+          title={peekRow ? `Run #${peekRow.id}` : t('extractionRuns.peek.placeholderTitle', '执行详情')}
           subtitle={peekRow ? `Task #${peekRow.task_id}` : undefined}
           badges={peekRow ? runStatusChip(peekRow.status) : null}
         >
