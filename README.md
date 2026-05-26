@@ -255,6 +255,8 @@ cp env.sample .env
 docker compose up --build -d
 ```
 
+Docker 模式下 `backend` 与 `rq_worker` 固定连接 compose 内置 PostgreSQL，避免宿主机 `DATABASE_URL` 串到本地验证环境。
+
 3. 访问入口：
 
 - 前端：`http://localhost:81`

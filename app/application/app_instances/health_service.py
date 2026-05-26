@@ -62,6 +62,9 @@ def _fetch_last_heartbeat(session, instance_id: int) -> Optional[datetime]:
         return None
     except Exception as exc:
         if "no such table" in str(exc).lower() or "does not exist" in str(exc).lower():
+            rollback = getattr(session, "rollback", None)
+            if callable(rollback):
+                rollback()
             _warn_table_missing_once()
         else:
             logger.warning("fetch_last_heartbeat_error instance_id=%s err=%s", instance_id, exc)

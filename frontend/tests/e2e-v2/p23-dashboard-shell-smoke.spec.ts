@@ -79,8 +79,10 @@ test('P23 Dashboard 首屏 KPI + 侧卡片可见 @p23', async ({ page }) => {
   await expect(page.getByText('近 7 日查询成功率').first()).toBeVisible()
   await expect(page.getByText('99%').first()).toBeVisible()
 
-  // 首页需要提供 Start learning 式的模块教程入口，避免首屏信息过空。
-  await expect(page.getByRole('heading', { name: 'Start learning' })).toBeVisible()
+  // 首页需要提供模块教程入口，避免首屏信息过空。
+  await expect(page.getByRole('heading', { name: '开始学习' })).toBeVisible()
+  await expect(page.getByText('基础课程')).toBeVisible()
+  await expect(page.getByText('场景练习')).toBeVisible()
   await expect(page.getByRole('link', { name: /自助查询入门/ })).toHaveAttribute('href', /\/tutorials\/self-service-query\.html$/)
   await expect(page.getByRole('link', { name: /语义建模工作流/ })).toHaveAttribute('href', /\/tutorials\/semantic-modeling\.html$/)
   await expect(page.getByRole('link', { name: /开发应用与推送/ })).toHaveAttribute('href', /\/tutorials\/app-development\.html$/)

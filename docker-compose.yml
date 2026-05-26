@@ -35,7 +35,8 @@ services:
       - ./app:/app/app
       - ./wsgi.py:/app/wsgi.py:ro
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/cubic3_data_platform}
+      # 本地 compose 固定使用内置 PostgreSQL，避免宿主机 DATABASE_URL 污染容器。
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/cubic3_data_platform
       - REDIS_URL=redis://redis:6379/0
       - FLASK_ENV=production
       - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
@@ -78,7 +79,8 @@ services:
       - ./app:/app/app
       - ./run_worker.py:/app/run_worker.py:ro
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/cubic3_data_platform}
+      # 本地 compose 固定使用内置 PostgreSQL，避免宿主机 DATABASE_URL 污染容器。
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/cubic3_data_platform
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app
       - FEISHU_APP_ID=${FEISHU_APP_ID}
