@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 import jwt
 from flask import Flask, g
@@ -346,6 +347,26 @@ def _client(
     return app.test_client()
 
 
+def _auth_header(
+    *,
+    principal_id: str = "alice",
+    roles: list[str] | None = None,
+) -> dict[str, str]:
+    token = jwt.encode(
+        {
+            "user_id": principal_id,
+            "principal_id": principal_id,
+            "user_name": principal_id,
+            "roles": roles or ["user"],
+            "iat": datetime.utcnow(),
+            "exp": datetime.utcnow() + timedelta(hours=1),
+        },
+        "test-secret",
+        algorithm="HS256",
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_agent_runtime_api_returns_run_detail():
     resp = _client(lambda: _Repo()).get("/api/v1/agent-runtime/runs/run_1")
 
@@ -632,6 +653,65 @@ def test_agent_runtime_api_updates_provider_config_without_returning_secret():
     data = resp.get_json()["data"]
     assert data["api_key"] == "********"
     assert data["updated_by"] == "alice"
+
+
+def test_agent_runtime_api_rejects_non_admin_mutating_management_routes_outside_testing():
+    runtime_management = _RuntimeManagement()
+    client = _client(
+        lambda: _Repo(),
+        principal_id=None,
+        testing=False,
+        runtime_management_provider=lambda: runtime_management,
+    )
+    headers = _auth_header(roles=["user"])
+
+    update_resp = client.put(
+        "/api/v1/agent-runtime/providers/openai_compatible/config",
+        json={"enabled": True},
+        headers=headers,
+    )
+    start_resp = client.post(
+        "/api/v1/agent-runtime/providers/codex_app_server/start",
+        headers=headers,
+    )
+    stop_resp = client.post(
+        "/api/v1/agent-runtime/providers/codex_app_server/stop",
+        headers=headers,
+    )
+    restart_resp = client.post(
+        "/api/v1/agent-runtime/providers/codex_app_server/restart",
+        headers=headers,
+    )
+
+    assert update_resp.status_code == 403
+    assert start_resp.status_code == 403
+    assert stop_resp.status_code == 403
+    assert restart_resp.status_code == 403
+    assert runtime_management.started == []
+    assert runtime_management.stopped == []
+
+
+def test_agent_runtime_api_rejects_non_mapping_provider_extra_payload():
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={"enabled": False},
+        runtime_config_service=RuntimeConfigService(
+            repository=_RuntimeConfigRepository(),
+            openai_config={"api_key": "", "api_base": "", "model": ""},
+            codex_config={"enabled": False},
+        ),
+    )
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).put(
+        "/api/v1/agent-runtime/providers/openai_compatible/config",
+        json={"enabled": True, "extra": ["not", "a", "mapping"]},
+    )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["details"]["code"] == "RUNTIME_PROVIDER_CONFIG_INVALID"
 
 
 def test_agent_runtime_api_exposes_codex_logs_and_capabilities():

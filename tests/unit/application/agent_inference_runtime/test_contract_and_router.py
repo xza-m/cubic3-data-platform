@@ -8,11 +8,16 @@ from app.application.agent_inference_runtime.errors import AgentInferenceRuntime
 from app.application.agent_inference_runtime.action_binding import (
     ActionRuntimeBindingRegistry,
 )
+from app.application.agent_inference_runtime.codex_process_manager import (
+    CodexProcessManagerError,
+)
 from app.application.agent_inference_runtime.management import (
     AgentRuntimeManagementService,
 )
+from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
+from app.domain.agent_inference_runtime.types import RuntimeProviderConfigSnapshot
 from app.domain.agent_inference_runtime.ports import AgentInferenceRuntimePort
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeRequest,
@@ -57,10 +62,41 @@ class _AuditRecorder:
     def record_audit_event(self, **kwargs):
         self.events.append(kwargs)
 
+    def management_config(self, runtime_name):
+        if runtime_name == "openai_compatible":
+            return {
+                "enabled": True,
+                "api_key": "sk-test",
+                "api_base": "https://api.openai.test/v1",
+                "model": "gpt-5.1",
+            }
+        return {"enabled": True}
+
 
 class _FailingCodexProcessManager:
     def start(self):
         raise OSError("codex-app-server not found")
+
+
+class _UnexpectedCodexProcessManager:
+    def __init__(self):
+        self.started = False
+
+    def start(self):
+        self.started = True
+        raise AssertionError("disabled provider should not start")
+
+
+class _ConfigRepository:
+    def __init__(self, snapshot):
+        self.snapshot = snapshot
+        self.audit_events = []
+
+    def get_provider_config(self, runtime_name):
+        return self.snapshot if runtime_name == self.snapshot.runtime_name else None
+
+    def record_audit_event(self, **kwargs):
+        self.audit_events.append(kwargs)
 
 
 def _request(action: str = "semantic.modeling.chat") -> AgentInferenceRuntimeRequest:
@@ -276,5 +312,87 @@ def test_runtime_management_audits_unexpected_codex_start_failure_before_reraisi
             "principal_id": "alice",
             "status": "failed",
             "metadata": {"error": "codex-app-server not found"},
+        }
+    ]
+
+
+def test_runtime_management_blocks_db_disabled_codex_start_and_audits_failure():
+    codex_manager = _UnexpectedCodexProcessManager()
+    repository = _ConfigRepository(
+        RuntimeProviderConfigSnapshot(
+            runtime_name="codex_app_server",
+            enabled=False,
+            endpoint="http://127.0.0.1:8799",
+            model=None,
+            secret_ref=None,
+            extra={},
+            updated_by="alice",
+            updated_at=None,
+        )
+    )
+    config_service = RuntimeConfigService(
+        repository=repository,
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "endpoint": "http://127.0.0.1:8799",
+        },
+    )
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "endpoint": "http://127.0.0.1:8799",
+        },
+        codex_process_manager=codex_manager,
+        runtime_config_service=config_service,
+    )
+
+    with pytest.raises(CodexProcessManagerError, match="Codex app-server 未启用") as exc_info:
+        service.start_provider("codex_app_server", principal_id="alice")
+
+    assert exc_info.value.code == "RUNTIME_PROVIDER_DISABLED"
+    assert codex_manager.started is False
+    assert repository.audit_events == [
+        {
+            "runtime_name": "codex_app_server",
+            "action": "start",
+            "principal_id": "alice",
+            "status": "failed",
+            "metadata": {"error": "Codex app-server 未启用。"},
+        }
+    ]
+
+
+def test_runtime_management_test_provider_audit_uses_succeeded_status_with_provider_status_metadata():
+    audit = _AuditRecorder()
+    service = AgentRuntimeManagementService(
+        openai_config={
+            "api_key": "sk-test",
+            "api_base": "https://api.openai.test/v1",
+            "model": "gpt-5.1",
+        },
+        codex_config={"enabled": False},
+        runtime_config_service=audit,
+    )
+
+    result = service.test_provider("openai_compatible", principal_id="alice")
+
+    assert result.status == "ready"
+    assert audit.events == [
+        {
+            "runtime_name": "openai_compatible",
+            "action": "test",
+            "principal_id": "alice",
+            "status": "succeeded",
+            "metadata": {
+                "provider_status": "ready",
+                "available": True,
+                "configured": True,
+            },
         }
     ]

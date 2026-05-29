@@ -190,7 +190,7 @@ class RuntimeProviderConfigSnapshot:
             "endpoint": self.endpoint,
             "model": self.model,
             "api_key": "********" if self.secret_ref else None,
-            "extra": self.extra,
+            "extra": _mask_sensitive_values(self.extra),
             "updated_by": self.updated_by,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -205,3 +205,32 @@ class RuntimeManagementAuditEvent:
     status: str
     metadata: dict[str, Any]
     created_at: datetime | None
+
+
+_SENSITIVE_KEY_PARTS = (
+    "api_key",
+    "authorization",
+    "credential",
+    "password",
+    "secret",
+    "token",
+    "key",
+)
+
+
+def _mask_sensitive_values(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            key: "********" if _is_sensitive_key(str(key)) else _mask_sensitive_values(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_mask_sensitive_values(item) for item in value]
+    if isinstance(value, tuple):
+        return [_mask_sensitive_values(item) for item in value]
+    return value
+
+
+def _is_sensitive_key(key: str) -> bool:
+    normalized = key.lower().replace("-", "_")
+    return any(part in normalized for part in _SENSITIVE_KEY_PARTS)

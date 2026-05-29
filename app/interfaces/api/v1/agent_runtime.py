@@ -12,9 +12,9 @@ from app.application.agent_inference_runtime.codex_process_manager import (
 from app.domain.agent_inference_runtime.types import RuntimeProviderConfigUpdate
 
 try:
-    from app.interfaces.api.middleware.auth import require_identity  # type: ignore[attr-defined]
+    from app.interfaces.api.middleware.auth import require_admin, require_identity  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover - 兼容旧认证模块名
-    from app.interfaces.api.middleware.auth import require_auth as require_identity  # type: ignore[no-redef]
+    from app.interfaces.api.middleware.auth import require_admin, require_auth as require_identity  # type: ignore[no-redef]
 from app.shared.response import error, success
 
 
@@ -99,6 +99,16 @@ def _require_identity_unless_testing(func: Callable[..., Any]) -> Callable[..., 
     return wrapper
 
 
+def _require_admin_unless_testing(func: Callable[..., Any]) -> Callable[..., Any]:
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any):
+        if current_app.config.get("TESTING"):
+            return func(*args, **kwargs)
+        return require_admin(func)(*args, **kwargs)
+
+    return wrapper
+
+
 def _principal_id() -> str | None:
     return getattr(g, "principal_id", None) or getattr(g, "user_id", None)
 
@@ -171,7 +181,7 @@ def create_agent_runtime_blueprint(
         return success(data=_plain(management.resolve_action(action)))
 
     @bp.route("/providers/<runtime_name>/test", methods=["POST"])
-    @_require_identity_unless_testing
+    @_require_admin_unless_testing
     def test_provider(runtime_name: str):
         management = _resolve_runtime_management(runtime_management_provider)
         try:
@@ -185,7 +195,7 @@ def create_agent_runtime_blueprint(
         return success(data=_plain(provider_status))
 
     @bp.route("/providers/<runtime_name>/config", methods=["GET"])
-    @_require_identity_unless_testing
+    @_require_admin_unless_testing
     def provider_config(runtime_name: str):
         management = _resolve_runtime_management(runtime_management_provider)
         try:
@@ -199,10 +209,23 @@ def create_agent_runtime_blueprint(
         return success(data=_plain(provider_config))
 
     @bp.route("/providers/<runtime_name>/config", methods=["PUT"])
-    @_require_identity_unless_testing
+    @_require_admin_unless_testing
     def update_provider_config(runtime_name: str):
         management = _resolve_runtime_management(runtime_management_provider)
         payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, Mapping):
+            return error(
+                "Agent runtime provider config payload must be an object",
+                status=400,
+                details={"code": "RUNTIME_PROVIDER_CONFIG_INVALID", "field": "body"},
+            )
+        extra_payload = payload.get("extra") or {}
+        if not isinstance(extra_payload, Mapping):
+            return error(
+                "Agent runtime provider config extra must be an object",
+                status=400,
+                details={"code": "RUNTIME_PROVIDER_CONFIG_INVALID", "field": "extra"},
+            )
         try:
             provider_config = management.update_provider_config(
                 RuntimeProviderConfigUpdate(
@@ -211,7 +234,7 @@ def create_agent_runtime_blueprint(
                     endpoint=payload.get("endpoint"),
                     model=payload.get("model"),
                     api_key=payload.get("api_key"),
-                    extra=dict(payload.get("extra") or {}),
+                    extra=dict(extra_payload),
                     updated_by=_principal_id() or "unknown",
                 )
             )
@@ -224,7 +247,7 @@ def create_agent_runtime_blueprint(
         return success(data=provider_config.to_public_dict())
 
     @bp.route("/providers/<runtime_name>/start", methods=["POST"])
-    @_require_identity_unless_testing
+    @_require_admin_unless_testing
     def start_provider(runtime_name: str):
         return _runtime_management_operation(
             runtime_management_provider,
@@ -232,7 +255,7 @@ def create_agent_runtime_blueprint(
         )
 
     @bp.route("/providers/<runtime_name>/stop", methods=["POST"])
-    @_require_identity_unless_testing
+    @_require_admin_unless_testing
     def stop_provider(runtime_name: str):
         return _runtime_management_operation(
             runtime_management_provider,
@@ -240,7 +263,7 @@ def create_agent_runtime_blueprint(
         )
 
     @bp.route("/providers/<runtime_name>/restart", methods=["POST"])
-    @_require_identity_unless_testing
+    @_require_admin_unless_testing
     def restart_provider(runtime_name: str):
         return _runtime_management_operation(
             runtime_management_provider,

@@ -29,6 +29,39 @@ def test_runtime_config_round_trip_masks_secret(db_session):
     assert saved.to_public_dict()["api_key"] == "********"
 
 
+def test_runtime_config_public_output_masks_sensitive_extra_keys(db_session):
+    repo = SqlRuntimeConfigRepository(db_session)
+
+    repo.upsert_provider_config(
+        RuntimeProviderConfigUpdate(
+            runtime_name="openai_compatible",
+            enabled=True,
+            endpoint="https://api.openai.com/v1",
+            model="gpt-5.1",
+            api_key=None,
+            extra={
+                "organization": "org_123",
+                "nested": {
+                    "accessToken": "token-value",
+                    "safe": "visible",
+                },
+                "credentials": [{"password": "secret-value"}],
+                "metadata": [{"password": "secret-value"}],
+            },
+            updated_by="alice",
+        )
+    )
+
+    saved = repo.get_provider_config("openai_compatible")
+    assert saved is not None
+    public_extra = saved.to_public_dict()["extra"]
+    assert public_extra["organization"] == "org_123"
+    assert public_extra["nested"]["accessToken"] == "********"
+    assert public_extra["nested"]["safe"] == "visible"
+    assert public_extra["credentials"] == "********"
+    assert public_extra["metadata"][0]["password"] == "********"
+
+
 def test_runtime_audit_log_records_management_action(db_session):
     repo = SqlRuntimeConfigRepository(db_session)
 

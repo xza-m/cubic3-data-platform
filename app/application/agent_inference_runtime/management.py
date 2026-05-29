@@ -23,6 +23,9 @@ from app.domain.agent_inference_runtime.types import (
     RuntimeProviderLogView,
     RuntimeProviderStatus,
 )
+from app.shared.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AgentRuntimeManagementService:
@@ -94,8 +97,12 @@ class AgentRuntimeManagementService:
             runtime_name=runtime_name,
             action="test",
             principal_id=principal_id,
-            status=result.status,
-            metadata={"available": result.available, "configured": result.configured},
+            status="succeeded",
+            metadata={
+                "provider_status": result.status,
+                "available": result.available,
+                "configured": result.configured,
+            },
         )
         return result
 
@@ -245,6 +252,7 @@ class AgentRuntimeManagementService:
     ) -> RuntimeOperationResult:
         try:
             self._ensure_codex(runtime_name)
+            self._ensure_codex_lifecycle_enabled()
             result = operation()
         except Exception as exc:
             self._audit(
@@ -273,6 +281,15 @@ class AgentRuntimeManagementService:
             return fallback
         return self._runtime_config_service.management_config(runtime_name)
 
+    def _ensure_codex_lifecycle_enabled(self) -> None:
+        config = self._provider_management_config("codex_app_server", self._codex_config)
+        if not _as_bool(config.get("enabled")):
+            raise CodexProcessManagerError(
+                "Codex app-server 未启用。",
+                code="RUNTIME_PROVIDER_DISABLED",
+                status_code=403,
+            )
+
     def _audit(
         self,
         *,
@@ -293,6 +310,7 @@ class AgentRuntimeManagementService:
                 metadata=metadata,
             )
         except Exception:
+            logger.debug("agent runtime audit event record failed", exc_info=True)
             return
 
 
