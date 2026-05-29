@@ -157,6 +157,87 @@ class SemanticModelingCopilotService:
 
         return self._review_from_session(session)
 
+    def start_review_run(
+        self,
+        session_id: str,
+        *,
+        principal_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """启动 Codex Proposal Review run，只记录生命周期元数据，不应用输出。"""
+        session = self._require(session_id)
+        self._authorize(session, principal_id)
+        proposal_id = str(
+            session.current_proposal_id
+            or (session.workbench_state.get("advanced_refs") or {}).get("proposal_id")
+            or ""
+        ).strip()
+        if not proposal_id:
+            raise ValueError("当前会话还没有可 review 的 Proposal")
+
+        run = self._agent_app.start_review_proposal(
+            session=session,
+            proposal_id=proposal_id,
+        )
+        metadata = self._codex_run_metadata(
+            run,
+            action="semantic.modeling.review_proposal",
+        )
+        state = deepcopy(session.workbench_state or {})
+        state["codex_review_run"] = metadata
+        state["advanced_refs"] = {
+            **(state.get("advanced_refs") or {}),
+            "codex_review_run_id": metadata.get("run_id"),
+        }
+        session.workbench_state = state
+        session.record_event(
+            "runtime_action",
+            actor=principal_id,
+            action="semantic.modeling.review_proposal",
+            payload={"run_id": metadata.get("run_id"), "status": metadata.get("status")},
+        )
+        self._save_session(session)
+        return self._dump(session)
+
+    def start_repair_run(
+        self,
+        session_id: str,
+        *,
+        principal_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """启动 Codex validation repair run，只记录生命周期元数据，不应用输出。"""
+        session = self._require(session_id)
+        self._authorize(session, principal_id)
+        state = session.workbench_state or {}
+        raw_spec = state.get("raw_spec") if isinstance(state.get("raw_spec"), dict) else {}
+        validation_summary = state.get("validation_summary") or []
+        has_validation_error = any(
+            isinstance(item, dict) and item.get("severity") == "error"
+            for item in validation_summary
+        )
+        if not raw_spec or not has_validation_error:
+            raise ValueError("当前会话没有可修复的校验失败上下文")
+
+        run = self._agent_app.start_repair_validation_failure(session=session)
+        metadata = self._codex_run_metadata(
+            run,
+            action="semantic.modeling.repair_validation_failure",
+        )
+        next_state = deepcopy(state)
+        next_state["codex_repair_run"] = metadata
+        next_state["advanced_refs"] = {
+            **(next_state.get("advanced_refs") or {}),
+            "codex_repair_run_id": metadata.get("run_id"),
+        }
+        session.workbench_state = next_state
+        session.record_event(
+            "runtime_action",
+            actor=principal_id,
+            action="semantic.modeling.repair_validation_failure",
+            payload={"run_id": metadata.get("run_id"), "status": metadata.get("status")},
+        )
+        self._save_session(session)
+        return self._dump(session)
+
     def list_sessions(
         self,
         principal_id: Optional[str] = None,
@@ -1589,6 +1670,15 @@ class SemanticModelingCopilotService:
     def _dump(self, session: AgentSession) -> Dict[str, Any]:
         return session.model_dump(mode="json", exclude_none=True)
 
+    def _codex_run_metadata(self, run: Dict[str, Any], *, action: str) -> Dict[str, Any]:
+        metadata = {
+            "run_id": run.get("run_id"),
+            "provider_run_id": run.get("provider_run_id"),
+            "status": run.get("status"),
+            "action": action,
+        }
+        return {key: value for key, value in metadata.items() if value is not None}
+
     def _saved_proposal_next_steps(self, proposal_id: str) -> list[Dict[str, Any]]:
         return [
             {
@@ -1653,6 +1743,7 @@ class SemanticModelingCopilotService:
             "publish_gate": self._publish_gate_state(status, status_label, has_spec, bool(proposal_id), blockers, published, state),
             "post_publish_validation": self._post_publish_validation(state, published=published),
             "primary_action": self._review_primary_action(status, has_spec, blockers),
+            "codex_review_run": self._codex_review_run_state(state),
         }
 
     def _review_from_gap_view(self, session: AgentSession, gap_view: Dict[str, Any]) -> Dict[str, Any]:
@@ -1703,7 +1794,12 @@ class SemanticModelingCopilotService:
                 "disabled": bool(primary.get("disabled", False)),
                 "disabled_reason": primary.get("disabled_reason"),
             },
+            "codex_review_run": self._codex_review_run_state(session.workbench_state),
         }
+
+    def _codex_review_run_state(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        run = state.get("codex_review_run")
+        return deepcopy(run) if isinstance(run, dict) else None
 
     def _review_changes_from_state(
         self,

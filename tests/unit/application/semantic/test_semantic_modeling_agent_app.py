@@ -44,6 +44,19 @@ class _Runtime:
         )
 
 
+class _RunService:
+    def __init__(self):
+        self.requests = []
+
+    def submit(self, request):
+        self.requests.append(request)
+        return {
+            "run_id": "run_review_1",
+            "provider_run_id": "provider_review_1",
+            "status": "queued",
+        }
+
+
 class _EvidenceBuilder:
     def build(self, *, session, user_message, request_payload):
         return {
@@ -101,6 +114,87 @@ def test_semantic_modeling_agent_app_builds_runtime_request_and_output():
         "message": "按学校汇总",
         "user_goal": "查询最近 7 天学生评论数",
     }
+
+
+def test_start_review_proposal_builds_async_codex_run_request():
+    session = AgentSession(
+        id="session_1",
+        user_goal="查询最近 7 天学生评论数",
+        entry_type="business_question",
+        principal_id="alice",
+        current_proposal_id="proposal_1",
+        workbench_state={
+            "raw_spec": {"spec_version": "v1", "cube": {"name": "student_comment_cube"}},
+            "review_artifact": {"status": "ready"},
+            "validation_summary": [{"severity": "warning", "message": "缺少指标描述"}],
+            "readiness": {"reasons": ["business_owner_confirmation_required"]},
+            "source_evidence": {"source_table": {"name": "dwd_student_comment_events"}},
+        },
+    )
+    run_service = _RunService()
+    app = SemanticModelingAgentApp(runtime=_Runtime(), run_service=run_service)
+
+    result = app.start_review_proposal(session=session, proposal_id="proposal_1")
+
+    assert result == {
+        "run_id": "run_review_1",
+        "provider_run_id": "provider_review_1",
+        "status": "queued",
+    }
+    request = run_service.requests[0]
+    assert request.app_id == "semantic_modeling"
+    assert request.action == "semantic.modeling.review_proposal"
+    assert request.preferred_runtime == "codex_app_server"
+    assert request.execution_mode == "async"
+    assert request.principal_id == "alice"
+    assert request.runtime_context_ref.session_id == "session_1"
+    assert request.runtime_context_ref.thread_id == "session_1"
+    assert request.runtime_context_ref.turn_id.startswith("review_")
+    assert request.input["proposal_id"] == "proposal_1"
+    assert request.input["session_id"] == "session_1"
+    assert "review" in request.input["intent"].lower()
+    assert request.context_pack["session"]["user_goal"] == "查询最近 7 天学生评论数"
+    assert request.context_pack["proposal"]["proposal_id"] == "proposal_1"
+    assert request.context_pack["current_state"]["raw_spec"]["cube"]["name"] == "student_comment_cube"
+    assert request.context_pack["validation_summary"][0]["message"] == "缺少指标描述"
+    assert request.context_pack["source_evidence"]["source_table"]["name"] == "dwd_student_comment_events"
+
+
+def test_start_repair_validation_failure_builds_async_codex_run_request():
+    session = AgentSession(
+        id="session_1",
+        user_goal="查询最近 7 天学生评论数",
+        entry_type="business_question",
+        principal_id="alice",
+        workbench_state={
+            "raw_spec": {"spec_version": "v1", "cube": {"name": "student_comment_cube"}},
+            "validation_summary": [
+                {
+                    "severity": "error",
+                    "message": "缺少时间维度",
+                    "path": "ontology.metrics.comment_count.time_dimension",
+                }
+            ],
+            "readiness": {"reasons": ["validation_blocked"]},
+            "source_evidence": {"fields": [{"name": "published_at"}]},
+        },
+    )
+    run_service = _RunService()
+    app = SemanticModelingAgentApp(runtime=_Runtime(), run_service=run_service)
+
+    result = app.start_repair_validation_failure(session=session)
+
+    assert result["run_id"] == "run_review_1"
+    request = run_service.requests[0]
+    assert request.action == "semantic.modeling.repair_validation_failure"
+    assert request.preferred_runtime == "codex_app_server"
+    assert request.execution_mode == "async"
+    assert request.runtime_context_ref.turn_id.startswith("repair_")
+    assert request.input["session_id"] == "session_1"
+    assert request.input["raw_spec"]["cube"]["name"] == "student_comment_cube"
+    assert request.input["validation_summary"][0]["path"] == "ontology.metrics.comment_count.time_dimension"
+    assert request.context_pack["current_state"]["raw_spec"]["cube"]["name"] == "student_comment_cube"
+    assert request.context_pack["blockers"][0]["id"] == "validation_blocked"
 
 
 def test_semantic_evidence_builder_uses_session_summary_and_limited_tail():

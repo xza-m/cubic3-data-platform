@@ -43,6 +43,41 @@ class _CopilotStub:
                 "label": "生成 spec",
                 "disabled": False,
             },
+            "codex_review_run": {"run_id": "run_review_1", "status": "queued"},
+        }
+
+    def start_review_run(self, session_id, *, principal_id=None):
+        self.calls.append(("start_review_run", session_id, principal_id))
+        if session_id == "s_other_user":
+            raise PermissionError("AgentSession s_other_user 属于其他用户，不能访问")
+        return {
+            "id": session_id,
+            "workbench_state": {
+                "codex_review_run": {
+                    "run_id": "run_review_1",
+                    "provider_run_id": "provider_review_1",
+                    "status": "queued",
+                    "action": "semantic.modeling.review_proposal",
+                },
+                "advanced_refs": {"codex_review_run_id": "run_review_1"},
+            },
+        }
+
+    def start_repair_run(self, session_id, *, principal_id=None):
+        self.calls.append(("start_repair_run", session_id, principal_id))
+        if session_id == "s_no_repair":
+            raise ValueError("当前会话没有可修复的校验失败上下文")
+        return {
+            "id": session_id,
+            "workbench_state": {
+                "codex_repair_run": {
+                    "run_id": "run_repair_1",
+                    "provider_run_id": "provider_repair_1",
+                    "status": "queued",
+                    "action": "semantic.modeling.repair_validation_failure",
+                },
+                "advanced_refs": {"codex_repair_run_id": "run_repair_1"},
+            },
         }
 
     def send_message(self, session_id, payload, *, principal_id=None):
@@ -375,7 +410,41 @@ def test_modeling_copilot_review_endpoint_returns_artifact_view():
     assert body["session_id"] == "session_1"
     assert body["status"] == "drafting"
     assert body["primary_action"]["action"] == "generate_spec"
+    assert body["codex_review_run"]["run_id"] == "run_review_1"
     assert service.calls[-1][0] == "get_review"
+
+
+def test_modeling_copilot_review_run_endpoint_returns_session_with_run_metadata():
+    client, service = _client()
+
+    resp = client.post("/api/v1/semantic/modeling-copilot/sessions/session_1/review-runs")
+
+    assert resp.status_code == 200
+    body = resp.get_json()["data"]
+    assert body["workbench_state"]["codex_review_run"]["run_id"] == "run_review_1"
+    assert body["workbench_state"]["advanced_refs"]["codex_review_run_id"] == "run_review_1"
+    assert service.calls[-1] == ("start_review_run", "session_1", None)
+
+
+def test_modeling_copilot_repair_run_endpoint_returns_session_with_run_metadata():
+    client, service = _client()
+
+    resp = client.post("/api/v1/semantic/modeling-copilot/sessions/session_1/repair-runs")
+
+    assert resp.status_code == 200
+    body = resp.get_json()["data"]
+    assert body["workbench_state"]["codex_repair_run"]["run_id"] == "run_repair_1"
+    assert body["workbench_state"]["advanced_refs"]["codex_repair_run_id"] == "run_repair_1"
+    assert service.calls[-1] == ("start_repair_run", "session_1", None)
+
+
+def test_modeling_copilot_repair_run_endpoint_returns_validation_error_without_context():
+    client, _ = _client()
+
+    resp = client.post("/api/v1/semantic/modeling-copilot/sessions/s_no_repair/repair-runs")
+
+    assert resp.status_code == 422
+    assert resp.get_json()["details"]["code"] == "COPILOT_VALIDATION_ERROR"
 
 
 @pytest.mark.parametrize(
@@ -441,6 +510,8 @@ def test_modeling_copilot_authenticated_session_paths_pass_current_principal():
     )
     client.post(f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/save-proposal", json={})
     client.post(f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/publish", json={})
+    client.post(f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/review-runs", json={})
+    client.post(f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/repair-runs", json={})
 
     assert [call for call in service.calls if call[0] != "create_session"] == [
         ("get_session", session_id, "alice"),
@@ -452,6 +523,8 @@ def test_modeling_copilot_authenticated_session_paths_pass_current_principal():
         ("update_spec", session_id, {"cube": {"name": "student_comment_cube"}}, "alice"),
         ("save_proposal", session_id, {}, "alice"),
         ("publish_proposal", session_id, {}, "alice"),
+        ("start_review_run", session_id, "alice"),
+        ("start_repair_run", session_id, "alice"),
     ]
 
 
@@ -464,6 +537,15 @@ def test_modeling_copilot_cross_user_permission_error_returns_403():
     )
 
     assert resp.status_code == 403
+
+
+def test_modeling_copilot_cross_user_review_run_returns_403():
+    client, _ = _auth_client_with_roles("viewer", user_id="alice")
+
+    resp = client.post("/api/v1/semantic/modeling-copilot/sessions/s_other_user/review-runs")
+
+    assert resp.status_code == 403
+    assert resp.get_json()["details"]["code"] == "COPILOT_FORBIDDEN"
 
 
 def test_modeling_copilot_publish_endpoint_chains_full_publish():

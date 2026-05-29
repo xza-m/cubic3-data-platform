@@ -943,6 +943,7 @@ class Container(containers.DeclarativeContainer):
     semantic_modeling_agent_app = providers.Singleton(
         SemanticModelingAgentApp,
         runtime=agent_inference_runtime_service,
+        run_service=codex_run_service.provider,
         evidence_builder=semantic_evidence_builder,
     )
 
