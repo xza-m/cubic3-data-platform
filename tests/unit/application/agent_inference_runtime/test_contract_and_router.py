@@ -50,6 +50,19 @@ class _FakeAdapter(AgentInferenceRuntimePort):
         )
 
 
+class _AuditRecorder:
+    def __init__(self):
+        self.events = []
+
+    def record_audit_event(self, **kwargs):
+        self.events.append(kwargs)
+
+
+class _FailingCodexProcessManager:
+    def start(self):
+        raise OSError("codex-app-server not found")
+
+
 def _request(action: str = "semantic.modeling.chat") -> AgentInferenceRuntimeRequest:
     return AgentInferenceRuntimeRequest(
         app_id="semantic_modeling",
@@ -241,4 +254,27 @@ def test_runtime_management_allows_codex_start_operation_only_when_ui_managed():
         "start",
         "stop",
         "restart",
+    ]
+
+
+def test_runtime_management_audits_unexpected_codex_start_failure_before_reraising():
+    audit = _AuditRecorder()
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={"enabled": True},
+        codex_process_manager=_FailingCodexProcessManager(),
+        runtime_config_service=audit,
+    )
+
+    with pytest.raises(OSError, match="codex-app-server not found"):
+        service.start_provider("codex_app_server", principal_id="alice")
+
+    assert audit.events == [
+        {
+            "runtime_name": "codex_app_server",
+            "action": "start",
+            "principal_id": "alice",
+            "status": "failed",
+            "metadata": {"error": "codex-app-server not found"},
+        }
     ]

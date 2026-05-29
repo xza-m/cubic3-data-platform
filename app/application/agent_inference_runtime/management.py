@@ -246,7 +246,7 @@ class AgentRuntimeManagementService:
         try:
             self._ensure_codex(runtime_name)
             result = operation()
-        except (KeyError, CodexProcessManagerError) as exc:
+        except Exception as exc:
             self._audit(
                 runtime_name=runtime_name,
                 action=action,
