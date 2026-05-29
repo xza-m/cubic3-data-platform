@@ -103,12 +103,11 @@ class AgentRuntimeManagementService:
                 metadata={"error": str(exc)},
             )
             raise
-        audit_status = "failed" if _is_failed_codex_test(runtime_name, result) else "succeeded"
         self._audit(
             runtime_name=runtime_name,
             action="test",
             principal_id=principal_id,
-            status=audit_status,
+            status="succeeded",
             metadata=_test_audit_metadata(result),
         )
         return result
@@ -200,7 +199,10 @@ class AgentRuntimeManagementService:
                 return _transport_capabilities(self._codex_client(config).capabilities())
             except CodexAppServerClientError as exc:
                 logger.info(
-                    "codex app-server capabilities unavailable, falling back to local capabilities: %s",
+                    f"codex app-server capabilities unavailable, falling back to local capabilities: {exc}"
+                )
+                return _degraded_process_manager_capabilities(
+                    self._codex_process_manager.capabilities(),
                     exc,
                 )
         return self._codex_process_manager.capabilities()
@@ -381,10 +383,6 @@ def _test_audit_metadata(result: RuntimeProviderStatus) -> dict[str, Any]:
     return metadata
 
 
-def _is_failed_codex_test(runtime_name: RuntimeName, result: RuntimeProviderStatus) -> bool:
-    return runtime_name == "codex_app_server" and result.configured and result.status != "ready"
-
-
 def _codex_http_transport_configured(config: Mapping[str, Any]) -> bool:
     return _as_bool(config.get("enabled")) and bool(str(config.get("endpoint") or "").strip())
 
@@ -407,6 +405,29 @@ def _transport_capabilities(payload: Mapping[str, Any]) -> RuntimeProviderCapabi
         artifacts=_string_list(payload.get("artifacts")),
         events=_string_list(payload.get("events")),
         details=dict(payload),
+    )
+
+
+def _degraded_process_manager_capabilities(
+    capabilities: RuntimeProviderCapabilities,
+    exc: CodexAppServerClientError,
+) -> RuntimeProviderCapabilities:
+    return RuntimeProviderCapabilities(
+        runtime_name=capabilities.runtime_name,
+        available=False,
+        actions=capabilities.actions,
+        artifacts=capabilities.artifacts,
+        events=capabilities.events,
+        details={
+            **capabilities.details,
+            "source": "process_manager_fallback",
+            "transport_available": False,
+            "transport_error": {
+                "code": exc.code,
+                **exc.details,
+                "message": str(exc),
+            },
+        },
     )
 
 

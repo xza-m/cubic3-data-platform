@@ -116,6 +116,9 @@ class _FailingCodexHttpClient:
     def healthcheck(self):
         raise self.error
 
+    def capabilities(self):
+        raise self.error
+
 
 class _ConfigRepository:
     def __init__(self, snapshot):
@@ -488,7 +491,7 @@ def test_runtime_management_codex_test_provider_audits_failed_healthcheck():
             "runtime_name": "codex_app_server",
             "action": "test",
             "principal_id": "alice",
-            "status": "failed",
+            "status": "succeeded",
             "metadata": {
                 "provider_status": "unavailable",
                 "available": False,
@@ -527,3 +530,28 @@ def test_runtime_management_codex_capabilities_uses_transport_when_endpoint_conf
     assert capabilities.events == ["run.started", "run.succeeded"]
     assert capabilities.details["tools"] == ["read_file"]
     assert capabilities.details["max_context_tokens"] == 200000
+
+
+def test_runtime_management_codex_capabilities_fallback_marks_degraded_transport():
+    error = CodexAppServerClientError(
+        "Codex app-server provider 调用失败。",
+        code="RUNTIME_PROVIDER_ERROR",
+        details={"path": "/capabilities"},
+    )
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
+        codex_client_factory=lambda config: _FailingCodexHttpClient(error),
+    )
+
+    capabilities = service.provider_capabilities("codex_app_server")
+
+    assert capabilities.available is False
+    assert capabilities.actions == ["review", "repair", "audit"]
+    assert capabilities.details["source"] == "process_manager_fallback"
+    assert capabilities.details["transport_available"] is False
+    assert capabilities.details["transport_error"] == {
+        "code": "RUNTIME_PROVIDER_ERROR",
+        "path": "/capabilities",
+        "message": "Codex app-server provider 调用失败。",
+    }

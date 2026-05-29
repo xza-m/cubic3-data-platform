@@ -820,3 +820,40 @@ def test_agent_runtime_api_serializes_codex_transport_capabilities_when_endpoint
     assert data["actions"] == ["semantic.modeling.review_proposal"]
     assert data["details"]["tools"] == ["read_file"]
     assert data["details"]["max_context_tokens"] == 200000
+
+
+def test_agent_runtime_api_marks_codex_capabilities_fallback_as_degraded():
+    class _CodexClient:
+        def capabilities(self):
+            from app.infrastructure.agent_inference_runtime.codex_http_client import (
+                CodexAppServerClientError,
+            )
+
+            raise CodexAppServerClientError(
+                "Codex app-server provider 调用失败。",
+                code="RUNTIME_PROVIDER_ERROR",
+                details={"path": "/capabilities"},
+            )
+
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
+        codex_client_factory=lambda config: _CodexClient(),
+    )
+    client = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    )
+
+    resp = client.get("/api/v1/agent-runtime/providers/codex_app_server/capabilities")
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["available"] is False
+    assert data["details"]["source"] == "process_manager_fallback"
+    assert data["details"]["transport_available"] is False
+    assert data["details"]["transport_error"] == {
+        "code": "RUNTIME_PROVIDER_ERROR",
+        "path": "/capabilities",
+        "message": "Codex app-server provider 调用失败。",
+    }
