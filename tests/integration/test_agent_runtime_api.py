@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import jwt
+import pytest
 from flask import Flask, g
 
 from app.domain.agent_inference_runtime.types import (
@@ -14,6 +15,7 @@ from app.domain.agent_inference_runtime.types import (
     RuntimeProviderConfigSnapshot,
     RuntimeContextRef,
 )
+from app.application.agent_inference_runtime.codex_run_service import CodexRunNotFoundError
 from app.application.agent_inference_runtime.management import AgentRuntimeManagementService
 from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.interfaces.api.middleware.error_handler import register_error_handlers
@@ -137,6 +139,43 @@ class _RepoProvider:
         repo = self.repos[self.calls]
         self.calls += 1
         return repo
+
+
+class _CodexRunService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str | None]] = []
+
+    def poll(self, run_id: str, principal_id: str | None = None):
+        self.calls.append(("poll", run_id, principal_id))
+        if principal_id != "alice":
+            raise CodexRunNotFoundError(run_id)
+        return {"run_id": run_id, "provider_run_id": "provider_1", "status": "running"}
+
+    def cancel(self, run_id: str, principal_id: str | None = None):
+        self.calls.append(("cancel", run_id, principal_id))
+        if principal_id != "alice":
+            raise CodexRunNotFoundError(run_id)
+        return {"run_id": run_id, "provider_run_id": "provider_1", "status": "cancelled"}
+
+    def read_events(self, run_id: str, principal_id: str | None = None):
+        self.calls.append(("events", run_id, principal_id))
+        if principal_id != "alice":
+            raise CodexRunNotFoundError(run_id)
+        return {
+            "run_id": run_id,
+            "provider_run_id": "provider_1",
+            "items": [{"event_type": "run.started", "seq": 1}],
+        }
+
+    def collect_artifacts(self, run_id: str, principal_id: str | None = None):
+        self.calls.append(("collect_artifacts", run_id, principal_id))
+        if principal_id != "alice":
+            raise CodexRunNotFoundError(run_id)
+        return {
+            "run_id": run_id,
+            "provider_run_id": "provider_1",
+            "items": [{"artifact_id": "artifact_provider_1"}],
+        }
 
 
 class _RuntimeManagement:
@@ -328,6 +367,7 @@ def _client(
     principal_id: str | None = "alice",
     testing: bool = True,
     runtime_management_provider=None,
+    codex_run_service_provider=None,
 ):
     app = Flask(__name__)
     app.config.update(TESTING=testing, JWT_SECRET="test-secret")
@@ -342,6 +382,7 @@ def _client(
         create_agent_runtime_blueprint(
             repository_provider,
             runtime_management_provider=runtime_management_provider,
+            codex_run_service_provider=codex_run_service_provider,
         )
     )
     return app.test_client()
@@ -447,6 +488,54 @@ def test_agent_runtime_api_hides_cross_user_artifacts_before_listing():
     assert resp.status_code == 404
     assert resp.get_json()["details"]["code"] == "RUNTIME_RUN_NOT_FOUND"
     assert repo.artifact_principal_ids == []
+
+
+def test_agent_runtime_api_exposes_codex_run_lifecycle_routes():
+    codex_runs = _CodexRunService()
+    client = _client(lambda: _Repo(), codex_run_service_provider=lambda: codex_runs)
+
+    poll_resp = client.post("/api/v1/agent-runtime/runs/run_1/poll")
+    cancel_resp = client.post("/api/v1/agent-runtime/runs/run_1/cancel")
+    events_resp = client.get("/api/v1/agent-runtime/runs/run_1/events")
+    artifacts_resp = client.post("/api/v1/agent-runtime/runs/run_1/collect-artifacts")
+
+    assert poll_resp.status_code == 200
+    assert poll_resp.get_json()["data"]["status"] == "running"
+    assert cancel_resp.status_code == 200
+    assert cancel_resp.get_json()["data"]["status"] == "cancelled"
+    assert events_resp.status_code == 200
+    assert events_resp.get_json()["data"]["items"][0]["event_type"] == "run.started"
+    assert artifacts_resp.status_code == 200
+    assert artifacts_resp.get_json()["data"]["items"][0]["artifact_id"] == "artifact_provider_1"
+    assert codex_runs.calls == [
+        ("poll", "run_1", "alice"),
+        ("cancel", "run_1", "alice"),
+        ("events", "run_1", "alice"),
+        ("collect_artifacts", "run_1", "alice"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("post", "/api/v1/agent-runtime/runs/run_1/poll"),
+        ("post", "/api/v1/agent-runtime/runs/run_1/cancel"),
+        ("get", "/api/v1/agent-runtime/runs/run_1/events"),
+        ("post", "/api/v1/agent-runtime/runs/run_1/collect-artifacts"),
+    ],
+)
+def test_agent_runtime_api_hides_cross_user_lifecycle_routes(method: str, path: str):
+    codex_runs = _CodexRunService()
+    client = _client(
+        lambda: _Repo(),
+        principal_id="mallory",
+        codex_run_service_provider=lambda: codex_runs,
+    )
+
+    resp = getattr(client, method)(path)
+
+    assert resp.status_code == 404
+    assert resp.get_json()["details"]["code"] == "RUNTIME_RUN_NOT_FOUND"
 
 
 def test_agent_runtime_api_requires_identity_outside_testing():

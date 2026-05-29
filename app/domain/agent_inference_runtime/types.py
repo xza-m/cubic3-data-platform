@@ -95,7 +95,7 @@ class AgentInferenceRuntimeRun:
     status: RunStatus
     runtime_context_ref: RuntimeContextRef
     principal_id: Optional[str]
-    provider_ref: Optional[Mapping[str, str]]
+    provider_ref: Optional[Mapping[str, Any]]
     usage: Dict[str, Any] = field(default_factory=dict)
     error: Optional[Dict[str, Any]] = None
 

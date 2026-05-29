@@ -58,14 +58,72 @@ class CodexAppServerHttpClient:
     def capabilities(self) -> dict[str, Any]:
         return self._get_json_object("/capabilities")
 
+    def submit_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._post_json_object("/runs", payload)
+
+    def poll_run(self, provider_run_id: str) -> dict[str, Any]:
+        return self._get_json_object(f"/runs/{provider_run_id}")
+
+    def cancel_run(self, provider_run_id: str) -> dict[str, Any]:
+        return self._post_json_object(f"/runs/{provider_run_id}/cancel", {})
+
+    def events(self, provider_run_id: str) -> list[dict[str, Any]]:
+        return self._get_json_list(f"/runs/{provider_run_id}/events")
+
+    def artifacts(self, provider_run_id: str) -> list[dict[str, Any]]:
+        return self._get_json_list(f"/runs/{provider_run_id}/artifacts")
+
     def _get_json_object(self, path: str) -> dict[str, Any]:
-        try:
-            response = self._session.get(
-                urljoin(self._endpoint, path.lstrip("/")),
-                timeout=self._timeout_seconds,
+        payload = self._request_json("GET", path)
+        if not isinstance(payload, dict):
+            raise CodexAppServerClientError(
+                "Codex app-server 返回了非对象 JSON。",
+                code="RUNTIME_PROVIDER_RESPONSE_INVALID",
+                details={"path": path},
             )
+        return payload
+
+    def _post_json_object(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        response_payload = self._request_json("POST", path, payload=payload)
+        if not isinstance(response_payload, dict):
+            raise CodexAppServerClientError(
+                "Codex app-server 返回了非对象 JSON。",
+                code="RUNTIME_PROVIDER_RESPONSE_INVALID",
+                details={"path": path},
+            )
+        return response_payload
+
+    def _get_json_list(self, path: str) -> list[dict[str, Any]]:
+        payload = self._request_json("GET", path)
+        if isinstance(payload, dict) and "items" in payload:
+            payload = payload["items"]
+        if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+            raise CodexAppServerClientError(
+                "Codex app-server 返回了非列表 JSON。",
+                code="RUNTIME_PROVIDER_RESPONSE_INVALID",
+                details={"path": path},
+            )
+        return [dict(item) for item in payload]
+
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        payload: dict[str, Any] | None = None,
+    ) -> Any:
+        try:
+            url = urljoin(self._endpoint, path.lstrip("/"))
+            if method == "POST":
+                response = self._session.post(
+                    url,
+                    json=payload or {},
+                    timeout=self._timeout_seconds,
+                )
+            else:
+                response = self._session.get(url, timeout=self._timeout_seconds)
             response.raise_for_status()
-            payload = response.json()
+            response_payload = response.json()
         except CodexAppServerClientError:
             raise
         except Exception as exc:
@@ -75,10 +133,4 @@ class CodexAppServerHttpClient:
                 details={"path": path},
             ) from exc
 
-        if not isinstance(payload, dict):
-            raise CodexAppServerClientError(
-                "Codex app-server 返回了非对象 JSON。",
-                code="RUNTIME_PROVIDER_RESPONSE_INVALID",
-                details={"path": path},
-            )
-        return payload
+        return response_payload

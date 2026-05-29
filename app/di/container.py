@@ -140,6 +140,9 @@ from app.infrastructure.adapters.llm.openai_compatible import OpenAICompatibleAd
 from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import (
     OpenAICompatibleRuntimeAdapter,
 )
+from app.infrastructure.agent_inference_runtime.codex_http_client import (
+    CodexAppServerHttpClient,
+)
 from app.infrastructure.agent_inference_runtime.sql_repository import (
     SqlAgentInferenceRuntimeRepository,
 )
@@ -148,6 +151,7 @@ from app.infrastructure.agent_inference_runtime.sql_runtime_config_repository im
 )
 from app.application.agent_inference_runtime.action_binding import ActionRuntimeBindingRegistry
 from app.application.agent_inference_runtime.management import AgentRuntimeManagementService
+from app.application.agent_inference_runtime.codex_run_service import CodexRunService
 from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
 from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
@@ -426,6 +430,17 @@ class Container(containers.DeclarativeContainer):
     agent_inference_runtime_repository = providers.Factory(
         SqlAgentInferenceRuntimeRepository,
         session=db_session,
+    )
+
+    agent_codex_http_client = providers.Factory(
+        CodexAppServerHttpClient,
+        endpoint=config.agent_codex.endpoint,
+    )
+
+    codex_run_service = providers.Factory(
+        CodexRunService,
+        client=agent_codex_http_client,
+        repository=agent_inference_runtime_repository,
     )
     
     # ========================================================================

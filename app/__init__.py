@@ -262,6 +262,7 @@ def create_app(role: str = "web") -> Flask:
         app.register_blueprint(create_agent_runtime_blueprint(
             container.agent_inference_runtime_repository,
             runtime_management_provider=container.agent_runtime_management_service,
+            codex_run_service_provider=container.codex_run_service,
         ))
         app.register_blueprint(create_query_execution_blueprint(
             container.query_submission_service(),

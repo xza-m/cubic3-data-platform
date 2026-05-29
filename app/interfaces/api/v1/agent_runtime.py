@@ -9,6 +9,7 @@ from flask import Blueprint, current_app, g, request
 from app.application.agent_inference_runtime.codex_process_manager import (
     CodexProcessManagerError,
 )
+from app.application.agent_inference_runtime.codex_run_service import CodexRunNotFoundError
 from app.domain.agent_inference_runtime.types import RuntimeProviderConfigUpdate
 from app.infrastructure.agent_inference_runtime.codex_http_client import (
     CodexAppServerClientError,
@@ -155,6 +156,7 @@ def _resolve_repository(repository_provider: Any) -> Any:
 def create_agent_runtime_blueprint(
     repository_provider: Any,
     runtime_management_provider: Any | None = None,
+    codex_run_service_provider: Any | None = None,
 ) -> Blueprint:
     bp = Blueprint("agent_runtime", __name__, url_prefix="/api/v1/agent-runtime")
 
@@ -178,6 +180,38 @@ def create_agent_runtime_blueprint(
             return _not_found()
         artifacts = repository.list_artifacts(run_id=run_id, principal_id=principal_id)
         return success(data={"items": [_artifact_payload(item) for item in artifacts]})
+
+    @bp.route("/runs/<run_id>/poll", methods=["POST"])
+    @_require_identity_unless_testing
+    def poll_run(run_id: str):
+        return _codex_run_operation(
+            codex_run_service_provider,
+            lambda service: service.poll(run_id, principal_id=_principal_id()),
+        )
+
+    @bp.route("/runs/<run_id>/cancel", methods=["POST"])
+    @_require_identity_unless_testing
+    def cancel_run(run_id: str):
+        return _codex_run_operation(
+            codex_run_service_provider,
+            lambda service: service.cancel(run_id, principal_id=_principal_id()),
+        )
+
+    @bp.route("/runs/<run_id>/events", methods=["GET"])
+    @_require_identity_unless_testing
+    def run_events(run_id: str):
+        return _codex_run_operation(
+            codex_run_service_provider,
+            lambda service: service.read_events(run_id, principal_id=_principal_id()),
+        )
+
+    @bp.route("/runs/<run_id>/collect-artifacts", methods=["POST"])
+    @_require_identity_unless_testing
+    def collect_provider_artifacts(run_id: str):
+        return _codex_run_operation(
+            codex_run_service_provider,
+            lambda service: service.collect_artifacts(run_id, principal_id=_principal_id()),
+        )
 
     @bp.route("/providers/status", methods=["GET"])
     @_require_identity_unless_testing
@@ -304,6 +338,29 @@ def _resolve_runtime_management(runtime_management_provider: Any) -> Any:
     if callable(runtime_management_provider):
         return runtime_management_provider()
     return runtime_management_provider
+
+
+def _resolve_codex_run_service(codex_run_service_provider: Any) -> Any:
+    if codex_run_service_provider is None:
+        raise RuntimeError("codex run service is not configured")
+    if callable(codex_run_service_provider):
+        return codex_run_service_provider()
+    return codex_run_service_provider
+
+
+def _codex_run_operation(codex_run_service_provider: Any, operation: Callable[[Any], Any]):
+    service = _resolve_codex_run_service(codex_run_service_provider)
+    try:
+        result = operation(service)
+    except CodexRunNotFoundError:
+        return _not_found()
+    except CodexAppServerClientError as exc:
+        return error(
+            str(exc),
+            status=exc.status_code,
+            details={"code": exc.code, **exc.details},
+        )
+    return success(data=_plain(result))
 
 
 def _runtime_management_operation(runtime_management_provider: Any, operation: Callable[[Any], Any]):
