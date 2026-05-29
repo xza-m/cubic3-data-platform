@@ -143,6 +143,8 @@ from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import
 from app.infrastructure.agent_inference_runtime.sql_repository import (
     SqlAgentInferenceRuntimeRepository,
 )
+from app.application.agent_inference_runtime.action_binding import ActionRuntimeBindingRegistry
+from app.application.agent_inference_runtime.management import AgentRuntimeManagementService
 from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 
@@ -384,14 +386,24 @@ class Container(containers.DeclarativeContainer):
         timeout=config.agent_openai.timeout,
     )
 
+    agent_runtime_action_bindings = providers.Singleton(ActionRuntimeBindingRegistry)
+
     agent_inference_runtime_router = providers.Singleton(
         AgentInferenceRuntimeRouter,
         adapters=providers.List(agent_openai_runtime_adapter),
+        action_bindings=agent_runtime_action_bindings,
     )
 
     agent_inference_runtime_service = providers.Singleton(
         AgentInferenceRuntimeService,
         router=agent_inference_runtime_router,
+    )
+
+    agent_runtime_management_service = providers.Singleton(
+        AgentRuntimeManagementService,
+        openai_config=config.agent_openai,
+        codex_config=config.agent_codex,
+        action_bindings=agent_runtime_action_bindings,
     )
 
     agent_inference_runtime_repository = providers.Factory(
@@ -1430,6 +1442,10 @@ def init_container(app: Flask) -> Container:
         },
         'agent_codex': {
             'enabled': _parse_bool(os.getenv('AGENT_CODEX_ENABLED', app.config.get('AGENT_CODEX_ENABLED', False))),
+            'ui_managed': _parse_bool(os.getenv('AGENT_CODEX_UI_MANAGED', app.config.get('AGENT_CODEX_UI_MANAGED', False))),
+            'server_managed': _parse_bool(os.getenv('AGENT_CODEX_SERVER_MANAGED', app.config.get('AGENT_CODEX_SERVER_MANAGED', False))),
+            'command_profile': os.getenv('AGENT_CODEX_COMMAND_PROFILE', app.config.get('AGENT_CODEX_COMMAND_PROFILE', 'local-codex-app-server')),
+            'allowed_project_roots': os.getenv('AGENT_CODEX_ALLOWED_PROJECT_ROOTS', app.config.get('AGENT_CODEX_ALLOWED_PROJECT_ROOTS', '')),
             'project_id': os.getenv('AGENT_CODEX_PROJECT_ID', app.config.get('AGENT_CODEX_PROJECT_ID', 'cubic3-data-platform')),
             'project_root': os.getenv('AGENT_CODEX_PROJECT_ROOT', app.config.get('AGENT_CODEX_PROJECT_ROOT', os.getcwd())),
             'runtime_root': os.getenv('AGENT_CODEX_RUNTIME_ROOT', app.config.get('AGENT_CODEX_RUNTIME_ROOT', '.cubic3/agent-codex')),

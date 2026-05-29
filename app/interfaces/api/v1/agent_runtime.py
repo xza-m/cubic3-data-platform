@@ -6,6 +6,10 @@ from typing import Any, Callable, Mapping
 
 from flask import Blueprint, current_app, g
 
+from app.application.agent_inference_runtime.codex_process_manager import (
+    CodexProcessManagerError,
+)
+
 try:
     from app.interfaces.api.middleware.auth import require_identity  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover - 兼容旧认证模块名
@@ -118,7 +122,10 @@ def _resolve_repository(repository_provider: Any) -> Any:
     return repository_provider
 
 
-def create_agent_runtime_blueprint(repository_provider: Any) -> Blueprint:
+def create_agent_runtime_blueprint(
+    repository_provider: Any,
+    runtime_management_provider: Any | None = None,
+) -> Blueprint:
     bp = Blueprint("agent_runtime", __name__, url_prefix="/api/v1/agent-runtime")
 
     @bp.route("/runs/<run_id>", methods=["GET"])
@@ -142,4 +149,98 @@ def create_agent_runtime_blueprint(repository_provider: Any) -> Blueprint:
         artifacts = repository.list_artifacts(run_id=run_id, principal_id=principal_id)
         return success(data={"items": [_artifact_payload(item) for item in artifacts]})
 
+    @bp.route("/providers/status", methods=["GET"])
+    @_require_identity_unless_testing
+    def providers_status():
+        management = _resolve_runtime_management(runtime_management_provider)
+        return success(data=_plain(management.snapshot()))
+
+    @bp.route("/actions/<path:action>/binding", methods=["GET"])
+    @_require_identity_unless_testing
+    def action_binding(action: str):
+        management = _resolve_runtime_management(runtime_management_provider)
+        return success(data=_plain(management.resolve_action(action)))
+
+    @bp.route("/providers/<runtime_name>/test", methods=["POST"])
+    @_require_identity_unless_testing
+    def test_provider(runtime_name: str):
+        management = _resolve_runtime_management(runtime_management_provider)
+        try:
+            provider_status = management.test_provider(runtime_name)
+        except KeyError:
+            return error(
+                "Agent runtime provider not found",
+                status=404,
+                details={"code": "RUNTIME_PROVIDER_NOT_FOUND", "runtime_name": runtime_name},
+            )
+        return success(data=_plain(provider_status))
+
+    @bp.route("/providers/<runtime_name>/start", methods=["POST"])
+    @_require_identity_unless_testing
+    def start_provider(runtime_name: str):
+        return _runtime_management_operation(
+            runtime_management_provider,
+            lambda management: management.start_provider(runtime_name),
+        )
+
+    @bp.route("/providers/<runtime_name>/stop", methods=["POST"])
+    @_require_identity_unless_testing
+    def stop_provider(runtime_name: str):
+        return _runtime_management_operation(
+            runtime_management_provider,
+            lambda management: management.stop_provider(runtime_name),
+        )
+
+    @bp.route("/providers/<runtime_name>/restart", methods=["POST"])
+    @_require_identity_unless_testing
+    def restart_provider(runtime_name: str):
+        return _runtime_management_operation(
+            runtime_management_provider,
+            lambda management: management.restart_provider(runtime_name),
+        )
+
+    @bp.route("/providers/<runtime_name>/logs", methods=["GET"])
+    @_require_identity_unless_testing
+    def provider_logs(runtime_name: str):
+        return _runtime_management_operation(
+            runtime_management_provider,
+            lambda management: management.provider_logs(runtime_name),
+        )
+
+    @bp.route("/providers/<runtime_name>/capabilities", methods=["GET"])
+    @_require_identity_unless_testing
+    def provider_capabilities(runtime_name: str):
+        return _runtime_management_operation(
+            runtime_management_provider,
+            lambda management: management.provider_capabilities(runtime_name),
+        )
+
     return bp
+
+
+def _resolve_runtime_management(runtime_management_provider: Any) -> Any:
+    if runtime_management_provider is None:
+        raise RuntimeError("agent runtime management service is not configured")
+    if callable(runtime_management_provider):
+        return runtime_management_provider()
+    return runtime_management_provider
+
+
+def _runtime_management_operation(runtime_management_provider: Any, operation: Callable[[Any], Any]):
+    management = _resolve_runtime_management(runtime_management_provider)
+    try:
+        result = operation(management)
+    except KeyError as exc:
+        runtime_name = str(exc.args[0]) if exc.args else ""
+        return error(
+            "Agent runtime provider not found",
+            status=404,
+            details={"code": "RUNTIME_PROVIDER_NOT_FOUND", "runtime_name": runtime_name},
+        )
+    except CodexProcessManagerError as exc:
+        return error(
+            str(exc),
+            status=exc.status_code,
+            details={"code": exc.code, **exc.details},
+        )
+    return success(data=_plain(result))

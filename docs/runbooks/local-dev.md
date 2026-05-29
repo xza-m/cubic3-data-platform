@@ -104,6 +104,10 @@ export AGENT_OPENAI_BASE_URL=https://api.openai.com/v1
 export AGENT_OPENAI_MODEL=gpt-4o-mini
 export AGENT_OPENAI_TIMEOUT_SECONDS=60
 export AGENT_CODEX_ENABLED=false
+export AGENT_CODEX_UI_MANAGED=false
+export AGENT_CODEX_SERVER_MANAGED=false
+export AGENT_CODEX_COMMAND_PROFILE=local-codex-app-server
+export AGENT_CODEX_ALLOWED_PROJECT_ROOTS=/Users/xuan/Work/cursor_projects
 export AGENT_CODEX_RUNTIME_ROOT=.cubic3/agent-codex
 ```
 

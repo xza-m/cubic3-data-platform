@@ -133,11 +133,121 @@ class _RepoProvider:
         return repo
 
 
+class _RuntimeManagement:
+    def __init__(self) -> None:
+        self.tested: list[str] = []
+        self.started: list[str] = []
+        self.stopped: list[str] = []
+
+    def snapshot(self):
+        return {
+            "providers": [
+                {
+                    "runtime_name": "openai_compatible",
+                    "label": "OpenAI Runtime",
+                    "configured": True,
+                    "available": True,
+                    "status": "ready",
+                    "message": "OpenAI Runtime 已配置。",
+                    "operations": ["test_connection"],
+                    "details": {"model": "gpt-4o-mini"},
+                },
+                {
+                    "runtime_name": "codex_app_server",
+                    "label": "Codex App Server",
+                    "configured": False,
+                    "available": False,
+                    "status": "disabled",
+                    "message": "Codex app-server 未启用。",
+                    "operations": [],
+                    "details": {"ui_managed": False},
+                },
+            ],
+            "action_bindings": [
+                {
+                    "action": "semantic.modeling.generate_candidates",
+                    "default_runtime": "openai_compatible",
+                    "allowed_runtimes": ["openai_compatible"],
+                    "expose_selector": False,
+                    "requires_connection": False,
+                    "reason": "fixed_openai_low_latency",
+                },
+                {
+                    "action": "semantic.modeling.review_proposal",
+                    "default_runtime": "codex_app_server",
+                    "allowed_runtimes": ["codex_app_server"],
+                    "expose_selector": False,
+                    "requires_connection": True,
+                    "reason": "fixed_codex_workspace",
+                },
+            ],
+        }
+
+    def resolve_action(self, action: str):
+        if action == "semantic.modeling.review_proposal":
+            return self.snapshot()["action_bindings"][1]
+        return self.snapshot()["action_bindings"][0]
+
+    def test_provider(self, runtime_name: str):
+        self.tested.append(runtime_name)
+        if runtime_name == "missing":
+            raise KeyError(runtime_name)
+        return self.snapshot()["providers"][0]
+
+    def start_provider(self, runtime_name: str):
+        self.started.append(runtime_name)
+        return {
+            "runtime_name": runtime_name,
+            "operation": "start",
+            "status": "succeeded",
+            "message": "已提交 Codex app-server 启动。",
+            "details": {"pid": 4321},
+        }
+
+    def stop_provider(self, runtime_name: str):
+        self.stopped.append(runtime_name)
+        return {
+            "runtime_name": runtime_name,
+            "operation": "stop",
+            "status": "succeeded",
+            "message": "已停止 Codex app-server。",
+            "details": {"pid": 4321},
+        }
+
+    def restart_provider(self, runtime_name: str):
+        return {
+            "runtime_name": runtime_name,
+            "operation": "restart",
+            "status": "succeeded",
+            "message": "已重启 Codex app-server。",
+            "details": {"pid": 4322},
+        }
+
+    def provider_logs(self, runtime_name: str):
+        return {
+            "runtime_name": runtime_name,
+            "log_path": "/tmp/codex.log",
+            "lines": ["ready"],
+            "truncated": False,
+        }
+
+    def provider_capabilities(self, runtime_name: str):
+        return {
+            "runtime_name": runtime_name,
+            "available": True,
+            "actions": ["review", "repair", "audit"],
+            "artifacts": ["model_patch"],
+            "events": ["run.started", "run.succeeded"],
+            "details": {},
+        }
+
+
 def _client(
     repository_provider,
     *,
     principal_id: str | None = "alice",
     testing: bool = True,
+    runtime_management_provider=None,
 ):
     app = Flask(__name__)
     app.config.update(TESTING=testing, JWT_SECRET="test-secret")
@@ -148,7 +258,12 @@ def _client(
         def _inject_principal():
             g.principal_id = principal_id
 
-    app.register_blueprint(create_agent_runtime_blueprint(repository_provider))
+    app.register_blueprint(
+        create_agent_runtime_blueprint(
+            repository_provider,
+            runtime_management_provider=runtime_management_provider,
+        )
+    )
     return app.test_client()
 
 
@@ -287,3 +402,75 @@ def test_agent_runtime_api_uses_repository_provider_per_request():
     assert provider.calls == 2
     assert repos[0].get_run_ids == ["run_1"]
     assert repos[1].get_run_ids == ["run_1"]
+
+
+def test_agent_runtime_api_exposes_platform_runtime_management_snapshot():
+    runtime_management = _RuntimeManagement()
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).get("/api/v1/agent-runtime/providers/status")
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["providers"][0]["runtime_name"] == "openai_compatible"
+    assert data["providers"][1]["runtime_name"] == "codex_app_server"
+    assert data["action_bindings"][0]["expose_selector"] is False
+
+
+def test_agent_runtime_api_resolves_action_binding_without_frontend_runtime_switching():
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: _RuntimeManagement(),
+    ).get("/api/v1/agent-runtime/actions/semantic.modeling.review_proposal/binding")
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["default_runtime"] == "codex_app_server"
+    assert data["expose_selector"] is False
+    assert data["requires_connection"] is True
+
+
+def test_agent_runtime_api_tests_provider_via_management_service():
+    runtime_management = _RuntimeManagement()
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).post("/api/v1/agent-runtime/providers/openai_compatible/test")
+
+    assert resp.status_code == 200
+    assert runtime_management.tested == ["openai_compatible"]
+    assert resp.get_json()["data"]["status"] == "ready"
+
+
+def test_agent_runtime_api_starts_codex_without_accepting_frontend_command():
+    runtime_management = _RuntimeManagement()
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).post(
+        "/api/v1/agent-runtime/providers/codex_app_server/start",
+        json={"command": "rm -rf /"},
+    )
+
+    assert resp.status_code == 200
+    assert runtime_management.started == ["codex_app_server"]
+    assert resp.get_json()["data"]["details"]["pid"] == 4321
+
+
+def test_agent_runtime_api_exposes_codex_logs_and_capabilities():
+    client = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: _RuntimeManagement(),
+    )
+
+    logs_resp = client.get("/api/v1/agent-runtime/providers/codex_app_server/logs")
+    capabilities_resp = client.get("/api/v1/agent-runtime/providers/codex_app_server/capabilities")
+
+    assert logs_resp.status_code == 200
+    assert logs_resp.get_json()["data"]["lines"] == ["ready"]
+    assert capabilities_resp.status_code == 200
+    assert "review" in capabilities_resp.get_json()["data"]["actions"]

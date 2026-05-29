@@ -10,7 +10,7 @@ last_reviewed: 2026-05-25
 
 本文定义 Cubic3 数据平台的统一 Agent 推理 Runtime 目标设计。它是跨业务模块复用的生成式推理与工作区任务能力层，不是语义中心或建模助手的私有实现。
 
-当前实现已经形成平台内 `AgentInferenceRuntimeService`、OpenAI-compatible adapter、语义建模首个 consumer、最小 SQL run / artifact 仓储和只读查询 API。Codex app-server 仍处于 workspace / client / adapter skeleton 阶段，已由 fake tests 覆盖基础契约；真实 Codex app-server live smoke 只在显式设置 `AGENT_CODEX_LIVE=1` 且配置 endpoint 或 Unix socket 后运行，默认开发和 CI 不连接真实 Codex。
+当前实现已经形成平台内 `AgentInferenceRuntimeService`、OpenAI-compatible adapter、语义建模首个 consumer、最小 SQL run / artifact 仓储、只读查询 API，以及平台级 action binding / provider status / 受控 Codex process 管理 API。Codex app-server 仍处于 workspace / client / adapter skeleton 阶段，已由 fake tests 覆盖基础契约；真实 Codex app-server live smoke 只在显式设置 `AGENT_CODEX_LIVE=1` 且配置 endpoint 或 Unix socket 后运行，默认开发和 CI 不连接真实 Codex。
 
 ## Implementation Status
 
@@ -18,8 +18,10 @@ last_reviewed: 2026-05-25
 - Phase 2 OpenAI-compatible adapter：已通过 `AGENT_OPENAI_*` 接入，作为当前低延迟主链。
 - Phase 3 Semantic Modeling Agent App：已实现，语义建模 Copilot 通过平台 runtime consumer 调用生成式能力。
 - Phase 4 Codex app-server adapter：当前是 workspace / client / adapter skeleton 和 fake tests；真实 app-server 未并入默认主链。
+- Runtime Management MVP：已实现 `ActionRuntimeBindingRegistry`、`AgentRuntimeManagementService` 与受控 `CodexProcessManager`；业务 action 可以固定 OpenAI、固定 Codex 或在专家 action 下显式允许选择，Copilot 默认只展示状态，不暴露 runtime 切换器。
 - 查询 API：`/api/v1/agent-runtime/runs/<run_id>` 与 `/api/v1/agent-runtime/runs/<run_id>/artifacts` 只提供 observability/read-only 查询，不触发 runtime 执行或业务副作用。
-- 验证入口：`make test-platform-agent-runtime` 覆盖平台 runtime 单测、仓储/adapter 测试、语义建模 consumer、查询 API 和默认跳过的 Codex live smoke guard。
+- 管理 API：`/api/v1/agent-runtime/providers/status`、`/api/v1/agent-runtime/actions/<action>/binding`、`/api/v1/agent-runtime/providers/<runtime>/test`、`start / stop / restart / logs / capabilities` 只暴露状态、绑定、连接测试和受控管理动作，不允许前端传任意启动命令。
+- 验证入口：`make test-platform-agent-runtime` 覆盖平台 runtime 单测、仓储/adapter 测试、语义建模 consumer、查询 API、runtime management API 和默认跳过的 Codex live smoke guard。
 
 ## 1. 背景与问题
 
@@ -72,6 +74,18 @@ last_reviewed: 2026-05-25
 | Agent Inference Runtime | `AgentInferenceRuntimeService`、OpenAI / Codex adapter | 生成式推理、结构化建议、review / repair artifact | 发布语义资产、签发执行票据、绕过 QueryDSL 治理 |
 
 查询类 action 可以调用 Agent Inference Runtime 做意图解释、结果解释或失败修复建议，但正式执行仍必须回到 official Semantic Runtime。
+
+### 2.4 业务 action 与 Runtime 切换边界
+
+平台级 Runtime 不等于所有业务页面都暴露 runtime 切换器。业务模块只声明 action 意图，平台通过 `ActionRuntimeBindingRegistry` 解析默认 runtime、允许 runtime 和是否可以展示选择器：
+
+| action 类型 | 默认 runtime | 前端切换器 | 说明 |
+|---|---|---|---|
+| `semantic.modeling.generate_candidates` / `generate_spec` / `explain_fields` | `openai_compatible` | 不展示 | 低延迟生成、解释和候选召回，固定 OpenAI-compatible 主链 |
+| `semantic.modeling.review_proposal` / `repair_*` / `audit_*` | `codex_app_server` | 不展示 | 长上下文复审、修复建议和 workspace artifact，固定 Codex runtime |
+| `semantic.modeling.expert_debug` | `openai_compatible`，可选 `codex_app_server` | 仅专家模式展示 | 明确需要对比 runtime 行为时才允许手动选择 |
+
+当 action 固定为 OpenAI 时，前端或请求体传入 `preferred_runtime=codex_app_server` 会被 router 拒绝，避免把技术实现选择暴露给普通数据开发人员。Copilot 主流程只展示 AI Runtime 状态；只有进入固定 Codex 的 review / repair / audit 能力，才需要展示 Codex 连接、启动或诊断入口。当前 Copilot 在已有 Proposal 且 `review_proposal` 需要 Codex 连接时展示轻量提示；启动动作仍调用平台管理 API，由后端白名单 profile 决定实际命令。
 
 ## 3. 总体架构
 
@@ -554,6 +568,10 @@ Codex app-server skeleton 当前只读取以下 `AGENT_CODEX_*` 字段；真实 
 
 ```text
 AGENT_CODEX_ENABLED=false
+AGENT_CODEX_UI_MANAGED=false
+AGENT_CODEX_SERVER_MANAGED=false
+AGENT_CODEX_COMMAND_PROFILE=local-codex-app-server
+AGENT_CODEX_ALLOWED_PROJECT_ROOTS=/path/to
 AGENT_CODEX_PROJECT_ID=cubic3-data-platform
 AGENT_CODEX_PROJECT_ROOT=/path/to/cubic3-data-platform
 AGENT_CODEX_RUNTIME_ROOT=/path/to/cubic3-data-platform/.cubic3/agent-codex
@@ -587,6 +605,8 @@ AGENT_CODEX_MAX_RUNTIME_SECONDS=600
 ```
 
 Codex app-server 验证通过后的运行态以本地目录为主。配置只暴露项目根和 runtime 根目录，session / thread / turn / artifact 目录由平台按 `project_id / session_id / thread_id / turn_id / run_id` 派生，避免用户手动配置多层路径。
+
+`AGENT_CODEX_UI_MANAGED` 控制管理 API 是否可以向前端声明 `start / stop / restart` 操作；`AGENT_CODEX_SERVER_MANAGED` 控制后端是否允许托管本地 app-server 进程。当前实现不接受前端传入启动命令，`CodexProcessManager` 只支持后端白名单 `local-codex-app-server` profile，并校验 `AGENT_CODEX_ALLOWED_PROJECT_ROOTS`，避免任意命令执行和路径逃逸。后续接入真实 app-server 协议后，还需要补齐 health / capabilities 原生查询、启动审计落库和进程恢复。
 
 ### 15.1 Command Provider 与 Codex Runtime 的区别
 
