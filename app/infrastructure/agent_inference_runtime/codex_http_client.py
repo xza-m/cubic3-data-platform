@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from typing import Any, Mapping
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 
 import requests
 
@@ -62,16 +62,23 @@ class CodexAppServerHttpClient:
         return self._post_json_object("/runs", payload)
 
     def poll_run(self, provider_run_id: str) -> dict[str, Any]:
-        return self._get_json_object(f"/runs/{provider_run_id}")
+        encoded_run_id = self._provider_run_path_segment(provider_run_id)
+        return self._get_json_object(f"/runs/{encoded_run_id}")
 
     def cancel_run(self, provider_run_id: str) -> dict[str, Any]:
-        return self._post_json_object(f"/runs/{provider_run_id}/cancel", {})
+        encoded_run_id = self._provider_run_path_segment(provider_run_id)
+        return self._post_json_object(f"/runs/{encoded_run_id}/cancel", {})
 
     def events(self, provider_run_id: str) -> list[dict[str, Any]]:
-        return self._get_json_list(f"/runs/{provider_run_id}/events")
+        encoded_run_id = self._provider_run_path_segment(provider_run_id)
+        return self._get_json_list(f"/runs/{encoded_run_id}/events", wrapper_keys=("events", "items"))
 
     def artifacts(self, provider_run_id: str) -> list[dict[str, Any]]:
-        return self._get_json_list(f"/runs/{provider_run_id}/artifacts")
+        encoded_run_id = self._provider_run_path_segment(provider_run_id)
+        return self._get_json_list(
+            f"/runs/{encoded_run_id}/artifacts",
+            wrapper_keys=("artifacts", "items"),
+        )
 
     def _get_json_object(self, path: str) -> dict[str, Any]:
         payload = self._request_json("GET", path)
@@ -93,10 +100,18 @@ class CodexAppServerHttpClient:
             )
         return response_payload
 
-    def _get_json_list(self, path: str) -> list[dict[str, Any]]:
+    def _get_json_list(
+        self,
+        path: str,
+        *,
+        wrapper_keys: tuple[str, ...] = ("items",),
+    ) -> list[dict[str, Any]]:
         payload = self._request_json("GET", path)
-        if isinstance(payload, dict) and "items" in payload:
-            payload = payload["items"]
+        if isinstance(payload, dict):
+            for key in wrapper_keys:
+                if key in payload:
+                    payload = payload[key]
+                    break
         if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
             raise CodexAppServerClientError(
                 "Codex app-server 返回了非列表 JSON。",
@@ -104,6 +119,16 @@ class CodexAppServerHttpClient:
                 details={"path": path},
             )
         return [dict(item) for item in payload]
+
+    def _provider_run_path_segment(self, provider_run_id: str) -> str:
+        normalized = str(provider_run_id or "").strip()
+        if not normalized:
+            raise CodexAppServerClientError(
+                "Codex app-server provider_run_id 为空。",
+                code="RUNTIME_PROVIDER_RUN_ID_INVALID",
+                status_code=400,
+            )
+        return quote(normalized, safe="")
 
     def _request_json(
         self,

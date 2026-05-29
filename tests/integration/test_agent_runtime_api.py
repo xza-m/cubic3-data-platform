@@ -15,7 +15,10 @@ from app.domain.agent_inference_runtime.types import (
     RuntimeProviderConfigSnapshot,
     RuntimeContextRef,
 )
-from app.application.agent_inference_runtime.codex_run_service import CodexRunNotFoundError
+from app.application.agent_inference_runtime.codex_run_service import (
+    CodexRunNotFoundError,
+    CodexRunService,
+)
 from app.application.agent_inference_runtime.management import AgentRuntimeManagementService
 from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.interfaces.api.middleware.error_handler import register_error_handlers
@@ -43,6 +46,24 @@ class _Repo:
         self.get_run_ids.append(run_id)
         if run_id == "run_object":
             return _RunObject()
+        if run_id == "run_corrupt_provider_ref":
+            return AgentInferenceRuntimeRun(
+                run_id="run_corrupt_provider_ref",
+                app_id="semantic_modeling",
+                action="semantic.modeling.review_proposal",
+                runtime_name="codex_app_server",
+                status="running",
+                runtime_context_ref=RuntimeContextRef(
+                    project_id="cubic3-data-platform",
+                    session_id="s_corrupt",
+                    thread_id="t_corrupt",
+                    turn_id="turn_corrupt",
+                ),
+                principal_id="alice",
+                provider_ref={"thread_id": "codex_thread_1"},
+                usage={},
+                error=None,
+            )
         if run_id == "run_unowned":
             return AgentInferenceRuntimeRun(
                 run_id="run_unowned",
@@ -176,6 +197,14 @@ class _CodexRunService:
             "provider_run_id": "provider_1",
             "items": [{"artifact_id": "artifact_provider_1"}],
         }
+
+
+class _UnusedCodexClient:
+    def events(self, provider_run_id: str):
+        raise AssertionError("events should not be called without provider_run_id")
+
+    def artifacts(self, provider_run_id: str):
+        raise AssertionError("artifacts should not be called without provider_run_id")
 
 
 class _RuntimeManagement:
@@ -536,6 +565,23 @@ def test_agent_runtime_api_hides_cross_user_lifecycle_routes(method: str, path: 
 
     assert resp.status_code == 404
     assert resp.get_json()["details"]["code"] == "RUNTIME_RUN_NOT_FOUND"
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get", "/api/v1/agent-runtime/runs/run_corrupt_provider_ref/events"),
+        ("post", "/api/v1/agent-runtime/runs/run_corrupt_provider_ref/collect-artifacts"),
+    ],
+)
+def test_agent_runtime_api_maps_corrupt_provider_ref_to_runtime_error(method: str, path: str):
+    service = CodexRunService(client=_UnusedCodexClient(), repository=_Repo())
+    client = _client(lambda: _Repo(), codex_run_service_provider=lambda: service)
+
+    resp = getattr(client, method)(path)
+
+    assert resp.status_code == 502
+    assert resp.get_json()["details"]["code"] == "RUNTIME_PROVIDER_RESPONSE_INVALID"
 
 
 def test_agent_runtime_api_requires_identity_outside_testing():

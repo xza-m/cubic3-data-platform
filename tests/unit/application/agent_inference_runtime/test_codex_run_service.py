@@ -12,6 +12,7 @@ from app.domain.agent_inference_runtime.types import (
     RuntimeContextRef,
     RuntimePolicy,
 )
+from app.infrastructure.agent_inference_runtime.codex_http_client import CodexAppServerClientError
 
 
 class _Client:
@@ -190,15 +191,44 @@ def test_events_and_artifacts_are_read_from_owned_provider_run():
     }
 
 
-def test_invalid_provider_payload_marks_run_failed_without_success():
+def test_invalid_provider_payload_records_poll_error_without_marking_succeeded():
     service, client, repo = _service()
     service.submit(_request())
     client.poll_payload = {"provider_run_id": "codex_run_1", "status": "succeeded", "usage": ["bad"]}
 
     result = service.poll("run_local_1", principal_id="alice")
 
-    assert result["status"] == "failed"
-    assert result["error"]["code"] == "RUNTIME_PROVIDER_RESPONSE_INVALID"
+    assert result["status"] == "queued"
+    assert result["error"] is None
+    assert result["provider_ref"]["last_poll_error"]["code"] == "RUNTIME_PROVIDER_RESPONSE_INVALID"
     saved = repo.runs["run_local_1"]
-    assert saved.status == "failed"
+    assert saved.status == "queued"
     assert saved.usage == {}
+
+
+def test_poll_transient_provider_error_does_not_overwrite_terminal_success():
+    service, client, repo = _service()
+    service.submit(_request())
+    client.poll_payload = {
+        "provider_run_id": "codex_run_1",
+        "status": "succeeded",
+        "usage": {"total_tokens": 11},
+    }
+    service.poll("run_local_1", principal_id="alice")
+
+    def _raise_provider_error(provider_run_id: str):
+        raise CodexAppServerClientError(
+            "Codex app-server provider 调用失败。",
+            code="RUNTIME_PROVIDER_ERROR",
+            details={"path": f"/runs/{provider_run_id}"},
+        )
+
+    client.poll_run = _raise_provider_error
+    result = service.poll("run_local_1", principal_id="alice")
+
+    assert result["status"] == "succeeded"
+    assert result["error"] is None
+    saved = repo.runs["run_local_1"]
+    assert saved.status == "succeeded"
+    assert saved.error is None
+    assert saved.provider_ref["last_poll_error"]["code"] == "RUNTIME_PROVIDER_ERROR"

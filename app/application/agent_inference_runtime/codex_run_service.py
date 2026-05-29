@@ -68,18 +68,18 @@ class CodexRunService:
 
     def poll(self, run_id: str, principal_id: str | None = None) -> dict[str, Any]:
         run = self._owned_run(run_id, principal_id)
-        provider_run_id = _stored_provider_run_id(run)
         try:
+            provider_run_id = _stored_provider_run_id(run)
             provider_payload = _dict_or_error(self._client.poll_run(provider_run_id))
             status = _status(provider_payload, default=run.status)
             usage = _dict_field(provider_payload, "usage")
             error = _status_error(status, provider_payload)
             provider_ref = _merge_provider_ref(run.provider_ref, provider_payload)
-        except (CodexAppServerClientError, ValueError) as exc:
-            status = "failed"
+        except CodexAppServerClientError as exc:
+            status = run.status
             usage = dict(run.usage)
-            error = _provider_error(exc)
-            provider_ref = dict(run.provider_ref or {})
+            error = dict(run.error) if run.error is not None else None
+            provider_ref = _with_last_poll_error(run.provider_ref, _provider_error(exc))
 
         updated = AgentInferenceRuntimeRun(
             run_id=run.run_id,
@@ -98,8 +98,8 @@ class CodexRunService:
 
     def cancel(self, run_id: str, principal_id: str | None = None) -> dict[str, Any]:
         run = self._owned_run(run_id, principal_id)
-        provider_run_id = _stored_provider_run_id(run)
         try:
+            provider_run_id = _stored_provider_run_id(run)
             provider_payload = _dict_or_error(self._client.cancel_run(provider_run_id))
             status = _status(provider_payload, default="cancelled")
             if status not in {"cancelled", "failed", "timeout"}:
@@ -205,7 +205,7 @@ def _stored_provider_run_id(run: AgentInferenceRuntimeRun) -> str:
     provider_ref = run.provider_ref or {}
     provider_run_id = provider_ref.get("provider_run_id")
     if not isinstance(provider_run_id, str) or not provider_run_id.strip():
-        raise ValueError("stored provider_run_id is missing")
+        raise _invalid_provider_payload("stored provider_run_id is missing")
     return provider_run_id
 
 
@@ -215,7 +215,7 @@ def _status(payload: Mapping[str, Any], *, default: str) -> str:
         return "failed"
     if raw_status in CodexRunService._KNOWN_STATUSES:
         return str(raw_status)
-    return "failed"
+    raise _invalid_provider_payload(f"unknown status: {raw_status}")
 
 
 def _dict_field(payload: Mapping[str, Any], field: str) -> dict[str, Any]:
@@ -256,6 +256,15 @@ def _provider_error(exc: Exception) -> dict[str, Any]:
         "code": "RUNTIME_PROVIDER_RESPONSE_INVALID",
         "message": str(exc),
     }
+
+
+def _with_last_poll_error(
+    provider_ref: Mapping[str, Any] | None,
+    poll_error: Mapping[str, Any],
+) -> dict[str, Any]:
+    merged = dict(provider_ref or {})
+    merged["last_poll_error"] = dict(poll_error)
+    return merged
 
 
 def _merge_provider_ref(
