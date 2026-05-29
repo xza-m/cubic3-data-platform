@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from functools import wraps
+import hashlib
+import os
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Callable, Mapping
+from urllib.parse import quote
 
-from flask import Blueprint, current_app, g, request
+from flask import Blueprint, current_app, g, request, send_file
 
 from app.application.agent_inference_runtime.codex_process_manager import (
     CodexProcessManagerError,
@@ -20,6 +25,7 @@ try:
 except ImportError:  # pragma: no cover - 兼容旧认证模块名
     from app.interfaces.api.middleware.auth import require_admin, require_auth as require_identity  # type: ignore[no-redef]
 from app.shared.response import error, success
+from app.shared.utils.time import utcnow
 
 
 def _value(obj: Any, name: str, default: Any = None) -> Any:
@@ -71,6 +77,8 @@ def _run_payload(run: Any) -> dict[str, Any]:
 def _artifact_payload(artifact: Any) -> dict[str, Any]:
     artifact_payload = _plain(artifact)
     if isinstance(artifact_payload, Mapping):
+        expires_at = artifact_payload.get("expires_at")
+        download_url = _artifact_download_url(artifact_payload)
         return {
             "artifact_id": artifact_payload.get("artifact_id"),
             "run_id": artifact_payload.get("run_id"),
@@ -80,7 +88,11 @@ def _artifact_payload(artifact: Any) -> dict[str, Any]:
             "mime_type": artifact_payload.get("mime_type"),
             "size_bytes": artifact_payload.get("size_bytes"),
             "sha256": artifact_payload.get("sha256"),
+            "expires_at": _datetime_payload(expires_at),
+            "downloadable": download_url is not None,
+            "download_url": download_url,
         }
+    download_url = _artifact_download_url(artifact)
     return {
         "artifact_id": _value(artifact, "artifact_id"),
         "run_id": _value(artifact, "run_id"),
@@ -90,6 +102,9 @@ def _artifact_payload(artifact: Any) -> dict[str, Any]:
         "mime_type": _value(artifact, "mime_type"),
         "size_bytes": _value(artifact, "size_bytes"),
         "sha256": _value(artifact, "sha256"),
+        "expires_at": _datetime_payload(_value(artifact, "expires_at")),
+        "downloadable": download_url is not None,
+        "download_url": download_url,
     }
 
 
@@ -141,6 +156,14 @@ def _not_found():
     )
 
 
+def _artifact_integrity_error():
+    return error(
+        "Agent runtime artifact integrity check failed",
+        status=409,
+        details={"code": "RUNTIME_ARTIFACT_INTEGRITY_ERROR"},
+    )
+
+
 def _is_owned_by_current_principal(run: Any, principal_id: str | None) -> bool:
     if not principal_id:
         return False
@@ -180,6 +203,39 @@ def create_agent_runtime_blueprint(
             return _not_found()
         artifacts = repository.list_artifacts(run_id=run_id, principal_id=principal_id)
         return success(data={"items": [_artifact_payload(item) for item in artifacts]})
+
+    @bp.route("/runs/<run_id>/artifacts/<artifact_id>/download", methods=["GET"])
+    @_require_identity_unless_testing
+    def download_artifact(run_id: str, artifact_id: str):
+        repository = _resolve_repository(repository_provider)
+        artifact = repository.get_artifact_for_download(
+            run_id=run_id,
+            artifact_id=artifact_id,
+            principal_id=_principal_id(),
+        )
+        if artifact is None:
+            return _not_found()
+        try:
+            file_path = _resolve_download_path(
+                _value(artifact, "storage_uri"),
+                run_id=run_id,
+                artifact_id=artifact_id,
+                artifact=artifact,
+            )
+        except ValueError:
+            return _artifact_integrity_error()
+        if not file_path.is_file():
+            return _not_found()
+        if not _artifact_file_hash_matches(file_path, _value(artifact, "sha256")):
+            return _artifact_integrity_error()
+        return send_file(
+            file_path,
+            mimetype=_value(artifact, "mime_type") or "application/octet-stream",
+            as_attachment=True,
+            download_name=_safe_download_name(
+                _value(artifact, "download_name") or _value(artifact, "title") or artifact_id
+            ),
+        )
 
     @bp.route("/runs/<run_id>/poll", methods=["POST"])
     @_require_identity_unless_testing
@@ -387,3 +443,193 @@ def _runtime_management_operation(runtime_management_provider: Any, operation: C
             details={"code": exc.code, **exc.details},
         )
     return success(data=_plain(result))
+
+
+def _artifact_download_url(artifact: Any) -> str | None:
+    expires_at = _value(artifact, "expires_at")
+    run_id = _value(artifact, "run_id")
+    artifact_id = _value(artifact, "artifact_id")
+    if not run_id or not artifact_id or _is_expired(expires_at):
+        return None
+    if not _is_download_route_segment(run_id) or not _is_download_route_segment(artifact_id):
+        return None
+    try:
+        _artifact_storage_segments(
+            _value(artifact, "storage_uri"),
+            run_id=str(run_id),
+            artifact_id=str(artifact_id),
+            artifact=artifact,
+        )
+    except ValueError:
+        return None
+    encoded_run_id = quote(str(run_id), safe="")
+    encoded_artifact_id = quote(str(artifact_id), safe="")
+    return (
+        f"/api/v1/agent-runtime/runs/{encoded_run_id}/artifacts/"
+        f"{encoded_artifact_id}/download"
+    )
+
+
+def _datetime_payload(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _is_expired(value: Any) -> bool:
+    if value is None:
+        return False
+    if not isinstance(value, datetime):
+        return False
+    candidate = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return candidate <= utcnow()
+
+
+def _is_download_route_segment(value: Any) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    return "/" not in value and "\\" not in value
+
+
+def _resolve_download_path(
+    storage_uri: Any,
+    *,
+    run_id: str,
+    artifact_id: str,
+    artifact: Any,
+) -> Path:
+    runtime_root = _trusted_runtime_root()
+    segments = _artifact_storage_segments(
+        storage_uri,
+        run_id=run_id,
+        artifact_id=artifact_id,
+        artifact=artifact,
+    )
+    candidate = _resolve_runtime_path_without_symlinks(runtime_root, segments)
+    if candidate != runtime_root and runtime_root not in candidate.parents:
+        raise ValueError("artifact path escapes runtime root")
+    return candidate
+
+
+def _trusted_runtime_root() -> Path:
+    raw = (
+        os.getenv("AGENT_CODEX_RUNTIME_ROOT")
+        or current_app.config.get("AGENT_CODEX_RUNTIME_ROOT")
+        or ".cubic3/agent-codex"
+    )
+    return Path(str(raw)).expanduser().resolve()
+
+
+def _artifact_storage_segments(
+    storage_uri: Any,
+    *,
+    run_id: str,
+    artifact_id: str,
+    artifact: Any,
+) -> list[str]:
+    if not isinstance(storage_uri, str) or not storage_uri.strip():
+        raise ValueError("artifact storage uri invalid")
+    raw_uri = storage_uri.strip()
+    if not raw_uri.startswith("codex-workspace://"):
+        raise ValueError("artifact storage uri scheme invalid")
+    relative_path = raw_uri.removeprefix("codex-workspace://")
+    segments = _safe_storage_relative_segments(relative_path)
+    _validate_artifact_namespace(segments, run_id=run_id, artifact_id=artifact_id, artifact=artifact)
+    return segments
+
+
+def _safe_storage_relative_segments(relative_path: str) -> list[str]:
+    if (
+        not isinstance(relative_path, str)
+        or not relative_path
+        or Path(relative_path).is_absolute()
+        or PurePosixPath(relative_path).is_absolute()
+        or PureWindowsPath(relative_path).is_absolute()
+    ):
+        raise ValueError("artifact storage path invalid")
+    normalized = relative_path.replace("\\", "/")
+    segments = normalized.split("/")
+    if any(segment in {"", ".", ".."} for segment in segments):
+        raise ValueError("artifact storage path invalid")
+    return segments
+
+
+def _resolve_runtime_path_without_symlinks(runtime_root: Path, segments: list[str]) -> Path:
+    candidate = runtime_root
+    for segment in segments:
+        candidate = candidate / segment
+        try:
+            candidate.lstat()
+        except FileNotFoundError:
+            return candidate
+        if candidate.is_symlink():
+            raise ValueError("artifact path contains symlink")
+    return candidate.resolve()
+
+
+def _validate_artifact_namespace(
+    segments: list[str],
+    *,
+    run_id: str,
+    artifact_id: str,
+    artifact: Any,
+) -> None:
+    if len(segments) != 13:
+        raise ValueError("artifact storage namespace invalid")
+    expected_labels = {
+        0: "projects",
+        2: "sessions",
+        4: "threads",
+        6: "turns",
+        8: "runs",
+        10: "artifacts",
+    }
+    if any(segments[index] != label for index, label in expected_labels.items()):
+        raise ValueError("artifact storage namespace invalid")
+    if segments[9] != quote(str(run_id), safe="") or segments[11] != quote(
+        str(artifact_id), safe=""
+    ):
+        raise ValueError("artifact storage route mismatch")
+    artifact_run_id = _value(artifact, "run_id")
+    artifact_artifact_id = _value(artifact, "artifact_id")
+    if artifact_run_id is not None and str(artifact_run_id) != str(run_id):
+        raise ValueError("artifact storage artifact mismatch")
+    if artifact_artifact_id is not None and str(artifact_artifact_id) != str(artifact_id):
+        raise ValueError("artifact storage artifact mismatch")
+
+    context_ref = _value(artifact, "context_ref") or _value(artifact, "runtime_context_ref")
+    if context_ref is None:
+        raise ValueError("artifact storage context missing")
+    expected_context = {
+        1: _value(context_ref, "project_id"),
+        3: _value(context_ref, "session_id"),
+        5: _value(context_ref, "thread_id"),
+        7: _value(context_ref, "turn_id"),
+    }
+    for index, expected in expected_context.items():
+        if expected is None or segments[index] != quote(str(expected), safe=""):
+            raise ValueError("artifact storage context mismatch")
+
+
+def _artifact_file_hash_matches(path: Path, expected_sha256: Any) -> bool:
+    if not isinstance(expected_sha256, str) or not expected_sha256.startswith("sha256:"):
+        return False
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return f"sha256:{hasher.hexdigest()}" == expected_sha256
+
+
+def _safe_download_name(raw_name: Any) -> str:
+    fallback = "artifact"
+    if not isinstance(raw_name, str) or not raw_name.strip():
+        return fallback
+    name = raw_name.strip()
+    if any(ord(char) < 32 or ord(char) == 127 for char in name):
+        return fallback
+    if "/" in name or "\\" in name or name in {".", ".."}:
+        return fallback
+    return name

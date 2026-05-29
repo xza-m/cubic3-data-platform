@@ -71,6 +71,10 @@ class AgentInferenceRuntimeArtifact:
     mime_type: str
     size_bytes: int
     sha256: str
+    runtime_context_ref: Optional[RuntimeContextRef] = None
+    storage_uri: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    download_name: Optional[str] = None
 
 
 @dataclass(frozen=True)

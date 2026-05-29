@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from app.domain.agent_inference_runtime.types import (
@@ -11,6 +13,7 @@ from app.infrastructure.agent_inference_runtime.models import (
     AgentInferenceRuntimeArtifactORM,
     AgentInferenceRuntimeRunORM,
 )
+from app.shared.utils.time import utcnow
 
 
 class SqlAgentInferenceRuntimeRepository:
@@ -91,6 +94,9 @@ class SqlAgentInferenceRuntimeRepository:
         row.mime_type = artifact.mime_type
         row.size_bytes = artifact.size_bytes
         row.sha256 = artifact.sha256
+        row.storage_uri = artifact.storage_uri
+        row.expires_at = artifact.expires_at
+        row.download_name = artifact.download_name
         self.session.commit()
 
     def list_artifacts(
@@ -121,6 +127,33 @@ class SqlAgentInferenceRuntimeRepository:
             .all()
         )
         return [self._artifact_from_row(row) for row in rows]
+
+    def get_artifact_for_download(
+        self,
+        *,
+        run_id: str,
+        artifact_id: str,
+        principal_id: str | None,
+    ) -> AgentInferenceRuntimeArtifact | None:
+        if not principal_id:
+            return None
+        row = (
+            self.session.query(AgentInferenceRuntimeArtifactORM)
+            .filter(
+                AgentInferenceRuntimeArtifactORM.artifact_id == artifact_id,
+                AgentInferenceRuntimeArtifactORM.run_id == run_id,
+                AgentInferenceRuntimeArtifactORM.principal_id == principal_id,
+            )
+            .one_or_none()
+        )
+        if row is None or not row.storage_uri:
+            return None
+        if _is_expired(row.expires_at):
+            return None
+        run_row = self.session.get(AgentInferenceRuntimeRunORM, run_id)
+        if run_row is None or run_row.principal_id != principal_id:
+            return None
+        return self._artifact_from_row(row)
 
     def _run_matches_owner(
         self,
@@ -190,4 +223,23 @@ class SqlAgentInferenceRuntimeRepository:
             mime_type=row.mime_type,
             size_bytes=int(row.size_bytes),
             sha256=row.sha256,
+            runtime_context_ref=RuntimeContextRef(
+                project_id=row.project_id,
+                session_id=row.session_id,
+                thread_id=row.thread_id,
+                turn_id=row.turn_id,
+            ),
+            storage_uri=row.storage_uri,
+            expires_at=row.expires_at,
+            download_name=row.download_name,
         )
+
+
+def _is_expired(expires_at: datetime | None) -> bool:
+    if expires_at is None:
+        return False
+    current = utcnow()
+    candidate = expires_at
+    if candidate.tzinfo is None:
+        candidate = candidate.replace(tzinfo=timezone.utc)
+    return candidate <= current

@@ -60,6 +60,9 @@ class AgentInferenceRuntimeArtifactORM(db.Model):
     mime_type = Column(String(128), nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
     sha256 = Column(String(128), nullable=False)
+    storage_uri = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    download_name = Column(String(255), nullable=True)
     created_at = Column(DateTime, nullable=False, default=utcnow)
 
 

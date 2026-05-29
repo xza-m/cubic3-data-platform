@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import jwt
 import pytest
@@ -25,6 +27,14 @@ from app.interfaces.api.middleware.error_handler import register_error_handlers
 from app.interfaces.api.v1.agent_runtime import create_agent_runtime_blueprint
 
 
+_DEFAULT_CONTEXT_REF = RuntimeContextRef(
+    project_id="cubic3",
+    session_id="s1",
+    thread_id="t1",
+    turn_id="turn1",
+)
+
+
 @dataclass(frozen=True)
 class _RepositoryArtifact:
     artifact_id: str
@@ -35,11 +45,17 @@ class _RepositoryArtifact:
     mime_type: str
     size_bytes: int
     sha256: str
+    storage_uri: str | None = None
+    expires_at: datetime | None = None
+    download_name: str | None = None
+    runtime_context_ref: RuntimeContextRef | None = None
 
 
 class _Repo:
-    def __init__(self) -> None:
+    def __init__(self, *, artifact_root: Path | None = None) -> None:
+        self.artifact_root = artifact_root
         self.artifact_principal_ids: list[str | None] = []
+        self.download_principal_ids: list[str | None] = []
         self.get_run_ids: list[str] = []
 
     def get_run(self, run_id: str):
@@ -115,6 +131,17 @@ class _Repo:
                     mime_type="application/json",
                     size_bytes=17,
                     sha256="sha-object",
+                    storage_uri=(
+                        "codex-workspace://projects/cubic3/sessions/s2/threads/t2/"
+                        "turns/turn2/runs/run_object/artifacts/artifact_obj/result.json"
+                    ),
+                    download_name="workspace.json",
+                    runtime_context_ref=RuntimeContextRef(
+                        project_id="cubic3",
+                        session_id="s2",
+                        thread_id="t2",
+                        turn_id="turn2",
+                    ),
                 )
             ]
         return [
@@ -127,8 +154,62 @@ class _Repo:
                 mime_type="application/json",
                 size_bytes=42,
                 sha256="sha-1",
+                storage_uri=(
+                    f"codex-workspace://projects/cubic3/sessions/s1/threads/t1/"
+                    f"turns/turn1/runs/{run_id}/artifacts/artifact_1/result.json"
+                ),
+                download_name="patch.json",
+                runtime_context_ref=_DEFAULT_CONTEXT_REF,
             )
         ]
+
+    def get_artifact_for_download(
+        self,
+        *,
+        run_id: str,
+        artifact_id: str,
+        principal_id: str | None,
+    ):
+        self.download_principal_ids.append(principal_id)
+        if run_id != "run_1" or artifact_id != "artifact_1" or principal_id != "alice":
+            return None
+        if self.artifact_root is None:
+            return None
+        artifact_path = (
+            self.artifact_root
+            / "projects"
+            / "cubic3"
+            / "sessions"
+            / "s1"
+            / "threads"
+            / "t1"
+            / "turns"
+            / "turn1"
+            / "runs"
+            / run_id
+            / "artifacts"
+            / artifact_id
+            / "result.json"
+        )
+        if not artifact_path.exists():
+            return None
+        digest = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+        return AgentInferenceRuntimeArtifact(
+            artifact_id="artifact_1",
+            run_id=run_id,
+            artifact_type="model_patch",
+            title="建模补丁",
+            summary="候选语义模型 patch",
+            mime_type="application/json",
+            size_bytes=artifact_path.stat().st_size,
+            sha256=f"sha256:{digest}",
+            storage_uri=(
+                f"codex-workspace://projects/cubic3/sessions/s1/threads/t1/"
+                f"turns/turn1/runs/{run_id}/artifacts/{artifact_id}/result.json"
+            ),
+            download_name="patch.json",
+            runtime_context_ref=_DEFAULT_CONTEXT_REF,
+        )
 
 
 class _ContextRefObject:
@@ -397,9 +478,12 @@ def _client(
     testing: bool = True,
     runtime_management_provider=None,
     codex_run_service_provider=None,
+    codex_runtime_root: str | None = None,
 ):
     app = Flask(__name__)
     app.config.update(TESTING=testing, JWT_SECRET="test-secret")
+    if codex_runtime_root is not None:
+        app.config["AGENT_CODEX_RUNTIME_ROOT"] = codex_runtime_root
     register_error_handlers(app)
 
     if testing and principal_id is not None:
@@ -476,8 +560,208 @@ def test_agent_runtime_api_returns_artifacts_and_passes_principal_id():
             "mime_type": "application/json",
             "size_bytes": 42,
             "sha256": "sha-1",
+            "expires_at": None,
+            "downloadable": True,
+            "download_url": "/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download",
         }
     ]
+    assert "storage_uri" not in data["items"][0]
+
+
+def test_agent_runtime_api_encodes_download_url_path_segments():
+    class _SpecialIdRepo(_Repo):
+        def get_run(self, run_id: str):
+            if run_id == "run special":
+                return AgentInferenceRuntimeRun(
+                    run_id="run special",
+                    app_id="semantic_modeling",
+                    action="semantic.modeling.chat",
+                    runtime_name="openai_compatible",
+                    status="succeeded",
+                    runtime_context_ref=RuntimeContextRef(
+                        project_id="cubic3-data-platform",
+                        session_id="s_special",
+                        thread_id="t_special",
+                        turn_id="turn_special",
+                    ),
+                    principal_id="alice",
+                    provider_ref={"provider_run_id": "provider_special"},
+                    usage={},
+                    error=None,
+                )
+            return super().get_run(run_id)
+
+        def list_artifacts(self, *, run_id: str, principal_id: str | None):
+            self.artifact_principal_ids.append(principal_id)
+            return [
+                AgentInferenceRuntimeArtifact(
+                    artifact_id="artifact with space?",
+                    run_id="run special",
+                    artifact_type="model_patch",
+                    title="特殊 ID 产物",
+                    summary="用于验证 URL path segment 编码",
+                    mime_type="application/json",
+                    size_bytes=2,
+                    sha256="sha-1",
+                    storage_uri=(
+                        "codex-workspace://projects/cubic3/sessions/s_special/"
+                        "threads/t_special/turns/turn_special/runs/run%20special/"
+                        "artifacts/artifact%20with%20space%3F/result.json"
+                    ),
+                    download_name="special.json",
+                    runtime_context_ref=RuntimeContextRef(
+                        project_id="cubic3",
+                        session_id="s_special",
+                        thread_id="t_special",
+                        turn_id="turn_special",
+                    ),
+                )
+            ]
+
+    resp = _client(lambda: _SpecialIdRepo()).get(
+        "/api/v1/agent-runtime/runs/run special/artifacts"
+    )
+
+    assert resp.status_code == 200
+    item = resp.get_json()["data"]["items"][0]
+    assert (
+        item["download_url"]
+        == "/api/v1/agent-runtime/runs/run%20special/"
+        "artifacts/artifact%20with%20space%3F/download"
+    )
+
+
+def test_agent_runtime_api_does_not_generate_download_url_for_slash_ids():
+    class _SlashIdRepo(_Repo):
+        def get_run(self, run_id: str):
+            if run_id == "run special":
+                return AgentInferenceRuntimeRun(
+                    run_id="run special",
+                    app_id="semantic_modeling",
+                    action="semantic.modeling.chat",
+                    runtime_name="openai_compatible",
+                    status="succeeded",
+                    runtime_context_ref=RuntimeContextRef(
+                        project_id="cubic3-data-platform",
+                        session_id="s_special",
+                        thread_id="t_special",
+                        turn_id="turn_special",
+                    ),
+                    principal_id="alice",
+                    provider_ref={"provider_run_id": "provider_special"},
+                    usage={},
+                    error=None,
+                )
+            return super().get_run(run_id)
+
+        def list_artifacts(self, *, run_id: str, principal_id: str | None):
+            self.artifact_principal_ids.append(principal_id)
+            return [
+                AgentInferenceRuntimeArtifact(
+                    artifact_id="artifact/with space?",
+                    run_id="run/with space?",
+                    artifact_type="model_patch",
+                    title="特殊 ID 产物",
+                    summary="用于验证 slash ID 不生成下载 URL",
+                    mime_type="application/json",
+                    size_bytes=2,
+                    sha256="sha-1",
+                    storage_uri=(
+                        "codex-workspace://projects/cubic3/sessions/s_special/"
+                        "threads/t_special/turns/turn_special/runs/run%2Fwith%20space%3F/"
+                        "artifacts/artifact%2Fwith%20space%3F/result.json"
+                    ),
+                    download_name="special.json",
+                    runtime_context_ref=RuntimeContextRef(
+                        project_id="cubic3",
+                        session_id="s_special",
+                        thread_id="t_special",
+                        turn_id="turn_special",
+                    ),
+                )
+            ]
+
+    resp = _client(lambda: _SlashIdRepo()).get(
+        "/api/v1/agent-runtime/runs/run special/artifacts"
+    )
+
+    assert resp.status_code == 200
+    item = resp.get_json()["data"]["items"][0]
+    assert item["downloadable"] is False
+    assert item["download_url"] is None
+
+
+@pytest.mark.parametrize(
+    "storage_uri",
+    [
+        "file:///tmp/runtime/result.json",
+        "/tmp/runtime/result.json",
+        "codex-workspace://projects/cubic3/result.json",
+    ],
+)
+def test_agent_runtime_api_does_not_generate_download_url_for_non_namespace_storage_uri(
+    storage_uri: str,
+):
+    class _UnsafeStorageRepo(_Repo):
+        def list_artifacts(self, *, run_id: str, principal_id: str | None):
+            self.artifact_principal_ids.append(principal_id)
+            return [
+                AgentInferenceRuntimeArtifact(
+                    artifact_id="artifact_1",
+                    run_id=run_id,
+                    artifact_type="model_patch",
+                    title="不可下载产物",
+                    summary="用于验证列表接口不暴露非 artifact namespace 下载链接",
+                    mime_type="application/json",
+                    size_bytes=2,
+                    sha256="sha-1",
+                    storage_uri=storage_uri,
+                    download_name="unsafe.json",
+                    runtime_context_ref=_DEFAULT_CONTEXT_REF,
+                )
+            ]
+
+    resp = _client(lambda: _UnsafeStorageRepo()).get(
+        "/api/v1/agent-runtime/runs/run_1/artifacts"
+    )
+
+    assert resp.status_code == 200
+    item = resp.get_json()["data"]["items"][0]
+    assert item["downloadable"] is False
+    assert item["download_url"] is None
+
+
+def test_agent_runtime_api_does_not_generate_download_url_for_context_mismatch():
+    class _ContextMismatchRepo(_Repo):
+        def list_artifacts(self, *, run_id: str, principal_id: str | None):
+            self.artifact_principal_ids.append(principal_id)
+            return [
+                AgentInferenceRuntimeArtifact(
+                    artifact_id="artifact_1",
+                    run_id=run_id,
+                    artifact_type="model_patch",
+                    title="上下文错位产物",
+                    summary="用于验证列表接口不暴露跨上下文 artifact 下载链接",
+                    mime_type="application/json",
+                    size_bytes=2,
+                    sha256="sha-1",
+                    storage_uri=(
+                        "codex-workspace://projects/other_project/sessions/s1/threads/t1/"
+                        f"turns/turn1/runs/{run_id}/artifacts/artifact_1/result.json"
+                    ),
+                    download_name="mismatch.json",
+                    runtime_context_ref=_DEFAULT_CONTEXT_REF,
+                )
+            ]
+
+    resp = _client(lambda: _ContextMismatchRepo()).get(
+        "/api/v1/agent-runtime/runs/run_1/artifacts"
+    )
+
+    assert resp.status_code == 200
+    item = resp.get_json()["data"]["items"][0]
+    assert item["downloadable"] is False
+    assert item["download_url"] is None
 
 
 def test_agent_runtime_api_serializes_repository_returned_objects():
@@ -495,7 +779,9 @@ def test_agent_runtime_api_serializes_repository_returned_objects():
         "/api/v1/agent-runtime/runs/run_object/artifacts"
     )
     assert artifacts_resp.status_code == 200
-    assert artifacts_resp.get_json()["data"]["items"][0]["artifact_id"] == "artifact_obj"
+    item = artifacts_resp.get_json()["data"]["items"][0]
+    assert item["artifact_id"] == "artifact_obj"
+    assert "storage_uri" not in item
 
 
 def test_agent_runtime_api_hides_cross_user_run_to_prevent_enumeration():
@@ -517,6 +803,336 @@ def test_agent_runtime_api_hides_cross_user_artifacts_before_listing():
     assert resp.status_code == 404
     assert resp.get_json()["details"]["code"] == "RUNTIME_RUN_NOT_FOUND"
     assert repo.artifact_principal_ids == []
+
+
+def test_agent_runtime_api_downloads_artifact_after_owner_and_hash_checks(tmp_path: Path):
+    artifact_path = (
+        tmp_path
+        / "projects"
+        / "cubic3"
+        / "sessions"
+        / "s1"
+        / "threads"
+        / "t1"
+        / "turns"
+        / "turn1"
+        / "runs"
+        / "run_1"
+        / "artifacts"
+        / "artifact_1"
+        / "result.json"
+    )
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_bytes(b'{"patch": true}\n')
+    repo = _Repo(artifact_root=tmp_path)
+
+    resp = _client(
+        lambda: repo,
+        codex_runtime_root=str(tmp_path),
+    ).get("/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download")
+
+    assert resp.status_code == 200
+    assert resp.data == b'{"patch": true}\n'
+    assert "patch.json" in resp.headers["Content-Disposition"]
+    assert repo.download_principal_ids == ["alice"]
+
+
+@pytest.mark.parametrize(
+    ("storage_uri", "artifact_path"),
+    [
+        ("codex-workspace://projects/cubic3/result.json", ("projects", "cubic3", "result.json")),
+        ("file://{path}", ("projects", "cubic3", "result.json")),
+        ("{path}", ("projects", "cubic3", "result.json")),
+    ],
+)
+def test_agent_runtime_api_download_rejects_non_artifact_namespace_storage_uri(
+    tmp_path: Path,
+    storage_uri: str,
+    artifact_path: tuple[str, ...],
+):
+    path = tmp_path.joinpath(*artifact_path)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b'{"patch": true}\n')
+    resolved_storage_uri = storage_uri.format(path=path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    class _UnsafeStorageRepo(_Repo):
+        def get_artifact_for_download(self, *, run_id, artifact_id, principal_id):
+            self.download_principal_ids.append(principal_id)
+            return AgentInferenceRuntimeArtifact(
+                artifact_id=artifact_id,
+                run_id=run_id,
+                artifact_type="model_patch",
+                title="建模补丁",
+                summary="候选语义模型 patch",
+                mime_type="application/json",
+                size_bytes=path.stat().st_size,
+                sha256=f"sha256:{digest}",
+                storage_uri=resolved_storage_uri,
+                download_name="patch.json",
+                runtime_context_ref=_DEFAULT_CONTEXT_REF,
+            )
+
+    resp = _client(
+        lambda: _UnsafeStorageRepo(artifact_root=tmp_path),
+        codex_runtime_root=str(tmp_path),
+    ).get("/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download")
+
+    assert resp.status_code == 409
+    assert resp.get_json()["details"]["code"] == "RUNTIME_ARTIFACT_INTEGRITY_ERROR"
+
+
+def test_agent_runtime_api_download_uses_safe_fallback_for_control_char_name(
+    tmp_path: Path,
+):
+    artifact_path = (
+        tmp_path
+        / "projects"
+        / "cubic3"
+        / "sessions"
+        / "s1"
+        / "threads"
+        / "t1"
+        / "turns"
+        / "turn1"
+        / "runs"
+        / "run_1"
+        / "artifacts"
+        / "artifact_1"
+        / "result.json"
+    )
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_bytes(b'{"patch": true}\n')
+    digest = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+
+    class _ControlNameRepo(_Repo):
+        def get_artifact_for_download(self, *, run_id, artifact_id, principal_id):
+            self.download_principal_ids.append(principal_id)
+            return AgentInferenceRuntimeArtifact(
+                artifact_id=artifact_id,
+                run_id=run_id,
+                artifact_type="model_patch",
+                title="建模补丁",
+                summary="候选语义模型 patch",
+                mime_type="application/json",
+                size_bytes=artifact_path.stat().st_size,
+                sha256=f"sha256:{digest}",
+                storage_uri=(
+                    f"codex-workspace://projects/cubic3/sessions/s1/threads/t1/"
+                    f"turns/turn1/runs/{run_id}/artifacts/{artifact_id}/result.json"
+                ),
+                download_name="bad\r\nname.json",
+                runtime_context_ref=_DEFAULT_CONTEXT_REF,
+            )
+
+    resp = _client(
+        lambda: _ControlNameRepo(artifact_root=tmp_path),
+        codex_runtime_root=str(tmp_path),
+    ).get("/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download")
+
+    assert resp.status_code == 200
+    content_disposition = resp.headers["Content-Disposition"]
+    assert "bad" not in content_disposition
+    assert "filename=artifact" in content_disposition
+
+
+def test_agent_runtime_api_download_hides_cross_user_artifacts(tmp_path: Path):
+    repo = _Repo(artifact_root=tmp_path)
+
+    resp = _client(
+        lambda: repo,
+        principal_id="mallory",
+        codex_runtime_root=str(tmp_path),
+    ).get("/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download")
+
+    assert resp.status_code == 404
+    assert resp.get_json()["details"]["code"] == "RUNTIME_RUN_NOT_FOUND"
+    assert repo.download_principal_ids == ["mallory"]
+
+
+def test_agent_runtime_api_download_returns_404_for_expired_artifact(tmp_path: Path):
+    class _ExpiredRepo(_Repo):
+        def get_artifact_for_download(self, *, run_id, artifact_id, principal_id):
+            self.download_principal_ids.append(principal_id)
+            return None
+
+    repo = _ExpiredRepo(artifact_root=tmp_path)
+
+    resp = _client(
+        lambda: repo,
+        codex_runtime_root=str(tmp_path),
+    ).get("/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download")
+
+    assert resp.status_code == 404
+    assert resp.get_json()["details"]["code"] == "RUNTIME_RUN_NOT_FOUND"
+
+
+def test_agent_runtime_api_download_rejects_hash_mismatch(tmp_path: Path):
+    artifact_path = (
+        tmp_path
+        / "projects"
+        / "cubic3"
+        / "sessions"
+        / "s1"
+        / "threads"
+        / "t1"
+        / "turns"
+        / "turn1"
+        / "runs"
+        / "run_1"
+        / "artifacts"
+        / "artifact_1"
+        / "result.json"
+    )
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_bytes(b"tampered")
+
+    class _MismatchRepo(_Repo):
+        def get_artifact_for_download(self, *, run_id, artifact_id, principal_id):
+            self.download_principal_ids.append(principal_id)
+            return AgentInferenceRuntimeArtifact(
+                artifact_id="artifact_1",
+                run_id=run_id,
+                artifact_type="model_patch",
+                title="建模补丁",
+                summary="候选语义模型 patch",
+                mime_type="application/json",
+                size_bytes=8,
+                sha256="sha256:" + ("0" * 64),
+                storage_uri=(
+                    f"codex-workspace://projects/cubic3/sessions/s1/threads/t1/"
+                    f"turns/turn1/runs/{run_id}/artifacts/{artifact_id}/result.json"
+                ),
+                download_name="patch.json",
+                runtime_context_ref=_DEFAULT_CONTEXT_REF,
+            )
+
+    resp = _client(
+        lambda: _MismatchRepo(artifact_root=tmp_path),
+        codex_runtime_root=str(tmp_path),
+    ).get("/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download")
+
+    assert resp.status_code == 409
+    assert resp.get_json()["details"]["code"] == "RUNTIME_ARTIFACT_INTEGRITY_ERROR"
+
+
+def test_agent_runtime_api_download_rejects_context_mismatch(tmp_path: Path):
+    artifact_path = (
+        tmp_path
+        / "projects"
+        / "other_project"
+        / "sessions"
+        / "s1"
+        / "threads"
+        / "t1"
+        / "turns"
+        / "turn1"
+        / "runs"
+        / "run_1"
+        / "artifacts"
+        / "artifact_1"
+        / "result.json"
+    )
+    artifact_path.parent.mkdir(parents=True)
+    artifact_path.write_bytes(b'{"patch": true}\n')
+    digest = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+
+    class _ContextMismatchRepo(_Repo):
+        def get_artifact_for_download(self, *, run_id, artifact_id, principal_id):
+            self.download_principal_ids.append(principal_id)
+            return AgentInferenceRuntimeArtifact(
+                artifact_id=artifact_id,
+                run_id=run_id,
+                artifact_type="model_patch",
+                title="建模补丁",
+                summary="候选语义模型 patch",
+                mime_type="application/json",
+                size_bytes=artifact_path.stat().st_size,
+                sha256=f"sha256:{digest}",
+                storage_uri=(
+                    "codex-workspace://projects/other_project/sessions/s1/threads/t1/"
+                    f"turns/turn1/runs/{run_id}/artifacts/{artifact_id}/result.json"
+                ),
+                download_name="patch.json",
+                runtime_context_ref=_DEFAULT_CONTEXT_REF,
+            )
+
+    resp = _client(
+        lambda: _ContextMismatchRepo(artifact_root=tmp_path),
+        codex_runtime_root=str(tmp_path),
+    ).get("/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download")
+
+    assert resp.status_code == 409
+    assert resp.get_json()["details"]["code"] == "RUNTIME_ARTIFACT_INTEGRITY_ERROR"
+
+
+def test_agent_runtime_api_download_rejects_symlink_crossing_artifact_namespace(
+    tmp_path: Path,
+):
+    target_path = (
+        tmp_path
+        / "projects"
+        / "cubic3"
+        / "sessions"
+        / "s2"
+        / "threads"
+        / "t2"
+        / "turns"
+        / "turn2"
+        / "runs"
+        / "run_2"
+        / "artifacts"
+        / "artifact_2"
+        / "result.json"
+    )
+    target_path.parent.mkdir(parents=True)
+    target_path.write_bytes(b'{"patch": "other"}\n')
+    link_path = (
+        tmp_path
+        / "projects"
+        / "cubic3"
+        / "sessions"
+        / "s1"
+        / "threads"
+        / "t1"
+        / "turns"
+        / "turn1"
+        / "runs"
+        / "run_1"
+        / "artifacts"
+        / "artifact_1"
+    )
+    link_path.parent.mkdir(parents=True)
+    link_path.symlink_to(target_path.parent, target_is_directory=True)
+    digest = hashlib.sha256(target_path.read_bytes()).hexdigest()
+
+    class _SymlinkRepo(_Repo):
+        def get_artifact_for_download(self, *, run_id, artifact_id, principal_id):
+            self.download_principal_ids.append(principal_id)
+            return AgentInferenceRuntimeArtifact(
+                artifact_id="artifact_1",
+                run_id="run_1",
+                artifact_type="model_patch",
+                title="建模补丁",
+                summary="候选语义模型 patch",
+                mime_type="application/json",
+                size_bytes=target_path.stat().st_size,
+                sha256=f"sha256:{digest}",
+                storage_uri=(
+                    "codex-workspace://projects/cubic3/sessions/s1/threads/t1/"
+                    "turns/turn1/runs/run_1/artifacts/artifact_1/result.json"
+                ),
+                download_name="patch.json",
+                runtime_context_ref=_DEFAULT_CONTEXT_REF,
+            )
+
+    resp = _client(
+        lambda: _SymlinkRepo(artifact_root=tmp_path),
+        codex_runtime_root=str(tmp_path),
+    ).get("/api/v1/agent-runtime/runs/run_1/artifacts/artifact_1/download")
+
+    assert resp.status_code == 409
+    assert resp.get_json()["details"]["code"] == "RUNTIME_ARTIFACT_INTEGRITY_ERROR"
 
 
 def test_agent_runtime_api_exposes_codex_run_lifecycle_routes():
