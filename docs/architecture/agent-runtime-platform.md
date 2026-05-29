@@ -3,23 +3,34 @@ doc_type: architecture-design
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-25
+last_reviewed: 2026-05-29
 ---
 
 # 平台级 Agent 推理 Runtime 目标架构
 
 本文定义 Cubic3 数据平台的统一 Agent 推理 Runtime 目标设计。它是跨业务模块复用的生成式推理与工作区任务能力层，不是语义中心或建模助手的私有实现。
 
-当前实现已经形成平台内 `AgentInferenceRuntimeService`、OpenAI-compatible adapter、语义建模首个 consumer、最小 SQL run / artifact 仓储和只读查询 API。Codex app-server 仍处于 workspace / client / adapter skeleton 阶段，已由 fake tests 覆盖基础契约；真实 Codex app-server live smoke 只在显式设置 `AGENT_CODEX_LIVE=1` 且配置 endpoint 或 Unix socket 后运行，默认开发和 CI 不连接真实 Codex。
+当前实现已经形成平台内 `AgentInferenceRuntimeService`、OpenAI-compatible adapter、语义建模与数据资产两个 consumer、最小 SQL run / artifact 仓储、只读查询 API，以及平台级 action binding / provider status / 受控 Codex process 管理 API。Codex app-server 的目标主链路明确为本机 `ws://` app-server transport；平台通过 `CodexAppServerWebSocketClient` 调用 JSON-RPC protocol，HTTP REST 不属于当前 Codex app-server 集成模式。
 
 ## Implementation Status
 
 - Phase 1 contract / router / fake runtime：已实现。
 - Phase 2 OpenAI-compatible adapter：已通过 `AGENT_OPENAI_*` 接入，作为当前低延迟主链。
 - Phase 3 Semantic Modeling Agent App：已实现，语义建模 Copilot 通过平台 runtime consumer 调用生成式能力。
-- Phase 4 Codex app-server adapter：当前是 workspace / client / adapter skeleton 和 fake tests；真实 app-server 未并入默认主链。
+- Phase 4 Codex app-server adapter：已实现本地 workspace、异步 run lifecycle、event / artifact 查询和权限校验；真实 Codex app-server transport 已接入 `CodexAppServerWebSocketClient`。
+- Phase 5 Data Asset Agent App：已实现 `asset.field.infer_semantics` 第二 consumer，数据资产底座可通过同一 runtime contract 生成字段语义候选。
+- Runtime Management MVP：已实现 `ActionRuntimeBindingRegistry`、`AgentRuntimeManagementService` 与受控 `CodexProcessManager`；业务 action 可以固定 OpenAI、固定 Codex 或在专家 action 下显式允许选择，Copilot 默认只展示状态，不暴露 runtime 切换器。
 - 查询 API：`/api/v1/agent-runtime/runs/<run_id>` 与 `/api/v1/agent-runtime/runs/<run_id>/artifacts` 只提供 observability/read-only 查询，不触发 runtime 执行或业务副作用。
-- 验证入口：`make test-platform-agent-runtime` 覆盖平台 runtime 单测、仓储/adapter 测试、语义建模 consumer、查询 API 和默认跳过的 Codex live smoke guard。
+- 管理 API：`/api/v1/agent-runtime/providers/status`、`/api/v1/agent-runtime/actions/<action>/binding`、`/api/v1/agent-runtime/providers/<runtime>/test`、`start / stop / restart / logs / capabilities` 只暴露状态、绑定、连接测试和受控管理动作，不允许前端传任意启动命令。
+- 验证入口：`make test-platform-agent-runtime` 覆盖平台 runtime 单测、仓储/adapter 测试、语义建模 consumer、查询 API 和 runtime management API。
+
+### Release readiness as of 2026-05-29
+
+- Platform runtime contract、action binding、provider management、语义建模 consumer 与数据资产 consumer 已实现。
+- Codex app-server lifecycle 支持 allowlisted local start、workspace / run / artifact contract；真实 provider 通信通过 loopback `ws://` transport。
+- Runtime provider configuration 已持久化并做 secret masking，管理动作写入审计日志。
+- Artifact download 需要 run owner 权限并校验存储内容 hash。
+- 数据资产字段语义候选生成已作为第二 consumer 接入，证明 runtime 层没有绑定到语义建模私有概念。
 
 ## 1. 背景与问题
 
@@ -72,6 +83,19 @@ last_reviewed: 2026-05-25
 | Agent Inference Runtime | `AgentInferenceRuntimeService`、OpenAI / Codex adapter | 生成式推理、结构化建议、review / repair artifact | 发布语义资产、签发执行票据、绕过 QueryDSL 治理 |
 
 查询类 action 可以调用 Agent Inference Runtime 做意图解释、结果解释或失败修复建议，但正式执行仍必须回到 official Semantic Runtime。
+
+### 2.4 业务 action 与 Runtime 切换边界
+
+平台级 Runtime 不等于所有业务页面都暴露 runtime 切换器。业务模块只声明 action 意图，平台通过 `ActionRuntimeBindingRegistry` 解析默认 runtime、允许 runtime 和是否可以展示选择器：
+
+| action 类型 | 默认 runtime | 前端切换器 | 说明 |
+|---|---|---|---|
+| `semantic.modeling.generate_candidates` / `generate_spec` / `explain_fields` | `openai_compatible` | 不展示 | 低延迟生成、解释和候选召回，固定 OpenAI-compatible 主链 |
+| `asset.field.infer_semantics` | `openai_compatible` | 不展示 | 字段语义候选生成，固定低延迟结构化输出，不需要工作区 runtime |
+| `semantic.modeling.review_proposal` / `repair_*` / `audit_*` | `codex_app_server` | 不展示 | 长上下文复审、修复建议和 workspace artifact，固定 Codex runtime |
+| `semantic.modeling.expert_debug` | `openai_compatible`，可选 `codex_app_server` | 仅专家模式展示 | 明确需要对比 runtime 行为时才允许手动选择 |
+
+当 action 固定为 OpenAI 时，前端或请求体传入 `preferred_runtime=codex_app_server` 会被 router 拒绝，避免把技术实现选择暴露给普通数据开发人员。Copilot 主流程只展示 AI Runtime 状态；只有进入固定 Codex 的 review / repair / audit 能力，才需要展示 Codex 连接、启动或诊断入口。当前 Copilot 在已有 Proposal 且 `review_proposal` 需要 Codex 连接时展示轻量提示；启动动作仍调用平台管理 API，由后端白名单 profile 决定实际命令。
 
 ## 3. 总体架构
 
@@ -550,16 +574,20 @@ AGENT_OPENAI_MODEL=...
 AGENT_OPENAI_TIMEOUT_SECONDS=30
 ```
 
-Codex app-server skeleton 当前只读取以下 `AGENT_CODEX_*` 字段；真实 app-server 默认不启用。
+Codex app-server 当前只读取以下 `AGENT_CODEX_*` 字段；真实 app-server 默认不启用。主链路为本机 WebSocket app-server，endpoint 使用 `ws://127.0.0.1:<port>`。
 
 ```text
 AGENT_CODEX_ENABLED=false
+AGENT_CODEX_UI_MANAGED=false
+AGENT_CODEX_SERVER_MANAGED=false
+AGENT_CODEX_COMMAND_PROFILE=local-codex-app-server
+AGENT_CODEX_ALLOWED_PROJECT_ROOTS=/path/to
 AGENT_CODEX_PROJECT_ID=cubic3-data-platform
 AGENT_CODEX_PROJECT_ROOT=/path/to/cubic3-data-platform
 AGENT_CODEX_RUNTIME_ROOT=/path/to/cubic3-data-platform/.cubic3/agent-codex
-AGENT_CODEX_TRANSPORT=unix_socket
-AGENT_CODEX_ENDPOINT=http://127.0.0.1:8799
-AGENT_CODEX_UNIX_SOCKET=/path/to/cubic3-data-platform/.cubic3/agent-codex/codex.sock
+AGENT_CODEX_TRANSPORT=ws
+AGENT_CODEX_ENDPOINT=ws://127.0.0.1:8799
+AGENT_CODEX_TIMEOUT_SECONDS=10
 AGENT_CODEX_MAX_CONCURRENCY=2
 ```
 
@@ -577,16 +605,12 @@ AGENT_INFERENCE_RUNTIME_DEFAULT=openai_agents
 AGENT_INFERENCE_RUNTIME_TRACE_ENABLED=true
 AGENT_INFERENCE_RUNTIME_ARTIFACT_STORE=local
 AGENT_OPENAI_ENABLED=true
-AGENT_CODEX_HEALTH_PATH=/health
-AGENT_CODEX_CAPABILITIES_PATH=/capabilities
-AGENT_CODEX_SERVER_MANAGED=true
-AGENT_CODEX_SERVER_COMMAND=codex-app-server
-AGENT_CODEX_CLI_FALLBACK=false
-AGENT_CODEX_TIMEOUT_SECONDS=120
 AGENT_CODEX_MAX_RUNTIME_SECONDS=600
 ```
 
 Codex app-server 验证通过后的运行态以本地目录为主。配置只暴露项目根和 runtime 根目录，session / thread / turn / artifact 目录由平台按 `project_id / session_id / thread_id / turn_id / run_id` 派生，避免用户手动配置多层路径。
+
+`AGENT_CODEX_UI_MANAGED` 控制管理 API 是否可以向前端声明 `start / stop / restart` 操作；`AGENT_CODEX_SERVER_MANAGED` 控制后端是否允许托管本地 app-server 进程。当前实现不接受前端传入启动命令，`CodexProcessManager` 只支持后端白名单 `local-codex-app-server` profile，并校验 `AGENT_CODEX_ALLOWED_PROJECT_ROOTS`，避免任意命令执行和路径逃逸。启动审计、配置审计和降级状态会写入 runtime 管理日志。真实 app-server 是否可用应以 WebSocket live smoke 为准。
 
 ### 15.1 Command Provider 与 Codex Runtime 的区别
 
@@ -603,23 +627,25 @@ Codex app-server 的抽象是“agent 工作区会话”，核心对象是 `proj
 | 产物 | 命令输出文件 | artifact manifest、payload、事件流、trace |
 | 适用场景 | 短任务、一次性工具 | 长上下文复审、修复建议、工作区任务 |
 
-因此 `AGENT_CODEX_*` 不设计 `COMMAND / ARGS` 作为主配置。目标上 CLI 只能作为开发期 fallback，正式集成优先使用本地 app-server HTTP / WebSocket client；当前实现尚未提供 CLI fallback。
+因此 `AGENT_CODEX_*` 不设计 `COMMAND / ARGS` 作为主配置。平台只通过本地 app-server WebSocket client 与 Codex runtime 通信；CLI 只用于启动 app-server 进程，不作为独立 runtime contract 或 fallback。
 
 ### 15.2 Codex Transport Contract
 
-Codex app-server transport 必须显式配置，不允许 adapter 猜测连接方式。当前实现只读取 `AGENT_CODEX_TRANSPORT`、`AGENT_CODEX_ENDPOINT` 和 `AGENT_CODEX_UNIX_SOCKET` 字段；health / capabilities / server-managed / CLI fallback 仍是目标演进。
+Codex app-server transport 必须显式配置，不允许 adapter 猜测连接方式。本机 `codex app-server --listen` 当前支持多种 listen 形态，但平台当前仅实现 `ws://127.0.0.1:<port>`。原因是它同时覆盖请求 / 响应、事件流、长任务状态和远程控制能力，最适合后端服务托管本机 agent runtime。
 
 | 配置 | 说明 |
 |---|---|
-| `AGENT_CODEX_TRANSPORT` | `unix_socket`、`http` 或 `websocket_events`；MVP 推荐 `unix_socket` 或本机 HTTP，WebSocket 仅作为事件通道 |
-| `AGENT_CODEX_ENDPOINT` | 本机 HTTP endpoint；当使用 Unix socket 时仅作为逻辑 base URL |
-| `AGENT_CODEX_UNIX_SOCKET` | Unix socket 路径；本机集成优先使用它降低端口冲突和暴露面 |
-| `AGENT_CODEX_HEALTH_PATH` | 健康检查路径，返回 app-server 状态、版本和当前 project readiness |
-| `AGENT_CODEX_CAPABILITIES_PATH` | 能力发现路径，返回 protocol version、支持的 action、artifact、events 和 command policy 能力 |
+| `AGENT_CODEX_TRANSPORT` | 固定为 `ws`；其它 Codex listen 形态不作为当前平台 runtime 配置 |
+| `AGENT_CODEX_ENDPOINT` | WebSocket endpoint，例如 `ws://127.0.0.1:8799`；只绑定 loopback，不暴露公网 |
 | `AGENT_CODEX_SERVER_MANAGED` | 是否由平台 process manager 启动 per-project app-server |
-| `AGENT_CODEX_SERVER_COMMAND` | 仅在 `SERVER_MANAGED=true` 时使用；用于启动本地 app-server，不等同于 command provider |
-| `AGENT_CODEX_CLI_FALLBACK` | 仅允许开发环境开启；生产必须 fail-closed |
 | `AGENT_CODEX_MAX_CONCURRENCY` | 每 project 并发 run 上限 |
+
+服务模式说明：
+
+| 模式 | Codex listen 形态 | 适用场景 | 优点 | 主要限制 | 平台结论 |
+|---|---|---|---|---|---|
+| WebSocket | `ws://127.0.0.1:<port>` | 平台后端托管本机 app-server、需要长任务事件流和 UI 连接测试 | 一条连接同时承载 RPC 与事件；适合 run lifecycle、增量状态、cancel、artifact 发现；便于未来接入 signed bearer / token | 需要端口治理、loopback 绑定和 origin 处理 | 当前唯一实现主链路 |
+| 非 WS listen 形态 | `unix://...` / `stdio://` / `off` | Codex CLI 原生能力说明 | 可支撑其它本机工具形态 | 当前平台没有对应 adapter、管理 API 或验收用例 | 不纳入当前实现 |
 
 最小 client 接口：
 
@@ -637,9 +663,8 @@ class CodexAppServerClient(Protocol):
 
 协议约束：
 
-- `healthcheck` 与 `capabilities` 必须在启动和每次正式 run 前校验 protocol version。
-- `websocket_events` 只用于事件增量推送；`submit / poll / cancel / collect_artifacts` 的最小 contract 仍需可由 HTTP / Unix socket 完成。
-- 目标演进：CLI fallback 必须由 `AGENT_CODEX_CLI_FALLBACK=true` 显式开启，并且只在开发环境允许；生产环境开启时启动失败。
+- `healthcheck` 与 `capabilities` 是平台侧语义方法，不要求映射为 HTTP path；WS client 应通过 Codex JSON-RPC / app-server protocol 完成版本和能力发现。
+- `submit / poll / cancel / stream_events / collect_artifacts` 应优先走同一条 WS transport；事件流不再被设计成独立 `websocket_events` 附属通道。
 - app-server 原生 provider id 只保存在 adapter manifest，不进入平台领域 id。
 
 Codex adapter 的映射关系：
@@ -781,7 +806,7 @@ artifact manifest 最小字段：
 - `seq` 在同一 run 内单调递增；`event_id` 全局唯一。
 - 支持按 cursor 增量读取，cursor 过期时返回可恢复错误并提示从最新 snapshot 继续。
 - 事件类型至少包含 `run.queued`、`run.started`、`tool.requested`、`approval.required`、`artifact.created`、`run.succeeded`、`run.failed`、`run.cancelled`、`run.timeout`。
-- WebSocket 只作为事件推送优化；HTTP cursor 读取必须可独立完成全部状态恢复。
+- `read_events` 通过平台运行态事件页读取增量状态；底层 Codex app-server 事件来自同一条 loopback WebSocket client。
 - 大 payload 进入 artifact，事件中只放摘要和 artifact ref。
 
 ### 15.6 Command Allowlist 与 Approval
@@ -821,7 +846,7 @@ Codex runtime 默认不允许写入型命令。需要命令执行时，必须通
 - `pytest` 这类项目内验证命令必须显式配置可信根；测试路径按 `cwd` 解析真实路径后仍必须位于可信根的 `tests/` 目录下，拒绝 symlink escape。
 - env 只允许白名单变量，密钥默认脱敏且不写入事件流。
 - 需要 approval 的命令必须记录 approver、approved_at、command_hash、policy_id 和 reason。
-- 未命中 allowlist 返回 `RUNTIME_TOOL_FORBIDDEN`，不得降级为 CLI fallback。
+- 未命中 allowlist 返回 `RUNTIME_TOOL_FORBIDDEN`，不得降级为直接命令执行。
 
 配置收敛：
 
@@ -864,7 +889,7 @@ app/application/semantic/
 
 - `domain/agent_inference_runtime` 只放通用模型、端口和错误。
 - `application/agent_inference_runtime` 只放平台 runtime 编排，不引用具体语义、资产、查询实现。
-- `infrastructure/agent_inference_runtime` 放第三方 SDK、HTTP client、进程管理和本地工作区实现。
+- `infrastructure/agent_inference_runtime` 放第三方 SDK、Codex transport client、进程管理和本地工作区实现。
 - 业务模块通过自己的 `Agent App` 适配平台 runtime。
 
 ## 17. 语义建模 Copilot 迁移设计
@@ -970,11 +995,11 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 ### Phase 4：Codex app-server 接入
 
 - 新增 `CodexAppServerRuntimeAdapter`、client、process manager。
-- 支持 `AGENT_CODEX_PROJECT_ROOT`、`AGENT_CODEX_RUNTIME_ROOT`、`AGENT_CODEX_TRANSPORT`、endpoint / socket、timeout、artifact 和 run trace。
+- 支持 `AGENT_CODEX_PROJECT_ROOT`、`AGENT_CODEX_RUNTIME_ROOT`、`AGENT_CODEX_TRANSPORT=ws`、loopback endpoint、timeout、artifact 和 run trace。
 - 按 runtime 根目录派生 project / session / thread / turn / run / artifact 目录，不再把 Codex 配置设计成普通 command provider 配置。
 - 先只接入 `review_proposal` 和 `repair_validation_failure`。
 - Codex 不参与低延迟主对话默认链路。
-- 明确 transport：MVP 优先使用本地 HTTP + Unix socket / local bridge；WebSocket 仅作为事件通道；CLI 进程只作为开发期 fallback，不能成为正式 runtime contract。
+- 明确 transport：当前主链路只使用本机 `ws://127.0.0.1:<port>`；非 WS listen 形态不纳入当前平台 runtime contract。
 - 明确对象映射：`AgentInferenceRuntimeRequest -> turn`，`AgentInferenceRuntimeRun -> run`，`AgentInferenceRuntimeResult -> result / artifact refs`。
 - 明确进程生命周期：`ensure_started`、`healthcheck`、`submit_run`、`cancel_run`、`collect_artifacts`、`cleanup_workspace`。
 - 明确最小管理面：Phase 4 必须提供 `submit / poll / cancel / read_result / read_events / read_artifact`，不能只测 adapter 内部。
@@ -983,12 +1008,12 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 - artifact 权限：artifact 只返回引用和摘要，读取时再次校验 principal、app_id、session_id、thread_id、turn_id 与 run ownership。
 - 失败恢复：app-server 不可用返回 `RUNTIME_UNAVAILABLE`；进程超时返回 `RUNTIME_TIMEOUT`；workspace 清理失败记录 warning，不影响业务状态回滚。
 
-### Phase 5：第二个业务消费者验证复用（Platform GA）
+### Phase 5：第二个业务消费者验证复用（已完成）
 
-- 选择数据资产底座作为第二个 consumer。
-- 接入 `asset.field.infer_semantics` 或 `asset.quality.explain_issue`。
+- 已选择数据资产底座作为第二个 consumer。
+- 已接入 `asset.field.infer_semantics`。
 - 验证 runtime contract 没有被语义建模私有概念污染。
-- Phase 5 不属于 MVP 完成标准，避免为了证明平台化而提前给数据资产底座增加不必要 AI action。
+- 当前只生成字段语义候选，不写正式资产事实，避免为了证明平台化而提前给数据资产底座增加不必要副作用。
 
 ### Phase 6：生产收口
 
@@ -1023,8 +1048,7 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 ### E2E / Live Smoke
 
 - OpenAI runtime live smoke：配置 API Key 后验证一次结构化输出。
-- 当前 Codex app-server live smoke：`tests/integration/agent_inference_runtime/test_codex_live_smoke.py` 默认 skip；只有 `AGENT_CODEX_LIVE=1` 时才要求 `AGENT_CODEX_ENDPOINT` 或 `AGENT_CODEX_UNIX_SOCKET`，用于阻止普通验证误连真实 Codex。
-- 目标 Codex app-server live smoke：验证进程 / server 可用、能返回 artifact、timeout 生效、cancel 生效、并发上限生效、stale recovery 生效、artifact 越权被拒、命令拒绝生效、CLI fallback disabled。
+- 目标 Codex app-server live smoke：启动本机 `codex app-server --listen ws://127.0.0.1:<port>`，通过 WebSocket client 验证进程 / server 可用、protocol version、capabilities、run artifact、timeout、cancel、并发上限、stale recovery、artifact 越权拒绝和命令拒绝。
 - 语义建模复审 E2E：生成 Proposal 后触发 Codex 复审，返回只读 review artifact。
 - 数据资产二号消费者 smoke：字段语义推断只生成候选，不写正式资产事实。
 - Codex live smoke 默认 opt-in，不进入本地默认 `make verify`；CI 只跑 fake process manager 和 contract 测试。
@@ -1065,6 +1089,6 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 ### 23.2 Platform GA 完成判定
 
 1. Codex app-server runtime 实现平台 `AgentInferenceRuntimePort`，并支持异步 run 生命周期、artifact 权限和 opt-in live smoke。
-2. 至少两个业务消费者复用平台 `AgentInferenceRuntimeService`，第二消费者建议从数据资产底座低风险解释类 action 开始。
+2. 至少两个业务消费者复用平台 `AgentInferenceRuntimeService`，当前已覆盖语义建模与数据资产字段语义候选。
 3. Runtime run 列表、详情、artifact 下载权限控制和生产 runbook 完成。
 4. 文档、配置样例、OpenAPI 管理接口、runbook 和 smoke 测试同步更新。

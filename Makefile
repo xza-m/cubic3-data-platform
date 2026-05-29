@@ -350,8 +350,11 @@ test-platform-agent-runtime:
 		tests/unit/application/agent_inference_runtime \
 		tests/unit/infrastructure/agent_inference_runtime \
 		tests/unit/application/semantic/test_semantic_modeling_agent_app.py \
-		tests/integration/test_agent_runtime_api.py \
-		tests/integration/agent_inference_runtime/test_codex_live_smoke.py
+			tests/unit/application/semantic/test_data_asset_agent_app.py \
+			tests/unit/interfaces/api/v1/test_semantic_assets_api.py \
+			tests/unit/di/test_container_wiring.py \
+			tests/integration/test_agent_runtime_api.py \
+			tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py
 
 preflight-agent-runtime:
 	@printf '%s\n' '[preflight][agent-runtime] 检查真实环境 active Ontology + active Cube 资产绑定'
@@ -450,7 +453,7 @@ docs-health:
 
 docs-impact:
 	@printf '%s\n' '[docs] 运行文档影响检查'
-	$(PYTHON) scripts/checks/doc_impact.py $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),) $(VERIFY_FILES)
+	$(PYTHON) scripts/checks/doc_impact.py $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(VERIFY_FILES),$(VERIFY_FILES),--worktree))
 
 # -----------------------------------------------------------------------------
 # 本地闸门（GitLab CI 基建未就位时，替代 pipeline 的手动入口）

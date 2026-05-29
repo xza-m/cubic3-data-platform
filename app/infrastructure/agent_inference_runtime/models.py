@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Column, DateTime, Index, String, Text
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Index, Integer, String, Text
 
 from app.extensions import db
 from app.shared.db_types import JsonType
@@ -60,4 +60,41 @@ class AgentInferenceRuntimeArtifactORM(db.Model):
     mime_type = Column(String(128), nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
     sha256 = Column(String(128), nullable=False)
+    storage_uri = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    download_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+
+
+class AgentRuntimeProviderConfigORM(db.Model):
+    """Agent Runtime provider 持久配置。"""
+
+    __tablename__ = "agent_runtime_provider_configs"
+    __table_args__ = ({"extend_existing": True},)
+
+    runtime_name = Column(String(64), primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    endpoint = Column(String(512), nullable=True)
+    model = Column(String(255), nullable=True)
+    secret_ref = Column(String(255), nullable=True)
+    extra_json = Column(JsonType, nullable=False, default=dict)
+    updated_by = Column(String(128), nullable=True)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class AgentRuntimeAuditLogORM(db.Model):
+    """Agent Runtime 管理操作审计。"""
+
+    __tablename__ = "agent_runtime_audit_logs"
+    __table_args__ = (
+        Index("idx_agent_runtime_audit_runtime_created", "runtime_name", "created_at"),
+        {"extend_existing": True},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    runtime_name = Column(String(64), nullable=False)
+    action = Column(String(64), nullable=False)
+    principal_id = Column(String(128), nullable=True)
+    status = Column(String(32), nullable=False)
+    metadata_json = Column(JsonType, nullable=False, default=dict)
     created_at = Column(DateTime, nullable=False, default=utcnow)

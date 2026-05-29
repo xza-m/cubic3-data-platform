@@ -5,15 +5,28 @@ from dataclasses import replace
 import pytest
 
 from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
+from app.application.agent_inference_runtime.action_binding import (
+    ActionRuntimeBindingRegistry,
+)
+from app.application.agent_inference_runtime.codex_process_manager import (
+    CodexProcessManagerError,
+)
+from app.application.agent_inference_runtime.management import (
+    AgentRuntimeManagementService,
+)
+from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
+from app.domain.agent_inference_runtime.types import RuntimeProviderConfigSnapshot
 from app.domain.agent_inference_runtime.ports import AgentInferenceRuntimePort
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeRequest,
     AgentInferenceRuntimeResult,
+    RuntimeOperationResult,
     RuntimeContextRef,
     RuntimePolicy,
 )
+from app.infrastructure.agent_inference_runtime.codex_client import CodexAppServerClientError
 
 
 class _FakeAdapter(AgentInferenceRuntimePort):
@@ -23,7 +36,7 @@ class _FakeAdapter(AgentInferenceRuntimePort):
         self.requests = []
 
     def can_handle(self, request: AgentInferenceRuntimeRequest) -> bool:
-        return request.preferred_runtime in {None, "fake"}
+        return request.preferred_runtime in {None, self.runtime_name}
 
     def invoke(self, request: AgentInferenceRuntimeRequest) -> AgentInferenceRuntimeResult:
         self.requests.append(request)
@@ -42,6 +55,98 @@ class _FakeAdapter(AgentInferenceRuntimePort):
             trace=[{"event_type": "run.succeeded", "seq": 1}],
             error=None,
         )
+
+
+class _AuditRecorder:
+    def __init__(self, codex_config=None):
+        self.events = []
+        self.codex_config = codex_config or {"enabled": True}
+
+    def record_audit_event(self, **kwargs):
+        self.events.append(kwargs)
+
+    def management_config(self, runtime_name):
+        if runtime_name == "openai_compatible":
+            return {
+                "enabled": True,
+                "api_key": "sk-test",
+                "api_base": "https://api.openai.test/v1",
+                "model": "gpt-5.1",
+            }
+        return self.codex_config
+
+
+class _FailingCodexProcessManager:
+    def start(self):
+        raise OSError("codex-app-server not found")
+
+
+class _UnexpectedCodexProcessManager:
+    def __init__(self):
+        self.started = False
+
+    def start(self):
+        self.started = True
+        raise AssertionError("disabled provider should not start")
+
+
+class _RecordingCodexProcessManager:
+    def __init__(self, config):
+        self.config = dict(config)
+
+    def start(self):
+        return RuntimeOperationResult(
+            runtime_name="codex_app_server",
+            operation="start",
+            status="succeeded",
+            message="started",
+            details={"endpoint": self.config.get("endpoint"), "project_root": self.config.get("project_root")},
+        )
+
+
+class _ConfigRepository:
+    def __init__(self, snapshot):
+        self.snapshot = snapshot
+        self.audit_events = []
+
+    def get_provider_config(self, runtime_name):
+        return self.snapshot if runtime_name == self.snapshot.runtime_name else None
+
+    def record_audit_event(self, **kwargs):
+        self.audit_events.append(kwargs)
+
+
+class _WsClient:
+    def __init__(self, *, fail: bool = False):
+        self.fail = fail
+        self.healthchecked = 0
+        self.capability_calls = 0
+
+    def healthcheck(self):
+        self.healthchecked += 1
+        if self.fail:
+            raise CodexAppServerClientError(
+                "ws refused",
+                code="RUNTIME_PROVIDER_ERROR",
+                details={"endpoint": "ws://127.0.0.1:8799"},
+            )
+        return {"status": "ready", "transport": "ws"}
+
+    def capabilities(self):
+        self.capability_calls += 1
+        if self.fail:
+            raise CodexAppServerClientError(
+                "ws refused",
+                code="RUNTIME_PROVIDER_ERROR",
+                details={"endpoint": "ws://127.0.0.1:8799"},
+            )
+        return {
+            "transport": "ws",
+            "protocol": "codex-app-server-jsonrpc",
+            "actions": ["semantic.modeling.review_proposal"],
+            "artifacts": ["workspace_file"],
+            "events": ["agentMessage"],
+        }
 
 
 def _request(action: str = "semantic.modeling.chat") -> AgentInferenceRuntimeRequest:
@@ -68,14 +173,15 @@ def _request(action: str = "semantic.modeling.chat") -> AgentInferenceRuntimeReq
 
 def test_service_routes_request_to_fake_runtime_and_returns_trace():
     adapter = _FakeAdapter()
+    adapter.runtime_name = "openai_compatible"
     router = AgentInferenceRuntimeRouter(adapters=[adapter])
     service = AgentInferenceRuntimeService(router=router)
-    request = replace(_request(), preferred_runtime="fake")
+    request = replace(_request(), preferred_runtime="openai_compatible")
 
     result = service.invoke(request)
 
     assert result.status == "succeeded"
-    assert result.runtime_name == "fake"
+    assert result.runtime_name == "openai_compatible"
     assert result.structured_output["message"] == "已生成候选建议"
     assert adapter.requests[0].runtime_context_ref.session_id == "session_1"
 
@@ -85,13 +191,14 @@ def test_router_rejects_unknown_runtime_without_silent_fallback():
     router = AgentInferenceRuntimeRouter(adapters=[adapter])
     request = replace(_request(), preferred_runtime="unknown_runtime")
 
-    with pytest.raises(AgentInferenceRuntimeError, match="no runtime adapter") as exc_info:
+    with pytest.raises(AgentInferenceRuntimeError, match="not allowed") as exc_info:
         router.select(request)
 
-    assert exc_info.value.code == "RUNTIME_ADAPTER_NOT_FOUND"
+    assert exc_info.value.code == "RUNTIME_NOT_ALLOWED_FOR_ACTION"
     assert exc_info.value.details == {
         "action": "semantic.modeling.chat",
         "runtime_name": "unknown_runtime",
+        "allowed_runtimes": ["openai_compatible"],
     }
 
 
@@ -131,3 +238,367 @@ def test_router_defaults_preview_action_to_openai_not_codex():
     selected = router.select(_request("semantic.modeling.preview_candidate"))
 
     assert selected.runtime_name == "openai_compatible"
+
+
+def test_action_binding_registry_keeps_fixed_openai_action_without_selector():
+    registry = ActionRuntimeBindingRegistry()
+
+    binding = registry.resolve("semantic.modeling.generate_candidates")
+
+    assert binding.default_runtime == "openai_compatible"
+    assert binding.allowed_runtimes == ["openai_compatible"]
+    assert binding.expose_selector is False
+    assert binding.reason == "fixed_openai_low_latency"
+
+
+def test_action_binding_registry_registers_data_asset_field_semantics_as_openai_consumer():
+    registry = ActionRuntimeBindingRegistry()
+
+    binding = registry.resolve("asset.field.infer_semantics")
+
+    assert binding.default_runtime == "openai_compatible"
+    assert binding.allowed_runtimes == ["openai_compatible"]
+    assert binding.expose_selector is False
+    assert binding.requires_connection is False
+    assert binding.reason == "asset_field_semantics_low_latency"
+    assert any(item.action == "asset.field.infer_semantics" for item in registry.visible_bindings())
+
+
+def test_action_binding_registry_marks_codex_review_as_fixed_runtime():
+    registry = ActionRuntimeBindingRegistry()
+
+    binding = registry.resolve("semantic.modeling.review_proposal")
+
+    assert binding.default_runtime == "codex_app_server"
+    assert binding.allowed_runtimes == ["codex_app_server"]
+    assert binding.expose_selector is False
+    assert binding.requires_connection is True
+
+
+def test_action_binding_registry_allows_selector_only_for_expert_debug():
+    registry = ActionRuntimeBindingRegistry()
+
+    binding = registry.resolve("semantic.modeling.expert_debug")
+
+    assert binding.default_runtime == "openai_compatible"
+    assert binding.allowed_runtimes == ["openai_compatible", "codex_app_server"]
+    assert binding.expose_selector is True
+    assert binding.reason == "expert_runtime_choice"
+
+
+def test_router_rejects_preferred_runtime_when_action_is_fixed_openai():
+    codex = _FakeAdapter()
+    codex.runtime_name = "codex_app_server"
+    openai = _FakeAdapter()
+    openai.runtime_name = "openai_compatible"
+    router = AgentInferenceRuntimeRouter(
+        adapters=[openai, codex],
+        action_bindings=ActionRuntimeBindingRegistry(),
+    )
+    request = replace(
+        _request("semantic.modeling.generate_candidates"),
+        preferred_runtime="codex_app_server",
+    )
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc_info:
+        router.select(request)
+
+    assert exc_info.value.code == "RUNTIME_NOT_ALLOWED_FOR_ACTION"
+    assert exc_info.value.details == {
+        "action": "semantic.modeling.generate_candidates",
+        "runtime_name": "codex_app_server",
+        "allowed_runtimes": ["openai_compatible"],
+    }
+
+
+def test_runtime_management_snapshot_exposes_provider_status_and_action_policy():
+    service = AgentRuntimeManagementService(
+        openai_config={
+            "api_key": "sk-test",
+            "api_base": "https://api.openai.test/v1",
+            "model": "gpt-4o-mini",
+        },
+        codex_config={"enabled": False, "ui_managed": False},
+    )
+
+    snapshot = service.snapshot()
+
+    assert snapshot.providers[0].runtime_name == "openai_compatible"
+    assert snapshot.providers[0].status == "ready"
+    assert snapshot.providers[1].runtime_name == "codex_app_server"
+    assert snapshot.providers[1].status == "disabled"
+    assert snapshot.action_bindings[0].expose_selector is False
+
+
+def test_runtime_management_allows_codex_start_operation_only_when_ui_managed():
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+            "project_id": "cubic3-data-platform",
+        },
+    )
+
+    status = service.provider_status("codex_app_server")
+
+    assert status.configured is True
+    assert status.available is False
+    assert status.status == "not_verified"
+    assert status.operations == [
+        "test_connection",
+        "logs",
+        "capabilities",
+        "start",
+        "stop",
+        "restart",
+    ]
+
+
+def test_runtime_management_audits_unexpected_codex_start_failure_before_reraising():
+    audit = _AuditRecorder()
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={"enabled": True},
+        codex_process_manager=_FailingCodexProcessManager(),
+        runtime_config_service=audit,
+    )
+
+    with pytest.raises(OSError, match="codex-app-server not found"):
+        service.start_provider("codex_app_server", principal_id="alice")
+
+    assert audit.events == [
+        {
+            "runtime_name": "codex_app_server",
+            "action": "start",
+            "principal_id": "alice",
+            "status": "failed",
+            "metadata": {"error": "codex-app-server not found"},
+        }
+    ]
+
+
+def test_runtime_management_blocks_db_disabled_codex_start_and_audits_failure():
+    codex_manager = _UnexpectedCodexProcessManager()
+    repository = _ConfigRepository(
+        RuntimeProviderConfigSnapshot(
+            runtime_name="codex_app_server",
+            enabled=False,
+            endpoint="http://127.0.0.1:8799",
+            model=None,
+            secret_ref=None,
+            extra={},
+            updated_by="alice",
+            updated_at=None,
+        )
+    )
+    config_service = RuntimeConfigService(
+        repository=repository,
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "endpoint": "http://127.0.0.1:8799",
+        },
+    )
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "endpoint": "http://127.0.0.1:8799",
+        },
+        codex_process_manager=codex_manager,
+        runtime_config_service=config_service,
+    )
+
+    with pytest.raises(CodexProcessManagerError, match="Codex app-server 未启用") as exc_info:
+        service.start_provider("codex_app_server", principal_id="alice")
+
+    assert exc_info.value.code == "RUNTIME_PROVIDER_DISABLED"
+    assert codex_manager.started is False
+    assert repository.audit_events == [
+        {
+            "runtime_name": "codex_app_server",
+            "action": "start",
+            "principal_id": "alice",
+            "status": "failed",
+            "metadata": {"error": "Codex app-server 未启用。"},
+        }
+    ]
+
+
+def test_runtime_management_start_uses_current_management_config_for_process_manager():
+    created_configs = []
+    repository = _ConfigRepository(
+        RuntimeProviderConfigSnapshot(
+            runtime_name="codex_app_server",
+            enabled=True,
+            endpoint="ws://127.0.0.1:8801",
+            model=None,
+            secret_ref=None,
+            extra={"project_root": "/repo/from-db"},
+            updated_by="alice",
+            updated_at=None,
+        )
+    )
+    config_service = RuntimeConfigService(
+        repository=repository,
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+            "project_root": "/repo/from-env",
+        },
+    )
+
+    def process_manager_factory(config):
+        created_configs.append(dict(config))
+        return _RecordingCodexProcessManager(config)
+
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+            "project_root": "/repo/from-env",
+        },
+        runtime_config_service=config_service,
+        codex_process_manager_factory=process_manager_factory,
+    )
+
+    result = service.start_provider("codex_app_server", principal_id="alice")
+
+    assert created_configs[0]["endpoint"] == "ws://127.0.0.1:8801"
+    assert created_configs[0]["project_root"] == "/repo/from-db"
+    assert result.details == {"endpoint": "ws://127.0.0.1:8801", "project_root": "/repo/from-db"}
+
+
+def test_runtime_management_test_provider_audit_uses_succeeded_status_with_provider_status_metadata():
+    audit = _AuditRecorder()
+    service = AgentRuntimeManagementService(
+        openai_config={
+            "api_key": "sk-test",
+            "api_base": "https://api.openai.test/v1",
+            "model": "gpt-5.1",
+        },
+        codex_config={"enabled": False},
+        runtime_config_service=audit,
+    )
+
+    result = service.test_provider("openai_compatible", principal_id="alice")
+
+    assert result.status == "ready"
+    assert audit.events == [
+        {
+            "runtime_name": "openai_compatible",
+            "action": "test",
+            "principal_id": "alice",
+            "status": "succeeded",
+            "metadata": {
+                "provider_status": "ready",
+                "available": True,
+                "configured": True,
+            },
+        }
+    ]
+
+
+def test_runtime_management_codex_ws_endpoint_tests_connection_with_ws_client():
+    ws_client = _WsClient()
+    audit = _AuditRecorder(
+        {
+            "enabled": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+        }
+    )
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+        },
+        runtime_config_service=audit,
+        codex_ws_client_factory=lambda _config: ws_client,
+    )
+
+    result = service.test_provider("codex_app_server", principal_id="alice")
+
+    assert ws_client.healthchecked == 1
+    assert result.status == "ready"
+    assert result.available is True
+    assert result.details["transport"] == "ws"
+    assert result.details["health"] == {"status": "ready", "transport": "ws"}
+    assert audit.events == [
+        {
+            "runtime_name": "codex_app_server",
+            "action": "test",
+            "principal_id": "alice",
+            "status": "succeeded",
+            "metadata": {
+                "provider_status": "ready",
+                "available": True,
+                "configured": True,
+                "health_status": "ready",
+            },
+        }
+    ]
+
+
+def test_runtime_management_codex_ws_test_provider_maps_client_error_to_unavailable():
+    ws_client = _WsClient(fail=True)
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+        },
+        codex_ws_client_factory=lambda _config: ws_client,
+    )
+
+    result = service.test_provider("codex_app_server", principal_id="alice")
+
+    assert result.status == "unavailable"
+    assert result.available is False
+    assert result.details["provider_error"] == {
+        "code": "RUNTIME_PROVIDER_ERROR",
+        "message": "ws refused",
+        "endpoint": "ws://127.0.0.1:8799",
+    }
+
+
+def test_runtime_management_codex_capabilities_use_ws_client_when_configured():
+    ws_client = _WsClient()
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+            "project_root": "/tmp/cubic3",
+        },
+        codex_ws_client_factory=lambda _config: ws_client,
+    )
+
+    capabilities = service.provider_capabilities("codex_app_server")
+
+    assert ws_client.capability_calls == 1
+    assert capabilities.available is True
+    assert capabilities.actions == ["semantic.modeling.review_proposal"]
+    assert capabilities.artifacts == ["workspace_file"]
+    assert capabilities.events == ["agentMessage"]
+    assert capabilities.details["transport"] == "ws"

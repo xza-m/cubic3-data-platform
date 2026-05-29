@@ -153,6 +153,28 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
         except Exception as exc:
             return _copilot_error("获取建模 Copilot Review", exc)
 
+    @bp.route("/sessions/<session_id>/review-runs", methods=["POST"])
+    @_require_identity_unless_testing
+    def start_review_run(session_id: str):
+        try:
+            return success(data=copilot_service.start_review_run(
+                session_id,
+                principal_id=_principal_id(),
+            ))
+        except Exception as exc:
+            return _copilot_error("启动建模 Copilot Review Run", exc)
+
+    @bp.route("/sessions/<session_id>/repair-runs", methods=["POST"])
+    @_require_identity_unless_testing
+    def start_repair_run(session_id: str):
+        try:
+            return success(data=copilot_service.start_repair_run(
+                session_id,
+                principal_id=_principal_id(),
+            ))
+        except Exception as exc:
+            return _copilot_error("启动建模 Copilot Repair Run", exc)
+
     @bp.route("/sessions/<session_id>", methods=["DELETE"])
     @_require_identity_unless_testing
     def delete_session(session_id: str):

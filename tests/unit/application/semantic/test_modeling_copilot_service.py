@@ -111,6 +111,38 @@ class _Runtime:
         )
 
 
+class _CodexAgentApp(_Runtime):
+    def __init__(self):
+        super().__init__()
+        self.review_calls = []
+        self.repair_calls = []
+
+    def start_review_proposal(self, *, session, proposal_id, principal_id=None, idempotency_key=None):
+        self.review_calls.append({
+            "session_id": session.id,
+            "proposal_id": proposal_id,
+            "principal_id": principal_id,
+            "idempotency_key": idempotency_key,
+        })
+        return {
+            "run_id": "run_review_1",
+            "provider_run_id": "provider_review_1",
+            "status": "queued",
+        }
+
+    def start_repair_validation_failure(self, *, session, principal_id=None, idempotency_key=None):
+        self.repair_calls.append({
+            "session_id": session.id,
+            "principal_id": principal_id,
+            "idempotency_key": idempotency_key,
+        })
+        return {
+            "run_id": "run_repair_1",
+            "provider_run_id": "provider_repair_1",
+            "status": "queued",
+        }
+
+
 class _AgentApp:
     def __init__(self, *, message, workbench_patch, proposal_patch):
         self.message = message
@@ -309,6 +341,255 @@ def _service(proposal_service=None):
         tools=tools,
         proposal_service=proposal_service,
     ), repo, runtime, proposal_service
+
+
+def _service_with_agent_app(agent_app, proposal_service=None):
+    repo = _SessionRepository()
+    tools = _Tools()
+    proposal_service = proposal_service or _ProposalService()
+    return SemanticModelingCopilotService(
+        session_repository=repo,
+        agent_app=agent_app,
+        tools=tools,
+        proposal_service=proposal_service,
+    ), repo, agent_app, proposal_service
+
+
+def test_start_review_run_persists_codex_metadata_without_publishing():
+    agent_app = _CodexAgentApp()
+    service, repo, _, proposal_service = _service_with_agent_app(agent_app)
+    session = AgentSession(
+        id="session_1",
+        user_goal="查询最近7天学生评论数，按学校汇总",
+        entry_type="business_question",
+        principal_id="alice",
+        current_proposal_id="proposal_1",
+        workbench_state={
+            "advanced_refs": {"proposal_id": "proposal_1"},
+            "raw_spec": {"spec_version": "v1", "cube": {"name": "student_comment_cube"}},
+            "publish_result": {"status": "not_published"},
+        },
+    )
+    repo.save(session)
+
+    result = service.start_review_run("session_1", principal_id="alice")
+
+    state = result["workbench_state"]
+    assert state["codex_review_run"] == {
+        "run_id": "run_review_1",
+        "provider_run_id": "provider_review_1",
+        "status": "queued",
+        "action": "semantic.modeling.review_proposal",
+        "session_id": "session_1",
+        "proposal_id": "proposal_1",
+        "idempotency_key": "semantic.modeling.review_proposal:session_1:proposal_1",
+    }
+    assert state["advanced_refs"]["codex_review_run_id"] == "run_review_1"
+    assert state["publish_result"] == {"status": "not_published"}
+    assert proposal_service.calls == []
+    assert agent_app.review_calls == [
+        {
+            "session_id": "session_1",
+            "proposal_id": "proposal_1",
+            "principal_id": "alice",
+            "idempotency_key": "semantic.modeling.review_proposal:session_1:proposal_1",
+        }
+    ]
+    runtime_events = [event for event in result["event_log"] if event["type"] == "runtime_action"]
+    assert runtime_events[-1]["action"] == "semantic.modeling.review_proposal"
+    assert runtime_events[-1]["payload"]["run_id"] == "run_review_1"
+
+
+def test_start_repair_run_persists_codex_metadata_without_applying_assets():
+    agent_app = _CodexAgentApp()
+    service, repo, _, proposal_service = _service_with_agent_app(agent_app)
+    session = AgentSession(
+        id="session_1",
+        user_goal="查询最近7天学生评论数，按学校汇总",
+        entry_type="business_question",
+        principal_id="alice",
+        workbench_state={
+            "raw_spec": {"spec_version": "v1", "cube": {"name": "student_comment_cube"}},
+            "validation_summary": [
+                {"severity": "error", "message": "缺少时间维度", "path": "ontology.metrics.time_dimension"}
+            ],
+            "readiness": {"reasons": ["validation_blocked"]},
+        },
+    )
+    repo.save(session)
+
+    result = service.start_repair_run("session_1", principal_id="alice")
+
+    state = result["workbench_state"]
+    assert state["codex_repair_run"]["run_id"] == "run_repair_1"
+    assert state["codex_repair_run"]["provider_run_id"] == "provider_repair_1"
+    assert state["codex_repair_run"]["status"] == "queued"
+    assert state["codex_repair_run"]["action"] == "semantic.modeling.repair_validation_failure"
+    assert state["codex_repair_run"]["session_id"] == "session_1"
+    assert state["codex_repair_run"]["idempotency_key"].startswith(
+        "semantic.modeling.repair_validation_failure:session_1:"
+    )
+    assert state["advanced_refs"]["codex_repair_run_id"] == "run_repair_1"
+    assert proposal_service.calls == []
+    assert agent_app.repair_calls[0]["session_id"] == "session_1"
+    assert agent_app.repair_calls[0]["principal_id"] == "alice"
+    assert agent_app.repair_calls[0]["idempotency_key"].startswith(
+        "semantic.modeling.repair_validation_failure:session_1:"
+    )
+    runtime_events = [event for event in result["event_log"] if event["type"] == "runtime_action"]
+    assert runtime_events[-1]["action"] == "semantic.modeling.repair_validation_failure"
+
+
+def test_start_review_run_enforces_session_owner():
+    agent_app = _CodexAgentApp()
+    service, repo, _, _ = _service_with_agent_app(agent_app)
+    repo.save(AgentSession(
+        id="session_1",
+        user_goal="查询最近7天学生评论数，按学校汇总",
+        entry_type="business_question",
+        principal_id="alice",
+        current_proposal_id="proposal_1",
+        workbench_state={"advanced_refs": {"proposal_id": "proposal_1"}},
+    ))
+
+    try:
+        service.start_review_run("session_1", principal_id="bob")
+    except PermissionError as exc:
+        assert "属于其他用户" in str(exc)
+    else:
+        raise AssertionError("expected PermissionError")
+    assert agent_app.review_calls == []
+
+
+def test_start_review_run_uses_current_principal_for_legacy_session_owner():
+    agent_app = _CodexAgentApp()
+    service, repo, _, _ = _service_with_agent_app(agent_app)
+    repo.save(AgentSession(
+        id="session_legacy",
+        user_goal="查询最近7天学生评论数，按学校汇总",
+        entry_type="business_question",
+        principal_id=None,
+        current_proposal_id="proposal_1",
+        workbench_state={"advanced_refs": {"proposal_id": "proposal_1"}},
+    ))
+
+    result = service.start_review_run("session_legacy", principal_id="alice")
+
+    assert agent_app.review_calls == [
+        {
+            "session_id": "session_legacy",
+            "proposal_id": "proposal_1",
+            "principal_id": "alice",
+            "idempotency_key": "semantic.modeling.review_proposal:session_legacy:proposal_1",
+        }
+    ]
+    runtime_events = [event for event in result["event_log"] if event["type"] == "runtime_action"]
+    assert runtime_events[-1]["actor"] == "alice"
+
+
+def test_start_repair_run_uses_current_principal_for_legacy_session_owner():
+    agent_app = _CodexAgentApp()
+    service, repo, _, _ = _service_with_agent_app(agent_app)
+    repo.save(AgentSession(
+        id="session_legacy",
+        user_goal="查询最近7天学生评论数，按学校汇总",
+        entry_type="business_question",
+        principal_id=None,
+        workbench_state={
+            "raw_spec": {"spec_version": "v1", "cube": {"name": "student_comment_cube"}},
+            "validation_summary": [{"severity": "error", "message": "缺少时间维度"}],
+        },
+    ))
+
+    result = service.start_repair_run("session_legacy", principal_id="alice")
+
+    assert agent_app.repair_calls[0]["session_id"] == "session_legacy"
+    assert agent_app.repair_calls[0]["principal_id"] == "alice"
+    assert agent_app.repair_calls[0]["idempotency_key"].startswith(
+        "semantic.modeling.repair_validation_failure:session_legacy:"
+    )
+    runtime_events = [event for event in result["event_log"] if event["type"] == "runtime_action"]
+    assert runtime_events[-1]["actor"] == "alice"
+
+
+def test_start_review_run_returns_active_existing_run_without_resubmitting():
+    agent_app = _CodexAgentApp()
+    service, repo, _, _ = _service_with_agent_app(agent_app)
+    repo.save(AgentSession(
+        id="session_1",
+        user_goal="查询最近7天学生评论数，按学校汇总",
+        entry_type="business_question",
+        principal_id="alice",
+        current_proposal_id="proposal_1",
+        workbench_state={
+            "advanced_refs": {
+                "proposal_id": "proposal_1",
+                "codex_review_run_id": "run_existing",
+            },
+            "codex_review_run": {
+                "run_id": "run_existing",
+                "status": "queued",
+                "action": "semantic.modeling.review_proposal",
+                "proposal_id": "proposal_1",
+                "session_id": "session_1",
+                "idempotency_key": "semantic.modeling.review_proposal:session_1:proposal_1",
+            },
+        },
+    ))
+
+    result = service.start_review_run("session_1", principal_id="alice")
+
+    assert result["workbench_state"]["codex_review_run"]["run_id"] == "run_existing"
+    assert agent_app.review_calls == []
+
+
+def test_start_repair_run_returns_active_existing_run_without_resubmitting():
+    agent_app = _CodexAgentApp()
+    service, repo, _, _ = _service_with_agent_app(agent_app)
+    repo.save(AgentSession(
+        id="session_1",
+        user_goal="查询最近7天学生评论数，按学校汇总",
+        entry_type="business_question",
+        principal_id="alice",
+        workbench_state={
+            "raw_spec": {"spec_version": "v1", "cube": {"name": "student_comment_cube"}},
+            "validation_summary": [{"severity": "error", "message": "缺少时间维度"}],
+            "codex_repair_run": {
+                "run_id": "run_existing",
+                "status": "running",
+                "action": "semantic.modeling.repair_validation_failure",
+            },
+        },
+    ))
+
+    result = service.start_repair_run("session_1", principal_id="alice")
+
+    assert result["workbench_state"]["codex_repair_run"]["run_id"] == "run_existing"
+    assert agent_app.repair_calls == []
+
+
+def test_get_review_surfaces_codex_review_run_metadata():
+    service, repo, _, _ = _service()
+    repo.save(AgentSession(
+        id="session_1",
+        user_goal="查询最近7天学生评论数，按学校汇总",
+        entry_type="business_question",
+        principal_id="alice",
+        current_proposal_id="proposal_1",
+        workbench_state={
+            "raw_spec": {"spec_version": "v1", "cube": {"name": "student_comment_cube"}},
+            "codex_review_run": {
+                "run_id": "run_review_1",
+                "status": "queued",
+                "action": "semantic.modeling.review_proposal",
+            },
+        },
+    ))
+
+    review = service.get_review("session_1", principal_id="alice")
+
+    assert review["codex_review_run"]["run_id"] == "run_review_1"
+    assert review["codex_review_run"]["status"] == "queued"
 
 
 def test_copilot_session_turn_updates_workbench_without_publishing():

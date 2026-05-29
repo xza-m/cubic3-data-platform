@@ -268,9 +268,8 @@ def test_container_reads_agent_codex_config_without_router_enablement(monkeypatc
     monkeypatch.setenv("AGENT_CODEX_PROJECT_ID", "project_x")
     monkeypatch.setenv("AGENT_CODEX_PROJECT_ROOT", "/repo/project_x")
     monkeypatch.setenv("AGENT_CODEX_RUNTIME_ROOT", "/tmp/codex-runtime")
-    monkeypatch.setenv("AGENT_CODEX_TRANSPORT", "unix_socket")
-    monkeypatch.setenv("AGENT_CODEX_ENDPOINT", "http://127.0.0.1:8799")
-    monkeypatch.setenv("AGENT_CODEX_UNIX_SOCKET", "/tmp/codex.sock")
+    monkeypatch.setenv("AGENT_CODEX_TRANSPORT", "ws")
+    monkeypatch.setenv("AGENT_CODEX_ENDPOINT", "ws://127.0.0.1:8799")
     monkeypatch.setenv("AGENT_CODEX_MAX_CONCURRENCY", "5")
 
     app = Flask(__name__)
@@ -285,9 +284,8 @@ def test_container_reads_agent_codex_config_without_router_enablement(monkeypatc
     assert container.config.agent_codex.project_id() == "project_x"
     assert container.config.agent_codex.project_root() == "/repo/project_x"
     assert container.config.agent_codex.runtime_root() == "/tmp/codex-runtime"
-    assert container.config.agent_codex.transport() == "unix_socket"
-    assert container.config.agent_codex.endpoint() == "http://127.0.0.1:8799"
-    assert container.config.agent_codex.unix_socket() == "/tmp/codex.sock"
+    assert container.config.agent_codex.transport() == "ws"
+    assert container.config.agent_codex.endpoint() == "ws://127.0.0.1:8799"
     assert container.config.agent_codex.max_concurrency() == 5
     router = container.agent_inference_runtime_router()
     assert [adapter.runtime_name for adapter in router._adapters] == ["openai_compatible"]

@@ -3,13 +3,27 @@ from __future__ import annotations
 
 from typing import Any
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.interfaces.api.middleware.auth import require_admin, require_auth
-from app.shared.response import created, not_found, success
+from app.shared.response import created, error, not_found, success
 
 
-def create_semantic_assets_blueprint(data_asset_service: Any) -> Blueprint:
+_RUNTIME_SERVICE_UNAVAILABLE_CODES = {
+    "RUNTIME_NOT_CONFIGURED",
+    "RUNTIME_UNAVAILABLE",
+    "RUNTIME_PROVIDER_ERROR",
+    "RUNTIME_ADAPTER_NOT_FOUND",
+    "RUNTIME_CONFIG_INVALID",
+}
+
+
+def create_semantic_assets_blueprint(
+    data_asset_service: Any,
+    *,
+    data_asset_agent_app: Any = None,
+) -> Blueprint:
     bp = Blueprint(
         "semantic_assets",
         __name__,
@@ -67,6 +81,34 @@ def create_semantic_assets_blueprint(data_asset_service: Any) -> Blueprint:
             return not_found("数据资产不存在")
         return success(evidence)
 
+    @bp.route("/tables/<table_id>/field-semantic-candidates", methods=["POST"])
+    @require_auth
+    def field_semantic_candidates(table_id: str):
+        agent_app = _resolve_provider(data_asset_agent_app)
+        if agent_app is None:
+            return error("数据资产 Agent 未配置", status=503)
+        service = _resolve_data_asset_service(data_asset_service)
+        field_payload = service.list_fields(table_id)
+        if field_payload is None:
+            return not_found("数据资产不存在")
+        payload = request.get_json(silent=True) or {}
+        fields = payload.get("fields")
+        if not isinstance(fields, list) or not fields:
+            fields = field_payload.get("items") or []
+        try:
+            result = agent_app.infer_field_semantics(
+                table_id=table_id,
+                fields=fields,
+                principal_id=_current_principal_id(),
+            )
+        except AgentInferenceRuntimeError as exc:
+            return error(
+                str(exc),
+                status=_runtime_error_status(exc.code),
+                details={"code": exc.code, **exc.details},
+            )
+        return success(result)
+
     @bp.route("/sync-runs", methods=["GET"])
     @require_auth
     def sync_runs():
@@ -100,6 +142,24 @@ def _resolve_data_asset_service(data_asset_service: Any) -> Any:
     if hasattr(data_asset_service, "radar_summary"):
         return data_asset_service
     return data_asset_service()
+
+
+def _resolve_provider(provider: Any) -> Any:
+    if provider is None:
+        return None
+    return provider() if callable(provider) and not hasattr(provider, "infer_field_semantics") else provider
+
+
+def _current_principal_id() -> str | None:
+    return getattr(g, "principal_id", None) or getattr(g, "user_id", None)
+
+
+def _runtime_error_status(code: str) -> int:
+    if code == "RUNTIME_TIMEOUT":
+        return 504
+    if code in _RUNTIME_SERVICE_UNAVAILABLE_CODES:
+        return 503
+    return 422
 
 
 def _positive_int_arg(name: str, *, default: int, maximum: int | None = None) -> int:

@@ -1,6 +1,9 @@
 """语义建模 Copilot 业务主控服务。"""
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from copy import deepcopy
 from typing import Any, Dict, Optional
 from uuid import uuid4
@@ -32,6 +35,7 @@ class SemanticModelingCopilotService:
         self._tools = tools
         self._proposal_service = proposal_service
         self._source_scoring_config = source_scoring_config or SourceCandidateScoringConfig.default()
+        self._logger = logging.getLogger(__name__)
 
     def _save_session(self, session: AgentSession) -> None:
         previous_state_version = session.state_version
@@ -156,6 +160,117 @@ class SemanticModelingCopilotService:
                 pass
 
         return self._review_from_session(session)
+
+    def start_review_run(
+        self,
+        session_id: str,
+        *,
+        principal_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """启动 Codex Proposal Review run，只记录生命周期元数据，不应用输出。"""
+        session = self._require(session_id)
+        self._authorize(session, principal_id)
+        proposal_id = str(
+            session.current_proposal_id
+            or (session.workbench_state.get("advanced_refs") or {}).get("proposal_id")
+            or ""
+        ).strip()
+        if not proposal_id:
+            raise ValueError("当前会话还没有可 review 的 Proposal")
+        effective_principal_id = session.principal_id or principal_id
+        idempotency_key = self._review_run_idempotency_key(session.id, proposal_id)
+        existing_run = self._active_existing_codex_run(
+            session.workbench_state.get("codex_review_run"),
+            action="semantic.modeling.review_proposal",
+            idempotency_key=idempotency_key,
+            proposal_id=proposal_id,
+        )
+        if existing_run is not None:
+            return self._dump(session)
+
+        run = self._agent_app.start_review_proposal(
+            session=session,
+            proposal_id=proposal_id,
+            principal_id=effective_principal_id,
+            idempotency_key=idempotency_key,
+        )
+        metadata = self._codex_run_metadata(
+            run,
+            action="semantic.modeling.review_proposal",
+            session_id=session.id,
+            proposal_id=proposal_id,
+            idempotency_key=idempotency_key,
+        )
+        state = deepcopy(session.workbench_state or {})
+        state["codex_review_run"] = metadata
+        state["advanced_refs"] = {
+            **(state.get("advanced_refs") or {}),
+            "codex_review_run_id": metadata.get("run_id"),
+        }
+        session.workbench_state = state
+        session.record_event(
+            "runtime_action",
+            actor=effective_principal_id,
+            action="semantic.modeling.review_proposal",
+            payload={"run_id": metadata.get("run_id"), "status": metadata.get("status")},
+        )
+        self._save_runtime_action_session(session, metadata)
+        return self._dump(session)
+
+    def start_repair_run(
+        self,
+        session_id: str,
+        *,
+        principal_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """启动 Codex validation repair run，只记录生命周期元数据，不应用输出。"""
+        session = self._require(session_id)
+        self._authorize(session, principal_id)
+        state = session.workbench_state or {}
+        raw_spec = state.get("raw_spec") if isinstance(state.get("raw_spec"), dict) else {}
+        validation_summary = state.get("validation_summary") or []
+        has_validation_error = any(
+            isinstance(item, dict) and item.get("severity") == "error"
+            for item in validation_summary
+        )
+        if not raw_spec or not has_validation_error:
+            raise ValueError("当前会话没有可修复的校验失败上下文")
+        effective_principal_id = session.principal_id or principal_id
+        idempotency_key = self._repair_run_idempotency_key(session.id, raw_spec, validation_summary)
+        existing_run = self._active_existing_codex_run(
+            state.get("codex_repair_run"),
+            action="semantic.modeling.repair_validation_failure",
+            idempotency_key=idempotency_key,
+        )
+        if existing_run is not None:
+            return self._dump(session)
+
+        run = self._agent_app.start_repair_validation_failure(
+            session=session,
+            principal_id=effective_principal_id,
+            idempotency_key=idempotency_key,
+        )
+        metadata = self._codex_run_metadata(
+            run,
+            action="semantic.modeling.repair_validation_failure",
+            session_id=session.id,
+            idempotency_key=idempotency_key,
+        )
+        next_state = deepcopy(state)
+        next_state["codex_repair_run"] = metadata
+        next_state["advanced_refs"] = {
+            **(next_state.get("advanced_refs") or {}),
+            "codex_repair_run_id": metadata.get("run_id"),
+        }
+        session.workbench_state = next_state
+        session.record_event(
+            "runtime_action",
+            actor=effective_principal_id,
+            action="semantic.modeling.repair_validation_failure",
+            payload={"run_id": metadata.get("run_id"), "status": metadata.get("status")},
+        )
+        self._save_runtime_action_session(session, metadata)
+        return self._dump(session)
 
     def list_sessions(
         self,
@@ -1589,6 +1704,85 @@ class SemanticModelingCopilotService:
     def _dump(self, session: AgentSession) -> Dict[str, Any]:
         return session.model_dump(mode="json", exclude_none=True)
 
+    def _codex_run_metadata(
+        self,
+        run: Dict[str, Any],
+        *,
+        action: str,
+        session_id: str,
+        idempotency_key: str,
+        proposal_id: str | None = None,
+    ) -> Dict[str, Any]:
+        metadata = {
+            "run_id": run.get("run_id"),
+            "provider_run_id": run.get("provider_run_id"),
+            "status": run.get("status"),
+            "action": action,
+            "session_id": session_id,
+            "proposal_id": proposal_id,
+            "idempotency_key": idempotency_key,
+        }
+        return {key: value for key, value in metadata.items() if value is not None}
+
+    def _save_runtime_action_session(
+        self,
+        session: AgentSession,
+        metadata: Dict[str, Any],
+    ) -> None:
+        try:
+            self._save_session(session)
+        except Exception:
+            self._logger.exception(
+                "semantic codex runtime action submitted but session save failed",
+                extra={
+                    "run_id": metadata.get("run_id"),
+                    "action": metadata.get("action"),
+                    "session_id": metadata.get("session_id"),
+                    "idempotency_key": metadata.get("idempotency_key"),
+                },
+            )
+            raise
+
+    def _active_existing_codex_run(
+        self,
+        run: Any,
+        *,
+        action: str,
+        idempotency_key: str,
+        proposal_id: str | None = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(run, dict):
+            return None
+        if run.get("action") != action:
+            return None
+        status = str(run.get("status") or "")
+        if status not in {"queued", "running"}:
+            return None
+        existing_key = run.get("idempotency_key")
+        if existing_key and existing_key != idempotency_key:
+            return None
+        if proposal_id is not None and run.get("proposal_id") not in {None, proposal_id}:
+            return None
+        return run
+
+    def _review_run_idempotency_key(self, session_id: str, proposal_id: str) -> str:
+        return f"semantic.modeling.review_proposal:{session_id}:{proposal_id}"
+
+    def _repair_run_idempotency_key(
+        self,
+        session_id: str,
+        raw_spec: Dict[str, Any],
+        validation_summary: Any,
+    ) -> str:
+        payload = {
+            "raw_spec": raw_spec,
+            "validation_summary": validation_summary,
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+        ).hexdigest()[:16]
+        return f"semantic.modeling.repair_validation_failure:{session_id}:{digest}"
+
     def _saved_proposal_next_steps(self, proposal_id: str) -> list[Dict[str, Any]]:
         return [
             {
@@ -1653,6 +1847,7 @@ class SemanticModelingCopilotService:
             "publish_gate": self._publish_gate_state(status, status_label, has_spec, bool(proposal_id), blockers, published, state),
             "post_publish_validation": self._post_publish_validation(state, published=published),
             "primary_action": self._review_primary_action(status, has_spec, blockers),
+            "codex_review_run": self._codex_review_run_state(state),
         }
 
     def _review_from_gap_view(self, session: AgentSession, gap_view: Dict[str, Any]) -> Dict[str, Any]:
@@ -1703,7 +1898,12 @@ class SemanticModelingCopilotService:
                 "disabled": bool(primary.get("disabled", False)),
                 "disabled_reason": primary.get("disabled_reason"),
             },
+            "codex_review_run": self._codex_review_run_state(session.workbench_state),
         }
+
+    def _codex_review_run_state(self, state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        run = state.get("codex_review_run")
+        return deepcopy(run) if isinstance(run, dict) else None
 
     def _review_changes_from_state(
         self,

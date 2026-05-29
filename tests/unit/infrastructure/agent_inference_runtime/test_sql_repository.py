@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from app.domain.agent_inference_runtime.types import (
@@ -10,6 +12,7 @@ from app.domain.agent_inference_runtime.types import (
 from app.infrastructure.agent_inference_runtime.sql_repository import (
     SqlAgentInferenceRuntimeRepository,
 )
+from app.shared.utils.time import utcnow
 
 
 def _runtime_context_ref(
@@ -52,6 +55,11 @@ def _runtime_artifact(
     artifact_id: str = "artifact_1",
     run_id: str = "run_1",
     size_bytes: int = 42,
+    storage_uri: str | None = (
+        "codex-workspace://projects/cubic3-data-platform/sessions/session_1/"
+        "threads/thread_1/turns/turn_1/runs/run_1/artifacts/artifact_1/result.json"
+    ),
+    expires_at=None,
 ) -> AgentInferenceRuntimeArtifact:
     return AgentInferenceRuntimeArtifact(
         artifact_id=artifact_id,
@@ -61,7 +69,10 @@ def _runtime_artifact(
         summary="候选语义结果",
         mime_type="application/json",
         size_bytes=size_bytes,
-        sha256="abc123",
+        sha256="sha256:abc123",
+        storage_uri=storage_uri,
+        expires_at=expires_at,
+        download_name="result.json",
     )
 
 
@@ -82,7 +93,20 @@ def test_sql_runtime_repository_round_trips_run_and_artifact(db_session):
 
     artifacts = repo.list_artifacts(run_id="run_1", principal_id="alice")
     assert [item.artifact_id for item in artifacts] == ["artifact_1"]
+    assert artifacts[0].storage_uri is not None
+    assert artifacts[0].download_name == "result.json"
+    assert artifacts[0].runtime_context_ref == ref
     assert repo.list_artifacts(run_id="run_1", principal_id="bob") == []
+
+    download = repo.get_artifact_for_download(
+        run_id="run_1",
+        artifact_id="artifact_1",
+        principal_id="alice",
+    )
+    assert download is not None
+    assert download.storage_uri == artifact.storage_uri
+    assert download.sha256 == "sha256:abc123"
+    assert download.runtime_context_ref == ref
 
 
 def test_save_artifact_rejects_duplicate_id_with_different_owner(db_session):
@@ -153,3 +177,53 @@ def test_sql_runtime_repository_round_trips_large_artifact_size(db_session):
 
     artifacts = repo.list_artifacts(run_id="run_1", principal_id="alice")
     assert artifacts[0].size_bytes == 3_000_000_000
+
+
+def test_get_artifact_for_download_returns_none_for_wrong_owner_or_run(db_session):
+    repo = SqlAgentInferenceRuntimeRepository(db_session)
+    ref = _runtime_context_ref()
+    repo.save_run(_runtime_run(ref=ref, principal_id="alice"))
+    repo.save_artifact(
+        _runtime_artifact(),
+        context_ref=ref,
+        app_id="semantic_modeling",
+        principal_id="alice",
+    )
+
+    assert (
+        repo.get_artifact_for_download(
+            run_id="run_1",
+            artifact_id="artifact_1",
+            principal_id="bob",
+        )
+        is None
+    )
+    assert (
+        repo.get_artifact_for_download(
+            run_id="other_run",
+            artifact_id="artifact_1",
+            principal_id="alice",
+        )
+        is None
+    )
+
+
+def test_get_artifact_for_download_returns_none_for_expired_artifact(db_session):
+    repo = SqlAgentInferenceRuntimeRepository(db_session)
+    ref = _runtime_context_ref()
+    repo.save_run(_runtime_run(ref=ref, principal_id="alice"))
+    repo.save_artifact(
+        _runtime_artifact(expires_at=utcnow() - timedelta(seconds=1)),
+        context_ref=ref,
+        app_id="semantic_modeling",
+        principal_id="alice",
+    )
+
+    assert (
+        repo.get_artifact_for_download(
+            run_id="run_1",
+            artifact_id="artifact_1",
+            principal_id="alice",
+        )
+        is None
+    )

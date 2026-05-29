@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -119,6 +120,182 @@ def test_codex_workspace_rejects_artifact_symlink_escape(tmp_path: Path):
 
     with pytest.raises(ValueError, match="artifact path escapes"):
         store.resolve_artifact_path(ref, "external/result.json")
+
+
+def test_codex_workspace_writes_artifact_bytes_with_metadata(tmp_path: Path):
+    store = CodexWorkspaceStore(runtime_root=tmp_path)
+    ref = RuntimeContextRef("cubic3-data-platform", "session_1", "thread_1", "turn_1")
+    store.prepare_turn(ref, request_payload={}, runtime_policy={})
+
+    stored = store.write_artifact(
+        ref,
+        run_id="run_1",
+        artifact_id="artifact_1",
+        filename="result.json",
+        content=b'{"ok": true}\n',
+    )
+
+    expected_hash = "sha256:" + hashlib.sha256(b'{"ok": true}\n').hexdigest()
+    assert stored.sha256 == expected_hash
+    assert stored.size_bytes == 13
+    assert stored.filename == "result.json"
+    assert stored.storage_uri.startswith("codex-workspace://")
+    assert stored.path.read_bytes() == b'{"ok": true}\n'
+    assert tmp_path.resolve() in stored.path.resolve().parents
+
+
+@pytest.mark.parametrize(
+    ("artifact_id", "filename"),
+    [
+        ("../artifact", "result.json"),
+        ("artifact_1", "../result.json"),
+        ("artifact_1", "/tmp/result.json"),
+        ("artifact_1", "nested/result.json"),
+    ],
+)
+def test_codex_workspace_write_artifact_rejects_unsafe_segments(
+    tmp_path: Path,
+    artifact_id: str,
+    filename: str,
+):
+    store = CodexWorkspaceStore(runtime_root=tmp_path)
+    ref = RuntimeContextRef("cubic3-data-platform", "session_1", "thread_1", "turn_1")
+    store.prepare_turn(ref, request_payload={}, runtime_policy={})
+
+    with pytest.raises(ValueError, match="artifact path"):
+        store.write_artifact(
+            ref,
+            run_id="run_1",
+            artifact_id=artifact_id,
+            filename=filename,
+            content=b"unsafe",
+        )
+
+
+def test_codex_workspace_write_artifact_rejects_symlink_escape(tmp_path: Path):
+    store = CodexWorkspaceStore(runtime_root=tmp_path)
+    ref = RuntimeContextRef("cubic3-data-platform", "session_1", "thread_1", "turn_1")
+    turn_dir = store.prepare_turn(ref, request_payload={}, runtime_policy={})
+    external_dir = tmp_path / "external"
+    external_dir.mkdir()
+    artifact_parent = turn_dir / "runs" / "run_1" / "artifacts"
+    artifact_parent.mkdir(parents=True)
+    link_path = artifact_parent / "artifact_1"
+    try:
+        link_path.symlink_to(external_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"当前环境不支持 symlink: {exc}")
+
+    with pytest.raises(ValueError, match="artifact path"):
+        store.write_artifact(
+            ref,
+            run_id="run_1",
+            artifact_id="artifact_1",
+            filename="result.json",
+            content=b"unsafe",
+        )
+
+
+def test_codex_workspace_write_artifact_rejects_internal_artifact_dir_symlink(
+    tmp_path: Path,
+):
+    store = CodexWorkspaceStore(runtime_root=tmp_path)
+    ref = RuntimeContextRef("cubic3-data-platform", "session_1", "thread_1", "turn_1")
+    turn_dir = store.prepare_turn(ref, request_payload={}, runtime_policy={})
+    artifact_parent = turn_dir / "runs" / "run_1" / "artifacts"
+    sibling_dir = artifact_parent / "artifact_2"
+    sibling_dir.mkdir(parents=True)
+    link_path = artifact_parent / "artifact_1"
+    try:
+        link_path.symlink_to(sibling_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"当前环境不支持 symlink: {exc}")
+
+    with pytest.raises(ValueError, match="artifact path symlink"):
+        store.write_artifact(
+            ref,
+            run_id="run_1",
+            artifact_id="artifact_1",
+            filename="result.json",
+            content=b"unsafe",
+        )
+
+
+def test_codex_workspace_write_artifact_rejects_internal_target_file_symlink(
+    tmp_path: Path,
+):
+    store = CodexWorkspaceStore(runtime_root=tmp_path)
+    ref = RuntimeContextRef("cubic3-data-platform", "session_1", "thread_1", "turn_1")
+    turn_dir = store.prepare_turn(ref, request_payload={}, runtime_policy={})
+    artifact_dir = turn_dir / "runs" / "run_1" / "artifacts" / "artifact_1"
+    artifact_dir.mkdir(parents=True)
+    sibling_file = artifact_dir / "safe.json"
+    sibling_file.write_text("{}", encoding="utf-8")
+    link_path = artifact_dir / "result.json"
+    try:
+        link_path.symlink_to(sibling_file)
+    except OSError as exc:
+        pytest.skip(f"当前环境不支持 symlink: {exc}")
+
+    with pytest.raises(ValueError, match="artifact path symlink"):
+        store.write_artifact(
+            ref,
+            run_id="run_1",
+            artifact_id="artifact_1",
+            filename="result.json",
+            content=b"unsafe",
+        )
+
+
+def test_codex_workspace_write_artifact_rejects_internal_run_dir_symlink(
+    tmp_path: Path,
+):
+    store = CodexWorkspaceStore(runtime_root=tmp_path)
+    ref = RuntimeContextRef("cubic3-data-platform", "session_1", "thread_1", "turn_1")
+    turn_dir = store.prepare_turn(ref, request_payload={}, runtime_policy={})
+    runs_dir = turn_dir / "runs"
+    target_run_dir = turn_dir / "internal_run"
+    target_run_dir.mkdir()
+    runs_dir.mkdir()
+    link_path = runs_dir / "run_1"
+    try:
+        link_path.symlink_to(target_run_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"当前环境不支持 symlink: {exc}")
+
+    with pytest.raises(ValueError, match="artifact path symlink"):
+        store.write_artifact(
+            ref,
+            run_id="run_1",
+            artifact_id="artifact_1",
+            filename="result.json",
+            content=b"unsafe",
+        )
+
+
+def test_codex_workspace_write_artifact_rejects_internal_project_dir_symlink(
+    tmp_path: Path,
+):
+    store = CodexWorkspaceStore(runtime_root=tmp_path)
+    ref = RuntimeContextRef("cubic3-data-platform", "session_1", "thread_1", "turn_1")
+    projects_dir = tmp_path / "projects"
+    target_project_dir = tmp_path / "internal_project"
+    projects_dir.mkdir()
+    target_project_dir.mkdir()
+    link_path = projects_dir / "cubic3-data-platform"
+    try:
+        link_path.symlink_to(target_project_dir, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"当前环境不支持 symlink: {exc}")
+
+    with pytest.raises(ValueError, match="artifact path symlink"):
+        store.write_artifact(
+            ref,
+            run_id="run_1",
+            artifact_id="artifact_1",
+            filename="result.json",
+            content=b"unsafe",
+        )
 
 
 @pytest.mark.parametrize(

@@ -13,6 +13,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { AppError } from '@v2/api/types'
 import type { SemanticModelingCopilotSession } from '@v2/api/semantic'
+import type { AgentRuntimeManagementSnapshot } from '@v2/api/agent-runtime'
 
 // ── mock hooks（与真实接口形状一致，但只关心 mutateAsync 调用） ───────────────
 const createSession = vi.fn()
@@ -29,6 +30,7 @@ const updateSpecMut = vi.fn()
 let activeSessionFixture: SemanticModelingCopilotSession | null = null
 let sessionsFixture: SemanticModelingCopilotSession[] = []
 let activeReviewFixture: unknown = null
+let runtimeSnapshotFixture: AgentRuntimeManagementSnapshot | undefined = undefined
 
 function makeQueryResult<T>(data: T | undefined, isError = false) {
   return {
@@ -56,6 +58,10 @@ vi.mock('@v2/hooks/semantic', () => ({
   useDeleteSemanticModelingCopilotSession: () => ({ mutateAsync: deleteSessionMut, isPending: false }),
   useRenameSemanticModelingCopilotSession: () => ({ mutateAsync: renameSessionMut, isPending: false }),
   useUpdateSemanticModelingCopilotSpec: () => ({ mutate: updateSpecMut, mutateAsync: updateSpecMut, isPending: false }),
+}))
+
+vi.mock('@v2/hooks/agent-runtime', () => ({
+  useAgentRuntimeStatus: () => makeQueryResult(runtimeSnapshotFixture),
 }))
 
 import ModelingAgent from './ModelingAgent'
@@ -205,6 +211,66 @@ const ANALYZED_SESSION: SemanticModelingCopilotSession = {
   ],
 }
 
+const RUNTIME_SNAPSHOT: AgentRuntimeManagementSnapshot = {
+  providers: [
+    {
+      runtime_name: 'openai_compatible',
+      label: 'OpenAI Runtime',
+      configured: true,
+      available: true,
+      status: 'ready',
+      message: 'OpenAI Runtime 已配置。',
+      operations: ['test_connection'],
+      details: { model: 'gpt-4o-mini' },
+    },
+    {
+      runtime_name: 'codex_app_server',
+      label: 'Codex App Server',
+      configured: false,
+      available: false,
+      status: 'disabled',
+      message: 'Codex app-server 未启用。',
+      operations: [],
+      details: { ui_managed: false },
+    },
+  ],
+  action_bindings: [
+    {
+      action: 'semantic.modeling.generate_candidates',
+      default_runtime: 'openai_compatible',
+      allowed_runtimes: ['openai_compatible'],
+      expose_selector: false,
+      requires_connection: false,
+      reason: 'fixed_openai_low_latency',
+    },
+    {
+      action: 'semantic.modeling.review_proposal',
+      default_runtime: 'codex_app_server',
+      allowed_runtimes: ['codex_app_server'],
+      expose_selector: false,
+      requires_connection: true,
+      reason: 'fixed_codex_workspace',
+    },
+  ],
+}
+
+const CODEX_MANAGED_RUNTIME_SNAPSHOT: AgentRuntimeManagementSnapshot = {
+  ...RUNTIME_SNAPSHOT,
+  providers: RUNTIME_SNAPSHOT.providers.map((provider) =>
+    provider.runtime_name === 'codex_app_server'
+      ? {
+          ...provider,
+          configured: true,
+          available: false,
+          status: 'not_verified',
+          message: 'Codex app-server 已配置，等待真实联通测试。',
+          operations: ['test_connection', 'start', 'logs', 'capabilities'],
+          details: { ui_managed: true },
+        }
+      : provider,
+  ),
+}
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -337,6 +403,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
     activeSessionFixture = null
     sessionsFixture = []
     activeReviewFixture = null
+    runtimeSnapshotFixture = RUNTIME_SNAPSHOT
     createSession.mockResolvedValue({ ...ANALYZED_SESSION, conversation: [{ role: 'user', content: '查询最近7天学生评论数，按学校汇总' }] })
     sendMessage.mockResolvedValue(ANALYZED_SESSION)
     acceptCubeDraft.mockResolvedValue({
@@ -405,6 +472,28 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
     expect(screen.getByText('学校维度')).toBeInTheDocument()
     // 顶栏 readiness chip 用业务文案而不是英文
     expect(screen.getAllByText('请确认 1 项口径').length).toBeGreaterThan(0)
+  })
+
+  it('展示平台 Runtime 状态但不在 Copilot 主流程暴露 runtime 切换器', () => {
+    activeSessionFixture = ANALYZED_SESSION
+    renderAt('/semantic/modeling-copilot/session_1')
+
+    expect(screen.getByTestId('agent-runtime-status')).toHaveTextContent('AI · OpenAI')
+    expect(screen.queryByRole('button', { name: /启动 Codex/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Agent Runtime:/)).not.toBeInTheDocument()
+  })
+
+  it('已有 Proposal 且 Codex action 需要连接时只提示去平台设置，不在业务页启动 Codex', () => {
+    runtimeSnapshotFixture = CODEX_MANAGED_RUNTIME_SNAPSHOT
+    activeSessionFixture = {
+      ...ANALYZED_SESSION,
+      current_proposal_id: 'proposal_1',
+    }
+    renderAt('/semantic/modeling-copilot/session_1')
+
+    expect(screen.getByTestId('codex-review-runtime-notice')).toHaveTextContent('Codex 复审未连接')
+    expect(screen.queryByRole('button', { name: '启动 Codex' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '打开 AI Runtime 设置' })).toBeInTheDocument()
   })
 
   it('保持 Chat 为主界面，把 Proposal Review 放到右侧 artifact panel', () => {

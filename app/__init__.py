@@ -228,6 +228,7 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_semantic_assets_blueprint(
             container.data_asset_service,
+            data_asset_agent_app=container.data_asset_agent_app,
         ))
         app.register_blueprint(create_semantic_releases_blueprint(
             container.semantic_release_service(),
@@ -255,6 +256,8 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_agent_runtime_blueprint(
             container.agent_inference_runtime_repository,
+            runtime_management_provider=container.agent_runtime_management_service,
+            codex_run_service_provider=container.codex_run_service,
         ))
         app.register_blueprint(create_governance_blueprint(
             container.ontology_audit_trace_repository(),

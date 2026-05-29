@@ -151,6 +151,69 @@ function browserE2eFixtureData(method: string, path: string, body: Record<string
       updated_at: null,
     }
   }
+  if (method === 'GET' && path === '/agent-runtime/providers/status') {
+    return {
+      providers: [
+        {
+          runtime_name: 'openai_compatible',
+          label: 'OpenAI Runtime',
+          configured: true,
+          available: true,
+          status: 'ready',
+          message: 'OpenAI Runtime 已配置。',
+          operations: ['test_connection'],
+          details: { model: 'fixture-model' },
+        },
+        {
+          runtime_name: 'codex_app_server',
+          label: 'Codex App Server',
+          configured: false,
+          available: false,
+          status: 'disabled',
+          message: 'Codex app-server 未启用。',
+          operations: [],
+          details: { ui_managed: false },
+        },
+      ],
+      action_bindings: [
+        {
+          action: 'semantic.modeling.generate_candidates',
+          default_runtime: 'openai_compatible',
+          allowed_runtimes: ['openai_compatible'],
+          expose_selector: false,
+          requires_connection: false,
+          reason: 'fixed_openai_low_latency',
+        },
+      ],
+    }
+  }
+  if (method === 'POST' && path === '/agent-runtime/providers/codex_app_server/start') {
+    return {
+      runtime_name: 'codex_app_server',
+      operation: 'start',
+      status: 'succeeded',
+      message: '已提交 Codex app-server 启动。',
+      details: { pid: 4321 },
+    }
+  }
+  if (method === 'GET' && path === '/agent-runtime/providers/codex_app_server/logs') {
+    return {
+      runtime_name: 'codex_app_server',
+      log_path: '.cubic3/agent-codex/logs/codex-app-server.log',
+      lines: [],
+      truncated: false,
+    }
+  }
+  if (method === 'GET' && path === '/agent-runtime/providers/codex_app_server/capabilities') {
+    return {
+      runtime_name: 'codex_app_server',
+      available: false,
+      actions: ['review', 'repair', 'audit'],
+      artifacts: ['model_patch'],
+      events: ['run.started', 'run.succeeded'],
+      details: {},
+    }
+  }
   if (method === 'GET' && path === '/semantic/cubes') {
     return { cubes: [], total: 0, page: 1, page_size: 200, page_count: 0 }
   }
