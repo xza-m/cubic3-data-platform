@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import jwt
 from flask import Flask, g
 
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.interfaces.api.middleware.error_handler import register_error_handlers
 from app.interfaces.api.v1.semantic_assets import create_semantic_assets_blueprint
 
@@ -24,7 +25,7 @@ def _auth_headers(roles: list[str] | None = None) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _build_client(service):
+def _build_client(service, data_asset_agent_app=None):
     app = Flask(__name__)
     app.config.update(TESTING=True, JWT_SECRET="test-secret")
 
@@ -32,7 +33,7 @@ def _build_client(service):
     def _inject_request_context():
         g.request_id = "req-data-assets"
 
-    app.register_blueprint(create_semantic_assets_blueprint(service))
+    app.register_blueprint(create_semantic_assets_blueprint(service, data_asset_agent_app=data_asset_agent_app))
     register_error_handlers(app)
     return app.test_client()
 
@@ -199,3 +200,101 @@ def test_semantic_assets_api_normalizes_invalid_pagination_args():
         lifecycle_status=None,
     )
     service.list_sync_runs.assert_called_with(limit=50)
+
+
+def test_semantic_assets_api_exposes_field_semantic_candidates_from_asset_context():
+    service = MagicMock()
+    service.list_fields.return_value = {
+        "items": [
+            {
+                "name": "p75_difficulty",
+                "physical_type": "DECIMAL(10,4)",
+                "sample_values": ["0.7500"],
+            }
+        ],
+        "total": 1,
+    }
+    agent_app = MagicMock()
+    agent_app.infer_field_semantics.return_value = {
+        "candidates": [
+            {
+                "field_name": "p75_difficulty",
+                "semantic_role": "metric",
+                "data_type": "decimal",
+            }
+        ]
+    }
+    client = _build_client(lambda: service, data_asset_agent_app=lambda: agent_app)
+
+    response = client.post(
+        "/api/v1/semantic/assets/tables/tbl_comment/field-semantic-candidates",
+        json={},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["data"]["candidates"][0]["semantic_role"] == "metric"
+    agent_app.infer_field_semantics.assert_called_once_with(
+        table_id="tbl_comment",
+        fields=service.list_fields.return_value["items"],
+        principal_id="test_admin",
+    )
+
+
+def test_semantic_assets_api_field_semantic_candidates_returns_not_found_when_table_missing():
+    service = MagicMock()
+    service.list_fields.return_value = None
+    agent_app = MagicMock()
+    client = _build_client(service, data_asset_agent_app=agent_app)
+
+    response = client.post(
+        "/api/v1/semantic/assets/tables/missing/field-semantic-candidates",
+        json={},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 404
+    agent_app.infer_field_semantics.assert_not_called()
+
+
+def test_semantic_assets_api_field_semantic_candidates_checks_table_when_fields_are_provided():
+    service = MagicMock()
+    service.list_fields.return_value = None
+    agent_app = MagicMock()
+    client = _build_client(service, data_asset_agent_app=agent_app)
+
+    response = client.post(
+        "/api/v1/semantic/assets/tables/missing/field-semantic-candidates",
+        json={"fields": [{"name": "p75_difficulty", "physical_type": "DECIMAL(10,4)"}]},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 404
+    agent_app.infer_field_semantics.assert_not_called()
+
+
+def test_semantic_assets_api_field_semantic_candidates_maps_runtime_errors():
+    service = MagicMock()
+    service.list_fields.return_value = {
+        "items": [{"name": "p75_difficulty", "physical_type": "DECIMAL(10,4)"}],
+        "total": 1,
+    }
+    agent_app = MagicMock()
+    agent_app.infer_field_semantics.side_effect = AgentInferenceRuntimeError(
+        "OpenAI runtime is not configured",
+        code="RUNTIME_NOT_CONFIGURED",
+        details={"runtime_name": "openai_compatible"},
+    )
+    client = _build_client(service, data_asset_agent_app=agent_app)
+
+    response = client.post(
+        "/api/v1/semantic/assets/tables/tbl_comment/field-semantic-candidates",
+        json={},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 503
+    assert response.get_json()["details"] == {
+        "code": "RUNTIME_NOT_CONFIGURED",
+        "runtime_name": "openai_compatible",
+    }

@@ -8,11 +8,15 @@ class ActionRuntimeBindingRegistry:
     """集中维护业务 action 的 runtime 策略，避免前端和业务服务各自判断。"""
 
     _FIXED_OPENAI_ACTIONS = {
+        "asset.field.infer_semantics",
         "semantic.modeling.chat",
         "semantic.modeling.generate_candidates",
         "semantic.modeling.generate_spec",
         "semantic.modeling.preview_candidate",
         "semantic.modeling.explain_fields",
+    }
+    _FIXED_OPENAI_REASONS = {
+        "asset.field.infer_semantics": "asset_field_semantics_low_latency",
     }
     _FIXED_CODEX_ACTIONS = {
         "semantic.modeling.review",
@@ -35,6 +39,7 @@ class ActionRuntimeBindingRegistry:
     _CODEX_ACTION_PREFIXES = ("review_", "repair_", "audit_")
     _EXPERT_ACTIONS = {"semantic.modeling.expert_debug"}
     _VISIBLE_ACTIONS = (
+        "asset.field.infer_semantics",
         "semantic.modeling.generate_candidates",
         "semantic.modeling.review_proposal",
         "semantic.modeling.expert_debug",
@@ -49,6 +54,15 @@ class ActionRuntimeBindingRegistry:
                 expose_selector=True,
                 requires_connection=False,
                 reason="expert_runtime_choice",
+            )
+        if action in self._FIXED_OPENAI_ACTIONS:
+            return RuntimeActionBinding(
+                action=action,
+                default_runtime="openai_compatible",
+                allowed_runtimes=["openai_compatible"],
+                expose_selector=False,
+                requires_connection=False,
+                reason=self._FIXED_OPENAI_REASONS.get(action, "fixed_openai_low_latency"),
             )
         if action in self._FIXED_CODEX_ACTIONS or self._is_codex_action(action):
             return RuntimeActionBinding(

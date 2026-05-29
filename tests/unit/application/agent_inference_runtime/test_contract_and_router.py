@@ -234,6 +234,19 @@ def test_action_binding_registry_keeps_fixed_openai_action_without_selector():
     assert binding.reason == "fixed_openai_low_latency"
 
 
+def test_action_binding_registry_registers_data_asset_field_semantics_as_openai_consumer():
+    registry = ActionRuntimeBindingRegistry()
+
+    binding = registry.resolve("asset.field.infer_semantics")
+
+    assert binding.default_runtime == "openai_compatible"
+    assert binding.allowed_runtimes == ["openai_compatible"]
+    assert binding.expose_selector is False
+    assert binding.requires_connection is False
+    assert binding.reason == "asset_field_semantics_low_latency"
+    assert any(item.action == "asset.field.infer_semantics" for item in registry.visible_bindings())
+
+
 def test_action_binding_registry_marks_codex_review_as_fixed_runtime():
     registry = ActionRuntimeBindingRegistry()
 

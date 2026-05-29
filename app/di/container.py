@@ -170,6 +170,7 @@ from app.application.semantic.modeling_draft_builder import SemanticModelDraftBu
 from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
 from app.application.semantic.data_asset_service import DataAssetService
+from app.application.semantic.data_asset_agent_app import DataAssetAgentApp
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
 from app.application.semantic.field_candidates import FieldCandidateService
@@ -585,6 +586,11 @@ class Container(containers.DeclarativeContainer):
         DataAssetService,
         repository=data_asset_repository,
         datasource_repository=datasource_repository,
+    )
+
+    data_asset_agent_app = providers.Singleton(
+        DataAssetAgentApp,
+        runtime_service=agent_inference_runtime_service,
     )
     
     dataset_repository = providers.Factory(

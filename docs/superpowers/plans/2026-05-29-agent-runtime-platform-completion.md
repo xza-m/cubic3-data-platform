@@ -1312,9 +1312,10 @@ git commit -m "feat: add platform agent runtime settings"
 - Modify: `app/application/agent_inference_runtime/action_binding.py`
 - Modify: `app/interfaces/api/v1/semantic_assets.py`
 - Test: `tests/unit/application/semantic/test_data_asset_agent_app.py`
-- Test: `tests/integration/test_semantic_assets_api.py`
+- Test: `tests/unit/interfaces/api/v1/test_semantic_assets_api.py`
+- Test: `tests/unit/application/agent_inference_runtime/test_contract_and_router.py`
 
-- [ ] **Step 1: 写字段语义候选失败测试**
+- [x] **Step 1: 写字段语义候选失败测试**
 
 Create `tests/unit/application/semantic/test_data_asset_agent_app.py`:
 
@@ -1350,7 +1351,7 @@ def test_infer_field_semantics_uses_asset_context_and_openai_runtime():
     assert result["candidates"][0]["semantic_role"] == "metric"
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1360,7 +1361,7 @@ pytest tests/unit/application/semantic/test_data_asset_agent_app.py -q
 
 Expected: FAIL，缺少 `DataAssetAgentApp`。
 
-- [ ] **Step 3: 注册 asset action binding**
+- [x] **Step 3: 注册 asset action binding**
 
 Modify `app/application/agent_inference_runtime/action_binding.py`:
 
@@ -1374,7 +1375,7 @@ ActionRuntimeBinding(
 )
 ```
 
-- [ ] **Step 4: 实现 DataAssetAgentApp**
+- [x] **Step 4: 实现 DataAssetAgentApp**
 
 Create `app/application/semantic/data_asset_agent_app.py`:
 
@@ -1414,7 +1415,7 @@ class DataAssetAgentApp:
         return result.structured_output
 ```
 
-- [ ] **Step 5: 暴露资产 API**
+- [x] **Step 5: 暴露资产 API**
 
 Modify `app/interfaces/api/v1/semantic_assets.py`:
 
@@ -1432,19 +1433,19 @@ def infer_field_semantic_candidates(table_id: str):
     return jsonify(result)
 ```
 
-- [ ] **Step 6: 运行测试**
+- [x] **Step 6: 运行测试**
 
 Run:
 
 ```bash
 pytest tests/unit/application/semantic/test_data_asset_agent_app.py -q
-pytest tests/integration/test_semantic_assets_api.py -q
+pytest tests/unit/interfaces/api/v1/test_semantic_assets_api.py -q
 make test-platform-agent-runtime
 ```
 
 Expected: PASS。
 
-- [ ] **Step 7: 提交 Task 7**
+- [x] **Step 7: 提交 Task 7**
 
 Run:
 
@@ -1453,7 +1454,10 @@ git add app/application/semantic/data_asset_agent_app.py \
   app/application/agent_inference_runtime/action_binding.py \
   app/interfaces/api/v1/semantic_assets.py \
   tests/unit/application/semantic/test_data_asset_agent_app.py \
-  tests/integration/test_semantic_assets_api.py
+  tests/unit/interfaces/api/v1/test_semantic_assets_api.py \
+  tests/unit/application/agent_inference_runtime/test_contract_and_router.py \
+  app/__init__.py \
+  app/di/container.py
 git commit -m "feat: add data asset agent runtime consumer"
 ```
 

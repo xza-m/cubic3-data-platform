@@ -234,6 +234,7 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_semantic_assets_blueprint(
             container.data_asset_service,
+            data_asset_agent_app=container.data_asset_agent_app,
         ))
         app.register_blueprint(create_semantic_releases_blueprint(
             container.semantic_release_service(),
