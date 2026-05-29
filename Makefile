@@ -460,7 +460,7 @@ docs-health:
 
 docs-impact:
 	@printf '%s\n' '[docs] 运行文档影响检查'
-	$(PYTHON) scripts/checks/doc_impact.py $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),) $(VERIFY_FILES)
+	$(PYTHON) scripts/checks/doc_impact.py $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(VERIFY_FILES),$(VERIFY_FILES),--worktree))
 
 # -----------------------------------------------------------------------------
 # 本地闸门（GitLab CI 基建未就位时，替代 pipeline 的手动入口）

@@ -3,25 +3,34 @@ doc_type: architecture-design
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-25
+last_reviewed: 2026-05-29
 ---
 
 # 平台级 Agent 推理 Runtime 目标架构
 
 本文定义 Cubic3 数据平台的统一 Agent 推理 Runtime 目标设计。它是跨业务模块复用的生成式推理与工作区任务能力层，不是语义中心或建模助手的私有实现。
 
-当前实现已经形成平台内 `AgentInferenceRuntimeService`、OpenAI-compatible adapter、语义建模首个 consumer、最小 SQL run / artifact 仓储、只读查询 API，以及平台级 action binding / provider status / 受控 Codex process 管理 API。Codex app-server 仍处于 workspace / client / adapter skeleton 阶段，已由 fake tests 覆盖基础契约；真实 Codex app-server live smoke 只在显式设置 `AGENT_CODEX_LIVE=1` 且配置 endpoint 或 Unix socket 后运行，默认开发和 CI 不连接真实 Codex。
+当前实现已经形成平台内 `AgentInferenceRuntimeService`、OpenAI-compatible adapter、语义建模与数据资产两个 consumer、最小 SQL run / artifact 仓储、只读查询 API，以及平台级 action binding / provider status / 受控 Codex process 管理 API。Codex app-server 已具备 workspace / HTTP client / run lifecycle / artifact 权限模型的契约实现；真实 app-server live smoke 只在显式设置 `AGENT_CODEX_LIVE=1` 且配置本机 endpoint 后运行，默认开发和 CI 不连接真实 Codex。
 
 ## Implementation Status
 
 - Phase 1 contract / router / fake runtime：已实现。
 - Phase 2 OpenAI-compatible adapter：已通过 `AGENT_OPENAI_*` 接入，作为当前低延迟主链。
 - Phase 3 Semantic Modeling Agent App：已实现，语义建模 Copilot 通过平台 runtime consumer 调用生成式能力。
-- Phase 4 Codex app-server adapter：当前是 workspace / client / adapter skeleton 和 fake tests；真实 app-server 未并入默认主链。
+- Phase 4 Codex app-server adapter：已实现本地 workspace、HTTP client、异步 run lifecycle、event / artifact 查询和权限校验；真实 app-server live smoke 保持 opt-in，不并入默认主链。
+- Phase 5 Data Asset Agent App：已实现 `asset.field.infer_semantics` 第二 consumer，数据资产底座可通过同一 runtime contract 生成字段语义候选。
 - Runtime Management MVP：已实现 `ActionRuntimeBindingRegistry`、`AgentRuntimeManagementService` 与受控 `CodexProcessManager`；业务 action 可以固定 OpenAI、固定 Codex 或在专家 action 下显式允许选择，Copilot 默认只展示状态，不暴露 runtime 切换器。
 - 查询 API：`/api/v1/agent-runtime/runs/<run_id>` 与 `/api/v1/agent-runtime/runs/<run_id>/artifacts` 只提供 observability/read-only 查询，不触发 runtime 执行或业务副作用。
 - 管理 API：`/api/v1/agent-runtime/providers/status`、`/api/v1/agent-runtime/actions/<action>/binding`、`/api/v1/agent-runtime/providers/<runtime>/test`、`start / stop / restart / logs / capabilities` 只暴露状态、绑定、连接测试和受控管理动作，不允许前端传任意启动命令。
 - 验证入口：`make test-platform-agent-runtime` 覆盖平台 runtime 单测、仓储/adapter 测试、语义建模 consumer、查询 API、runtime management API 和默认跳过的 Codex live smoke guard。
+
+### Release readiness as of 2026-05-29
+
+- Platform runtime contract、action binding、provider management、语义建模 consumer 与数据资产 consumer 已实现。
+- Codex app-server lifecycle 支持 allowlisted local start、health、capabilities、submit、poll、cancel、event 和 artifact collection。
+- Runtime provider configuration 已持久化并做 secret masking，管理动作写入审计日志。
+- Artifact download 需要 run owner 权限并校验存储内容 hash。
+- 数据资产字段语义候选生成已作为第二 consumer 接入，证明 runtime 层没有绑定到语义建模私有概念。
 
 ## 1. 背景与问题
 
@@ -82,6 +91,7 @@ last_reviewed: 2026-05-25
 | action 类型 | 默认 runtime | 前端切换器 | 说明 |
 |---|---|---|---|
 | `semantic.modeling.generate_candidates` / `generate_spec` / `explain_fields` | `openai_compatible` | 不展示 | 低延迟生成、解释和候选召回，固定 OpenAI-compatible 主链 |
+| `asset.field.infer_semantics` | `openai_compatible` | 不展示 | 字段语义候选生成，固定低延迟结构化输出，不需要工作区 runtime |
 | `semantic.modeling.review_proposal` / `repair_*` / `audit_*` | `codex_app_server` | 不展示 | 长上下文复审、修复建议和 workspace artifact，固定 Codex runtime |
 | `semantic.modeling.expert_debug` | `openai_compatible`，可选 `codex_app_server` | 仅专家模式展示 | 明确需要对比 runtime 行为时才允许手动选择 |
 
@@ -606,7 +616,7 @@ AGENT_CODEX_MAX_RUNTIME_SECONDS=600
 
 Codex app-server 验证通过后的运行态以本地目录为主。配置只暴露项目根和 runtime 根目录，session / thread / turn / artifact 目录由平台按 `project_id / session_id / thread_id / turn_id / run_id` 派生，避免用户手动配置多层路径。
 
-`AGENT_CODEX_UI_MANAGED` 控制管理 API 是否可以向前端声明 `start / stop / restart` 操作；`AGENT_CODEX_SERVER_MANAGED` 控制后端是否允许托管本地 app-server 进程。当前实现不接受前端传入启动命令，`CodexProcessManager` 只支持后端白名单 `local-codex-app-server` profile，并校验 `AGENT_CODEX_ALLOWED_PROJECT_ROOTS`，避免任意命令执行和路径逃逸。后续接入真实 app-server 协议后，还需要补齐 health / capabilities 原生查询、启动审计落库和进程恢复。
+`AGENT_CODEX_UI_MANAGED` 控制管理 API 是否可以向前端声明 `start / stop / restart` 操作；`AGENT_CODEX_SERVER_MANAGED` 控制后端是否允许托管本地 app-server 进程。当前实现不接受前端传入启动命令，`CodexProcessManager` 只支持后端白名单 `local-codex-app-server` profile，并校验 `AGENT_CODEX_ALLOWED_PROJECT_ROOTS`，避免任意命令执行和路径逃逸。health / capabilities 已通过 provider 管理 API 接入；启动审计、配置审计和降级状态会写入 runtime 管理日志。真实 app-server 是否可用仍以 opt-in live smoke 为准。
 
 ### 15.1 Command Provider 与 Codex Runtime 的区别
 
@@ -1003,12 +1013,12 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 - artifact 权限：artifact 只返回引用和摘要，读取时再次校验 principal、app_id、session_id、thread_id、turn_id 与 run ownership。
 - 失败恢复：app-server 不可用返回 `RUNTIME_UNAVAILABLE`；进程超时返回 `RUNTIME_TIMEOUT`；workspace 清理失败记录 warning，不影响业务状态回滚。
 
-### Phase 5：第二个业务消费者验证复用（Platform GA）
+### Phase 5：第二个业务消费者验证复用（已完成）
 
-- 选择数据资产底座作为第二个 consumer。
-- 接入 `asset.field.infer_semantics` 或 `asset.quality.explain_issue`。
+- 已选择数据资产底座作为第二个 consumer。
+- 已接入 `asset.field.infer_semantics`。
 - 验证 runtime contract 没有被语义建模私有概念污染。
-- Phase 5 不属于 MVP 完成标准，避免为了证明平台化而提前给数据资产底座增加不必要 AI action。
+- 当前只生成字段语义候选，不写正式资产事实，避免为了证明平台化而提前给数据资产底座增加不必要副作用。
 
 ### Phase 6：生产收口
 
@@ -1043,7 +1053,7 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 ### E2E / Live Smoke
 
 - OpenAI runtime live smoke：配置 API Key 后验证一次结构化输出。
-- 当前 Codex app-server live smoke：`tests/integration/agent_inference_runtime/test_codex_live_smoke.py` 默认 skip；只有 `AGENT_CODEX_LIVE=1` 时才要求 `AGENT_CODEX_ENDPOINT` 或 `AGENT_CODEX_UNIX_SOCKET`，用于阻止普通验证误连真实 Codex。
+- 当前 Codex app-server live smoke：`tests/integration/agent_inference_runtime/test_codex_live_smoke.py` 默认 skip；只有 `AGENT_CODEX_LIVE=1` 时才运行。提供 `AGENT_CODEX_ENDPOINT` 时会真实调用 `/health` 与 `/capabilities`；只提供 `AGENT_CODEX_UNIX_SOCKET` 时当前跳过 HTTP smoke，Unix socket 配置契约由 adapter / process manager 测试覆盖。
 - 目标 Codex app-server live smoke：验证进程 / server 可用、能返回 artifact、timeout 生效、cancel 生效、并发上限生效、stale recovery 生效、artifact 越权被拒、命令拒绝生效、CLI fallback disabled。
 - 语义建模复审 E2E：生成 Proposal 后触发 Codex 复审，返回只读 review artifact。
 - 数据资产二号消费者 smoke：字段语义推断只生成候选，不写正式资产事实。
@@ -1085,6 +1095,6 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 ### 23.2 Platform GA 完成判定
 
 1. Codex app-server runtime 实现平台 `AgentInferenceRuntimePort`，并支持异步 run 生命周期、artifact 权限和 opt-in live smoke。
-2. 至少两个业务消费者复用平台 `AgentInferenceRuntimeService`，第二消费者建议从数据资产底座低风险解释类 action 开始。
+2. 至少两个业务消费者复用平台 `AgentInferenceRuntimeService`，当前已覆盖语义建模与数据资产字段语义候选。
 3. Runtime run 列表、详情、artifact 下载权限控制和生产 runbook 完成。
 4. 文档、配置样例、OpenAPI 管理接口、runbook 和 smoke 测试同步更新。

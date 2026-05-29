@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-05-29
 ---
 
 # CUBIC3
@@ -134,6 +134,7 @@ Phase 1 当前已验证的数据中心主链路基线为：
 - `/api/v1/semantic-router`
 - `/api/v1/execution-compiler`
 - `/api/v1/semantic/modeling-copilot`
+- `/api/v1/agent-runtime`
 
 其中当前已落地的 Phase 2 增强包括：
 
@@ -167,6 +168,15 @@ Phase 1 当前已验证的数据中心主链路基线为：
 - `/api/v1/semantic/modeling-agent/proposals/<proposal_id>/validate`
 - `/api/v1/semantic/modeling-agent/proposals/<proposal_id>/publish`
 - `/api/v1/semantic/domains/<domain_id>/context-preview`
+
+当前已落地的平台 Agent Runtime 最小增强包括：
+
+- `/api/v1/agent-runtime/providers/status`
+- `/api/v1/agent-runtime/providers/<runtime>/test`
+- `/api/v1/agent-runtime/providers/<runtime>/start|stop|restart|logs|capabilities`
+- `/api/v1/agent-runtime/runs/<run_id>`
+- `/api/v1/agent-runtime/runs/<run_id>/artifacts`
+- `/api/v1/semantic/assets/tables/<table_id>/field-semantic-candidates`
 
 当前已落地的 Phase 6 最小增强包括：
 

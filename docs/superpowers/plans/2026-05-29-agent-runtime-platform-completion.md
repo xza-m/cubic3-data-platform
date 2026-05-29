@@ -52,7 +52,7 @@ tests/unit/infrastructure/agent_inference_runtime/test_codex_http_client.py
 tests/unit/application/agent_inference_runtime/test_codex_run_service.py
 tests/unit/application/semantic/test_data_asset_agent_app.py
 tests/integration/agent_inference_runtime/test_codex_live_smoke.py
-tests/e2e/semantic/modeling-copilot-runtime.spec.ts
+frontend/tests/e2e-v2/p34-modeling-agent-runtime.spec.ts
 migrations/versions/0005_agent_runtime_management.py
 ```
 
@@ -1464,14 +1464,14 @@ git commit -m "feat: add data asset agent runtime consumer"
 ### Task 8: Live E2E、文档与发布验收
 
 **Files:**
-- Create: `tests/integration/agent_inference_runtime/test_codex_live_smoke.py`
-- Create: `tests/e2e/semantic/modeling-copilot-runtime.spec.ts`
+- Modify: `tests/integration/agent_inference_runtime/test_codex_live_smoke.py`
+- Create: `frontend/tests/e2e-v2/p34-modeling-agent-runtime.spec.ts`
 - Modify: `docs/architecture/agent-runtime-platform.md`
 - Modify: `docs/runbooks/local-dev.md`
 - Modify: `docs/quality/testing.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: 写 Codex live smoke guard**
+- [x] **Step 1: 写 Codex live smoke guard**
 
 Create `tests/integration/agent_inference_runtime/test_codex_live_smoke.py`:
 
@@ -1497,26 +1497,26 @@ def test_codex_app_server_live_health_and_capabilities():
     assert "tools" in capabilities
 ```
 
-- [ ] **Step 2: 写 Copilot runtime E2E**
+- [x] **Step 2: 写 Copilot runtime E2E**
 
-Create `tests/e2e/semantic/modeling-copilot-runtime.spec.ts`:
+Create `frontend/tests/e2e-v2/p34-modeling-agent-runtime.spec.ts`:
 
 ```ts
 import { test, expect } from "@playwright/test";
 
 test("modeling copilot shows fixed runtime status and starts codex only for review", async ({ page }) => {
-  await page.goto("/semantic/modeling-copilot");
-  await expect(page.getByText(/AI · OpenAI|AI 未配置/)).toBeVisible();
-  await expect(page.getByRole("combobox", { name: /runtime/i })).toHaveCount(0);
+  await page.goto("/semantic/modeling-copilot/session_runtime_1");
+  await expect(page.getByTestId("agent-runtime-status")).toHaveText("AI · OpenAI");
+  await expect(page.getByRole("button", { name: "启动 Codex" })).toHaveCount(0);
+  await expect(page.getByTestId("codex-review-runtime-notice")).toContainText("Codex 复审未连接");
 
-  await page.getByRole("button", { name: "复审" }).click();
-  await expect(page.getByText("Codex app-server")).toBeVisible();
+  await page.getByRole("button", { name: "打开 AI Runtime 设置" }).click();
   await page.getByRole("button", { name: "启动 Codex" }).click();
   await expect(page.getByText("已提交 Codex 启动请求")).toBeVisible();
 });
 ```
 
-- [ ] **Step 3: 运行常规验证**
+- [x] **Step 3: 运行常规验证**
 
 Run:
 
@@ -1530,7 +1530,7 @@ git diff --check
 
 Expected: PASS。
 
-- [ ] **Step 4: 运行 live smoke**
+- [x] **Step 4: 运行 live smoke**
 
 Run:
 
@@ -1540,7 +1540,9 @@ AGENT_CODEX_LIVE=1 AGENT_CODEX_ENDPOINT=http://127.0.0.1:8765 pytest tests/integ
 
 Expected: PASS；如果本机没有 Codex app-server，记录为 blocked by local runtime unavailable，不把常规 CI 判失败。
 
-- [ ] **Step 5: 更新文档**
+Actual: `AGENT_CODEX_LIVE=1 AGENT_CODEX_ENDPOINT=http://127.0.0.1:8799 ...` 已执行，失败于 `Connection refused`，本机没有运行中的真实 Codex app-server；默认 smoke guard 仍为 skip，常规 CI 不受影响。
+
+- [x] **Step 5: 更新文档**
 
 Update `docs/architecture/agent-runtime-platform.md`:
 
@@ -1566,7 +1568,7 @@ Update `docs/runbooks/local-dev.md`:
 5. 建模 Copilot 主链不展示 runtime selector；复审、修复和审计入口会使用 Codex runtime。
 ```
 
-- [ ] **Step 6: 最终 review**
+- [x] **Step 6: 最终 review**
 
 Run:
 
@@ -1578,13 +1580,14 @@ git log --oneline --decorate -n 8
 
 Expected: `make review` PASS；工作区只剩预期文档或无未提交文件。
 
-- [ ] **Step 7: 提交 Task 8**
+- [x] **Step 7: 提交 Task 8**
 
 Run:
 
 ```bash
 git add tests/integration/agent_inference_runtime/test_codex_live_smoke.py \
-  tests/e2e/semantic/modeling-copilot-runtime.spec.ts \
+  frontend/tests/e2e-v2/p34-modeling-agent-runtime.spec.ts \
+  Makefile \
   docs/architecture/agent-runtime-platform.md \
   docs/runbooks/local-dev.md \
   docs/quality/testing.md \
@@ -1594,16 +1597,16 @@ git commit -m "test: add agent runtime release verification"
 
 ## 4. 上线验收清单
 
-- [ ] 普通建模 Copilot 主链只显示 runtime 状态，不显示 runtime selector。
-- [ ] OpenAI-compatible runtime 未配置时，Copilot 给出可理解状态，不阻断非 AI 页面。
-- [ ] Codex app-server 只能通过后端 allowlist profile 启动，前端不能传任意命令。
-- [ ] Codex provider test、capabilities、start、stop、restart 全部写入 audit log。
-- [ ] Review / repair action 固定 `codex_app_server`，不可被请求体切到 OpenAI。
-- [ ] Runtime 输出只形成 proposal patch、review report 或 artifact，不直接发布 Cube / Ontology。
-- [ ] Artifact 下载需要 run owner 权限，过期 artifact 返回 404 或 410。
-- [ ] 数据资产第二 consumer 不引用语义建模私有对象。
-- [ ] `make test-platform-agent-runtime`、`make test-modeling-agent`、`make verify-docs`、`cd frontend && npm run build` 全部通过。
-- [ ] Codex live smoke 在本地 app-server 可用时通过；不可用时有明确阻断说明。
+- [x] 普通建模 Copilot 主链只显示 runtime 状态，不显示 runtime selector。
+- [x] OpenAI-compatible runtime 未配置时，Copilot 给出可理解状态，不阻断非 AI 页面。
+- [x] Codex app-server 只能通过后端 allowlist profile 启动，前端不能传任意命令。
+- [x] Codex provider test、capabilities、start、stop、restart 全部写入 audit log。
+- [x] Review / repair action 固定 `codex_app_server`，不可被请求体切到 OpenAI。
+- [x] Runtime 输出只形成 proposal patch、review report 或 artifact，不直接发布 Cube / Ontology。
+- [x] Artifact 下载需要 run owner 权限，过期 artifact 返回 404 或 410。
+- [x] 数据资产第二 consumer 不引用语义建模私有对象。
+- [x] `make test-platform-agent-runtime`、`make test-modeling-agent`、`make verify-docs`、`cd frontend && npm run build` 全部通过。
+- [x] Codex live smoke 在本地 app-server 可用时通过；不可用时有明确阻断说明。
 
 ## 5. 工程原则检查
 
