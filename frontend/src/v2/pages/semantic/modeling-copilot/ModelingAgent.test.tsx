@@ -26,7 +26,6 @@ const publishProposal = vi.fn()
 const deleteSessionMut = vi.fn()
 const renameSessionMut = vi.fn()
 const updateSpecMut = vi.fn()
-const startRuntimeProvider = vi.fn()
 
 let activeSessionFixture: SemanticModelingCopilotSession | null = null
 let sessionsFixture: SemanticModelingCopilotSession[] = []
@@ -63,7 +62,6 @@ vi.mock('@v2/hooks/semantic', () => ({
 
 vi.mock('@v2/hooks/agent-runtime', () => ({
   useAgentRuntimeStatus: () => makeQueryResult(runtimeSnapshotFixture),
-  useStartAgentRuntimeProvider: () => ({ mutateAsync: startRuntimeProvider, isPending: false }),
 }))
 
 import ModelingAgent from './ModelingAgent'
@@ -406,12 +404,6 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
     sessionsFixture = []
     activeReviewFixture = null
     runtimeSnapshotFixture = RUNTIME_SNAPSHOT
-    startRuntimeProvider.mockResolvedValue({
-      runtime_name: 'codex_app_server',
-      operation: 'start',
-      status: 'succeeded',
-      message: '已提交 Codex app-server 启动。',
-    })
     createSession.mockResolvedValue({ ...ANALYZED_SESSION, conversation: [{ role: 'user', content: '查询最近7天学生评论数，按学校汇总' }] })
     sendMessage.mockResolvedValue(ANALYZED_SESSION)
     acceptCubeDraft.mockResolvedValue({
@@ -491,7 +483,7 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
     expect(screen.queryByText(/Agent Runtime:/)).not.toBeInTheDocument()
   })
 
-  it('已有 Proposal 且 Codex action 需要连接时才展示受控启动入口', async () => {
+  it('已有 Proposal 且 Codex action 需要连接时只提示去平台设置，不在业务页启动 Codex', () => {
     runtimeSnapshotFixture = CODEX_MANAGED_RUNTIME_SNAPSHOT
     activeSessionFixture = {
       ...ANALYZED_SESSION,
@@ -500,9 +492,8 @@ describe('ModelingAgent · 对话原生 Copilot', () => {
     renderAt('/semantic/modeling-copilot/session_1')
 
     expect(screen.getByTestId('codex-review-runtime-notice')).toHaveTextContent('Codex 复审未连接')
-    fireEvent.click(screen.getByRole('button', { name: '启动 Codex' }))
-
-    await waitFor(() => expect(startRuntimeProvider).toHaveBeenCalledWith('codex_app_server'))
+    expect(screen.queryByRole('button', { name: '启动 Codex' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '打开 AI Runtime 设置' })).toBeInTheDocument()
   })
 
   it('保持 Chat 为主界面，把 Proposal Review 放到右侧 artifact panel', () => {

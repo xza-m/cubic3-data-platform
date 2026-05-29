@@ -18,6 +18,15 @@ const post = <T>(url: string, body?: unknown): Promise<T> =>
   apiClient.post<Envelope<T>>(url, body).then((r) => r.data.data)
 
 export type AgentRuntimeName = 'openai_compatible' | 'codex_app_server' | string
+export type AgentRuntimeOperationName =
+  | 'test'
+  | 'test_connection'
+  | 'start'
+  | 'restart'
+  | 'stop'
+  | 'logs'
+  | 'capabilities'
+  | string
 
 export interface AgentRuntimeProviderStatus {
   runtime_name: AgentRuntimeName
@@ -26,7 +35,7 @@ export interface AgentRuntimeProviderStatus {
   available: boolean
   status: 'ready' | 'disabled' | 'missing_config' | 'not_verified' | 'unavailable' | string
   message: string
-  operations: string[]
+  operations: AgentRuntimeOperationName[]
   details?: Record<string, unknown>
 }
 
@@ -42,6 +51,7 @@ export interface AgentRuntimeActionBinding {
 export interface AgentRuntimeManagementSnapshot {
   providers: AgentRuntimeProviderStatus[]
   action_bindings: AgentRuntimeActionBinding[]
+  can_manage?: boolean
 }
 
 export interface AgentRuntimeOperationResult {

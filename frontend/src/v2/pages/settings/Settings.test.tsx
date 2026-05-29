@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import type { ReactNode } from 'react'
@@ -17,18 +18,38 @@ vi.mock('@v2/hooks/userPreferences', () => ({
   useUpdateMyPreferences: vi.fn(),
 }))
 
+vi.mock('@v2/hooks/agent-runtime', () => ({
+  useAgentRuntimeStatus: vi.fn(),
+  useStartAgentRuntimeProvider: vi.fn(),
+  useTestAgentRuntimeProvider: vi.fn(),
+  useRestartAgentRuntimeProvider: vi.fn(),
+}))
+
 // Mock AppShell (setBreadcrumbs 不做 DOM 操作)
 vi.mock('@v2/layout/AppShell', () => ({
   useAppShell: () => ({ setBreadcrumbs: vi.fn() }),
 }))
 
 import { useMyPreferences, useUpdateMyPreferences } from '@v2/hooks/userPreferences'
+import {
+  useAgentRuntimeStatus,
+  useRestartAgentRuntimeProvider,
+  useStartAgentRuntimeProvider,
+  useTestAgentRuntimeProvider,
+} from '@v2/hooks/agent-runtime'
 import Settings from './Settings'
 import type { UserPreferences } from '@v2/api/userPreferences'
 import { A11yPreferencesProvider } from '@v2/components/A11yPreferencesProvider'
 
 const mockUsePrefs = useMyPreferences as ReturnType<typeof vi.fn>
 const mockUseUpdate = useUpdateMyPreferences as ReturnType<typeof vi.fn>
+const mockUseRuntimeStatus = useAgentRuntimeStatus as ReturnType<typeof vi.fn>
+const mockUseStartRuntime = useStartAgentRuntimeProvider as ReturnType<typeof vi.fn>
+const mockUseTestRuntime = useTestAgentRuntimeProvider as ReturnType<typeof vi.fn>
+const mockUseRestartRuntime = useRestartAgentRuntimeProvider as ReturnType<typeof vi.fn>
+const startRuntimeProvider = vi.fn()
+const testRuntimeProvider = vi.fn()
+const restartRuntimeProvider = vi.fn()
 
 const DEFAULT_PREFS: UserPreferences = {
   principal_id: 'internal:test:test_admin',
@@ -52,9 +73,74 @@ function renderSettings() {
   return render(<Settings />, { wrapper: Wrapper })
 }
 
+function renderAgentRuntimeSettings() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } })
+  const Wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <A11yPreferencesProvider>{children}</A11yPreferencesProvider>
+      </MemoryRouter>
+    </QueryClientProvider>
+  )
+  return render(<Settings initialTab="agent-runtime" />, { wrapper: Wrapper })
+}
+
 describe('Settings page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUseRuntimeStatus.mockReturnValue({
+      data: {
+        can_manage: true,
+        providers: [
+          {
+            runtime_name: 'openai_compatible',
+            label: 'OpenAI SDK / LLM API',
+            configured: true,
+            available: true,
+            status: 'ready',
+            message: 'OpenAI Runtime 已配置。',
+            operations: ['test_connection'],
+          },
+          {
+            runtime_name: 'codex_app_server',
+            label: 'Codex app-server',
+            configured: true,
+            available: false,
+            status: 'not_verified',
+            message: 'Codex app-server 等待联通测试。',
+            operations: ['test_connection', 'start', 'restart'],
+          },
+        ],
+        action_bindings: [
+          {
+            action: 'semantic.modeling.review_proposal',
+            default_runtime: 'codex_app_server',
+            allowed_runtimes: ['codex_app_server'],
+            expose_selector: false,
+            requires_connection: true,
+            reason: '语义 Proposal 复审固定走 Codex runtime。',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+    mockUseStartRuntime.mockReturnValue({
+      mutateAsync: startRuntimeProvider,
+      isPending: false,
+      isSuccess: false,
+    })
+    mockUseTestRuntime.mockReturnValue({
+      mutateAsync: testRuntimeProvider,
+      isPending: false,
+      isSuccess: false,
+    })
+    mockUseRestartRuntime.mockReturnValue({
+      mutateAsync: restartRuntimeProvider,
+      isPending: false,
+      isSuccess: false,
+    })
   })
 
   it('shows loader while prefs are loading', () => {
@@ -140,5 +226,114 @@ describe('Settings page', () => {
     fireEvent.change(input, { target: { value: 'dashboard' } })
 
     expect(screen.getByRole('button', { name: '保存偏好' })).toBeDisabled()
+  })
+
+  it('shows platform agent runtime management tab and codex start action', async () => {
+    const user = userEvent.setup()
+    startRuntimeProvider.mockResolvedValue({
+      runtime_name: 'codex_app_server',
+      operation: 'start',
+      status: 'succeeded',
+      message: '已提交 Codex 启动请求',
+    })
+    mockUsePrefs.mockReturnValue({ data: DEFAULT_PREFS, isLoading: false })
+    mockUseUpdate.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+
+    renderAgentRuntimeSettings()
+
+    expect(screen.getByRole('tablist', { name: '设置分类' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'AI Runtime' })).toBeInTheDocument()
+    expect(screen.getByRole('tabpanel', { name: 'AI Runtime' })).toBeInTheDocument()
+    expect(screen.getByText('OpenAI SDK / LLM API')).toBeInTheDocument()
+    expect(screen.getByText('Codex app-server')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '启动 Codex' }))
+
+    expect(startRuntimeProvider).toHaveBeenCalledWith('codex_app_server')
+    expect(await screen.findByText('已提交 Codex 启动请求')).toBeInTheDocument()
+  })
+
+  it('disables runtime management operations for non-admin users', () => {
+    mockUseRuntimeStatus.mockReturnValue({
+      data: {
+        can_manage: false,
+        providers: [
+          {
+            runtime_name: 'codex_app_server',
+            label: 'Codex app-server',
+            configured: true,
+            available: false,
+            status: 'not_verified',
+            message: 'Codex app-server 等待联通测试。',
+            operations: ['test_connection', 'start', 'restart'],
+          },
+        ],
+        action_bindings: [],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+    mockUsePrefs.mockReturnValue({ data: DEFAULT_PREFS, isLoading: false })
+    mockUseUpdate.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+
+    renderAgentRuntimeSettings()
+
+    expect(screen.getByRole('button', { name: '启动 Codex' })).toBeDisabled()
+    expect(screen.getByText('仅平台管理员可执行连接测试、启动或重启操作。')).toBeInTheDocument()
+  })
+
+  it('keeps runtime tab usable while general preferences are loading', () => {
+    mockUsePrefs.mockReturnValue({ data: undefined, isLoading: true })
+    mockUseUpdate.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+
+    renderAgentRuntimeSettings()
+
+    expect(screen.getByRole('tab', { name: 'AI Runtime' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Codex app-server')).toBeInTheDocument()
+  })
+
+  it('does not render the empty state when runtime status fails', () => {
+    mockUseRuntimeStatus.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch: vi.fn(),
+    })
+    mockUsePrefs.mockReturnValue({ data: DEFAULT_PREFS, isLoading: false })
+    mockUseUpdate.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+
+    renderAgentRuntimeSettings()
+
+    expect(screen.getByText('AI Runtime 状态加载失败')).toBeInTheDocument()
+    expect(screen.queryByText('暂无可用 runtime provider。')).not.toBeInTheDocument()
+  })
+
+  it('tolerates partial runtime snapshots without action bindings', () => {
+    mockUseRuntimeStatus.mockReturnValue({
+      data: {
+        can_manage: true,
+        providers: [
+          {
+            runtime_name: 'openai_compatible',
+            label: 'OpenAI SDK / LLM API',
+            configured: true,
+            available: true,
+            status: 'ready',
+            message: 'OpenAI Runtime 已配置。',
+            operations: ['test_connection'],
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+    mockUsePrefs.mockReturnValue({ data: DEFAULT_PREFS, isLoading: false })
+    mockUseUpdate.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+
+    renderAgentRuntimeSettings()
+
+    expect(screen.getByText('OpenAI SDK / LLM API')).toBeInTheDocument()
   })
 })

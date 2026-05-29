@@ -475,6 +475,7 @@ def _client(
     repository_provider,
     *,
     principal_id: str | None = "alice",
+    roles: list[str] | None = None,
     testing: bool = True,
     runtime_management_provider=None,
     codex_run_service_provider=None,
@@ -490,6 +491,8 @@ def _client(
         @app.before_request
         def _inject_principal():
             g.principal_id = principal_id
+            if roles is not None:
+                g.user_roles = roles
 
     app.register_blueprint(
         create_agent_runtime_blueprint(
@@ -1268,6 +1271,21 @@ def test_agent_runtime_api_exposes_platform_runtime_management_snapshot():
     assert data["providers"][0]["runtime_name"] == "openai_compatible"
     assert data["providers"][1]["runtime_name"] == "codex_app_server"
     assert data["action_bindings"][0]["expose_selector"] is False
+    assert data["can_manage"] is False
+
+
+def test_agent_runtime_api_status_exposes_current_principal_management_permission():
+    runtime_management = _RuntimeManagement()
+
+    resp = _client(
+        lambda: _Repo(),
+        principal_id="test_admin",
+        roles=["platform_admin"],
+        runtime_management_provider=lambda: runtime_management,
+    ).get("/api/v1/agent-runtime/providers/status")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["can_manage"] is True
 
 
 def test_agent_runtime_api_resolves_action_binding_without_frontend_runtime_switching():

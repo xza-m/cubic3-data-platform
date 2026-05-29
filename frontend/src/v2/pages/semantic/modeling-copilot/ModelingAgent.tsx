@@ -54,7 +54,7 @@ import {
 import { Button, Chip, Textarea, useToast } from '@v2/components/ui'
 import { AppError } from '@v2/api/types'
 import type { AgentRuntimeManagementSnapshot, AgentRuntimeProviderStatus } from '@v2/api/agent-runtime'
-import { useAgentRuntimeStatus, useStartAgentRuntimeProvider } from '@v2/hooks/agent-runtime'
+import { useAgentRuntimeStatus } from '@v2/hooks/agent-runtime'
 import {
   useAcceptSemanticModelingCopilotCubeDraft,
   useConfirmSemanticModelingCopilotAssumption,
@@ -150,7 +150,6 @@ export default function ModelingAgent() {
   const deleteSession = useDeleteSemanticModelingCopilotSession()
   const renameSession = useRenameSemanticModelingCopilotSession()
   const updateSpec = useUpdateSemanticModelingCopilotSpec()
-  const startRuntimeProvider = useStartAgentRuntimeProvider()
 
   // ── 工作台状态 ───────────────────────────────────────────────────────────
   const [workbenchOpen, setWorkbenchOpen] = useState(false)
@@ -468,22 +467,9 @@ export default function ModelingAgent() {
     setDraft('请基于当前完整 raw_spec 修改 spec：')
   }, [])
 
-  const handleStartCodex = useCallback(async () => {
-    try {
-      await startRuntimeProvider.mutateAsync('codex_app_server')
-      toast.show({
-        tone: 'success',
-        title: 'Codex 启动已提交',
-        description: '正在连接 Codex app server，请稍后重试复审能力。',
-      })
-    } catch (error) {
-      toast.show({
-        tone: 'danger',
-        title: 'Codex 启动失败',
-        description: formatCopilotError(error),
-      })
-    }
-  }, [startRuntimeProvider, toast])
+  const handleOpenRuntimeSettings = useCallback(() => {
+    navigate('/settings?tab=agent-runtime')
+  }, [navigate])
 
   return (
     <div className="flex h-full min-h-0 flex-1" data-testid="v2-modeling-copilot">
@@ -732,8 +718,7 @@ export default function ModelingAgent() {
               isPublished={isPublished}
               pendingRunLabel={pendingRunLabel}
               runtimeSnapshot={runtimeStatusQ.data}
-              onStartCodex={() => void handleStartCodex()}
-              isStartingCodex={startRuntimeProvider.isPending}
+              onOpenRuntimeSettings={handleOpenRuntimeSettings}
             />
           ) : null}
         </div>
@@ -827,7 +812,8 @@ function runtimeProvider(
   snapshot: AgentRuntimeManagementSnapshot | undefined,
   runtimeName: string,
 ): AgentRuntimeProviderStatus | undefined {
-  return snapshot?.providers.find((provider) => provider.runtime_name === runtimeName)
+  const providers = Array.isArray(snapshot?.providers) ? snapshot.providers : []
+  return providers.find((provider) => provider.runtime_name === runtimeName)
 }
 
 // ── 右侧专家详情：摘要 / 语义定义 / 数据来源 / 预演结果 / 审计回放 ─────────
@@ -903,8 +889,7 @@ function ArtifactPanel({
   isPublished,
   pendingRunLabel,
   runtimeSnapshot,
-  onStartCodex,
-  isStartingCodex,
+  onOpenRuntimeSettings,
 }: {
   session: SemanticModelingCopilotSession
   review?: SemanticModelingCopilotReview
@@ -918,8 +903,7 @@ function ArtifactPanel({
     isPublished: boolean
     pendingRunLabel?: string
     runtimeSnapshot?: AgentRuntimeManagementSnapshot
-    onStartCodex: () => void
-    isStartingCodex?: boolean
+    onOpenRuntimeSettings: () => void
   }) {
     const enabledTabs = new Set<ArtifactTab>(['Review', 'Spec', 'Source', 'Preview', 'Trace'])
   const handleTabChange = (tab: ArtifactTab) => {
@@ -971,8 +955,7 @@ function ArtifactPanel({
               <CodexReviewRuntimeNotice
                 session={session}
                 snapshot={runtimeSnapshot}
-                onStartCodex={onStartCodex}
-                isStartingCodex={isStartingCodex}
+                onOpenRuntimeSettings={onOpenRuntimeSettings}
               />
               <ProposalReviewWorkbench
                 session={session}
@@ -1013,19 +996,17 @@ function ArtifactPanel({
 function CodexReviewRuntimeNotice({
   session,
   snapshot,
-  onStartCodex,
-  isStartingCodex,
+  onOpenRuntimeSettings,
 }: {
   session: SemanticModelingCopilotSession
   snapshot?: AgentRuntimeManagementSnapshot
-  onStartCodex: () => void
-  isStartingCodex?: boolean
+  onOpenRuntimeSettings: () => void
 }) {
-  const binding = snapshot?.action_bindings.find((item) => item.action === 'semantic.modeling.review_proposal')
+  const actionBindings = Array.isArray(snapshot?.action_bindings) ? snapshot.action_bindings : []
+  const binding = actionBindings.find((item) => item.action === 'semantic.modeling.review_proposal')
   if (!session.current_proposal_id || !binding?.requires_connection) return null
   const codex = runtimeProvider(snapshot, 'codex_app_server')
   if (codex?.available) return null
-  const canStart = Boolean(codex?.operations?.includes('start'))
   return (
     <div
       className="mb-3 rounded-[8px] border px-3 py-2.5 text-[12px]"
@@ -1039,13 +1020,9 @@ function CodexReviewRuntimeNotice({
             当前 Proposal 复审需要 Codex app server。{codex?.message ?? '请联系管理员配置 Codex runtime。'}
           </div>
         </div>
-        {canStart ? (
-          <Button size="sm" variant="default" onClick={onStartCodex} disabled={isStartingCodex}>
-            {isStartingCodex ? '启动中…' : '启动 Codex'}
-          </Button>
-        ) : (
-          <Chip tone="warning">需管理员配置</Chip>
-        )}
+        <Button size="sm" variant="default" onClick={onOpenRuntimeSettings}>
+          打开 AI Runtime 设置
+        </Button>
       </div>
     </div>
   )

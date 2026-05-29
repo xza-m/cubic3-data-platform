@@ -1183,11 +1183,13 @@ git commit -m "feat: secure agent runtime artifacts"
 **Files:**
 - Create: `frontend/src/v2/pages/settings/AgentRuntimeSettings.tsx`
 - Modify: `frontend/src/v2/pages/settings/Settings.tsx`
+- Modify: `frontend/src/v2/components/ui/Tabs.tsx`
 - Modify: `frontend/src/v2/api/agent-runtime.ts`
 - Modify: `frontend/src/v2/hooks/agent-runtime.ts`
+- Modify: `frontend/src/v2/pages/semantic/modeling-copilot/ModelingAgent.tsx`
 - Test: `frontend/src/v2/pages/settings/Settings.test.tsx`
 
-- [ ] **Step 1: 写设置页失败测试**
+- [x] **Step 1: 写设置页失败测试**
 
 Add to `frontend/src/v2/pages/settings/Settings.test.tsx`:
 
@@ -1209,7 +1211,7 @@ test("shows platform agent runtime management tab and codex start action", async
 });
 ```
 
-- [ ] **Step 2: 运行测试确认失败**
+- [x] **Step 2: 运行测试确认失败**
 
 Run:
 
@@ -1219,7 +1221,7 @@ cd frontend && npm test -- Settings
 
 Expected: FAIL，缺少 `agent-runtime` tab 或按钮。
 
-- [ ] **Step 3: 实现 AgentRuntimeSettings**
+- [x] **Step 3: 实现 AgentRuntimeSettings**
 
 Create `frontend/src/v2/pages/settings/AgentRuntimeSettings.tsx`:
 
@@ -1256,7 +1258,7 @@ export function AgentRuntimeSettings() {
 }
 ```
 
-- [ ] **Step 4: 接入 Settings 页面**
+- [x] **Step 4: 接入 Settings 页面**
 
 Modify `frontend/src/v2/pages/settings/Settings.tsx`:
 
@@ -1279,7 +1281,7 @@ export function Settings({ initialTab = "general" }: { initialTab?: string }) {
 }
 ```
 
-- [ ] **Step 5: 运行前端验证**
+- [x] **Step 5: 运行前端验证**
 
 Run:
 
@@ -1290,7 +1292,7 @@ cd frontend && npm run build
 
 Expected: PASS。
 
-- [ ] **Step 6: 提交 Task 6**
+- [x] **Step 6: 提交 Task 6**
 
 Run:
 

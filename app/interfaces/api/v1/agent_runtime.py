@@ -20,10 +20,19 @@ from app.infrastructure.agent_inference_runtime.codex_http_client import (
     CodexAppServerClientError,
 )
 
+RUNTIME_MANAGE_ROLES = {"platform_admin", "governance_admin", "admin"}
+
 try:
-    from app.interfaces.api.middleware.auth import require_admin, require_identity  # type: ignore[attr-defined]
+    from app.interfaces.api.middleware.auth import (  # type: ignore[attr-defined]
+        _resolve_access_roles,
+        require_admin,
+        require_identity,
+    )
 except ImportError:  # pragma: no cover - 兼容旧认证模块名
     from app.interfaces.api.middleware.auth import require_admin, require_auth as require_identity  # type: ignore[no-redef]
+
+    def _resolve_access_roles(principal_id: str | None) -> set[str]:  # type: ignore[no-redef]
+        return set()
 from app.shared.response import error, success
 from app.shared.utils.time import utcnow
 
@@ -130,6 +139,14 @@ def _require_admin_unless_testing(func: Callable[..., Any]) -> Callable[..., Any
 
 def _principal_id() -> str | None:
     return getattr(g, "principal_id", None) or getattr(g, "user_id", None)
+
+
+def _can_manage_runtime() -> bool:
+    if current_app.config.get("TESTING"):
+        testing_roles = set(getattr(g, "user_roles", []) or []) | set(getattr(g, "platform_roles", []) or [])
+        if testing_roles:
+            return bool(RUNTIME_MANAGE_ROLES & testing_roles)
+    return bool(RUNTIME_MANAGE_ROLES & _resolve_access_roles(_principal_id()))
 
 
 def _coerce_bool(value: Any) -> bool:
@@ -273,7 +290,13 @@ def create_agent_runtime_blueprint(
     @_require_identity_unless_testing
     def providers_status():
         management = _resolve_runtime_management(runtime_management_provider)
-        return success(data=_plain(management.snapshot()))
+        snapshot = _plain(management.snapshot())
+        if isinstance(snapshot, Mapping):
+            snapshot_payload = dict(snapshot)
+        else:
+            snapshot_payload = snapshot
+        snapshot_payload["can_manage"] = _can_manage_runtime()
+        return success(data=snapshot_payload)
 
     @bp.route("/actions/<path:action>/binding", methods=["GET"])
     @_require_identity_unless_testing

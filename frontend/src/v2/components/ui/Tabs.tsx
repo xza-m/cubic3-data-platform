@@ -31,14 +31,16 @@ export interface TabsProps {
   onChange: (v: string) => void
   size?: 'md' | 'sm'
   className?: string
+  'aria-label'?: string
   children: ReactNode
 }
 
-export function Tabs({ value, onChange, size = 'md', className, children }: TabsProps) {
+export function Tabs({ value, onChange, size = 'md', className, 'aria-label': ariaLabel, children }: TabsProps) {
   return (
     <Ctx.Provider value={{ value, onChange, size }}>
       <div
         role="tablist"
+        aria-label={ariaLabel}
         className={cn(
           'flex items-center gap-1 border-b',
           className,
@@ -57,20 +59,24 @@ export function Tabs({ value, onChange, size = 'md', className, children }: Tabs
 export interface TabProps {
   value: string
   disabled?: boolean
+  id?: string
+  'aria-controls'?: string
   children: ReactNode
   className?: string
 }
 
-export function Tab({ value, disabled, children, className }: TabProps) {
+export function Tab({ value, disabled, id, 'aria-controls': ariaControls, children, className }: TabProps) {
   const ctx = useContext(Ctx)
   if (!ctx) throw new Error('<Tab> must be used inside <Tabs>')
   const active = ctx.value === value
   return (
     <button
+      id={id}
       type="button"
       role="tab"
       aria-selected={active}
       aria-disabled={disabled}
+      aria-controls={ariaControls}
       disabled={disabled}
       onClick={() => !disabled && ctx.onChange(value)}
       className={cn(

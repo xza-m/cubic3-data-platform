@@ -16,21 +16,29 @@
 //
 // Round 4 · T-001c（第二批）— 全量走 t()；key 命名遵守 NAMING.md。
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAppShell } from '@v2/layout/AppShell'
-import { Button, Input } from '@v2/components/ui'
+import { Button, Input, Tab, Tabs } from '@v2/components/ui'
 import { useToast } from '@v2/components/ui/Toast'
 import { useMyPreferences, useUpdateMyPreferences } from '@v2/hooks/userPreferences'
 import type { ThemePreference, TableDensity, UserPreferences } from '@v2/api/userPreferences'
 import { cn } from '@v2/lib/cn'
 import { useA11yPreferences, type OverrideMode } from '@v2/components/A11yPreferencesProvider'
 import { t } from '@v2/i18n'
+import AgentRuntimeSettings from './AgentRuntimeSettings'
 
 interface FormState {
   theme: ThemePreference
   default_landing: string
   list_page_size: number
   table_density: TableDensity
+}
+
+type SettingsTab = 'general' | 'agent-runtime'
+
+interface SettingsProps {
+  initialTab?: SettingsTab
 }
 
 function toForm(prefs: UserPreferences): FormState {
@@ -113,15 +121,22 @@ function validateForm(form: FormState): string | null {
   return null
 }
 
-export default function Settings() {
+function settingsTabFromParam(value: string | null): SettingsTab | null {
+  return value === 'agent-runtime' || value === 'general' ? value : null
+}
+
+export default function Settings({ initialTab = 'general' }: SettingsProps) {
   const { setBreadcrumbs } = useAppShell()
   const toast = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialActiveTab = settingsTabFromParam(searchParams.get('tab')) ?? initialTab
 
   const { data: prefs, isLoading } = useMyPreferences()
   const updateMutation = useUpdateMyPreferences()
   const a11y = useA11yPreferences()
 
   const [form, setForm] = useState<FormState | null>(null)
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialActiveTab)
 
   useEffect(() => {
     setBreadcrumbs([
@@ -137,12 +152,46 @@ export default function Settings() {
     }
   }, [prefs, form])
 
-  if (isLoading || !form || !prefs) {
+  useEffect(() => {
+    const tabFromUrl = settingsTabFromParam(searchParams.get('tab'))
+    if (tabFromUrl && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl)
+    }
+  }, [activeTab, searchParams])
+
+  function handleTabChange(tab: SettingsTab) {
+    setActiveTab(tab)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (tab === 'agent-runtime') {
+        next.set('tab', 'agent-runtime')
+      } else {
+        next.delete('tab')
+      }
+      return next
+    }, { replace: true })
+  }
+
+  if (activeTab === 'general' && (isLoading || !form || !prefs)) {
     return (
-      <div className="flex flex-1 items-center justify-center text-[12px] text-3">
-        {t('settings.state.loading', '加载中…')}
-      </div>
+      <SettingsShell activeTab={activeTab} onTabChange={handleTabChange}>
+        <div className="flex min-h-[240px] flex-1 items-center justify-center text-[12px] text-3">
+          {t('settings.state.loading', '加载中…')}
+        </div>
+      </SettingsShell>
     )
+  }
+
+  if (activeTab === 'agent-runtime') {
+    return (
+      <SettingsShell activeTab={activeTab} onTabChange={handleTabChange}>
+        <AgentRuntimeSettings />
+      </SettingsShell>
+    )
+  }
+
+  if (!form || !prefs) {
+    return null
   }
 
   const validationError = validateForm(form)
@@ -200,16 +249,7 @@ export default function Settings() {
   const labelPageSize = t('settings.label.pageSize', '列表默认条数')
 
   return (
-    <div className="mx-auto w-full max-w-[600px] px-6 py-8 flex flex-col gap-6">
-      <div>
-        <h1 className="text-[15px] font-semibold text-1">
-          {t('settings.page.title', '我的偏好')}
-        </h1>
-        <p className="mt-1 text-[12px] text-3">
-          {t('settings.page.subtitle', '个性化平台外观与交互行为')}
-        </p>
-      </div>
-
+    <SettingsShell activeTab={activeTab} onTabChange={handleTabChange}>
       <div
         className="rounded-lg border divide-y"
         style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
@@ -336,6 +376,54 @@ export default function Settings() {
         >
           {t('settings.action.resetShort', '重置')}
         </Button>
+      </div>
+    </SettingsShell>
+  )
+}
+
+function SettingsShell({
+  activeTab,
+  onTabChange,
+  children,
+}: {
+  activeTab: SettingsTab
+  onTabChange: (tab: SettingsTab) => void
+  children: ReactNode
+}) {
+  const activePanelId = activeTab === 'agent-runtime' ? 'settings-panel-agent-runtime' : 'settings-panel-general'
+  const activeTabId = activeTab === 'agent-runtime' ? 'settings-tab-agent-runtime' : 'settings-tab-general'
+  return (
+    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-6 py-8">
+      <div>
+        <h1 className="text-[15px] font-semibold text-1">
+          {t('settings.page.title', '我的偏好')}
+        </h1>
+        <p className="mt-1 text-[12px] text-3">
+          {t('settings.page.subtitle', '个性化平台外观与交互行为')}
+        </p>
+      </div>
+      <Tabs
+        value={activeTab}
+        onChange={(value) => onTabChange(value as SettingsTab)}
+        aria-label="设置分类"
+      >
+        <Tab
+          value="general"
+          id="settings-tab-general"
+          aria-controls="settings-panel-general"
+        >
+          {t('settings.tabs.general', '通用')}
+        </Tab>
+        <Tab
+          value="agent-runtime"
+          id="settings-tab-agent-runtime"
+          aria-controls="settings-panel-agent-runtime"
+        >
+          AI Runtime
+        </Tab>
+      </Tabs>
+      <div role="tabpanel" id={activePanelId} aria-labelledby={activeTabId}>
+        {children}
       </div>
     </div>
   )
