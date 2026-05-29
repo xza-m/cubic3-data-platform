@@ -121,6 +121,14 @@ def _coerce_bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _invalid_provider_config_payload(field: str):
+    return error(
+        "Agent runtime provider config payload is invalid",
+        status=400,
+        details={"code": "RUNTIME_PROVIDER_CONFIG_INVALID", "field": field},
+    )
+
+
 def _not_found():
     return error(
         "Agent runtime run not found",
@@ -212,20 +220,18 @@ def create_agent_runtime_blueprint(
     @_require_admin_unless_testing
     def update_provider_config(runtime_name: str):
         management = _resolve_runtime_management(runtime_management_provider)
-        payload = request.get_json(silent=True) or {}
+        raw_body = request.get_data(cache=True)
+        parsed_payload = request.get_json(silent=True)
+        payload = {} if not raw_body.strip() and parsed_payload is None else parsed_payload
         if not isinstance(payload, Mapping):
-            return error(
-                "Agent runtime provider config payload must be an object",
-                status=400,
-                details={"code": "RUNTIME_PROVIDER_CONFIG_INVALID", "field": "body"},
-            )
+            return _invalid_provider_config_payload("body")
         extra_payload = payload.get("extra") or {}
         if not isinstance(extra_payload, Mapping):
-            return error(
-                "Agent runtime provider config extra must be an object",
-                status=400,
-                details={"code": "RUNTIME_PROVIDER_CONFIG_INVALID", "field": "extra"},
-            )
+            return _invalid_provider_config_payload("extra")
+        for field in ("endpoint", "model", "api_key"):
+            value = payload.get(field)
+            if value is not None and not isinstance(value, str):
+                return _invalid_provider_config_payload(field)
         try:
             provider_config = management.update_provider_config(
                 RuntimeProviderConfigUpdate(

@@ -714,6 +714,69 @@ def test_agent_runtime_api_rejects_non_mapping_provider_extra_payload():
     assert resp.get_json()["details"]["code"] == "RUNTIME_PROVIDER_CONFIG_INVALID"
 
 
+def test_agent_runtime_api_rejects_non_object_provider_config_payloads():
+    runtime_config_repository = _RuntimeConfigRepository()
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={"enabled": False},
+        runtime_config_service=RuntimeConfigService(
+            repository=runtime_config_repository,
+            openai_config={"api_key": "", "api_base": "", "model": ""},
+            codex_config={"enabled": False},
+        ),
+    )
+    client = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    )
+
+    list_resp = client.put(
+        "/api/v1/agent-runtime/providers/openai_compatible/config",
+        json=[],
+    )
+    false_resp = client.put(
+        "/api/v1/agent-runtime/providers/openai_compatible/config",
+        json=False,
+    )
+    zero_resp = client.put(
+        "/api/v1/agent-runtime/providers/openai_compatible/config",
+        json=0,
+    )
+
+    assert list_resp.status_code == 400
+    assert false_resp.status_code == 400
+    assert zero_resp.status_code == 400
+    assert runtime_config_repository.configs == {}
+
+
+def test_agent_runtime_api_rejects_non_string_provider_config_scalars():
+    runtime_config_repository = _RuntimeConfigRepository()
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={"enabled": False},
+        runtime_config_service=RuntimeConfigService(
+            repository=runtime_config_repository,
+            openai_config={"api_key": "", "api_base": "", "model": ""},
+            codex_config={"enabled": False},
+        ),
+    )
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).put(
+        "/api/v1/agent-runtime/providers/openai_compatible/config",
+        json={"enabled": True, "endpoint": {"url": "https://api.openai.com/v1"}},
+    )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["details"] == {
+        "code": "RUNTIME_PROVIDER_CONFIG_INVALID",
+        "field": "endpoint",
+    }
+    assert runtime_config_repository.configs == {}
+
+
 def test_agent_runtime_api_exposes_codex_logs_and_capabilities():
     client = _client(
         lambda: _Repo(),
