@@ -51,7 +51,6 @@ def _config(tmp_path: Path, **overrides):
         "project_id": "cubic3-data-platform",
         "project_root": str(project_root),
         "runtime_root": str(runtime_root),
-        "unix_socket": str(runtime_root / "codex.sock"),
         "allowed_project_roots": str(tmp_path),
     }
     base.update(overrides)
@@ -78,18 +77,53 @@ def test_codex_process_manager_rejects_unknown_command_profile(tmp_path):
     assert exc_info.value.status_code == 400
 
 
-def test_codex_process_manager_starts_with_backend_allowlisted_profile(tmp_path):
+def test_codex_process_manager_starts_loopback_ws_app_server(tmp_path):
     executor = _Executor()
-    manager = CodexProcessManager(_config(tmp_path), executor=executor)
+    manager = CodexProcessManager(
+        _config(
+            tmp_path,
+            transport="ws",
+            endpoint="ws://127.0.0.1:8799",
+        ),
+        executor=executor,
+    )
 
     result = manager.start()
 
     assert result.status == "succeeded"
     assert result.operation == "start"
     assert result.details["pid"] == 4321
-    assert executor.calls[0]["args"][0] == "codex-app-server"
-    assert "--project-root" in executor.calls[0]["args"]
+    assert result.details["endpoint"] == "ws://127.0.0.1:8799"
+    assert result.details["transport"] == "ws"
+    assert executor.calls[0]["args"] == [
+        "codex",
+        "app-server",
+        "--listen",
+        "ws://127.0.0.1:8799",
+    ]
+    assert executor.calls[0]["cwd"] == str(tmp_path / "project")
     assert (tmp_path / "runtime" / "codex-app-server.pid").read_text() == "4321"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    [
+        "",
+        "http://127.0.0.1:8799",
+        "ws://0.0.0.0:8799",
+        "ws://example.com:8799",
+        "ws://127.0.0.1",
+        "ws://127.0.0.1:abc",
+        "ws://127.0.0.1:99999",
+    ],
+)
+def test_codex_process_manager_rejects_non_loopback_ws_endpoint(tmp_path, endpoint):
+    manager = CodexProcessManager(_config(tmp_path, transport="ws", endpoint=endpoint))
+
+    with pytest.raises(CodexProcessManagerError) as exc_info:
+        manager.start()
+
+    assert exc_info.value.code == "RUNTIME_CODEX_ENDPOINT_INVALID"
 
 
 def test_codex_process_manager_rejects_project_root_outside_allowed_roots(tmp_path):

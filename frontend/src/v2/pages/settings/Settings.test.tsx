@@ -109,6 +109,12 @@ describe('Settings page', () => {
             status: 'not_verified',
             message: 'Codex app-server 等待联通测试。',
             operations: ['test_connection', 'start', 'restart'],
+            details: {
+              transport: 'ws',
+              endpoint: 'ws://127.0.0.1:8799',
+              project_root: '/tmp/cubic3',
+              runtime_root: '/tmp/cubic3/.cubic3/agent-codex',
+            },
           },
         ],
         action_bindings: [
@@ -246,6 +252,10 @@ describe('Settings page', () => {
     expect(screen.getByRole('tabpanel', { name: 'AI Runtime' })).toBeInTheDocument()
     expect(screen.getByText('OpenAI SDK / LLM API')).toBeInTheDocument()
     expect(screen.getByText('Codex app-server')).toBeInTheDocument()
+    expect(screen.getByText('transport')).toBeInTheDocument()
+    expect(screen.getByText('ws')).toBeInTheDocument()
+    expect(screen.getByText('endpoint')).toBeInTheDocument()
+    expect(screen.getByText('ws://127.0.0.1:8799')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '启动 Codex' }))
 

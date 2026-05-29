@@ -71,12 +71,19 @@ class RuntimeConfigService:
             }
         if runtime_name == "codex_app_server":
             env_enabled = _as_bool(self._codex_config.get("enabled"))
+            extra = dict(snapshot.extra)
+            directory_config = {
+                key: extra[key]
+                for key in ("project_root", "runtime_root", "runtime_workspace_roots", "timeout_seconds")
+                if extra.get(key) is not None
+            }
             return {
                 **dict(self._codex_config),
+                **directory_config,
                 "enabled": env_enabled and snapshot.enabled,
                 "endpoint": snapshot.endpoint or self._codex_config.get("endpoint"),
                 "model": snapshot.model or self._codex_config.get("model"),
-                "provider_extra": snapshot.extra,
+                "provider_extra": extra,
             }
         raise KeyError(runtime_name)
 

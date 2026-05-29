@@ -182,6 +182,7 @@ export default function AgentRuntimeSettings() {
               <div className="rounded border px-3 py-2 text-[12px] text-2" style={{ borderColor: 'var(--border)' }}>
                 {provider.message || '暂无状态说明'}
               </div>
+              <RuntimeDetails provider={provider} />
               <div className="flex flex-wrap items-center gap-2">
                 {hasOperation(provider, 'test') ? (
                   <Button
@@ -257,6 +258,21 @@ export default function AgentRuntimeSettings() {
   )
 }
 
+function RuntimeDetails({ provider }: { provider: AgentRuntimeProviderStatus }) {
+  const details = provider.details && typeof provider.details === 'object' ? provider.details : {}
+  const rows = ['transport', 'endpoint', 'project_root', 'runtime_root']
+    .map((key) => [key, formatRuntimeDetailValue(details[key])] as const)
+    .filter(([, value]) => value.length > 0)
+  if (!rows.length) return null
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {rows.map(([key, value]) => (
+        <RuntimeField key={key} label={key} value={value} />
+      ))}
+    </div>
+  )
+}
+
 function RuntimeField({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -264,6 +280,13 @@ function RuntimeField({ label, value }: { label: string; value: string }) {
       <div className="mt-0.5 break-words text-[12px] text-1">{value}</div>
     </div>
   )
+}
+
+function formatRuntimeDetailValue(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (typeof value === 'boolean') return formatBoolean(value)
+  return ''
 }
 
 function successMessage(

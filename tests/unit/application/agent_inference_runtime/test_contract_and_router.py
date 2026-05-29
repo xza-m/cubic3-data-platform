@@ -19,13 +19,14 @@ from app.application.agent_inference_runtime.router import AgentInferenceRuntime
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 from app.domain.agent_inference_runtime.types import RuntimeProviderConfigSnapshot
 from app.domain.agent_inference_runtime.ports import AgentInferenceRuntimePort
-from app.infrastructure.agent_inference_runtime.codex_http_client import CodexAppServerClientError
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeRequest,
     AgentInferenceRuntimeResult,
+    RuntimeOperationResult,
     RuntimeContextRef,
     RuntimePolicy,
 )
+from app.infrastructure.agent_inference_runtime.codex_client import CodexAppServerClientError
 
 
 class _FakeAdapter(AgentInferenceRuntimePort):
@@ -89,35 +90,18 @@ class _UnexpectedCodexProcessManager:
         raise AssertionError("disabled provider should not start")
 
 
-class _FakeCodexHttpClient:
-    def __init__(self, *, health=None, capabilities=None):
-        self.health_payload = health or {"status": "ok", "version": "0.1.0"}
-        self.capabilities_payload = capabilities or {
-            "actions": ["semantic.modeling.review_proposal"],
-            "artifacts": ["model_patch"],
-            "events": ["run.succeeded"],
-            "tools": ["read_file"],
-        }
-        self.calls = []
+class _RecordingCodexProcessManager:
+    def __init__(self, config):
+        self.config = dict(config)
 
-    def healthcheck(self):
-        self.calls.append("healthcheck")
-        return self.health_payload
-
-    def capabilities(self):
-        self.calls.append("capabilities")
-        return self.capabilities_payload
-
-
-class _FailingCodexHttpClient:
-    def __init__(self, error):
-        self.error = error
-
-    def healthcheck(self):
-        raise self.error
-
-    def capabilities(self):
-        raise self.error
+    def start(self):
+        return RuntimeOperationResult(
+            runtime_name="codex_app_server",
+            operation="start",
+            status="succeeded",
+            message="started",
+            details={"endpoint": self.config.get("endpoint"), "project_root": self.config.get("project_root")},
+        )
 
 
 class _ConfigRepository:
@@ -130,6 +114,39 @@ class _ConfigRepository:
 
     def record_audit_event(self, **kwargs):
         self.audit_events.append(kwargs)
+
+
+class _WsClient:
+    def __init__(self, *, fail: bool = False):
+        self.fail = fail
+        self.healthchecked = 0
+        self.capability_calls = 0
+
+    def healthcheck(self):
+        self.healthchecked += 1
+        if self.fail:
+            raise CodexAppServerClientError(
+                "ws refused",
+                code="RUNTIME_PROVIDER_ERROR",
+                details={"endpoint": "ws://127.0.0.1:8799"},
+            )
+        return {"status": "ready", "transport": "ws"}
+
+    def capabilities(self):
+        self.capability_calls += 1
+        if self.fail:
+            raise CodexAppServerClientError(
+                "ws refused",
+                code="RUNTIME_PROVIDER_ERROR",
+                details={"endpoint": "ws://127.0.0.1:8799"},
+            )
+        return {
+            "transport": "ws",
+            "protocol": "codex-app-server-jsonrpc",
+            "actions": ["semantic.modeling.review_proposal"],
+            "artifacts": ["workspace_file"],
+            "events": ["agentMessage"],
+        }
 
 
 def _request(action: str = "semantic.modeling.chat") -> AgentInferenceRuntimeRequest:
@@ -320,7 +337,8 @@ def test_runtime_management_allows_codex_start_operation_only_when_ui_managed():
             "enabled": True,
             "ui_managed": True,
             "server_managed": True,
-            "endpoint": "http://127.0.0.1:8799",
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
             "project_id": "cubic3-data-platform",
         },
     )
@@ -328,6 +346,7 @@ def test_runtime_management_allows_codex_start_operation_only_when_ui_managed():
     status = service.provider_status("codex_app_server")
 
     assert status.configured is True
+    assert status.available is False
     assert status.status == "not_verified"
     assert status.operations == [
         "test_connection",
@@ -414,6 +433,58 @@ def test_runtime_management_blocks_db_disabled_codex_start_and_audits_failure():
     ]
 
 
+def test_runtime_management_start_uses_current_management_config_for_process_manager():
+    created_configs = []
+    repository = _ConfigRepository(
+        RuntimeProviderConfigSnapshot(
+            runtime_name="codex_app_server",
+            enabled=True,
+            endpoint="ws://127.0.0.1:8801",
+            model=None,
+            secret_ref=None,
+            extra={"project_root": "/repo/from-db"},
+            updated_by="alice",
+            updated_at=None,
+        )
+    )
+    config_service = RuntimeConfigService(
+        repository=repository,
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+            "project_root": "/repo/from-env",
+        },
+    )
+
+    def process_manager_factory(config):
+        created_configs.append(dict(config))
+        return _RecordingCodexProcessManager(config)
+
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+            "project_root": "/repo/from-env",
+        },
+        runtime_config_service=config_service,
+        codex_process_manager_factory=process_manager_factory,
+    )
+
+    result = service.start_provider("codex_app_server", principal_id="alice")
+
+    assert created_configs[0]["endpoint"] == "ws://127.0.0.1:8801"
+    assert created_configs[0]["project_root"] == "/repo/from-db"
+    assert result.details == {"endpoint": "ws://127.0.0.1:8801", "project_root": "/repo/from-db"}
+
+
 def test_runtime_management_test_provider_audit_uses_succeeded_status_with_provider_status_metadata():
     audit = _AuditRecorder()
     service = AgentRuntimeManagementService(
@@ -444,22 +515,33 @@ def test_runtime_management_test_provider_audit_uses_succeeded_status_with_provi
     ]
 
 
-def test_runtime_management_codex_test_provider_uses_configured_endpoint_healthcheck():
-    audit = _AuditRecorder({"enabled": True, "endpoint": "http://127.0.0.1:8765"})
-    client = _FakeCodexHttpClient(health={"status": "ready", "version": "0.1.0"})
+def test_runtime_management_codex_ws_endpoint_tests_connection_with_ws_client():
+    ws_client = _WsClient()
+    audit = _AuditRecorder(
+        {
+            "enabled": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+        }
+    )
     service = AgentRuntimeManagementService(
         openai_config={"api_key": "", "model": ""},
-        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
+        codex_config={
+            "enabled": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+        },
         runtime_config_service=audit,
-        codex_client_factory=lambda config: client,
+        codex_ws_client_factory=lambda _config: ws_client,
     )
 
     result = service.test_provider("codex_app_server", principal_id="alice")
 
-    assert client.calls == ["healthcheck"]
+    assert ws_client.healthchecked == 1
     assert result.status == "ready"
     assert result.available is True
-    assert result.details["health"] == {"status": "ready", "version": "0.1.0"}
+    assert result.details["transport"] == "ws"
+    assert result.details["health"] == {"status": "ready", "transport": "ws"}
     assert audit.events == [
         {
             "runtime_name": "codex_app_server",
@@ -476,19 +558,16 @@ def test_runtime_management_codex_test_provider_uses_configured_endpoint_healthc
     ]
 
 
-def test_runtime_management_codex_test_provider_audits_failed_healthcheck():
-    audit = _AuditRecorder({"enabled": True, "endpoint": "http://127.0.0.1:8765"})
+def test_runtime_management_codex_ws_test_provider_maps_client_error_to_unavailable():
+    ws_client = _WsClient(fail=True)
     service = AgentRuntimeManagementService(
         openai_config={"api_key": "", "model": ""},
-        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
-        runtime_config_service=audit,
-        codex_client_factory=lambda config: _FailingCodexHttpClient(
-            CodexAppServerClientError(
-                "Codex app-server provider 调用失败。",
-                code="RUNTIME_PROVIDER_ERROR",
-                details={"path": "/health"},
-            )
-        ),
+        codex_config={
+            "enabled": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+        },
+        codex_ws_client_factory=lambda _config: ws_client,
     )
 
     result = service.test_provider("codex_app_server", principal_id="alice")
@@ -497,74 +576,29 @@ def test_runtime_management_codex_test_provider_audits_failed_healthcheck():
     assert result.available is False
     assert result.details["provider_error"] == {
         "code": "RUNTIME_PROVIDER_ERROR",
-        "path": "/health",
+        "message": "ws refused",
+        "endpoint": "ws://127.0.0.1:8799",
     }
-    assert audit.events == [
-        {
-            "runtime_name": "codex_app_server",
-            "action": "test",
-            "principal_id": "alice",
-            "status": "succeeded",
-            "metadata": {
-                "provider_status": "unavailable",
-                "available": False,
-                "configured": True,
-                "provider_error": {
-                    "code": "RUNTIME_PROVIDER_ERROR",
-                    "path": "/health",
-                },
-            },
-        }
-    ]
 
 
-def test_runtime_management_codex_capabilities_uses_transport_when_endpoint_configured():
-    client = _FakeCodexHttpClient(
-        capabilities={
-            "actions": ["semantic.modeling.review_proposal"],
-            "artifacts": ["model_patch"],
-            "events": ["run.started", "run.succeeded"],
-            "tools": ["read_file"],
-            "max_context_tokens": 200000,
-        }
-    )
+def test_runtime_management_codex_capabilities_use_ws_client_when_configured():
+    ws_client = _WsClient()
     service = AgentRuntimeManagementService(
         openai_config={"api_key": "", "model": ""},
-        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
-        codex_client_factory=lambda config: client,
+        codex_config={
+            "enabled": True,
+            "transport": "ws",
+            "endpoint": "ws://127.0.0.1:8799",
+            "project_root": "/tmp/cubic3",
+        },
+        codex_ws_client_factory=lambda _config: ws_client,
     )
 
     capabilities = service.provider_capabilities("codex_app_server")
 
-    assert client.calls == ["capabilities"]
+    assert ws_client.capability_calls == 1
     assert capabilities.available is True
     assert capabilities.actions == ["semantic.modeling.review_proposal"]
-    assert capabilities.artifacts == ["model_patch"]
-    assert capabilities.events == ["run.started", "run.succeeded"]
-    assert capabilities.details["tools"] == ["read_file"]
-    assert capabilities.details["max_context_tokens"] == 200000
-
-
-def test_runtime_management_codex_capabilities_fallback_marks_degraded_transport():
-    error = CodexAppServerClientError(
-        "Codex app-server provider 调用失败。",
-        code="RUNTIME_PROVIDER_ERROR",
-        details={"path": "/capabilities"},
-    )
-    service = AgentRuntimeManagementService(
-        openai_config={"api_key": "", "model": ""},
-        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
-        codex_client_factory=lambda config: _FailingCodexHttpClient(error),
-    )
-
-    capabilities = service.provider_capabilities("codex_app_server")
-
-    assert capabilities.available is False
-    assert capabilities.actions == ["review", "repair", "audit"]
-    assert capabilities.details["source"] == "process_manager_fallback"
-    assert capabilities.details["transport_available"] is False
-    assert capabilities.details["transport_error"] == {
-        "code": "RUNTIME_PROVIDER_ERROR",
-        "path": "/capabilities",
-        "message": "Codex app-server provider 调用失败。",
-    }
+    assert capabilities.artifacts == ["workspace_file"]
+    assert capabilities.events == ["agentMessage"]
+    assert capabilities.details["transport"] == "ws"

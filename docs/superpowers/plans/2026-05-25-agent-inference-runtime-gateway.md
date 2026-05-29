@@ -64,7 +64,7 @@ tests/unit/infrastructure/agent_inference_runtime/test_openai_compatible_adapter
 tests/unit/infrastructure/agent_inference_runtime/test_codex_workspace.py
 tests/unit/infrastructure/agent_inference_runtime/test_codex_adapter.py
 tests/integration/test_agent_runtime_api.py
-tests/integration/agent_inference_runtime/test_codex_live_smoke.py
+tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py
 ```
 
 新增语义建模应用层：
@@ -2159,7 +2159,7 @@ git commit -m "feat: add codex app server runtime adapter"
 - Modify: `docs/quality/testing.md`
 - Modify: `docs/runbooks/local-dev.md`
 - Test: `tests/integration/test_agent_runtime_api.py`
-- Test: `tests/integration/agent_inference_runtime/test_codex_live_smoke.py`
+- Test: `tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py`
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2211,7 +2211,7 @@ def test_agent_runtime_api_returns_run_detail():
     assert data["runtime_context_ref"]["turn_id"] == "turn1"
 ```
 
-Create `tests/integration/agent_inference_runtime/test_codex_live_smoke.py`:
+Create `tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py`:
 
 ```python
 from __future__ import annotations
@@ -2222,7 +2222,7 @@ import pytest
 
 
 @pytest.mark.skipif(os.getenv("AGENT_CODEX_LIVE") != "1", reason="set AGENT_CODEX_LIVE=1 to run live Codex smoke")
-def test_codex_live_smoke_requires_explicit_enablement():
+def test_codex_ws_live_smoke_requires_explicit_enablement():
     assert os.getenv("AGENT_CODEX_ENDPOINT") or os.getenv("AGENT_CODEX_UNIX_SOCKET")
 ```
 
@@ -2233,7 +2233,7 @@ Run:
 ```bash
 PYTHONPATH=. python -m pytest --no-cov \
   tests/integration/test_agent_runtime_api.py \
-  tests/integration/agent_inference_runtime/test_codex_live_smoke.py \
+  tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py \
   -q
 ```
 
@@ -2423,7 +2423,7 @@ git add \
   docs/quality/testing.md \
   docs/runbooks/local-dev.md \
   tests/integration/test_agent_runtime_api.py \
-  tests/integration/agent_inference_runtime/test_codex_live_smoke.py
+  tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py
 git commit -m "test: add agent runtime verification surface"
 ```
 

@@ -1,17 +1,16 @@
 """Codex app-server 异步 run 生命周期服务。"""
 from __future__ import annotations
 
-from dataclasses import asdict, is_dataclass
 from typing import Any, Mapping
 from uuid import uuid4
 
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeRequest,
     AgentInferenceRuntimeRun,
-    RuntimePolicy,
 )
-from app.infrastructure.agent_inference_runtime.codex_http_client import (
+from app.infrastructure.agent_inference_runtime.codex_client import (
     CodexAppServerClientError,
+    ProviderRunRef,
 )
 
 
@@ -41,11 +40,8 @@ class CodexRunService:
         self._run_id_factory = run_id_factory or (lambda: f"run_{uuid4().hex}")
 
     def submit(self, request: AgentInferenceRuntimeRequest) -> dict[str, Any]:
-        payload = _request_payload(request)
-        provider_payload = self._client.submit_run(payload)
-        provider_payload = _dict_or_error(provider_payload)
-        provider_run_id = _provider_run_id(provider_payload)
-        status = _status(provider_payload, default="queued")
+        provider_ref = _provider_run_ref(self._client.submit_run(request))
+        provider_run_id = _stored_provider_run_id_from_ref(provider_ref)
 
         run_id = self._run_id_factory()
         run = AgentInferenceRuntimeRun(
@@ -53,18 +49,18 @@ class CodexRunService:
             app_id=request.app_id,
             action=request.action,
             runtime_name=self.runtime_name,
-            status=status,
+            status="queued",
             runtime_context_ref=request.runtime_context_ref,
             principal_id=request.principal_id,
-            provider_ref={"provider_run_id": provider_run_id},
+            provider_ref=provider_ref,
             usage={},
-            error=_status_error(status, provider_payload),
+            error=None,
         )
         self._repository.save_run(run)
         return {
             "run_id": run_id,
             "provider_run_id": provider_run_id,
-            "status": status,
+            "status": "queued",
         }
 
     def poll(self, run_id: str, principal_id: str | None = None) -> dict[str, Any]:
@@ -131,13 +127,20 @@ class CodexRunService:
     def read_events(self, run_id: str, principal_id: str | None = None) -> dict[str, Any]:
         run = self._owned_run(run_id, principal_id)
         provider_run_id = _stored_provider_run_id(run)
-        items = _list_of_dicts_or_error(self._client.events(provider_run_id), field="events")
-        return {"run_id": run.run_id, "provider_run_id": provider_run_id, "items": items}
+        payload = _dict_or_error(self._client.stream_events(provider_run_id))
+        items = _list_of_dicts_or_error(payload.get("events"), field="events")
+        result = {"run_id": run.run_id, "provider_run_id": provider_run_id, "items": items}
+        if "next_cursor" in payload:
+            result["next_cursor"] = payload["next_cursor"]
+        return result
 
     def collect_artifacts(self, run_id: str, principal_id: str | None = None) -> dict[str, Any]:
         run = self._owned_run(run_id, principal_id)
         provider_run_id = _stored_provider_run_id(run)
-        items = _list_of_dicts_or_error(self._client.artifacts(provider_run_id), field="artifacts")
+        items = _list_of_dicts_or_error(
+            self._client.collect_artifacts(provider_run_id),
+            field="artifacts",
+        )
         return {"run_id": run.run_id, "provider_run_id": provider_run_id, "items": items}
 
     def _owned_run(self, run_id: str, principal_id: str | None) -> AgentInferenceRuntimeRun:
@@ -147,43 +150,6 @@ class CodexRunService:
         if principal_id is None or run.principal_id != principal_id:
             raise CodexRunNotFoundError(run_id)
         return run
-
-
-def _request_payload(request: AgentInferenceRuntimeRequest) -> dict[str, Any]:
-    return {
-        "app_id": request.app_id,
-        "action": request.action,
-        "runtime_context_ref": asdict(request.runtime_context_ref),
-        "principal_id": request.principal_id,
-        "input": dict(request.input),
-        "context_pack": dict(request.context_pack),
-        "output_schema": request.output_schema,
-        "runtime_policy": _runtime_policy_payload(request.runtime_policy),
-        "preferred_runtime": request.preferred_runtime,
-        "execution_mode": request.execution_mode,
-        "semantic_runtime_pin": _plain_dataclass(request.semantic_runtime_pin),
-        "asset_revision_refs": [_plain_dataclass(ref) for ref in request.asset_revision_refs],
-    }
-
-
-def _runtime_policy_payload(policy: RuntimePolicy) -> dict[str, Any]:
-    return {
-        "max_runtime_seconds": policy.max_runtime_seconds,
-        "max_output_bytes": policy.max_output_bytes,
-        "allow_network": policy.allow_network,
-        "allowed_tools": list(policy.allowed_tools),
-        "command_policy": dict(policy.command_policy),
-        "fallback_runtime": policy.fallback_runtime,
-    }
-
-
-def _plain_dataclass(value: Any) -> Any:
-    if value is None:
-        return None
-    if is_dataclass(value):
-        return asdict(value)
-    return value
-
 
 def _dict_or_error(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
@@ -206,10 +172,34 @@ def _provider_run_id(payload: Mapping[str, Any]) -> str:
 
 def _stored_provider_run_id(run: AgentInferenceRuntimeRun) -> str:
     provider_ref = run.provider_ref or {}
+    return _stored_provider_run_id_from_ref(provider_ref)
+
+
+def _stored_provider_run_id_from_ref(provider_ref: Mapping[str, Any]) -> str:
     provider_run_id = provider_ref.get("provider_run_id")
     if not isinstance(provider_run_id, str) or not provider_run_id.strip():
         raise _invalid_provider_payload("stored provider_run_id is missing")
     return provider_run_id
+
+
+def _provider_run_ref(ref: Any) -> dict[str, Any]:
+    if isinstance(ref, ProviderRunRef):
+        provider_ref: dict[str, Any] = {"provider_run_id": ref.provider_run_id}
+        if ref.provider:
+            provider_ref["provider"] = ref.provider
+        if ref.provider_thread_id:
+            provider_ref["provider_thread_id"] = ref.provider_thread_id
+        return provider_ref
+    if isinstance(ref, Mapping):
+        provider_ref = {}
+        provider_run_id = _provider_run_id(ref)
+        provider_ref["provider_run_id"] = provider_run_id
+        for key in ("provider", "provider_thread_id"):
+            value = ref.get(key)
+            if isinstance(value, str) and value:
+                provider_ref[key] = value
+        return provider_ref
+    raise _invalid_provider_payload("ProviderRunRef is required")
 
 
 def _status(payload: Mapping[str, Any], *, default: str) -> str:
@@ -278,8 +268,17 @@ def _merge_provider_ref(
     provider_run_id = payload.get("provider_run_id") or payload.get("run_id")
     if isinstance(provider_run_id, str) and provider_run_id:
         merged["provider_run_id"] = provider_run_id
-    for key in ("status", "result", "structured_output", "summary"):
-        if key in payload:
+    for key in (
+        "provider",
+        "provider_thread_id",
+        "provider_turn_id",
+        "provider_status",
+        "status",
+        "result",
+        "structured_output",
+        "summary",
+    ):
+        if key in payload and payload[key] is not None:
             merged[key] = payload[key]
     return merged
 

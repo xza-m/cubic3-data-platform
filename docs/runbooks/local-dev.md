@@ -96,7 +96,7 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 
 ### 2.4 Agent Runtime 本地配置
 
-本地默认只启用 OpenAI-compatible runtime，不默认连接真实 Codex app-server。Codex runtime 已有 workspace / HTTP client / run lifecycle / artifact 权限模型的契约实现；真实 live smoke 必须显式 opt-in，避免普通开发启动时创建长任务工作区或连接本机 app-server。
+本地默认只启用 OpenAI-compatible runtime，不默认连接真实 Codex app-server。Codex runtime 已有 workspace / run lifecycle / artifact 权限模型的契约实现；真实主链路目标是本机 WebSocket app-server，live smoke 必须显式 opt-in，避免普通开发启动时创建长任务工作区或连接本机 app-server。
 
 ```bash
 export AGENT_OPENAI_API_KEY=...
@@ -108,7 +108,10 @@ export AGENT_CODEX_UI_MANAGED=false
 export AGENT_CODEX_SERVER_MANAGED=false
 export AGENT_CODEX_COMMAND_PROFILE=local-codex-app-server
 export AGENT_CODEX_ALLOWED_PROJECT_ROOTS=/Users/xuan/Work/cursor_projects
+export AGENT_CODEX_PROJECT_ROOT="$(pwd)"
 export AGENT_CODEX_RUNTIME_ROOT=.cubic3/agent-codex
+export AGENT_CODEX_TRANSPORT=ws
+export AGENT_CODEX_ENDPOINT=ws://127.0.0.1:8799
 ```
 
 如需只验证平台 runtime 的本地回归，使用：
@@ -117,12 +120,17 @@ export AGENT_CODEX_RUNTIME_ROOT=.cubic3/agent-codex
 make test-platform-agent-runtime
 ```
 
-如需运行真实 Codex app-server smoke，必须同时开启 live 标志并提供 HTTP endpoint。`AGENT_CODEX_UNIX_SOCKET` 当前用于配置和进程目录契约验证，真实 `/health` 与 `/capabilities` smoke 仍走本机 HTTP endpoint：
+真实 Codex app-server 目标主链路是本机 WebSocket。先手动启动 app-server，再用后续 WebSocket client smoke 验证：
 
 ```bash
+codex app-server --listen ws://127.0.0.1:8799
 export AGENT_CODEX_LIVE=1
-export AGENT_CODEX_ENDPOINT=http://127.0.0.1:8799
-PYTHONPATH=. python -m pytest --no-cov tests/integration/agent_inference_runtime/test_codex_live_smoke.py -q
+export AGENT_CODEX_ENABLED=true
+export AGENT_CODEX_TRANSPORT=ws
+export AGENT_CODEX_ENDPOINT=ws://127.0.0.1:8799
+export AGENT_CODEX_PROJECT_ROOT="$(pwd)"
+export AGENT_CODEX_ALLOWED_PROJECT_ROOTS="$(pwd)"
+PYTHONPATH=. python -m pytest --no-cov tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py -q
 ```
 
 ### 2.5 AI Runtime 平台设置页

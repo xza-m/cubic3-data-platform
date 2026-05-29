@@ -1,8 +1,8 @@
 """平台级 Agent Runtime 管理查询服务。"""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Callable, Mapping
+from urllib.parse import urlparse
 
 from app.application.agent_inference_runtime.action_binding import (
     ActionRuntimeBindingRegistry,
@@ -23,10 +23,7 @@ from app.domain.agent_inference_runtime.types import (
     RuntimeProviderLogView,
     RuntimeProviderStatus,
 )
-from app.infrastructure.agent_inference_runtime.codex_http_client import (
-    CodexAppServerClientError,
-    CodexAppServerHttpClient,
-)
+from app.infrastructure.agent_inference_runtime.codex_client import CodexAppServerClientError
 from app.shared.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -45,15 +42,17 @@ class AgentRuntimeManagementService:
         codex_config: Mapping[str, Any],
         action_bindings: ActionRuntimeBindingRegistry | None = None,
         codex_process_manager: CodexProcessManager | None = None,
+        codex_process_manager_factory: Callable[[Mapping[str, Any]], Any] | None = None,
         runtime_config_service: RuntimeConfigService | None = None,
-        codex_client_factory: Callable[[Mapping[str, Any]], Any] | None = None,
+        codex_ws_client_factory: Callable[[Mapping[str, Any]], Any] | None = None,
     ) -> None:
         self._openai_config = openai_config
         self._codex_config = codex_config
         self._action_bindings = action_bindings or ActionRuntimeBindingRegistry()
         self._runtime_config_service = runtime_config_service
-        self._codex_process_manager = codex_process_manager or CodexProcessManager(codex_config)
-        self._codex_client_factory = codex_client_factory or _default_codex_client_factory
+        self._codex_process_manager_override = codex_process_manager
+        self._codex_process_manager_factory = codex_process_manager_factory or CodexProcessManager
+        self._codex_ws_client_factory = codex_ws_client_factory
 
     def snapshot(self) -> RuntimeManagementSnapshot:
         return RuntimeManagementSnapshot(
@@ -122,7 +121,6 @@ class AgentRuntimeManagementService:
             runtime_name,
             action="start",
             principal_id=principal_id,
-            operation=self._codex_process_manager.start,
         )
 
     def stop_provider(
@@ -135,7 +133,6 @@ class AgentRuntimeManagementService:
             runtime_name,
             action="stop",
             principal_id=principal_id,
-            operation=self._codex_process_manager.stop,
         )
 
     def restart_provider(
@@ -148,64 +145,25 @@ class AgentRuntimeManagementService:
             runtime_name,
             action="restart",
             principal_id=principal_id,
-            operation=self._codex_process_manager.restart,
         )
 
     def provider_logs(self, runtime_name: RuntimeName) -> RuntimeProviderLogView:
         self._ensure_codex(runtime_name)
-        return self._codex_process_manager.logs()
+        config = self._provider_management_config("codex_app_server", self._codex_config)
+        return self._codex_process_manager(config).logs()
 
     def _test_codex_provider(self) -> RuntimeProviderStatus:
-        status = self._codex_status()
-        if not status.configured:
-            return status
         config = self._provider_management_config("codex_app_server", self._codex_config)
-        if not _codex_http_transport_configured(config):
-            return status
-        try:
-            health = self._codex_client(config).healthcheck()
-        except CodexAppServerClientError as exc:
-            return RuntimeProviderStatus(
-                runtime_name=status.runtime_name,
-                label=status.label,
-                configured=status.configured,
-                available=False,
-                status="unavailable",
-                message="Codex app-server healthcheck 失败。",
-                operations=status.operations,
-                details={**status.details, "provider_error": {"code": exc.code, **exc.details}},
-            )
-        health_status = str(health.get("status") or "").strip().lower()
-        ready = health_status in {"ok", "ready"}
-        return RuntimeProviderStatus(
-            runtime_name=status.runtime_name,
-            label=status.label,
-            configured=status.configured,
-            available=ready,
-            status="ready" if ready else "unavailable",
-            message="Codex app-server healthcheck 通过。" if ready else "Codex app-server healthcheck 未就绪。",
-            operations=status.operations,
-            details={**status.details, "health": health},
-        )
-
-    def _codex_client(self, config: Mapping[str, Any]) -> Any:
-        return self._codex_client_factory(config)
+        if _codex_ws_configured(config) and self._codex_ws_client_factory is not None:
+            return self._codex_ws_status(config)
+        return self._codex_status()
 
     def provider_capabilities(self, runtime_name: RuntimeName) -> RuntimeProviderCapabilities:
         self._ensure_codex(runtime_name)
         config = self._provider_management_config("codex_app_server", self._codex_config)
-        if _codex_http_transport_configured(config):
-            try:
-                return _transport_capabilities(self._codex_client(config).capabilities())
-            except CodexAppServerClientError as exc:
-                logger.info(
-                    f"codex app-server capabilities unavailable, falling back to local capabilities: {exc}"
-                )
-                return _degraded_process_manager_capabilities(
-                    self._codex_process_manager.capabilities(),
-                    exc,
-                )
-        return self._codex_process_manager.capabilities()
+        if _codex_ws_configured(config) and self._codex_ws_client_factory is not None:
+            return self._codex_ws_capabilities(config)
+        return self._codex_process_manager(config).capabilities()
 
     def provider_status(self, runtime_name: RuntimeName) -> RuntimeProviderStatus:
         if runtime_name == "openai_compatible":
@@ -248,25 +206,81 @@ class AgentRuntimeManagementService:
             },
         )
 
+    def _codex_ws_status(self, config: Mapping[str, Any]) -> RuntimeProviderStatus:
+        base = self._codex_status()
+        try:
+            health = self._codex_ws_client(config).healthcheck()
+        except CodexAppServerClientError as exc:
+            return RuntimeProviderStatus(
+                runtime_name=base.runtime_name,
+                label=base.label,
+                configured=base.configured,
+                available=False,
+                status="unavailable",
+                message="Codex app-server WebSocket 联通测试失败。",
+                operations=list(base.operations),
+                details={
+                    **dict(base.details),
+                    "provider_error": _provider_error_details(exc),
+                },
+            )
+        return RuntimeProviderStatus(
+            runtime_name=base.runtime_name,
+            label=base.label,
+            configured=base.configured,
+            available=True,
+            status="ready",
+            message="Codex app-server WebSocket 联通测试通过。",
+            operations=list(base.operations),
+            details={**dict(base.details), "health": dict(health)},
+        )
+
+    def _codex_ws_capabilities(self, config: Mapping[str, Any]) -> RuntimeProviderCapabilities:
+        try:
+            payload = self._codex_ws_client(config).capabilities()
+        except CodexAppServerClientError as exc:
+            return RuntimeProviderCapabilities(
+                runtime_name="codex_app_server",
+                available=False,
+                actions=[],
+                artifacts=[],
+                events=[],
+                details={"provider_error": _provider_error_details(exc)},
+            )
+        return RuntimeProviderCapabilities(
+            runtime_name="codex_app_server",
+            available=True,
+            actions=_string_list(payload.get("actions")),
+            artifacts=_string_list(payload.get("artifacts")),
+            events=_string_list(payload.get("events")),
+            details={
+                key: value
+                for key, value in dict(payload).items()
+                if key not in {"actions", "artifacts", "events"}
+            },
+        )
+
     def _codex_status(self) -> RuntimeProviderStatus:
         config = self._provider_management_config("codex_app_server", self._codex_config)
         enabled = _as_bool(config.get("enabled"))
+        transport = str(config.get("transport") or "ws").strip().lower()
         endpoint = str(config.get("endpoint") or "").strip()
-        unix_socket = str(config.get("unix_socket") or "").strip()
         ui_managed = _as_bool(config.get("ui_managed"))
         server_managed = _as_bool(config.get("server_managed"))
-        configured = enabled and bool(endpoint or unix_socket)
-        socket_exists = bool(unix_socket and Path(unix_socket).exists())
-        available = bool(configured and (endpoint or socket_exists))
+        configured = enabled and transport == "ws" and bool(endpoint)
+        available = False
         if not enabled:
             status = "disabled"
             message = "Codex app-server 未启用。"
-        elif not endpoint and not unix_socket:
-            status = "missing_config"
-            message = "Codex app-server 缺少 endpoint 或 Unix socket。"
-        elif unix_socket and not socket_exists and not endpoint:
+        elif transport != "ws":
             status = "unavailable"
-            message = "Codex app-server Unix socket 不存在。"
+            message = "Codex app-server 仅支持 WebSocket transport。"
+        elif not endpoint:
+            status = "missing_config"
+            message = "Codex app-server 缺少 WebSocket endpoint。"
+        elif not _is_loopback_ws_endpoint(endpoint):
+            status = "unavailable"
+            message = "Codex app-server endpoint 必须是 loopback ws:// 地址。"
         else:
             status = "not_verified"
             message = "Codex app-server 已配置，等待真实联通测试。"
@@ -287,9 +301,8 @@ class AgentRuntimeManagementService:
                 "project_id": str(config.get("project_id") or ""),
                 "project_root": str(config.get("project_root") or ""),
                 "runtime_root": str(config.get("runtime_root") or ""),
-                "transport": str(config.get("transport") or ""),
+                "transport": transport,
                 "endpoint": endpoint,
-                "unix_socket": unix_socket,
                 "max_concurrency": config.get("max_concurrency"),
                 "ui_managed": ui_managed,
                 "server_managed": server_managed,
@@ -302,11 +315,12 @@ class AgentRuntimeManagementService:
         *,
         action: str,
         principal_id: str | None,
-        operation,
     ) -> RuntimeOperationResult:
         try:
             self._ensure_codex(runtime_name)
-            self._ensure_codex_lifecycle_enabled()
+            config = self._provider_management_config("codex_app_server", self._codex_config)
+            self._ensure_codex_lifecycle_enabled(config)
+            operation = getattr(self._codex_process_manager(config), action)
             result = operation()
         except Exception as exc:
             self._audit(
@@ -326,6 +340,19 @@ class AgentRuntimeManagementService:
         )
         return result
 
+    def _codex_process_manager(self, config: Mapping[str, Any]) -> Any:
+        if self._codex_process_manager_override is not None:
+            return self._codex_process_manager_override
+        return self._codex_process_manager_factory(config)
+
+    def _codex_ws_client(self, config: Mapping[str, Any]) -> Any:
+        if self._codex_ws_client_factory is None:
+            raise CodexAppServerClientError(
+                "Codex app-server WebSocket client factory 未配置。",
+                code="RUNTIME_PROVIDER_NOT_CONFIGURED",
+            )
+        return self._codex_ws_client_factory(config)
+
     def _provider_management_config(
         self,
         runtime_name: RuntimeName,
@@ -335,8 +362,7 @@ class AgentRuntimeManagementService:
             return fallback
         return self._runtime_config_service.management_config(runtime_name)
 
-    def _ensure_codex_lifecycle_enabled(self) -> None:
-        config = self._provider_management_config("codex_app_server", self._codex_config)
+    def _ensure_codex_lifecycle_enabled(self, config: Mapping[str, Any]) -> None:
         if not _as_bool(config.get("enabled")):
             raise CodexProcessManagerError(
                 "Codex app-server 未启用。",
@@ -383,62 +409,28 @@ def _test_audit_metadata(result: RuntimeProviderStatus) -> dict[str, Any]:
     return metadata
 
 
-def _codex_http_transport_configured(config: Mapping[str, Any]) -> bool:
-    return _as_bool(config.get("enabled")) and bool(str(config.get("endpoint") or "").strip())
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _default_codex_client_factory(config: Mapping[str, Any]) -> CodexAppServerHttpClient:
-    return CodexAppServerHttpClient(
-        endpoint=str(config.get("endpoint") or ""),
-        timeout_seconds=_positive_number(
-            config.get("timeout_seconds") or config.get("timeout"),
-            default=10,
-        ),
+def _codex_ws_configured(config: Mapping[str, Any]) -> bool:
+    return (
+        _as_bool(config.get("enabled"))
+        and str(config.get("transport") or "").strip().lower() == "ws"
+        and bool(str(config.get("endpoint") or "").strip())
     )
 
 
-def _transport_capabilities(payload: Mapping[str, Any]) -> RuntimeProviderCapabilities:
-    return RuntimeProviderCapabilities(
-        runtime_name="codex_app_server",
-        available=True,
-        actions=_string_list(payload.get("actions") or payload.get("tools")),
-        artifacts=_string_list(payload.get("artifacts")),
-        events=_string_list(payload.get("events")),
-        details=dict(payload),
-    )
-
-
-def _degraded_process_manager_capabilities(
-    capabilities: RuntimeProviderCapabilities,
-    exc: CodexAppServerClientError,
-) -> RuntimeProviderCapabilities:
-    return RuntimeProviderCapabilities(
-        runtime_name=capabilities.runtime_name,
-        available=False,
-        actions=capabilities.actions,
-        artifacts=capabilities.artifacts,
-        events=capabilities.events,
-        details={
-            **capabilities.details,
-            "source": "process_manager_fallback",
-            "transport_available": False,
-            "transport_error": {
-                "code": exc.code,
-                **exc.details,
-                "message": str(exc),
-            },
-        },
-    )
-
-
-def _positive_number(value: Any, *, default: int) -> int | float:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return default
-    if parsed <= 0:
-        return default
-    return int(parsed) if parsed.is_integer() else parsed
+def _provider_error_details(exc: CodexAppServerClientError) -> dict[str, Any]:
+    return {
+        "code": exc.code,
+        "message": str(exc),
+        **dict(exc.details),
+    }
 
 
 def _string_list(value: Any) -> list[str]:
@@ -447,9 +439,15 @@ def _string_list(value: Any) -> list[str]:
     return [str(item) for item in value if isinstance(item, str)]
 
 
-def _as_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
+def _is_loopback_ws_endpoint(endpoint: str) -> bool:
+    parsed = urlparse(endpoint)
+    try:
+        port = parsed.port
+    except ValueError:
         return False
-    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    return (
+        parsed.scheme == "ws"
+        and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        and port is not None
+        and port > 0
+    )

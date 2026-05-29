@@ -16,7 +16,7 @@ from app.application.agent_inference_runtime.codex_process_manager import (
 )
 from app.application.agent_inference_runtime.codex_run_service import CodexRunNotFoundError
 from app.domain.agent_inference_runtime.types import RuntimeProviderConfigUpdate
-from app.infrastructure.agent_inference_runtime.codex_http_client import (
+from app.infrastructure.agent_inference_runtime.codex_client import (
     CodexAppServerClientError,
 )
 

@@ -12,12 +12,15 @@ from app.domain.agent_inference_runtime.types import (
     RuntimeContextRef,
     RuntimePolicy,
 )
-from app.infrastructure.agent_inference_runtime.codex_http_client import CodexAppServerClientError
+from app.infrastructure.agent_inference_runtime.codex_client import (
+    CodexAppServerClientError,
+    ProviderRunRef,
+)
 
 
 class _Client:
     def __init__(self) -> None:
-        self.submitted: list[dict] = []
+        self.submitted: list[AgentInferenceRuntimeRequest] = []
         self.poll_payload: object = {
             "provider_run_id": "codex_run_1",
             "status": "succeeded",
@@ -25,7 +28,10 @@ class _Client:
             "result": {"summary": "reviewed"},
         }
         self.cancel_payload: object = {"provider_run_id": "codex_run_1", "status": "cancelled"}
-        self.events_payload: object = [{"event_type": "run.started", "seq": 1}]
+        self.events_payload: object = {
+            "events": [{"event_type": "run.started", "seq": 1}],
+            "next_cursor": "1",
+        }
         self.artifacts_payload: object = [
             {
                 "artifact_id": "artifact_1",
@@ -38,9 +44,13 @@ class _Client:
         self.event_run_ids: list[str] = []
         self.artifact_run_ids: list[str] = []
 
-    def submit_run(self, payload: dict) -> dict:
-        self.submitted.append(payload)
-        return {"provider_run_id": "codex_run_1", "status": "queued"}
+    def submit_run(self, request: AgentInferenceRuntimeRequest) -> ProviderRunRef:
+        self.submitted.append(request)
+        return ProviderRunRef(
+            provider_run_id="codex_run_1",
+            provider="codex-app-server",
+            provider_thread_id="thread_provider_1",
+        )
 
     def poll_run(self, provider_run_id: str) -> object:
         self.polled.append(provider_run_id)
@@ -50,11 +60,11 @@ class _Client:
         self.cancelled.append(provider_run_id)
         return self.cancel_payload
 
-    def events(self, provider_run_id: str) -> object:
+    def stream_events(self, provider_run_id: str) -> object:
         self.event_run_ids.append(provider_run_id)
         return self.events_payload
 
-    def artifacts(self, provider_run_id: str) -> object:
+    def collect_artifacts(self, provider_run_id: str) -> object:
         self.artifact_run_ids.append(provider_run_id)
         return self.artifacts_payload
 
@@ -105,7 +115,7 @@ def _service(client: _Client | None = None, repo: _Repo | None = None) -> tuple[
     return service, client, repo
 
 
-def test_submit_creates_local_run_and_sends_request_payload():
+def test_submit_creates_local_run_and_sends_domain_request():
     service, client, repo = _service()
 
     result = service.submit(_request())
@@ -115,16 +125,20 @@ def test_submit_creates_local_run_and_sends_request_payload():
         "provider_run_id": "codex_run_1",
         "status": "queued",
     }
-    assert client.submitted[0]["action"] == "semantic.modeling.review_proposal"
-    assert client.submitted[0]["principal_id"] == "alice"
-    assert client.submitted[0]["runtime_context_ref"]["turn_id"] == "turn_1"
-    assert client.submitted[0]["input"] == {"proposal_id": "proposal_1"}
-    assert client.submitted[0]["context_pack"] == {"diff": []}
+    assert client.submitted[0].action == "semantic.modeling.review_proposal"
+    assert client.submitted[0].principal_id == "alice"
+    assert client.submitted[0].runtime_context_ref.turn_id == "turn_1"
+    assert client.submitted[0].input == {"proposal_id": "proposal_1"}
+    assert client.submitted[0].context_pack == {"diff": []}
     saved = repo.runs["run_local_1"]
     assert saved.runtime_name == "codex_app_server"
     assert saved.status == "queued"
     assert saved.principal_id == "alice"
-    assert saved.provider_ref == {"provider_run_id": "codex_run_1"}
+    assert saved.provider_ref == {
+        "provider_run_id": "codex_run_1",
+        "provider": "codex-app-server",
+        "provider_thread_id": "thread_provider_1",
+    }
 
 
 def test_poll_fetches_provider_status_and_updates_run_usage_error_and_provider_ref():
@@ -144,6 +158,8 @@ def test_poll_fetches_provider_status_and_updates_run_usage_error_and_provider_r
     assert saved.error is None
     assert saved.provider_ref == {
         "provider_run_id": "codex_run_1",
+        "provider": "codex-app-server",
+        "provider_thread_id": "thread_provider_1",
         "status": "succeeded",
         "result": {"summary": "reviewed"},
     }
@@ -201,7 +217,12 @@ def test_events_and_artifacts_are_read_from_owned_provider_run():
 
     assert client.event_run_ids == ["codex_run_1"]
     assert client.artifact_run_ids == ["codex_run_1"]
-    assert events == {"run_id": "run_local_1", "provider_run_id": "codex_run_1", "items": client.events_payload}
+    assert events == {
+        "run_id": "run_local_1",
+        "provider_run_id": "codex_run_1",
+        "items": client.events_payload["events"],
+        "next_cursor": "1",
+    }
     assert artifacts == {
         "run_id": "run_local_1",
         "provider_run_id": "codex_run_1",

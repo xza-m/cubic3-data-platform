@@ -6,6 +6,7 @@ import signal
 import subprocess
 from pathlib import Path
 from typing import Any, Callable, Mapping
+from urllib.parse import urlparse
 
 from app.domain.agent_inference_runtime.types import (
     RuntimeOperationResult,
@@ -48,15 +49,12 @@ class CodexProcessManager:
         runtime_root.mkdir(parents=True, exist_ok=True)
         log_path = self._log_path()
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        unix_socket = self._unix_socket(runtime_root)
+        endpoint = self._ws_endpoint()
         args = [
-            "codex-app-server",
-            "--project-root",
-            str(project_root),
-            "--runtime-root",
-            str(runtime_root),
-            "--socket",
-            str(unix_socket),
+            "codex",
+            "app-server",
+            "--listen",
+            endpoint,
         ]
         with log_path.open("ab") as log_file:
             process = self._executor(
@@ -78,7 +76,8 @@ class CodexProcessManager:
                 "command_profile": self._PROFILE,
                 "cwd": str(project_root),
                 "log_path": str(log_path),
-                "unix_socket": str(unix_socket),
+                "endpoint": endpoint,
+                "transport": "ws",
             },
         )
 
@@ -186,9 +185,17 @@ class CodexProcessManager:
     def _runtime_root(self) -> Path:
         return Path(str(self._config.get("runtime_root") or ".cubic3/agent-codex")).expanduser().resolve()
 
-    def _unix_socket(self, runtime_root: Path) -> Path:
-        raw = str(self._config.get("unix_socket") or "").strip()
-        return Path(raw).expanduser().resolve() if raw else runtime_root / "codex.sock"
+    def _ws_endpoint(self) -> str:
+        transport = str(self._config.get("transport") or "ws").strip().lower()
+        endpoint = str(self._config.get("endpoint") or "").strip()
+        if transport != "ws" or not _is_loopback_ws_endpoint(endpoint):
+            raise CodexProcessManagerError(
+                "Codex app-server endpoint 必须是 loopback ws:// 地址。",
+                code="RUNTIME_CODEX_ENDPOINT_INVALID",
+                status_code=400,
+                details={"transport": transport, "endpoint": endpoint},
+            )
+        return endpoint
 
     def _pid_file(self) -> Path:
         runtime_root = self._runtime_root()
@@ -226,6 +233,15 @@ def _split_paths(value: Any) -> list[Path]:
         return []
     raw_items = value if isinstance(value, (list, tuple, set)) else str(value).split(",")
     return [Path(str(item)).expanduser().resolve() for item in raw_items if str(item).strip()]
+
+
+def _is_loopback_ws_endpoint(endpoint: str) -> bool:
+    parsed = urlparse(endpoint)
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    return parsed.scheme == "ws" and parsed.hostname in {"127.0.0.1", "localhost", "::1"} and bool(port)
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:

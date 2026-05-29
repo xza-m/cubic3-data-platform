@@ -352,8 +352,11 @@ test-platform-agent-runtime:
 		tests/unit/application/agent_inference_runtime \
 		tests/unit/infrastructure/agent_inference_runtime \
 		tests/unit/application/semantic/test_semantic_modeling_agent_app.py \
-		tests/integration/test_agent_runtime_api.py \
-		tests/integration/agent_inference_runtime/test_codex_live_smoke.py
+			tests/unit/application/semantic/test_data_asset_agent_app.py \
+			tests/unit/interfaces/api/v1/test_semantic_assets_api.py \
+			tests/unit/di/test_container_wiring.py \
+			tests/integration/test_agent_runtime_api.py \
+			tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py
 
 test-query-execution:
 	@printf '%s\n' '[layer3][query-execution] 运行统一查询执行面最小链路测试'

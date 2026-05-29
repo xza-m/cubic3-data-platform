@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from typing import Any
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
@@ -216,7 +217,25 @@ def assert_page_visible(page, path: str, texts: tuple[str, ...]) -> None:
         if path not in page.url:
             raise
     for text in texts:
-        page.get_by_text(text, exact=False).first.wait_for(timeout=10_000)
+        wait_for_any_visible_text(page, text)
+
+
+def wait_for_any_visible_text(page, text: str, *, timeout_ms: int = 10_000) -> None:
+    """等待页面上任意一个匹配文本可见，避免隐藏命令项抢占 first() 导致误判。"""
+
+    deadline = time.monotonic() + timeout_ms / 1000
+    last_count = 0
+    while time.monotonic() < deadline:
+        locator = page.get_by_text(text, exact=False)
+        last_count = locator.count()
+        for index in range(min(last_count, 50)):
+            try:
+                if locator.nth(index).is_visible(timeout=100):
+                    return
+            except PlaywrightTimeoutError:
+                continue
+        page.wait_for_timeout(200)
+    raise AssertionError(f"页面中未找到可见文本 {text!r}; matches={last_count}")
 
 
 def main() -> int:
