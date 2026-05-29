@@ -436,12 +436,14 @@ class _RuntimeConfigRepository:
         return self.configs.get(runtime_name)
 
     def upsert_provider_config(self, update):
+        if update.api_key and update.api_key.strip():
+            raise ValueError("runtime config secret store is not configured")
         snapshot = RuntimeProviderConfigSnapshot(
             runtime_name=update.runtime_name,
             enabled=update.enabled,
             endpoint=update.endpoint,
             model=update.model,
-            secret_ref=f"runtime_provider:{update.runtime_name}:api_key" if update.api_key else None,
+            secret_ref=None,
             extra=update.extra,
             updated_by=update.updated_by,
             updated_at=None,
@@ -1414,14 +1416,46 @@ def test_agent_runtime_api_updates_provider_config_without_returning_secret():
             "enabled": True,
             "endpoint": "https://api.openai.com/v1",
             "model": "gpt-5.1",
-            "api_key": "sk-live-value",
         },
     )
 
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["api_key"] == "********"
+    assert data["api_key"] is None
     assert data["updated_by"] == "alice"
+
+
+def test_agent_runtime_api_rejects_provider_api_key_until_secret_store_exists():
+    runtime_config_repository = _RuntimeConfigRepository()
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={"enabled": False},
+        runtime_config_service=RuntimeConfigService(
+            repository=runtime_config_repository,
+            openai_config={"api_key": "", "api_base": "", "model": ""},
+            codex_config={"enabled": False},
+        ),
+    )
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).put(
+        "/api/v1/agent-runtime/providers/openai_compatible/config",
+        json={
+            "enabled": True,
+            "endpoint": "https://api.openai.com/v1",
+            "model": "gpt-5.1",
+            "api_key": "sk-live-value",
+        },
+    )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["details"] == {
+        "code": "RUNTIME_PROVIDER_CONFIG_INVALID",
+        "field": "api_key",
+    }
+    assert runtime_config_repository.configs == {}
 
 
 def test_agent_runtime_api_rejects_non_admin_mutating_management_routes_outside_testing():
@@ -1451,11 +1485,16 @@ def test_agent_runtime_api_rejects_non_admin_mutating_management_routes_outside_
         "/api/v1/agent-runtime/providers/codex_app_server/restart",
         headers=headers,
     )
+    logs_resp = client.get(
+        "/api/v1/agent-runtime/providers/codex_app_server/logs",
+        headers=headers,
+    )
 
     assert update_resp.status_code == 403
     assert start_resp.status_code == 403
     assert stop_resp.status_code == 403
     assert restart_resp.status_code == 403
+    assert logs_resp.status_code == 403
     assert runtime_management.started == []
     assert runtime_management.stopped == []
 

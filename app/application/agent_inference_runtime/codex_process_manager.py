@@ -1,6 +1,8 @@
 """受控 Codex app-server 进程管理。"""
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import json
 import os
 import signal
 import subprocess
@@ -37,10 +39,12 @@ class CodexProcessManager:
         *,
         executor: Callable[..., Any] | None = None,
         terminator: Callable[[int], None] | None = None,
+        process_checker: Callable[[int, dict[str, Any]], bool] | None = None,
     ) -> None:
         self._config = config
         self._executor = executor or _popen_executor
         self._terminator = terminator or _terminate_pid
+        self._process_checker = process_checker or _is_expected_codex_process
 
     def start(self) -> RuntimeOperationResult:
         self._ensure_start_allowed()
@@ -65,7 +69,14 @@ class CodexProcessManager:
                 stderr=subprocess.STDOUT,
             )
         pid = int(getattr(process, "pid", 0) or 0)
-        self._pid_file().write_text(str(pid), encoding="utf-8")
+        metadata = self._pid_metadata(
+            pid=pid,
+            project_root=project_root,
+            runtime_root=runtime_root,
+            log_path=log_path,
+            endpoint=endpoint,
+        )
+        self._pid_file().write_text(json.dumps(metadata, ensure_ascii=True, sort_keys=True), encoding="utf-8")
         return RuntimeOperationResult(
             runtime_name="codex_app_server",
             operation="start",
@@ -91,7 +102,26 @@ class CodexProcessManager:
                 message="没有记录运行中的 Codex app-server。",
                 details={},
             )
-        pid = int(pid_file.read_text(encoding="utf-8").strip())
+        metadata = _read_pid_metadata(pid_file)
+        if metadata is None:
+            pid_file.unlink(missing_ok=True)
+            return RuntimeOperationResult(
+                runtime_name="codex_app_server",
+                operation="stop",
+                status="succeeded",
+                message="已清理陈旧的 Codex app-server PID 文件。",
+                details={"stale_pid_file": True},
+            )
+        pid = int(metadata["pid"])
+        if not self._process_checker(pid, metadata):
+            pid_file.unlink(missing_ok=True)
+            return RuntimeOperationResult(
+                runtime_name="codex_app_server",
+                operation="stop",
+                status="succeeded",
+                message="已清理陈旧的 Codex app-server PID 文件。",
+                details={"pid": pid, "stale_pid_file": True},
+            )
         self._terminator(pid)
         pid_file.unlink(missing_ok=True)
         return RuntimeOperationResult(
@@ -211,6 +241,26 @@ class CodexProcessManager:
         env["AGENT_CODEX_PROJECT_ID"] = str(self._config.get("project_id") or "cubic3-data-platform")
         return env
 
+    def _pid_metadata(
+        self,
+        *,
+        pid: int,
+        project_root: Path,
+        runtime_root: Path,
+        log_path: Path,
+        endpoint: str,
+    ) -> dict[str, Any]:
+        return {
+            "pid": pid,
+            "command_profile": self._PROFILE,
+            "cwd": str(project_root),
+            "runtime_root": str(runtime_root),
+            "log_path": str(log_path),
+            "endpoint": endpoint,
+            "transport": "ws",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+
 
 def _popen_executor(args, *, cwd, env, stdout, stderr):
     return subprocess.Popen(args, cwd=cwd, env=env, stdout=stdout, stderr=stderr)
@@ -218,6 +268,49 @@ def _popen_executor(args, *, cwd, env, stdout, stderr):
 
 def _terminate_pid(pid: int) -> None:
     os.kill(pid, signal.SIGTERM)
+
+
+def _read_pid_metadata(pid_file: Path) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(pid_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    try:
+        pid = int(payload.get("pid"))
+    except (TypeError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    command_profile = str(payload.get("command_profile") or "")
+    if command_profile != CodexProcessManager._PROFILE:
+        return None
+    return {**payload, "pid": pid}
+
+
+def _is_expected_codex_process(pid: int, metadata: dict[str, Any]) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        completed = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception:
+        return False
+    command = completed.stdout.strip()
+    if completed.returncode != 0 or not command:
+        return False
+    endpoint = str(metadata.get("endpoint") or "")
+    return "codex" in command and "app-server" in command and (not endpoint or endpoint in command)
 
 
 def _as_bool(value: Any) -> bool:

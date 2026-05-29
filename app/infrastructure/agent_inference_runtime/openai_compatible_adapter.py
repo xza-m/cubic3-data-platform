@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from openai import APIConnectionError, APIError, APITimeoutError, OpenAI
@@ -27,16 +27,19 @@ class OpenAICompatibleRuntimeAdapter:
         api_base: str | None = None,
         model: str | None = None,
         timeout: int | float | str | None = None,
+        config_provider: Callable[[], Mapping[str, Any]] | None = None,
     ) -> None:
         self._api_key = api_key if api_key is not None else os.getenv("AGENT_OPENAI_API_KEY")
         self._api_base = api_base if api_base is not None else os.getenv("AGENT_OPENAI_BASE_URL")
         self._model = model or os.getenv("AGENT_OPENAI_MODEL") or "gpt-4o-mini"
         timeout_value = timeout if timeout is not None else os.getenv("AGENT_OPENAI_TIMEOUT_SECONDS")
         self._timeout = _parse_timeout_seconds(timeout_value)
+        self._config_provider = config_provider
 
     @property
     def is_configured(self) -> bool:
-        return bool(self._api_key)
+        config = self._current_config()
+        return bool(_as_bool(config.get("enabled", True)) and config.get("api_key") and config.get("model"))
 
     def can_handle(self, request: AgentInferenceRuntimeRequest) -> bool:
         return (
@@ -45,7 +48,8 @@ class OpenAICompatibleRuntimeAdapter:
         )
 
     def invoke(self, request: AgentInferenceRuntimeRequest) -> AgentInferenceRuntimeResult:
-        if not self.is_configured:
+        config = self._current_config()
+        if not _as_bool(config.get("enabled", True)) or not config.get("api_key"):
             raise AgentInferenceRuntimeError(
                 "未配置 AGENT_OPENAI_API_KEY，无法运行 OpenAI-compatible runtime。",
                 code="RUNTIME_NOT_CONFIGURED",
@@ -53,16 +57,16 @@ class OpenAICompatibleRuntimeAdapter:
             )
 
         client_kwargs: dict[str, Any] = {
-            "api_key": self._api_key,
-            "timeout": self._timeout,
+            "api_key": config["api_key"],
+            "timeout": config["timeout"],
         }
-        if self._api_base:
-            client_kwargs["base_url"] = self._api_base
+        if config.get("api_base"):
+            client_kwargs["base_url"] = config["api_base"]
 
         try:
             client = OpenAI(**client_kwargs)
             completion = client.chat.completions.create(
-                model=self._model,
+                model=config["model"],
                 messages=[
                     {
                         "role": "system",
@@ -134,6 +138,24 @@ class OpenAICompatibleRuntimeAdapter:
             error=None,
         )
 
+    def _current_config(self) -> dict[str, Any]:
+        if self._config_provider is None:
+            return {
+                "enabled": True,
+                "api_key": self._api_key or "",
+                "api_base": self._api_base or "",
+                "model": self._model,
+                "timeout": self._timeout,
+            }
+        raw_config = dict(self._config_provider() or {})
+        return {
+            "enabled": _as_bool(raw_config.get("enabled", True)),
+            "api_key": str(raw_config.get("api_key") or "").strip(),
+            "api_base": str(raw_config.get("api_base") or "").strip(),
+            "model": str(raw_config.get("model") or self._model or "").strip(),
+            "timeout": _parse_timeout_seconds(raw_config.get("timeout", self._timeout)),
+        }
+
     def _usage_dict(self, usage: Any) -> dict[str, Any]:
         if usage is None:
             return {}
@@ -159,6 +181,14 @@ def _parse_timeout_seconds(value: int | float | str | None) -> float:
             code="RUNTIME_CONFIG_INVALID",
             details={"runtime_name": OpenAICompatibleRuntimeAdapter.runtime_name},
         ) from exc
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _serialize_payload(payload: dict[str, Any]) -> str:

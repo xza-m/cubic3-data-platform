@@ -118,3 +118,64 @@ def test_runtime_management_codex_ws_client_factory_uses_management_config(tmp_p
     assert client._project_root == str(managed_root)
     assert client._runtime_workspace_roots == [str(managed_root), str(tmp_path / "shared")]
     assert client._timeout_seconds == 7
+
+
+def test_openai_runtime_adapter_uses_runtime_config_service():
+    container = Container()
+
+    class _ConfigService:
+        def management_config(self, runtime_name):
+            assert runtime_name == "openai_compatible"
+            return {
+                "enabled": True,
+                "api_key": "runtime-key",
+                "api_base": "https://runtime.openai.test/v1",
+                "model": "runtime-model",
+                "timeout": 8,
+            }
+
+    container.agent_runtime_config_service.override(providers.Factory(_ConfigService))
+
+    adapter = container.agent_openai_runtime_adapter()
+
+    assert adapter._current_config() == {
+        "enabled": True,
+        "api_key": "runtime-key",
+        "api_base": "https://runtime.openai.test/v1",
+        "model": "runtime-model",
+        "timeout": 8.0,
+    }
+
+
+def test_codex_run_service_uses_runtime_config_service_for_current_ws_client(tmp_path):
+    container = Container()
+    project_root = tmp_path / "runtime-project"
+    project_root.mkdir()
+
+    class _ConfigService:
+        def management_config(self, runtime_name):
+            assert runtime_name == "codex_app_server"
+            return {
+                "enabled": True,
+                "transport": "ws",
+                "endpoint": "ws://127.0.0.1:8802",
+                "project_root": str(tmp_path / "env-project"),
+                "timeout_seconds": 5,
+                "provider_extra": {
+                    "project_root": str(project_root),
+                    "runtime_workspace_roots": [str(project_root), str(tmp_path / "shared")],
+                    "timeout_seconds": 9,
+                },
+            }
+
+    container.agent_runtime_config_service.override(providers.Factory(_ConfigService))
+    container.agent_inference_runtime_repository.override(providers.Object(object()))
+
+    service = container.codex_run_service()
+    client = service._current_client()
+
+    assert isinstance(client, CodexAppServerWebSocketClient)
+    assert client._endpoint == "ws://127.0.0.1:8802"
+    assert client._project_root == str(project_root)
+    assert client._runtime_workspace_roots == [str(project_root), str(tmp_path / "shared")]
+    assert client._timeout_seconds == 9

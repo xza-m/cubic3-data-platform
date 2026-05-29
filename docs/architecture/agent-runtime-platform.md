@@ -1064,7 +1064,7 @@ Phase 0 是进入 implementation plan 的前置基线；后续计划必须逐项
 | 结构化输出不稳定 | 强制 output schema 校验，失败只返回错误，不应用 patch |
 | 权限越界 | runtime 无写权限，所有副作用回到业务服务 |
 | 配置混乱 | 统一使用 `AGENT_*`，同一任务同步配置 schema、env sample 和启动文档 |
-| 与 official Semantic Runtime 混淆 | 服务命名固定为 `AgentInferenceRuntimeService`，正式查询执行继续走 QueryDSL / ExecutionTicket 链 |
+| 与 official Semantic Runtime 混淆 | 服务命名固定为 `AgentInferenceRuntimeService`，正式查询执行继续走 QueryDSL / GatewayAccessContext / `dw-query-gateway` 链 |
 
 ## 22. 工程原则落实
 

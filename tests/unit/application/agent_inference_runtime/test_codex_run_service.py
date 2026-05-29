@@ -115,6 +115,26 @@ def _service(client: _Client | None = None, repo: _Repo | None = None) -> tuple[
     return service, client, repo
 
 
+def test_submit_resolves_current_client_from_provider_each_time():
+    first = _Client()
+    second = _Client()
+    clients = [first, second]
+    repo = _Repo()
+    service = CodexRunService(
+        client_provider=lambda: clients.pop(0),
+        repository=repo,
+        run_id_factory=lambda: f"run_local_{len(repo.runs) + 1}",
+    )
+
+    first_result = service.submit(_request())
+    second_result = service.submit(_request())
+
+    assert first_result["run_id"] == "run_local_1"
+    assert second_result["run_id"] == "run_local_2"
+    assert len(first.submitted) == 1
+    assert len(second.submitted) == 1
+
+
 def test_submit_creates_local_run_and_sends_domain_request():
     service, client, repo = _service()
 

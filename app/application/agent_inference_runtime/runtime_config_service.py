@@ -64,9 +64,10 @@ class RuntimeConfigService:
         if runtime_name == "openai_compatible":
             return {
                 "enabled": snapshot.enabled,
-                "api_key": snapshot.secret_ref or "",
+                "api_key": self._openai_api_key(snapshot),
                 "api_base": snapshot.endpoint or "",
                 "model": snapshot.model or "",
+                "timeout": self._openai_config.get("timeout"),
                 "extra": snapshot.extra,
             }
         if runtime_name == "codex_app_server":
@@ -86,6 +87,11 @@ class RuntimeConfigService:
                 "provider_extra": extra,
             }
         raise KeyError(runtime_name)
+
+    def _openai_api_key(self, snapshot: RuntimeProviderConfigSnapshot) -> str:
+        if snapshot.secret_ref == "env:AGENT_OPENAI_API_KEY":
+            return str(self._openai_config.get("api_key") or "").strip()
+        return ""
 
     def record_audit_event(
         self,

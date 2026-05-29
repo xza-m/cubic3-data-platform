@@ -33,6 +33,9 @@ class SqlRuntimeConfigRepository:
         self,
         update: RuntimeProviderConfigUpdate,
     ) -> RuntimeProviderConfigSnapshot:
+        if update.api_key and update.api_key.strip():
+            raise ValueError("runtime config secret store is not configured")
+
         row = self.session.get(AgentRuntimeProviderConfigORM, update.runtime_name)
         if row is None:
             row = AgentRuntimeProviderConfigORM(runtime_name=update.runtime_name)
@@ -41,8 +44,7 @@ class SqlRuntimeConfigRepository:
         row.enabled = update.enabled
         row.endpoint = update.endpoint
         row.model = update.model
-        if update.api_key:
-            row.secret_ref = f"runtime_provider:{update.runtime_name}:api_key"
+        row.secret_ref = None
         row.extra_json = dict(update.extra or {})
         row.updated_by = update.updated_by
         self.session.commit()

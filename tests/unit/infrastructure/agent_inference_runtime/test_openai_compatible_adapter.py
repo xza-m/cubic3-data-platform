@@ -106,6 +106,57 @@ def test_openai_adapter_parses_json_response(monkeypatch):
     assert result.usage == {"total_tokens": 7}
 
 
+def test_openai_adapter_resolves_runtime_config_for_each_invoke(monkeypatch):
+    configs = [
+        {
+            "enabled": True,
+            "api_key": "agent-key-1",
+            "api_base": "https://api.one.test/v1",
+            "model": "model-one",
+            "timeout": 12,
+        },
+        {
+            "enabled": True,
+            "api_key": "agent-key-2",
+            "api_base": "https://api.two.test/v1",
+            "model": "model-two",
+            "timeout": 13,
+        },
+    ]
+    clients = _patch_openai_response(monkeypatch, '{"message":"ok"}')
+
+    adapter = OpenAICompatibleRuntimeAdapter(config_provider=lambda: configs.pop(0))
+
+    adapter.invoke(_request())
+    adapter.invoke(_request())
+
+    assert clients[0].kwargs["api_key"] == "agent-key-1"
+    assert str(clients[0].kwargs["base_url"]) == "https://api.one.test/v1"
+    assert clients[0].create_kwargs["model"] == "model-one"
+    assert clients[0].kwargs["timeout"] == 12.0
+    assert clients[1].kwargs["api_key"] == "agent-key-2"
+    assert str(clients[1].kwargs["base_url"]) == "https://api.two.test/v1"
+    assert clients[1].create_kwargs["model"] == "model-two"
+    assert clients[1].kwargs["timeout"] == 13.0
+
+
+def test_openai_adapter_rejects_disabled_runtime_config(monkeypatch):
+    _patch_openai_response(monkeypatch, '{"message":"ok"}')
+    adapter = OpenAICompatibleRuntimeAdapter(
+        config_provider=lambda: {
+            "enabled": False,
+            "api_key": "agent-key",
+            "api_base": "",
+            "model": "model-one",
+        }
+    )
+
+    with pytest.raises(AgentInferenceRuntimeError) as exc:
+        adapter.invoke(_request())
+
+    assert exc.value.code == "RUNTIME_NOT_CONFIGURED"
+
+
 def test_openai_adapter_rejects_non_json_response(monkeypatch):
     monkeypatch.setenv("AGENT_OPENAI_API_KEY", "agent-key")
     _patch_openai_response(monkeypatch, "not-json")

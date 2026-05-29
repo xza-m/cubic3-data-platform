@@ -31,16 +31,20 @@ class CodexRunService:
     def __init__(
         self,
         *,
-        client: Any,
+        client: Any | None = None,
+        client_provider: Any | None = None,
         repository: Any,
         run_id_factory: Any | None = None,
     ) -> None:
-        self._client = client
+        if client is None and client_provider is None:
+            raise ValueError("codex run service requires client or client_provider")
+        self._client_instance = client
+        self._client_provider = client_provider
         self._repository = repository
         self._run_id_factory = run_id_factory or (lambda: f"run_{uuid4().hex}")
 
     def submit(self, request: AgentInferenceRuntimeRequest) -> dict[str, Any]:
-        provider_ref = _provider_run_ref(self._client.submit_run(request))
+        provider_ref = _provider_run_ref(self._current_client().submit_run(request))
         provider_run_id = _stored_provider_run_id_from_ref(provider_ref)
 
         run_id = self._run_id_factory()
@@ -67,7 +71,7 @@ class CodexRunService:
         run = self._owned_run(run_id, principal_id)
         try:
             provider_run_id = _stored_provider_run_id(run)
-            provider_payload = _dict_or_error(self._client.poll_run(provider_run_id))
+            provider_payload = _dict_or_error(self._current_client().poll_run(provider_run_id))
             status = _status(provider_payload, default=run.status)
             usage = _dict_field(provider_payload, "usage")
             error = _status_error(status, provider_payload)
@@ -99,7 +103,7 @@ class CodexRunService:
             return _run_lifecycle_payload(run)
         try:
             provider_run_id = _stored_provider_run_id(run)
-            provider_payload = _dict_or_error(self._client.cancel_run(provider_run_id))
+            provider_payload = _dict_or_error(self._current_client().cancel_run(provider_run_id))
             status = _status(provider_payload, default="cancelled")
             if status not in {"cancelled", "failed", "timeout"}:
                 status = "cancelled"
@@ -127,7 +131,7 @@ class CodexRunService:
     def read_events(self, run_id: str, principal_id: str | None = None) -> dict[str, Any]:
         run = self._owned_run(run_id, principal_id)
         provider_run_id = _stored_provider_run_id(run)
-        payload = _dict_or_error(self._client.stream_events(provider_run_id))
+        payload = _dict_or_error(self._current_client().stream_events(provider_run_id))
         items = _list_of_dicts_or_error(payload.get("events"), field="events")
         result = {"run_id": run.run_id, "provider_run_id": provider_run_id, "items": items}
         if "next_cursor" in payload:
@@ -138,10 +142,15 @@ class CodexRunService:
         run = self._owned_run(run_id, principal_id)
         provider_run_id = _stored_provider_run_id(run)
         items = _list_of_dicts_or_error(
-            self._client.collect_artifacts(provider_run_id),
+            self._current_client().collect_artifacts(provider_run_id),
             field="artifacts",
         )
         return {"run_id": run.run_id, "provider_run_id": provider_run_id, "items": items}
+
+    def _current_client(self) -> Any:
+        if self._client_provider is not None:
+            return self._client_provider()
+        return self._client_instance
 
     def _owned_run(self, run_id: str, principal_id: str | None) -> AgentInferenceRuntimeRun:
         run = self._repository.get_run(run_id)

@@ -111,6 +111,25 @@ def _codex_workspace_roots(config, provider_extra, project_root: str) -> list[st
     return roots
 
 
+def _openai_runtime_adapter_from_config_service(config_service_provider):
+    """让 OpenAI runtime 每次执行前读取平台 provider 配置。"""
+
+    return OpenAICompatibleRuntimeAdapter(
+        config_provider=lambda: config_service_provider().management_config("openai_compatible"),
+    )
+
+
+def _codex_run_service_from_config_service(repository, config_service_provider):
+    """让 Codex run 每次提交/轮询前读取当前 WebSocket 配置。"""
+
+    return CodexRunService(
+        client_provider=lambda: _codex_ws_client_from_config(
+            config_service_provider().management_config("codex_app_server")
+        ),
+        repository=repository,
+    )
+
+
 # Infrastructure
 from app.infrastructure.repositories.datasource_repository import DatasourceRepository
 from app.infrastructure.repositories.dataset_repository import DatasetRepository
@@ -409,14 +428,6 @@ class Container(containers.DeclarativeContainer):
     # 基础设施 - Agent 推理 Runtime 适配器
     # ========================================================================
 
-    agent_openai_runtime_adapter = providers.Singleton(
-        OpenAICompatibleRuntimeAdapter,
-        api_key=config.agent_openai.api_key,
-        api_base=config.agent_openai.api_base,
-        model=config.agent_openai.model,
-        timeout=config.agent_openai.timeout,
-    )
-
     agent_runtime_action_bindings = providers.Singleton(ActionRuntimeBindingRegistry)
 
     agent_runtime_config_repository = providers.Factory(
@@ -429,6 +440,11 @@ class Container(containers.DeclarativeContainer):
         repository=agent_runtime_config_repository,
         openai_config=config.agent_openai,
         codex_config=config.agent_codex,
+    )
+
+    agent_openai_runtime_adapter = providers.Singleton(
+        _openai_runtime_adapter_from_config_service,
+        config_service_provider=agent_runtime_config_service.provider,
     )
 
     agent_inference_runtime_router = providers.Singleton(
@@ -467,8 +483,8 @@ class Container(containers.DeclarativeContainer):
     )
 
     codex_run_service = providers.Factory(
-        CodexRunService,
-        client=agent_codex_ws_client,
+        _codex_run_service_from_config_service,
+        config_service_provider=agent_runtime_config_service.provider,
         repository=agent_inference_runtime_repository,
     )
     

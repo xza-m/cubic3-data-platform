@@ -229,9 +229,9 @@ Runtime：
 
 - 只读取 published + active snapshot
 - 不读取 draft / proposal / YAML local write path
-- 固定 `QueryDSL -> Binding -> Compiled SQL -> ExecutionTicket -> QueryExecutionJob`
+- 固定 `QueryDSL -> Binding -> Compiled SQL -> GatewayAccessContext / TicketPreview -> dw-query-gateway QueryRun`
 - `/api/v1/agent/semantic/plan` 只返回 preview
-- `/api/v1/agent/semantic/execute` 只在 `allow` 决策下创建 job
+- `/api/v1/agent/semantic/execute` 只在 `allow` 决策下生成受治理执行材料并提交 gateway；本仓不再维护内部 query execution job
 
 实现约束：
 
@@ -260,7 +260,7 @@ Runtime：
 - `asset_id`
 - `release_id`
 - `semantic_plan_id`
-- `query_execution_job_id`
+- `gateway_query_id`
 - `sql_hash`
 - `decision`
 - `policy`
@@ -292,7 +292,7 @@ Runtime：
 - Registry ready
 - Copilot store ready
 - Runtime snapshot ready
-- QueryExecution ready
+- dw-query-gateway telemetry / readyz ready
 - Governance ready
 
 关键指标：
@@ -667,7 +667,7 @@ class IRuntimeSnapshotRepository(Protocol):
 1. 创建空数据库。
 2. 执行 `flask --app wsgi.py db upgrade`。
 3. 校验 `alembic_version.version_num = '0001_initial_schema'`。
-4. 校验关键表存在：Copilot SQL 表、QueryExecution 表、治理审计表、Registry 表。
+4. 校验关键表存在：Copilot SQL 表、Agent Runtime 表、治理审计表、Registry 表。
 5. 执行 `make smoke-backend`。
 
 存量库 baseline 对齐：
@@ -691,7 +691,7 @@ fingerprint 规范：
 - 输入：目标数据库当前 schema。
 - 输出：canonical JSON 和 SHA-256。
 - 内容至少包含关键表的表名、列名、数据类型、nullable、primary key、unique/index 名称。
-- 关键表包括：`alembic_version`、`semantic_modeling_agent_sessions`、`semantic_modeling_proposals`、`query_execution_jobs`、`governance_audit_traces`，以及 B1 新增的 Registry / Release / Snapshot 表。
+- 关键表包括：`alembic_version`、`semantic_modeling_agent_sessions`、`semantic_modeling_proposals`、`agent_inference_runtime_runs`、`agent_inference_runtime_artifacts`、`agent_runtime_provider_configs`、`governance_audit_traces`，以及 B1 新增的 Registry / Release / Snapshot 表。
 - fingerprint 脚本必须输出缺失表、缺失列、类型不一致和索引缺失四类问题。
 
 ### 6.10.5 Publish Gate Flow
@@ -955,8 +955,8 @@ B2 完成标准：
 | --- | --- | --- | --- |
 | B3-01 | 强化 Runtime snapshot 版本钉住、trace 和发布版本回溯 | DONE | `tests/unit/application/semantic/test_runtime_snapshot_service.py::test_runtime_snapshot_service_returns_version_pin_and_asset_trace` |
 | B3-02 | 固化 `/agent/semantic/plan` preview-only 契约 | DONE | `tests/integration/test_agent_semantic_api.py::test_agent_semantic_plan_api_returns_preview_only_ticket` 断言无 `query_id/poll_url/result_url` |
-| B3-03 | 固化 `/agent/semantic/execute` allow 才创建 job | DONE | `tests/unit/application/query_execution/test_agent_execute_service.py` 覆盖 allow / deny / approval_required；`tests/integration/query_execution/test_agent_runtime_e2e.py` 覆盖真实 job 创建 |
-| B3-04 | 增加 runtime trace：资产、binding、SQL、policy、ticket | DONE | Runtime manifest 暴露 `version_pin/asset_trace`；compiler 写入 `ticket_material.runtime_version_pin`；Agent execute / QueryExecution 持久化 `semantic_trace/runtime_version_pin/sql_hash` 并由 Worker 复核 |
+| B3-03 | 固化 `/agent/semantic/execute` allow 才生成 gateway 执行材料 | DONE / ADR-011 UPDATED | 内部 query execution 已下线；当前执行面统一由 `dw-query-gateway` 承载，data-platform 只保留治理控制面、观测 BFF 和 GatewayAccessContext / TicketPreview |
+| B3-04 | 增加 runtime trace：资产、binding、SQL、policy、gateway ticket | DONE / ADR-011 UPDATED | Runtime manifest 暴露 `version_pin/asset_trace`；compiler 写入 `ticket_material.runtime_version_pin`；trace 与 gateway query id / sql_hash 关联，运行态队列和结果以 `dw-query-gateway` 为准 |
 | B3-05 | 完整覆盖 deny / approval_required / allow | DONE | `test_agent_execute_service_returns_blocked_without_job_for_deny`、`test_agent_execute_service_returns_approval_material_without_job`、`test_agent_execute_service_submits_first_ready_sql_target` |
 | B3-06 | 增加 semantic health endpoint | DONE | `GET /api/v1/semantic/health`；`tests/integration/test_semantic_api.py::test_semantic_health_returns_runtime_snapshot_version_pin` 与 OpenAPI contract 覆盖 |
 | B3-07 | 增加 audit trace 查询 API 或页面 | DONE | 复用 `GET /api/v1/governance/audit-traces` / `<trace_id>`，支持 `semantic_plan_id/sql_hash/route_type/principal_id` 过滤；已有 governance API 与 OpenAPI contract 覆盖 |
@@ -967,9 +967,9 @@ B2 完成标准：
 B3 阶段收敛状态（2026-05-20）：
 
 - Runtime snapshot 已形成发布版本钉住：`version_pin` 记录 namespace、snapshot、release、release_no、rollback 指向和 asset revision 列表；`asset_trace` 去掉完整 spec，仅保留运行时诊断所需元数据。
-- Agent execute 现在要求 `policy_decision=allow`、QueryDSL v1、Runtime version pin 三者同时成立才会提交 job；deny / approval_required 均只返回治理材料，不创建查询任务。
-- QueryExecution submit 和 Worker 均复核 agent semantic job 的 QueryDSL v1 与 Runtime pin，避免绕过 `/agent/semantic/execute` 直接投递不可追溯任务。
-- 运维观测入口收敛为三层：`/api/v1/semantic/health` 看 Runtime 就绪和版本，`/api/v1/governance/audit-traces` 查治理 / SQL / semantic_plan 回溯，结构化日志聚合 `agent_semantic_execute.*` 指标事件。
+- Agent execute 现在要求 `policy_decision=allow`、QueryDSL v1、Runtime version pin 三者同时成立才会生成 gateway 执行材料；deny / approval_required 均只返回治理材料，不创建查询任务。
+- 内部 QueryExecution 已由 ADR-011 下线；`dw-query-gateway` 负责 query run / Worker / lease / result / export / telemetry，data-platform 不再维护第二套执行 job。
+- 运维观测入口收敛为三层：`/api/v1/semantic/health` 看 Runtime 就绪和版本，`/api/v1/governance/audit-traces` 查治理 / SQL / semantic_plan 回溯，`/api/v1/governance/gateway/*` 透出 gateway telemetry / alerts。
 - 剩余上线签核风险仍是环境型：需要在预生产库执行 `make verify-semantic-prod-strict`，并提供真实 PostgreSQL concurrency、真实 datasource metadata、live P34 smoke 的运行证据。
 
 B3 完成标准：
@@ -1088,7 +1088,7 @@ make verify-semantic-prod
 - SQL-only Registry 统一生产资产事实源；YAML 仅保留测试 fixture、示例 seed 和调试导出。
 - Release / rollback / runtime snapshot 已有事务化发布、版本回溯和 active snapshot gate。
 - Copilot 状态机、event log、proposal revision、召回 scoring profile 和学生评论 golden case 已有自动化覆盖。
-- Agent-first Runtime、QueryExecution execute、Runtime trace、semantic health 和 governance audit trace 已接入。
+- Agent-first Runtime、dw-query-gateway 执行边界、Runtime trace、semantic health 和 governance audit trace 已接入。
 - `make verify-semantic-prod` 与 `make verify-semantic-prod-strict` 已落地；`make semantic-prod-readiness-report` 用于上线前补证盘点。
 
 已完成的模拟预生产上线签核：

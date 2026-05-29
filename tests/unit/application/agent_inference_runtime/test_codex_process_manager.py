@@ -39,6 +39,16 @@ class _Terminator:
         self.pids.append(pid)
 
 
+class _ProcessChecker:
+    def __init__(self, result: bool) -> None:
+        self.result = result
+        self.calls: list[dict] = []
+
+    def __call__(self, pid: int, metadata: dict) -> bool:
+        self.calls.append({"pid": pid, "metadata": dict(metadata)})
+        return self.result
+
+
 def _config(tmp_path: Path, **overrides):
     runtime_root = tmp_path / "runtime"
     project_root = tmp_path / "project"
@@ -102,7 +112,9 @@ def test_codex_process_manager_starts_loopback_ws_app_server(tmp_path):
         "ws://127.0.0.1:8799",
     ]
     assert executor.calls[0]["cwd"] == str(tmp_path / "project")
-    assert (tmp_path / "runtime" / "codex-app-server.pid").read_text() == "4321"
+    pid_metadata = (tmp_path / "runtime" / "codex-app-server.pid").read_text()
+    assert '"pid": 4321' in pid_metadata
+    assert '"command_profile": "local-codex-app-server"' in pid_metadata
 
 
 @pytest.mark.parametrize(
@@ -159,9 +171,33 @@ def test_codex_process_manager_reads_log_tail_and_static_capabilities(tmp_path):
     assert "review" in capabilities.actions
 
 
-def test_codex_process_manager_stop_uses_pid_file_without_shell(tmp_path):
+def test_codex_process_manager_stop_uses_pid_metadata_without_shell(tmp_path):
     terminator = _Terminator()
-    manager = CodexProcessManager(_config(tmp_path), terminator=terminator)
+    checker = _ProcessChecker(True)
+    manager = CodexProcessManager(
+        _config(tmp_path, transport="ws", endpoint="ws://127.0.0.1:8799"),
+        executor=_Executor(),
+        terminator=terminator,
+        process_checker=checker,
+    )
+    manager.start()
+
+    result = manager.stop()
+
+    assert result.status == "succeeded"
+    assert terminator.pids == [4321]
+    assert checker.calls[0]["pid"] == 4321
+    assert checker.calls[0]["metadata"]["command_profile"] == "local-codex-app-server"
+    assert not (tmp_path / "runtime" / "codex-app-server.pid").exists()
+
+
+def test_codex_process_manager_stop_cleans_stale_plain_pid_without_terminating(tmp_path):
+    terminator = _Terminator()
+    manager = CodexProcessManager(
+        _config(tmp_path),
+        terminator=terminator,
+        process_checker=_ProcessChecker(True),
+    )
     pid_file = tmp_path / "runtime" / "codex-app-server.pid"
     pid_file.parent.mkdir(parents=True)
     pid_file.write_text("4321")
@@ -169,5 +205,25 @@ def test_codex_process_manager_stop_uses_pid_file_without_shell(tmp_path):
     result = manager.stop()
 
     assert result.status == "succeeded"
-    assert terminator.pids == [4321]
+    assert result.details == {"stale_pid_file": True}
+    assert terminator.pids == []
     assert not pid_file.exists()
+
+
+def test_codex_process_manager_stop_cleans_reused_pid_without_terminating(tmp_path):
+    terminator = _Terminator()
+    checker = _ProcessChecker(False)
+    manager = CodexProcessManager(
+        _config(tmp_path, transport="ws", endpoint="ws://127.0.0.1:8799"),
+        executor=_Executor(),
+        terminator=terminator,
+        process_checker=checker,
+    )
+    manager.start()
+
+    result = manager.stop()
+
+    assert result.status == "succeeded"
+    assert result.details == {"pid": 4321, "stale_pid_file": True}
+    assert terminator.pids == []
+    assert not (tmp_path / "runtime" / "codex-app-server.pid").exists()
