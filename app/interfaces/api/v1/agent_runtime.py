@@ -10,6 +10,9 @@ from app.application.agent_inference_runtime.codex_process_manager import (
     CodexProcessManagerError,
 )
 from app.domain.agent_inference_runtime.types import RuntimeProviderConfigUpdate
+from app.infrastructure.agent_inference_runtime.codex_http_client import (
+    CodexAppServerClientError,
+)
 
 try:
     from app.interfaces.api.middleware.auth import require_admin, require_identity  # type: ignore[attr-defined]
@@ -315,6 +318,12 @@ def _runtime_management_operation(runtime_management_provider: Any, operation: C
             details={"code": "RUNTIME_PROVIDER_NOT_FOUND", "runtime_name": runtime_name},
         )
     except CodexProcessManagerError as exc:
+        return error(
+            str(exc),
+            status=exc.status_code,
+            details={"code": exc.code, **exc.details},
+        )
+    except CodexAppServerClientError as exc:
         return error(
             str(exc),
             status=exc.status_code,

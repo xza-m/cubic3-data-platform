@@ -19,6 +19,7 @@ from app.application.agent_inference_runtime.router import AgentInferenceRuntime
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 from app.domain.agent_inference_runtime.types import RuntimeProviderConfigSnapshot
 from app.domain.agent_inference_runtime.ports import AgentInferenceRuntimePort
+from app.infrastructure.agent_inference_runtime.codex_http_client import CodexAppServerClientError
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeRequest,
     AgentInferenceRuntimeResult,
@@ -56,8 +57,9 @@ class _FakeAdapter(AgentInferenceRuntimePort):
 
 
 class _AuditRecorder:
-    def __init__(self):
+    def __init__(self, codex_config=None):
         self.events = []
+        self.codex_config = codex_config or {"enabled": True}
 
     def record_audit_event(self, **kwargs):
         self.events.append(kwargs)
@@ -70,7 +72,7 @@ class _AuditRecorder:
                 "api_base": "https://api.openai.test/v1",
                 "model": "gpt-5.1",
             }
-        return {"enabled": True}
+        return self.codex_config
 
 
 class _FailingCodexProcessManager:
@@ -85,6 +87,34 @@ class _UnexpectedCodexProcessManager:
     def start(self):
         self.started = True
         raise AssertionError("disabled provider should not start")
+
+
+class _FakeCodexHttpClient:
+    def __init__(self, *, health=None, capabilities=None):
+        self.health_payload = health or {"status": "ok", "version": "0.1.0"}
+        self.capabilities_payload = capabilities or {
+            "actions": ["semantic.modeling.review_proposal"],
+            "artifacts": ["model_patch"],
+            "events": ["run.succeeded"],
+            "tools": ["read_file"],
+        }
+        self.calls = []
+
+    def healthcheck(self):
+        self.calls.append("healthcheck")
+        return self.health_payload
+
+    def capabilities(self):
+        self.calls.append("capabilities")
+        return self.capabilities_payload
+
+
+class _FailingCodexHttpClient:
+    def __init__(self, error):
+        self.error = error
+
+    def healthcheck(self):
+        raise self.error
 
 
 class _ConfigRepository:
@@ -396,3 +426,104 @@ def test_runtime_management_test_provider_audit_uses_succeeded_status_with_provi
             },
         }
     ]
+
+
+def test_runtime_management_codex_test_provider_uses_configured_endpoint_healthcheck():
+    audit = _AuditRecorder({"enabled": True, "endpoint": "http://127.0.0.1:8765"})
+    client = _FakeCodexHttpClient(health={"status": "ready", "version": "0.1.0"})
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
+        runtime_config_service=audit,
+        codex_client_factory=lambda config: client,
+    )
+
+    result = service.test_provider("codex_app_server", principal_id="alice")
+
+    assert client.calls == ["healthcheck"]
+    assert result.status == "ready"
+    assert result.available is True
+    assert result.details["health"] == {"status": "ready", "version": "0.1.0"}
+    assert audit.events == [
+        {
+            "runtime_name": "codex_app_server",
+            "action": "test",
+            "principal_id": "alice",
+            "status": "succeeded",
+            "metadata": {
+                "provider_status": "ready",
+                "available": True,
+                "configured": True,
+                "health_status": "ready",
+            },
+        }
+    ]
+
+
+def test_runtime_management_codex_test_provider_audits_failed_healthcheck():
+    audit = _AuditRecorder({"enabled": True, "endpoint": "http://127.0.0.1:8765"})
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
+        runtime_config_service=audit,
+        codex_client_factory=lambda config: _FailingCodexHttpClient(
+            CodexAppServerClientError(
+                "Codex app-server provider 调用失败。",
+                code="RUNTIME_PROVIDER_ERROR",
+                details={"path": "/health"},
+            )
+        ),
+    )
+
+    result = service.test_provider("codex_app_server", principal_id="alice")
+
+    assert result.status == "unavailable"
+    assert result.available is False
+    assert result.details["provider_error"] == {
+        "code": "RUNTIME_PROVIDER_ERROR",
+        "path": "/health",
+    }
+    assert audit.events == [
+        {
+            "runtime_name": "codex_app_server",
+            "action": "test",
+            "principal_id": "alice",
+            "status": "failed",
+            "metadata": {
+                "provider_status": "unavailable",
+                "available": False,
+                "configured": True,
+                "provider_error": {
+                    "code": "RUNTIME_PROVIDER_ERROR",
+                    "path": "/health",
+                },
+            },
+        }
+    ]
+
+
+def test_runtime_management_codex_capabilities_uses_transport_when_endpoint_configured():
+    client = _FakeCodexHttpClient(
+        capabilities={
+            "actions": ["semantic.modeling.review_proposal"],
+            "artifacts": ["model_patch"],
+            "events": ["run.started", "run.succeeded"],
+            "tools": ["read_file"],
+            "max_context_tokens": 200000,
+        }
+    )
+    service = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "model": ""},
+        codex_config={"enabled": True, "endpoint": "http://127.0.0.1:8765"},
+        codex_client_factory=lambda config: client,
+    )
+
+    capabilities = service.provider_capabilities("codex_app_server")
+
+    assert client.calls == ["capabilities"]
+    assert capabilities.available is True
+    assert capabilities.actions == ["semantic.modeling.review_proposal"]
+    assert capabilities.artifacts == ["model_patch"]
+    assert capabilities.events == ["run.started", "run.succeeded"]
+    assert capabilities.details["tools"] == ["read_file"]
+    assert capabilities.details["max_context_tokens"] == 200000
