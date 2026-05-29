@@ -160,6 +160,27 @@ def test_start_review_proposal_builds_async_codex_run_request():
     assert request.context_pack["source_evidence"]["source_table"]["name"] == "dwd_student_comment_events"
 
 
+def test_start_review_proposal_uses_effective_principal_for_legacy_session():
+    session = AgentSession(
+        id="session_legacy",
+        user_goal="查询最近 7 天学生评论数",
+        entry_type="business_question",
+        principal_id=None,
+        current_proposal_id="proposal_1",
+    )
+    run_service = _RunService()
+    app = SemanticModelingAgentApp(runtime=_Runtime(), run_service=run_service)
+
+    app.start_review_proposal(
+        session=session,
+        proposal_id="proposal_1",
+        principal_id="alice",
+    )
+
+    assert run_service.requests[0].principal_id == "alice"
+    assert run_service.requests[0].context_pack["session"]["principal_id"] == "alice"
+
+
 def test_start_repair_validation_failure_builds_async_codex_run_request():
     session = AgentSession(
         id="session_1",
@@ -195,6 +216,49 @@ def test_start_repair_validation_failure_builds_async_codex_run_request():
     assert request.input["validation_summary"][0]["path"] == "ontology.metrics.comment_count.time_dimension"
     assert request.context_pack["current_state"]["raw_spec"]["cube"]["name"] == "student_comment_cube"
     assert request.context_pack["blockers"][0]["id"] == "validation_blocked"
+
+
+def test_codex_action_context_pack_masks_sensitive_values_and_limits_payload_size():
+    session = AgentSession(
+        id="session_1",
+        user_goal="查询最近 7 天学生评论数",
+        entry_type="business_question",
+        principal_id="alice",
+        current_proposal_id="proposal_1",
+        workbench_state={
+            "raw_spec": {
+                "spec_version": "v1",
+                "cube": {
+                    "name": "student_comment_cube",
+                    "api_key": "sk-secret",
+                    "description": "x" * 5000,
+                },
+            },
+            "review_artifact": {
+                "authorization": "Bearer hidden",
+                "notes": [{"idx": idx} for idx in range(30)],
+            },
+            "source_evidence": {
+                "password": "plain-text",
+                "fields": [{"name": f"field_{idx}"} for idx in range(30)],
+            },
+            "validation_summary": [{"message": f"issue_{idx}"} for idx in range(30)],
+        },
+    )
+    run_service = _RunService()
+    app = SemanticModelingAgentApp(runtime=_Runtime(), run_service=run_service)
+
+    app.start_review_proposal(session=session, proposal_id="proposal_1")
+
+    context_pack = run_service.requests[0].context_pack
+    cube = context_pack["current_state"]["raw_spec"]["cube"]
+    assert cube["api_key"] == "********"
+    assert len(cube["description"]) <= 4000 + len("...[truncated]")
+    assert context_pack["current_state"]["review_artifact"]["authorization"] == "********"
+    assert len(context_pack["current_state"]["review_artifact"]["notes"]) == 20
+    assert context_pack["source_evidence"]["password"] == "********"
+    assert len(context_pack["source_evidence"]["fields"]) == 20
+    assert len(context_pack["validation_summary"]) == 20
 
 
 def test_semantic_evidence_builder_uses_session_summary_and_limited_tail():

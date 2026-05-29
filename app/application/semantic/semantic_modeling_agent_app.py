@@ -104,10 +104,17 @@ class SemanticModelingAgentApp:
         *,
         session: AgentSession,
         proposal_id: str,
+        principal_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> Dict[str, Any]:
         """提交 Proposal Review 到 Codex app-server 异步生命周期。"""
         run_service = self._require_run_service()
         normalized_proposal_id = str(proposal_id or "").strip()
+        effective_principal_id = session.principal_id or principal_id
+        idempotency_key = (
+            idempotency_key
+            or f"semantic.modeling.review_proposal:{session.id}:{normalized_proposal_id}"
+        )
         request = AgentInferenceRuntimeRequest(
             app_id="semantic_modeling",
             action="semantic.modeling.review_proposal",
@@ -117,10 +124,11 @@ class SemanticModelingAgentApp:
                 thread_id=session.id,
                 turn_id=f"review_{uuid4().hex}",
             ),
-            principal_id=session.principal_id,
+            principal_id=effective_principal_id,
             input={
                 "proposal_id": normalized_proposal_id,
                 "session_id": session.id,
+                "idempotency_key": idempotency_key,
                 "intent": (
                     "Review the saved semantic modeling proposal and return only review "
                     "suggestions, blockers, evidence notes, or patch recommendations."
@@ -130,6 +138,7 @@ class SemanticModelingAgentApp:
                 session=session,
                 proposal_id=normalized_proposal_id,
                 intent="review_proposal",
+                principal_id=effective_principal_id,
             ),
             output_schema="semantic.modeling.review_proposal.output.v1",
             runtime_policy=RuntimePolicy(max_runtime_seconds=900, allow_network=False),
@@ -144,12 +153,16 @@ class SemanticModelingAgentApp:
         self,
         *,
         session: AgentSession,
+        principal_id: str | None = None,
+        idempotency_key: str | None = None,
     ) -> Dict[str, Any]:
         """提交 validation failure repair 到 Codex app-server 异步生命周期。"""
         run_service = self._require_run_service()
         state = session.workbench_state or {}
-        raw_spec = _safe_dict(state.get("raw_spec"))
-        validation_summary = _safe_list(state.get("validation_summary"))
+        raw_spec = _sanitize_value(_safe_dict(state.get("raw_spec")))
+        validation_summary = _sanitize_value(_safe_list(state.get("validation_summary")))
+        effective_principal_id = session.principal_id or principal_id
+        idempotency_key = idempotency_key or f"semantic.modeling.repair_validation_failure:{session.id}"
         request = AgentInferenceRuntimeRequest(
             app_id="semantic_modeling",
             action="semantic.modeling.repair_validation_failure",
@@ -159,9 +172,10 @@ class SemanticModelingAgentApp:
                 thread_id=session.id,
                 turn_id=f"repair_{uuid4().hex}",
             ),
-            principal_id=session.principal_id,
+            principal_id=effective_principal_id,
             input={
                 "session_id": session.id,
+                "idempotency_key": idempotency_key,
                 "raw_spec": raw_spec,
                 "validation_summary": validation_summary,
                 "intent": (
@@ -177,6 +191,7 @@ class SemanticModelingAgentApp:
                     or ""
                 ).strip() or None,
                 intent="repair_validation_failure",
+                principal_id=effective_principal_id,
             ),
             output_schema="semantic.modeling.repair_validation_failure.output.v1",
             runtime_policy=RuntimePolicy(max_runtime_seconds=900, allow_network=False),
@@ -212,10 +227,11 @@ class SemanticModelingAgentApp:
         session: AgentSession,
         proposal_id: str | None,
         intent: str,
+        principal_id: str | None = None,
     ) -> Dict[str, Any]:
         state = session.workbench_state or {}
         readiness = _safe_dict(state.get("readiness"))
-        return {
+        return _sanitize_value({
             "intent": intent,
             "session": {
                 "id": session.id,
@@ -223,7 +239,7 @@ class SemanticModelingAgentApp:
                 "entry_type": session.entry_type,
                 "state": session.state,
                 "status": session.status,
-                "principal_id": session.principal_id,
+                "principal_id": session.principal_id or principal_id,
                 "current_proposal_id": session.current_proposal_id,
                 "title": session.title,
             },
@@ -241,7 +257,7 @@ class SemanticModelingAgentApp:
             "blockers": _blockers_from_state(state),
             "validation_summary": _safe_list(state.get("validation_summary")),
             "source_evidence": _safe_dict(state.get("source_evidence")),
-        }
+        })
 
     def _to_chat_output(self, result: AgentInferenceRuntimeResult) -> SemanticModelingChatOutput:
         raw_output = result.structured_output
@@ -338,6 +354,58 @@ def _safe_dict(value: Any) -> Dict[str, Any]:
 
 def _safe_list(value: Any) -> List[Any]:
     return deepcopy(value) if isinstance(value, list) else []
+
+
+_SENSITIVE_KEY_PARTS = (
+    "token",
+    "password",
+    "secret",
+    "api_key",
+    "key",
+    "credential",
+    "authorization",
+)
+_MASKED_VALUE = "********"
+_MAX_CONTEXT_STRING_LENGTH = 4000
+_MAX_CONTEXT_LIST_ITEMS = 20
+_MAX_CONTEXT_DICT_KEYS = 50
+
+
+def _sanitize_value(value: Any) -> Any:
+    return _sanitize_context_value(value, parent_key=None)
+
+
+def _sanitize_context_value(value: Any, *, parent_key: str | None) -> Any:
+    if parent_key and _is_sensitive_key(parent_key):
+        return _MASKED_VALUE
+    if isinstance(value, str):
+        if len(value) > _MAX_CONTEXT_STRING_LENGTH:
+            return value[:_MAX_CONTEXT_STRING_LENGTH] + "...[truncated]"
+        return value
+    if isinstance(value, list):
+        return [
+            _sanitize_context_value(item, parent_key=None)
+            for item in value[:_MAX_CONTEXT_LIST_ITEMS]
+        ]
+    if isinstance(value, tuple):
+        return [
+            _sanitize_context_value(item, parent_key=None)
+            for item in list(value)[:_MAX_CONTEXT_LIST_ITEMS]
+        ]
+    if isinstance(value, dict):
+        sanitized: Dict[str, Any] = {}
+        for index, (key, item) in enumerate(value.items()):
+            if index >= _MAX_CONTEXT_DICT_KEYS:
+                break
+            key_text = str(key)
+            sanitized[key_text] = _sanitize_context_value(item, parent_key=key_text)
+        return sanitized
+    return value
+
+
+def _is_sensitive_key(key: str) -> bool:
+    normalized = key.lower().replace("-", "_")
+    return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
 
 
 def _blockers_from_state(state: Mapping[str, Any]) -> List[Dict[str, Any]]:
