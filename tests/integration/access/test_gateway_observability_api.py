@@ -37,6 +37,17 @@ def test_gateway_observability_api_proxies_gateway_telemetry(app, monkeypatch):
                 "generated_at": "2026-05-29T10:00:00Z",
             }
 
+        def get_readiness(self):
+            calls.append(("readyz",))
+            return {
+                "status": "healthy",
+                "checks": {
+                    "database": "ok",
+                    "worker": "ok",
+                    "spool": "ok",
+                },
+            }
+
         def list_query_runs(self, *, limit: int = 50):
             calls.append(("runs", limit))
             return {
@@ -57,6 +68,7 @@ def test_gateway_observability_api_proxies_gateway_telemetry(app, monkeypatch):
     monkeypatch.setattr("app.interfaces.api.v1.governance.GatewayTelemetryClient", StubGatewayClient)
 
     summary = client.get("/api/v1/governance/gateway/summary")
+    alerts = client.get("/api/v1/governance/gateway/alerts")
     runs = client.get("/api/v1/governance/gateway/query-runs?limit=10")
 
     assert summary.status_code == 200
@@ -66,11 +78,23 @@ def test_gateway_observability_api_proxies_gateway_telemetry(app, monkeypatch):
     assert summary_payload["avg_queue_wait_ms"] == 12.5
     assert summary_payload["timeout_count"] == 1
     assert summary_payload["spool_object_count"] == 3
+    assert alerts.status_code == 200
+    alert_payload = alerts.get_json()["data"]
+    assert alert_payload["status"] == "critical"
+    assert {item["code"] for item in alert_payload["alerts"]} >= {
+        "gateway_stability_low",
+        "gateway_pending_backlog",
+        "gateway_queue_wait_high",
+        "gateway_timeout_seen",
+    }
     assert runs.status_code == 200
     assert runs.get_json()["data"]["items"][0]["trace_id"] == "tr-001"
     assert calls == [
         ("init", "http://dw-query-gateway:8000", "platform-secret", 5),
         ("summary",),
+        ("init", "http://dw-query-gateway:8000", "platform-secret", 5),
+        ("summary",),
+        ("readyz",),
         ("init", "http://dw-query-gateway:8000", "platform-secret", 5),
         ("runs", 10),
     ]

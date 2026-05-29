@@ -1,14 +1,18 @@
 import {
+  buildGatewayTrend,
   getAssignedAccessPackageCodes,
   formatAccessRoleLabel,
   formatDataLevelLabel,
   formatExecutionModeLabel,
+  formatGatewayAlertSeverityLabel,
   formatPolicyEffectLabel,
   formatPolicyScopeChips,
+  gatewayAlertTone,
   getCredentialModeOptions,
   replaceDataAccessPackageCode,
   replacePlatformPackageCode,
   splitAccessPackages,
+  summarizeGatewayTrend,
 } from './AccessIdentity'
 import { describe, expect, it } from 'vitest'
 
@@ -46,6 +50,41 @@ describe('AccessIdentity 管理员文案', () => {
       'inline_policy_decision',
       'internal_query_execution',
     ])
+  })
+
+  it('把网关告警严重等级转换成控制台可读标签和卡片语气', () => {
+    expect(formatGatewayAlertSeverityLabel('critical')).toBe('严重')
+    expect(formatGatewayAlertSeverityLabel('warning')).toBe('预警')
+    expect(formatGatewayAlertSeverityLabel('healthy')).toBe('正常')
+    expect(gatewayAlertTone('critical')).toBe('danger')
+    expect(gatewayAlertTone('warning')).toBe('warning')
+    expect(gatewayAlertTone('healthy')).toBe('neutral')
+  })
+
+  it('按日聚合网关查询量、失败量和 DAU', () => {
+    const rows = [
+      { created_at: '2026-05-28T01:00:00Z', status: 'SUCCEEDED', principal_id: 'u1' },
+      { created_at: '2026-05-28T02:00:00Z', status: 'FAILED', principal_id: 'u1' },
+      { created_at: '2026-05-28T03:00:00Z', status: 'SUCCEEDED', principal_id: 'u2' },
+      { created_at: '2026-05-29T01:00:00Z', status: 'SUCCEEDED', principal_id: 'u2' },
+      { created_at: '2026-05-29T02:00:00Z', status: 'SUCCEEDED', actor_id: 'agent-a' },
+    ] as any
+
+    const trend = buildGatewayTrend(rows)
+    const summary = summarizeGatewayTrend(trend)
+    const may28 = trend.find((row) => row.key === '2026-05-28')
+    const may29 = trend.find((row) => row.key === '2026-05-29')
+
+    expect(may28).toMatchObject({ total: 3, allow: 2, blocked: 1, dau: 2 })
+    expect(may29).toMatchObject({ total: 2, allow: 2, blocked: 0, dau: 2 })
+    expect(summary).toMatchObject({
+      totalQueries: 5,
+      latestDayQueries: 2,
+      latestDayDau: 2,
+      windowDau: 3,
+      peakQueries: 3,
+      peakLabel: '05/28',
+    })
   })
 
   it('把成员配置拆成平台角色和数据访问权限，并且同组只显示一个选择', () => {

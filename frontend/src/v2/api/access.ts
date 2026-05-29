@@ -221,9 +221,36 @@ export interface GatewayTelemetrySummary {
   client_wait_timeout_count: number
   timeout_count: number
   rejected_count: number
+  export_request_count: number
+  export_success_count: number
+  export_failure_count: number
+  publish_conflict_count: number
   result_object_count: number
   spool_object_count: number
+  spool_result_total_bytes: number
   generated_at: string | null
+}
+
+export interface GatewayRuntimeAlert {
+  code: string
+  severity: 'critical' | 'warning' | 'healthy' | string
+  title: string
+  message: string
+  value?: unknown
+  threshold?: unknown
+}
+
+export interface GatewayRuntimeAlerts {
+  status: 'critical' | 'warning' | 'healthy' | string
+  alerts: GatewayRuntimeAlert[]
+  thresholds: Record<string, number | string>
+  readiness: {
+    status?: string
+    checks?: Record<string, unknown>
+    error?: string
+  }
+  summary: Record<string, number | string | null>
+  evaluated_at: string | null
 }
 
 export interface GatewayQueryRun {
@@ -465,9 +492,27 @@ export async function getGatewayTelemetrySummary(): Promise<GatewayTelemetrySumm
     client_wait_timeout_count: Number(data?.client_wait_timeout_count ?? 0),
     timeout_count: Number(data?.timeout_count ?? 0),
     rejected_count: Number(data?.rejected_count ?? 0),
+    export_request_count: Number(data?.export_request_count ?? 0),
+    export_success_count: Number(data?.export_success_count ?? 0),
+    export_failure_count: Number(data?.export_failure_count ?? 0),
+    publish_conflict_count: Number(data?.publish_conflict_count ?? 0),
     result_object_count: Number(data?.result_object_count ?? 0),
     spool_object_count: Number(data?.spool_object_count ?? 0),
+    spool_result_total_bytes: Number(data?.spool_result_total_bytes ?? 0),
     generated_at: data?.generated_at ?? null,
+  }
+}
+
+export async function getGatewayRuntimeAlerts(): Promise<GatewayRuntimeAlerts> {
+  const res = await apiClient.get<Envelope<GatewayRuntimeAlerts>>('/governance/gateway/alerts')
+  const data = res.data.data
+  return {
+    status: data?.status ?? 'healthy',
+    alerts: Array.isArray(data?.alerts) ? data.alerts : [],
+    thresholds: data?.thresholds ?? {},
+    readiness: data?.readiness ?? {},
+    summary: data?.summary ?? {},
+    evaluated_at: data?.evaluated_at ?? null,
   }
 }
 

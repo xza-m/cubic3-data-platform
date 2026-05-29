@@ -12,6 +12,7 @@ import {
   getAccessPermissionPackages,
   getAccessPrincipal,
   getAccessRoleCatalog,
+  getGatewayRuntimeAlerts,
   getGatewayTelemetrySummary,
   getServicePrincipal,
   listGatewayQueryRuns,
@@ -46,6 +47,13 @@ export function useGatewayTelemetrySummary() {
   return useQuery({
     queryKey: qk('access', 'gateway', 'summary'),
     queryFn: getGatewayTelemetrySummary,
+  })
+}
+
+export function useGatewayRuntimeAlerts() {
+  return useQuery({
+    queryKey: qk('access', 'gateway', 'alerts'),
+    queryFn: getGatewayRuntimeAlerts,
   })
 }
 

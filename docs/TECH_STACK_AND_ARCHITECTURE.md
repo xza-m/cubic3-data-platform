@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-29
 ---
 
 # 技术栈与架构说明
@@ -100,6 +100,7 @@ graph LR
 | 主库 | PostgreSQL |
 | 缓存 / 队列 | Redis |
 | 数据源适配 | PostgreSQL / MySQL / ClickHouse / MaxCompute |
+| 生产数仓查询网关 | 独立 `dw-query-gateway`；本仓通过 `QUERY_GATEWAY_BASE_URL` + `QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN` 做只读 telemetry / readyz BFF 和受治理查询提交 |
 | 消息协同 | 飞书 |
 | 大文件交付 | OSS |
 | BI 截图 | Superset |

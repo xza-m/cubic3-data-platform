@@ -90,6 +90,7 @@ last_reviewed: 2026-05-25
     - `/api/v1/agent/semantic/plan` 作为 Agent-first official Runtime 主入口，由 `AgentPlanHandler` 编排 `PrincipalResolver -> Pre-route Policy -> Semantic Router -> Semantic Mapper -> Execution Compiler -> Post-compile Policy`
     - `/api/v1/agent/semantic/execute` 作为 Agent-first 查询执行入口，在 `policy_decision=allow` 时提交受治理查询到 `dw-query-gateway`；审批或拒绝只返回治理材料，不提交 gateway
     - 本仓不再保留内部查询执行 Worker、执行 job 或结果 spool；`dw-query-gateway` 负责正式执行、SQL guard、审计、结果对象和运行态事实
+    - 网关观测页只读消费 `dw-query-gateway` telemetry / readyz，并在 data-platform BFF 层做基础告警评价；告警输入和运行态事实仍以 gateway 为准
     - SQL Lab、查询工作台、元数据探查和预览的定位是交互式异构数据源工具面，继续走 DataSource Adapter SPI
     - official Runtime 只读取 active SQL runtime snapshot manifest 中的 published `Ontology` 与 published `Cube` `spec`；draft、Proposal 和 YAML 同名资产不得 fallback；诊断类 `/semantic-router/*` 保留 preview，用于工作台 route / binding / compile / policy / trace 排障
     - Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；请求体角色、JWT 角色声明和 `viewer_roles` 不参与授权

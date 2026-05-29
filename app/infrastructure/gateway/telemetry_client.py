@@ -26,10 +26,20 @@ class GatewayTelemetryClient:
     def get_summary(self) -> dict[str, Any]:
         return normalize_gateway_summary(self._get("/api/v1/telemetry/gateway/summary"))
 
+    def get_readiness(self) -> dict[str, Any]:
+        return self._get_raw("/readyz")
+
+    def get_health(self) -> dict[str, Any]:
+        return self._get_raw("/healthz")
+
     def list_query_runs(self, *, limit: int = 50) -> dict[str, Any]:
         return self._get("/api/v1/telemetry/gateway/query-runs", params={"limit": limit})
 
     def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = self._get_raw(path, params=params)
+        return payload.get("data") or {}
+
+    def _get_raw(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         response = requests.get(
             f"{self._base_url}{path}",
             params=params,
@@ -42,7 +52,7 @@ class GatewayTelemetryClient:
         if payload.get("success") is False:
             error = payload.get("error") or {}
             raise GatewayTelemetryError(str(error.get("message") or "gateway telemetry failed"))
-        return payload.get("data") or {}
+        return payload
 
 
 class GatewayQueryClient:
@@ -95,10 +105,13 @@ def normalize_gateway_summary(payload: dict[str, Any]) -> dict[str, Any]:
     """规整 gateway 运行态指标，BFF 不重新计算执行事实。"""
 
     source = dict(payload or {})
+    runtime = dict(source.get("runtime") or {})
 
     def number(key: str, *aliases: str, default: float = 0) -> float:
         for name in (key, *aliases):
             value = source.get(name)
+            if value is None:
+                value = runtime.get(name)
             if value is None:
                 continue
             try:
@@ -131,8 +144,20 @@ def normalize_gateway_summary(payload: dict[str, Any]) -> dict[str, Any]:
         "client_wait_timeout_count": int(number("client_wait_timeout_count")),
         "timeout_count": int(number("timeout_count")),
         "rejected_count": int(number("rejected_count", "reject_count")),
+        "export_request_count": int(number("export_request_count")),
+        "export_success_count": int(number("export_success_count")),
+        "export_failure_count": int(number("export_failure_count")),
+        "export_failure_by_reason": dict(runtime.get("export_failure_by_reason") or source.get("export_failure_by_reason") or {}),
+        "result_rejected_count": int(number("result_rejected_count")),
+        "result_rejected_by_reason": dict(runtime.get("result_rejected_by_reason") or source.get("result_rejected_by_reason") or {}),
+        "result_too_large_rejected_count": int(number("result_too_large_rejected_count")),
+        "result_row_too_large_rejected_count": int(number("result_row_too_large_rejected_count")),
+        "max_result_rejected_bytes": int(number("max_result_rejected_bytes")),
+        "max_result_rejected_row_bytes": int(number("max_result_rejected_row_bytes")),
         "result_object_count": int(number("result_object_count")),
         "spool_object_count": int(number("spool_object_count", "spool_result_count")),
+        "spool_result_total_bytes": int(number("spool_result_total_bytes")),
+        "publish_conflict_count": int(number("publish_conflict_count")),
         "generated_at": source.get("generated_at"),
     }
     return {**source, **normalized}

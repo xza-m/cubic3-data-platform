@@ -50,7 +50,8 @@ Agent / 应用
 ## 可观测边界
 
 - `dw-query-gateway` 是执行运行态指标的事实源，负责产出 Worker 心跳、队列积压、运行中查询、等待耗时、执行耗时、SQL guard 拦截、MaxCompute timeout / access denied、export 成功失败和 query events。
-- `cubic3-data-platform` 可以提供“网关观测”页面，作为薄展示层或 BFF，消费 `dw-query-gateway` 的 telemetry / readyz / query events API，并与平台侧 `semantic_trace`、`policy_decision`、`principal_id`、`data_level` 和 `sql_hash` 做关联。
+- `cubic3-data-platform` 可以提供“网关观测”页面，作为薄展示层或 BFF，消费 `dw-query-gateway` 的 telemetry / readyz / query events API，并与平台侧 `semantic_trace`、`policy_decision`、`principal_id`、`data_level` 和 `sql_hash` 做关联。当前 BFF 端点包括 `/api/v1/governance/gateway/summary`、`/api/v1/governance/gateway/query-runs` 和 `/api/v1/governance/gateway/alerts`。
+- `cubic3-data-platform` 可以对 gateway telemetry / readyz 做基础告警评价，用于控制台可视化：稳定性低于阈值、readyz 非健康、等待队列积压、排队等待过长、timeout / rejected / export failure / publish conflict 等。但告警输入仍以 gateway 返回为准，平台不生成第二套 Worker 或 query counter。
 - `cubic3-data-platform` 不应复制 `dw-query-gateway` 的 Worker 状态、query_events 或 runtime counters 作为第二套事实源。若为前端体验做缓存，必须标明来源和刷新时间，且不得替代 gateway 侧诊断。
 
 ## 约束
@@ -85,5 +86,5 @@ Agent / 应用
 
 - `openspec/changes/integrate-gateway-query-execution` 中的 all-in-one 表述视为历史草案，不再作为目标态。
 - `docs/architecture/access-gateway-maxcompute-ram.md` 是访问网关与 MaxCompute 权限闭环的当前边界说明。
-- 新增网关监控页面时，页面代码应位于 `cubic3-data-platform`，运行态数据来源应为 `dw-query-gateway` telemetry API。
+- 网关监控页面代码位于 `cubic3-data-platform`，运行态数据来源为 `dw-query-gateway` telemetry / readyz API。生产环境必须通过 `QUERY_GATEWAY_BASE_URL` 指向真实 gateway，并用 `QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN` 对齐 gateway 侧 `PLATFORM_SERVICE_TOKEN`。
 - 删除本仓 `query_execution` 时，如现有环境已经创建 `query_execution_jobs`、`query_execution_events` 或 `query_result_objects`，需要通过前向迁移或发布 runbook 明确归档 / 删除策略，不直接保留为活跃功能。

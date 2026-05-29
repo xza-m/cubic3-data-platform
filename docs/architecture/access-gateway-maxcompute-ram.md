@@ -3,7 +3,7 @@ doc_type: architecture
 status: proposed
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-05-13
+last_reviewed: 2026-05-29
 ---
 
 # 访问网关与 MaxCompute RAM 权限闭环
@@ -241,6 +241,29 @@ Metrics 最小集合：
 - `gateway_query_duration_ms{profile}`
 - `gateway_query_rows{profile}`
 
+`data-platform` 不采集或存储上述 metrics 的第二套事实源，只通过 BFF 读取 `dw-query-gateway` 已暴露的运行态接口：
+
+| data-platform BFF | gateway 来源 | 用途 |
+| --- | --- | --- |
+| `/api/v1/governance/gateway/summary` | `/api/v1/telemetry/gateway/summary` | 规整 query count、稳定性、队列、等待耗时、timeout、export、spool 等运行态指标；真实 gateway 返回的 `runtime` 嵌套字段需要展开给前端 |
+| `/api/v1/governance/gateway/query-runs` | `/api/v1/telemetry/gateway/query-runs` | 展示最近查询、trace、principal、data level、执行画像、状态和物理拒绝 |
+| `/api/v1/governance/gateway/alerts` | `summary + /readyz` | 对控制台做基础告警评价，不替代 gateway 侧诊断和外部告警投递 |
+
+基础告警规则：
+
+- `readyz.status != healthy` 或任一 ready check 非 `ok / healthy / 0`：严重告警。
+- `stability < 95%`：严重告警；`stability < 99%`：预警。
+- `pending_count >= 10`：严重告警；`pending_count >= 1`：预警。
+- `max_current_queue_wait_ms > 0`：预警；`>= 300000ms`：严重告警。
+- `avg_queue_wait_ms >= 60000ms`：预警；`>= 300000ms`：严重告警。
+- `timeout_count / rejected_count / export_failure_count / publish_conflict_count >= 1`：预警。
+
+部署配置：
+
+- `QUERY_GATEWAY_BASE_URL` 指向真实 `dw-query-gateway` 服务地址。线上环境实际端口以 gateway 部署为准；不要在代码中硬编码内网 IP。
+- `QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN` 必须与 gateway 侧 `PLATFORM_SERVICE_TOKEN` 一致，通过部署环境或密钥管理注入，不写入仓库。
+- `QUERY_GATEWAY_TIMEOUT_SECONDS` 控制 telemetry / readyz 请求超时，默认 5 秒。
+
 ## 7. 前端信息架构
 
 左侧系统一级模块命名为“访问网关”，但它是平台治理控制台，不代表 gateway runtime 内嵌在 `data-platform` 中。二级菜单拆成权限类和网关类：
@@ -249,9 +272,9 @@ Metrics 最小集合：
 | --- | --- | --- | --- |
 | 权限管理 | 权限 | 管理“谁能访问什么” | 成员权限、机器人接入、数据访问规则 |
 | 权限审计 | 权限 | 查看权限审批、策略判定和治理要求 | 审批记录、最近权限判定、拦截记录 |
-| 网关观测 | 网关 | 查看真实执行面的健康度 | 查询次数、执行记录、访问趋势、SQL guard、MaxCompute 物理拒绝、稳定性 |
+| 网关观测 | 网关 | 查看真实执行面的健康度 | 告警总览、查询次数、查询量日趋势、DAU、执行记录、SQL guard、MaxCompute 物理拒绝、稳定性 |
 
-管理员默认先进入“权限管理”。“网关观测”只展示 `dw-query-gateway` 遥测，不混入权限审批记录，不暴露 AK/SK，不把 `CredentialBinding` 作为普通管理员编辑入口。
+管理员默认先进入“权限管理”。“网关观测”只展示 `dw-query-gateway` 遥测和基于该遥测的基础告警评价。查询量日趋势和 DAU 当前基于最近 query-runs 窗口聚合，不在 data-platform 落第二套统计表；后续如 gateway 提供按日聚合 telemetry API，可替换为 gateway 服务端聚合结果。不混入权限审批记录，不暴露 AK/SK，不把 `CredentialBinding` 作为普通管理员编辑入口。
 
 ## 8. Smoke 验收
 

@@ -6,6 +6,7 @@ from typing import Any
 from flask import Blueprint, current_app, request
 
 from app.extensions import db
+from app.infrastructure.gateway.alerting import evaluate_gateway_alerts
 from app.infrastructure.gateway.telemetry_client import GatewayTelemetryClient, GatewayTelemetryError
 from app.infrastructure.governance.repositories import SqlAccessGovernanceRepository
 from app.interfaces.api.middleware.auth import require_access_roles, require_auth
@@ -205,6 +206,29 @@ def create_governance_blueprint(audit_repository):
             return success(_gateway_client().list_query_runs(limit=limit))
         except GatewayTelemetryError as exc:
             return bad_request(str(exc))
+
+    @bp.get("/gateway/alerts")
+    @require_access_roles(*GOVERNANCE_READ_ROLES)
+    def get_gateway_alerts():
+        try:
+            gateway = _gateway_client()
+        except GatewayTelemetryError as exc:
+            return bad_request(str(exc))
+
+        telemetry_error = None
+        readiness = None
+        try:
+            summary = gateway.get_summary()
+        except GatewayTelemetryError as exc:
+            summary = {}
+            telemetry_error = str(exc)
+
+        try:
+            readiness = gateway.get_readiness()
+        except GatewayTelemetryError as exc:
+            readiness = {"status": "unknown", "error": str(exc)}
+
+        return success(evaluate_gateway_alerts(summary, readiness, telemetry_error=telemetry_error))
 
     @bp.route("/audit-traces", methods=["GET"])
     @require_access_roles(*GOVERNANCE_READ_ROLES)

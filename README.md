@@ -292,6 +292,7 @@ python run_worker.py
 - `run_worker.py` 负责消费目录同步、数据集同步等长耗时 RQ 任务
 - 查询工作台、SQL Lab、元数据探查和预览走本仓 DataSource Adapter SPI
 - 正式用户 / Agent 发起、需要审计和治理的数仓查询统一提交到 `dw-query-gateway`；本仓不再启动查询执行 Worker
+- 网关观测页通过 `QUERY_GATEWAY_BASE_URL` 和 `QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN` 读取 `dw-query-gateway` telemetry / readyz，展示基础告警、队列、稳定性和最近执行记录
 
 默认情况下，Vite 开发服务器运行在 `http://localhost:3000`。如果你没有启动 Nginx，而是直接让前端代理到 Flask，请显式设置：
 

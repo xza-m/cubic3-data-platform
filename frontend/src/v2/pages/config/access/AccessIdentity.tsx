@@ -5,7 +5,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
+  AlertTriangle,
   Bot,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -44,6 +46,7 @@ import {
   useDataPolicies,
   useExecutionProfiles,
   useGatewayQueryRuns,
+  useGatewayRuntimeAlerts,
   useGatewayTelemetrySummary,
   usePolicyDecisions,
   useRevokeApiKey,
@@ -63,6 +66,7 @@ import type {
   AccessPrincipalDetail,
   AccessRoleBinding,
   AccessServicePrincipal,
+  GatewayRuntimeAlerts,
   GatewayQueryRun,
   CreatedApiKey,
 } from '@v2/api/access'
@@ -74,6 +78,15 @@ type AccessViewId = 'permissions' | 'audit' | 'observability'
 
 interface AccessIdentityProps {
   view?: AccessViewId
+}
+
+const EMPTY_GATEWAY_ALERTS: GatewayRuntimeAlerts = {
+  status: 'healthy',
+  alerts: [],
+  thresholds: {},
+  readiness: {},
+  summary: {},
+  evaluated_at: null,
 }
 
 export default function AccessIdentity({ view = 'permissions' }: AccessIdentityProps) {
@@ -896,7 +909,8 @@ function PermissionAuditWorkspace() {
 function GatewayObservabilityWorkspace() {
   const [traceRun, setTraceRun] = useState<GatewayQueryRun | null>(null)
   const summaryQuery = useGatewayTelemetrySummary()
-  const runsQuery = useGatewayQueryRuns({ limit: 100 })
+  const alertsQuery = useGatewayRuntimeAlerts()
+  const runsQuery = useGatewayQueryRuns({ limit: 200 })
   const summary = summaryQuery.data ?? {
     query_count: 0,
     success_count: 0,
@@ -914,14 +928,21 @@ function GatewayObservabilityWorkspace() {
     client_wait_timeout_count: 0,
     timeout_count: 0,
     rejected_count: 0,
+    export_request_count: 0,
+    export_success_count: 0,
+    export_failure_count: 0,
+    publish_conflict_count: 0,
     result_object_count: 0,
     spool_object_count: 0,
+    spool_result_total_bytes: 0,
     generated_at: null,
   }
+  const alertEvaluation = alertsQuery.data ?? EMPTY_GATEWAY_ALERTS
   const rows = useMemo(() => runsQuery.data?.items ?? [], [runsQuery.data?.items])
-  const isLoading = summaryQuery.isLoading || runsQuery.isLoading
-  const isError = summaryQuery.isError || runsQuery.isError
+  const isLoading = summaryQuery.isLoading || alertsQuery.isLoading || runsQuery.isLoading
+  const isError = summaryQuery.isError || alertsQuery.isError || runsQuery.isError
   const trendRows = useMemo(() => buildGatewayTrend(rows), [rows])
+  const trendSummary = useMemo(() => summarizeGatewayTrend(trendRows), [trendRows])
   const breakdownRows = useMemo(
     () => Object.entries(summary.by_data_level ?? {}).map(([level, count]) => ({ level, count: Number(count) })),
     [summary.by_data_level],
@@ -930,6 +951,7 @@ function GatewayObservabilityWorkspace() {
   const gatewayDeniedCount = rows.filter((row) => row.status === 'FAILED' && !row.physical_denied).length
   const refresh = () => {
     void summaryQuery.refetch()
+    void alertsQuery.refetch()
     void runsQuery.refetch()
   }
   return (
@@ -940,7 +962,7 @@ function GatewayObservabilityWorkspace() {
         </div>
         <RefreshButton
           onClick={refresh}
-          loading={summaryQuery.isFetching || runsQuery.isFetching}
+          loading={summaryQuery.isFetching || alertsQuery.isFetching || runsQuery.isFetching}
           ariaLabel={t('access.gateway.refresh', '刷新网关观测')}
         />
       </div>
@@ -949,6 +971,7 @@ function GatewayObservabilityWorkspace() {
           <EmptyState tone="danger" text={t('access.gateway.loadFailed', '网关观测加载失败，请检查 data-platform 到 dw-query-gateway 的服务令牌和网络连通性')} />
         </div>
       ) : null}
+      <GatewayAlertPanel evaluation={alertEvaluation} loading={alertsQuery.isLoading} />
       <div className="grid gap-3 md:grid-cols-4">
         <GatewayMetricCard
           label={t('access.gateway.runtime.queue', '排队 / 运行 / 等待')}
@@ -1022,7 +1045,7 @@ function GatewayObservabilityWorkspace() {
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="min-w-0">
-          <AccessTrendPanel rows={trendRows} />
+          <AccessTrendPanel rows={trendRows} summary={trendSummary} />
           <section className="mt-4 rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
             <PanelTitle title={t('access.gateway.records.section', '全平台访问记录')} count={rows.length} />
             {isLoading ? (
@@ -1056,6 +1079,92 @@ function formatDurationMs(value: number): string {
   return `${(value / 1000).toFixed(1)}s`
 }
 
+function GatewayAlertPanel({
+  evaluation,
+  loading,
+}: {
+  evaluation: GatewayRuntimeAlerts
+  loading: boolean
+}) {
+  const tone = gatewayAlertTone(evaluation.status)
+  const color = tone === 'danger'
+    ? 'var(--danger)'
+    : tone === 'warning'
+      ? 'var(--warning)'
+      : 'var(--success)'
+  const soft = tone === 'danger'
+    ? 'var(--danger-soft)'
+    : tone === 'warning'
+      ? 'var(--warning-soft)'
+      : 'var(--success-soft)'
+  const Icon = tone === 'neutral' ? CheckCircle2 : AlertTriangle
+  const checks = evaluation.readiness?.checks && typeof evaluation.readiness.checks === 'object'
+    ? Object.entries(evaluation.readiness.checks)
+    : []
+  return (
+    <section
+      className="mb-3 rounded-md border p-3 text-xs"
+      style={{
+        borderColor: color,
+        background: soft,
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <Icon size={16} className="mt-0.5 shrink-0" style={{ color }} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                {t('access.gateway.alerts.section', 'Gateway 告警')}
+              </span>
+              <Chip tone={tone}>{formatGatewayAlertSeverityLabel(evaluation.status)}</Chip>
+              {evaluation.evaluated_at ? (
+                <span style={{ color: 'var(--text-3)' }}>
+                  {t('access.gateway.alerts.evaluatedAt', '评价时间 {time}', { time: fmtDateTime(evaluation.evaluated_at) })}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-1" style={{ color: 'var(--text-3)' }}>
+              {t('access.gateway.alerts.source', '基于 dw-query-gateway telemetry / readyz 评价，data-platform 不复制执行状态。')}
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {checks.slice(0, 6).map(([name, value]) => {
+            const ok = String(value).toLowerCase() === 'ok' || String(value).toLowerCase() === 'healthy' || String(value) === '0'
+            return (
+              <Chip key={name} tone={ok ? 'neutral' : 'danger'}>
+                {name}: {String(value)}
+              </Chip>
+            )
+          })}
+        </div>
+      </div>
+      {loading ? (
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-12 w-full" />)}
+        </div>
+      ) : evaluation.alerts.length === 0 ? (
+        <div className="mt-3 rounded border border-dashed px-3 py-2" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
+          {t('access.gateway.alerts.empty', '当前未触发基础运行态告警')}
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {evaluation.alerts.slice(0, 4).map((alert) => (
+            <div key={alert.code} className="rounded border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium" style={{ color: 'var(--text-1)' }}>{alert.title}</span>
+                <Chip tone={gatewayAlertTone(alert.severity)}>{formatGatewayAlertSeverityLabel(alert.severity)}</Chip>
+              </div>
+              <div className="mt-1" style={{ color: 'var(--text-3)' }}>{alert.message}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function GatewayMetricCard({
   label,
   value,
@@ -1082,36 +1191,66 @@ function GatewayMetricCard({
   )
 }
 
-function AccessTrendPanel({ rows }: { rows: AccessTrendPoint[] }) {
+function AccessTrendPanel({
+  rows,
+  summary,
+}: {
+  rows: AccessTrendPoint[]
+  summary: GatewayTrendSummary
+}) {
   const maxCount = Math.max(1, ...rows.map((row) => row.total))
+  const maxDau = Math.max(1, ...rows.map((row) => row.dau))
   return (
     <section className="mt-4 rounded-md border p-3 text-xs" style={{ borderColor: 'var(--border)' }}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <div className="font-semibold" style={{ color: 'var(--text-1)' }}>
-            {t('access.gateway.trend.section', '访问趋势')}
+            {t('access.gateway.trend.section', '查询量日趋势')}
           </div>
           <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-            {t('access.gateway.trend.helper', '按最近访问记录聚合查询次数、放行和拦截')}
+            {t('access.gateway.trend.helper', '按最近执行记录聚合每日查询量、成功/失败和活跃主体')}
           </div>
         </div>
         <Chip tone="neutral">{t('access.gateway.trend.window', '最近记录')}</Chip>
       </div>
+      <div className="mb-3 grid gap-2 sm:grid-cols-4">
+        <TrendSummaryItem
+          label={t('access.gateway.trend.totalQueries', '窗口查询量')}
+          value={summary.totalQueries}
+          detail={t('access.gateway.trend.totalQueriesDetail', '最近记录窗口合计')}
+        />
+        <TrendSummaryItem
+          label={t('access.gateway.trend.latestQueries', '最新日查询')}
+          value={summary.latestDayQueries}
+          detail={summary.latestDayLabel || t('access.gateway.trend.noLatestDay', '暂无日期')}
+        />
+        <TrendSummaryItem
+          label={t('access.gateway.trend.latestDau', '最新日 DAU')}
+          value={summary.latestDayDau}
+          detail={t('access.gateway.trend.latestDauDetail', '去重 principal / actor')}
+        />
+        <TrendSummaryItem
+          label={t('access.gateway.trend.windowDau', '窗口活跃主体')}
+          value={summary.windowDau}
+          detail={t('access.gateway.trend.windowDauDetail', '跨日去重')}
+        />
+      </div>
       {rows.length === 0 ? (
         <EmptyState text={t('access.gateway.trend.empty', '暂无访问趋势')} />
       ) : (
-        <div className="grid min-h-[132px] grid-cols-7 items-end gap-2">
+        <div className="grid min-h-[168px] grid-cols-7 items-end gap-2">
           {rows.map((row) => {
             const totalHeight = Math.max(10, Math.round((row.total / maxCount) * 96))
             const allowHeight = row.total > 0 ? Math.max(2, Math.round((row.allow / row.total) * totalHeight)) : 0
             const blockedHeight = Math.max(0, totalHeight - allowHeight)
+            const dauHeight = row.dau > 0 ? Math.max(4, Math.round((row.dau / maxDau) * 28)) : 0
             return (
-              <div key={row.key} className="flex min-w-0 flex-col items-center gap-2">
+              <div key={row.key} className="flex min-w-0 flex-col items-center gap-1.5">
                 <div className="flex h-24 w-full items-end justify-center">
                   <div
                     className="flex w-full max-w-[44px] flex-col justify-end overflow-hidden rounded-t"
                     style={{ height: totalHeight, background: 'var(--bg-surface-2)' }}
-                    title={`${row.label} · ${row.total}`}
+                    title={`${row.label} · 查询 ${row.total} · DAU ${row.dau}`}
                   >
                     {blockedHeight > 0 ? (
                       <div style={{ height: blockedHeight, background: 'var(--danger)' }} />
@@ -1121,14 +1260,43 @@ function AccessTrendPanel({ rows }: { rows: AccessTrendPoint[] }) {
                     ) : null}
                   </div>
                 </div>
+                <div className="flex h-7 w-full items-end justify-center">
+                  <div
+                    className="w-full max-w-[44px] rounded-t"
+                    style={{
+                      height: dauHeight,
+                      background: row.dau > 0 ? 'var(--success)' : 'var(--bg-surface-2)',
+                    }}
+                    title={`${row.label} · DAU ${row.dau}`}
+                  />
+                </div>
                 <div className="truncate text-[11px]" style={{ color: 'var(--text-3)' }}>{row.label}</div>
                 <div className="font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.total}</div>
+                <div className="font-mono text-[10px]" style={{ color: 'var(--text-3)' }}>DAU {row.dau}</div>
               </div>
             )
           })}
         </div>
       )}
     </section>
+  )
+}
+
+function TrendSummaryItem({
+  label,
+  value,
+  detail,
+}: {
+  label: string
+  value: number
+  detail: string
+}) {
+  return (
+    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+      <div className="text-[11px]" style={{ color: 'var(--text-3)' }}>{label}</div>
+      <div className="mt-1 text-lg font-semibold tabular-nums" style={{ color: 'var(--text-1)' }}>{value}</div>
+      <div className="mt-1 truncate text-[10px]" style={{ color: 'var(--text-3)' }}>{detail}</div>
+    </div>
   )
 }
 
@@ -2583,9 +2751,21 @@ interface AccessTrendPoint {
   total: number
   allow: number
   blocked: number
+  dau: number
+  activePrincipals: string[]
 }
 
-function buildGatewayTrend(rows: GatewayQueryRun[]): AccessTrendPoint[] {
+interface GatewayTrendSummary {
+  totalQueries: number
+  latestDayQueries: number
+  latestDayDau: number
+  latestDayLabel: string
+  windowDau: number
+  peakQueries: number
+  peakLabel: string
+}
+
+export function buildGatewayTrend(rows: GatewayQueryRun[]): AccessTrendPoint[] {
   const validKeys = rows
     .map((row) => dateKey(row.created_at))
     .filter((key): key is string => Boolean(key))
@@ -2593,26 +2773,59 @@ function buildGatewayTrend(rows: GatewayQueryRun[]): AccessTrendPoint[] {
   if (validKeys.length === 0) return []
 
   const latest = parseDateKey(validKeys[validKeys.length - 1])
-  const counts = new Map<string, { total: number; allow: number; blocked: number }>()
+  const counts = new Map<string, { total: number; allow: number; blocked: number; principals: Set<string> }>()
   for (const row of rows) {
     const key = dateKey(row.created_at)
     if (!key) continue
-    const current = counts.get(key) ?? { total: 0, allow: 0, blocked: 0 }
+    const current = counts.get(key) ?? { total: 0, allow: 0, blocked: 0, principals: new Set<string>() }
     current.total += 1
     if (row.status === 'SUCCEEDED') current.allow += 1
     else current.blocked += 1
+    const actorKey = gatewayRunActorKey(row)
+    if (actorKey) current.principals.add(actorKey)
     counts.set(key, current)
   }
 
   return Array.from({ length: 7 }, (_, index) => {
     const key = formatDateKey(addDays(latest, index - 6))
-    const count = counts.get(key) ?? { total: 0, allow: 0, blocked: 0 }
+    const count = counts.get(key) ?? { total: 0, allow: 0, blocked: 0, principals: new Set<string>() }
+    const activePrincipals = Array.from(count.principals).sort()
     return {
       key,
       label: formatShortDateLabel(key),
-      ...count,
+      total: count.total,
+      allow: count.allow,
+      blocked: count.blocked,
+      dau: activePrincipals.length,
+      activePrincipals,
     }
   })
+}
+
+export function summarizeGatewayTrend(rows: AccessTrendPoint[]): GatewayTrendSummary {
+  const activePrincipals = new Set<string>()
+  rows.forEach((row) => row.activePrincipals.forEach((principal) => activePrincipals.add(principal)))
+  const latest = rows[rows.length - 1]
+  const peak = rows.reduce<AccessTrendPoint | null>((current, row) => {
+    if (!current || row.total > current.total) return row
+    return current
+  }, null)
+  return {
+    totalQueries: rows.reduce((sum, row) => sum + row.total, 0),
+    latestDayQueries: latest?.total ?? 0,
+    latestDayDau: latest?.dau ?? 0,
+    latestDayLabel: latest?.label ?? '',
+    windowDau: activePrincipals.size,
+    peakQueries: peak?.total ?? 0,
+    peakLabel: peak?.label ?? '',
+  }
+}
+
+function gatewayRunActorKey(row: GatewayQueryRun): string | null {
+  const principalId = String(row.principal_id || '').trim()
+  if (principalId) return principalId
+  const actorId = String(row.actor_id || '').trim()
+  return actorId || null
 }
 
 function dateKey(value: string | null | undefined): string | null {
@@ -2672,6 +2885,21 @@ export function formatAccessRoleLabel(roleCode: string): string {
     viewer: '普通用户',
   }
   return labels[roleCode] ?? roleCode
+}
+
+export function formatGatewayAlertSeverityLabel(severity: string): string {
+  const labels: Record<string, string> = {
+    critical: '严重',
+    warning: '预警',
+    healthy: '正常',
+  }
+  return labels[severity] ?? severity
+}
+
+export function gatewayAlertTone(severity: string): 'danger' | 'warning' | 'neutral' {
+  if (severity === 'critical') return 'danger'
+  if (severity === 'warning') return 'warning'
+  return 'neutral'
 }
 
 export function formatDataLevelLabel(level: string): string {
