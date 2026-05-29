@@ -5,6 +5,7 @@ import {
   formatExecutionModeLabel,
   formatPolicyEffectLabel,
   formatPolicyScopeChips,
+  getCredentialModeOptions,
   replaceDataAccessPackageCode,
   replacePlatformPackageCode,
   splitAccessPackages,
@@ -33,9 +34,18 @@ describe('AccessIdentity 管理员文案', () => {
 
   it('避免在权限配置 UI 中暴露执行侧凭据术语', () => {
     expect(formatExecutionModeLabel('gateway_binding')).toBe('网关执行画像')
-    expect(formatExecutionModeLabel('internal_query_execution')).toBe('平台内置执行')
+    expect(formatExecutionModeLabel('internal_query_execution')).toBe('已下线执行模式')
     expect(formatPolicyEffectLabel('allow')).toBe('允许访问')
     expect(formatPolicyEffectLabel('deny')).toBe('拒绝访问')
+  })
+
+  it('新建执行画像时不再提供平台内置执行模式', () => {
+    expect(getCredentialModeOptions()).toEqual(['gateway_binding', 'inline_policy_decision'])
+    expect(getCredentialModeOptions('internal_query_execution')).toEqual([
+      'gateway_binding',
+      'inline_policy_decision',
+      'internal_query_execution',
+    ])
   })
 
   it('把成员配置拆成平台角色和数据访问权限，并且同组只显示一个选择', () => {

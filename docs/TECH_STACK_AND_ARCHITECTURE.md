@@ -113,14 +113,13 @@ app/
 │   ├── dataset/
 │   ├── extraction/
 │   ├── query/
-│   ├── query_execution/
+│   ├── agent/
 │   ├── conversation/
 │   ├── semantic/
 │   └── services/
 ├── domain/               # 领域层
 │   ├── entities/
 │   ├── events/
-│   ├── query_execution/
 │   ├── ports/
 │   ├── semantic/
 │   └── services/
@@ -129,7 +128,7 @@ app/
 │   ├── repositories/
 │   ├── cache/
 │   ├── tasks/
-│   ├── query_execution/
+│   ├── gateway/
 │   ├── semantic/
 │   └── events/
 ├── interfaces/api/       # API 层
@@ -191,10 +190,9 @@ app/
   - `Semantic Mapper` 稳定输出 `projection_result / resolved_bindings / binding_status / binding_issues`，只做只读 Binding，不定义第三套 mapping 真相源
   - `Execution Compiler` 输出 `logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；运行时 SQL 必须由 `QueryDSL -> QueryCompiler` 生成，基础维度分组与时间过滤不能绕开 DSL；stale measure、非 active Cube、策略阻断都会返回 blocked 的标准 `CompiledTarget`
   - `/api/v1/agent/semantic/plan` 只生成 `TicketPreview`，`enforcement=preview_only`，不作为 gateway 执行凭证
-  - `/api/v1/agent/semantic/execute` 在 `allow` 决策下生成 `ExecutionTicketSnapshot` 并提交带 `QueryDSL v1` 治理快照的 `query_execution_jobs`；`approval_required / deny` 不创建 job
-  - `Query Execution Worker` 只读取 job、ticket snapshot、`governance_snapshot.query_dsl`、DataSource 和已编译 SQL，不读取 Ontology / Cube YAML，也不做语义决策；执行态支持 lease 续租、过期恢复、取消下沉、可重试提交和续租失败停止处理
-  - 查询结果写入 `query_result_objects` 与共享 spool 目录；Web API 通过 `/api/v1/query-execution/jobs/<query_id>` 提供状态、事件、结果和取消能力
-  - SQL Lab 保留为数据开发人员使用的同步异构数据源查询工具面，不强制迁入 `ExecutionTicketSnapshot + async job` 协议
+  - `/api/v1/agent/semantic/execute` 在 `allow` 决策下将受治理查询提交到 `dw-query-gateway`；`approval_required / deny` 不提交 gateway
+  - `cubic3-data-platform` 不再保留内部查询执行 Worker、执行 job 或结果 spool；gateway 负责正式执行、审计、SQL guard、结果对象和运行态事实
+  - SQL Lab、查询工作台、元数据探查和预览保留为交互式异构数据源工具面，继续走 DataSource Adapter SPI
   - 权限职责边界固定为 data-platform 负责 `Principal / PermissionPackage / RoleBinding / DataPolicy / PolicyDecision / GatewayAccessContextPreview`，`dw-query-gateway` 负责接收可信 `GatewayAccessContext`、SQL guard 与 `CredentialBinding`，MaxCompute 负责 RAM / ACL 物理兜底；data-platform 不保存真实 RAM 凭据；gateway 到 MaxCompute 的落地方案见 `docs/architecture/access-gateway-maxcompute-ram.md`
   - `/semantic-router/execute-plan` 与 `/execution-compiler/execute` 已补 M3/raw/ODS 拦截，返回 `require_approval` 且不真实执行
   - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 查询
@@ -319,7 +317,6 @@ frontend/src/
 - `/api/v1/semantic-router`
 - `/api/v1/execution-compiler`
 - `/api/v1/agent`
-- `/api/v1/query-execution`
 - `/api/v1/apps`
 - `/api/v1/app-instances`
 - `/api/v1/app-executions`
@@ -343,8 +340,7 @@ frontend/src/
   - `/api/v1/semantic-router/*`：最小语义路由、执行路径规划与回溯预览
   - `/api/v1/execution-compiler/*`：统一的 SQL / Retrieval / Tool 执行预览、计划预览与最小运行时执行
   - `/api/v1/agent/semantic/plan`：Agent-first official Runtime 主入口，返回 `runtime_mode / business_intent / projection_result / resolved_bindings / compiled_targets / policy_decision / semantic_trace` 与 preview-only ticket
-  - `/api/v1/agent/semantic/execute`：Agent-first 查询执行入口，生成受治理的 async query execution job
-  - `/api/v1/query-execution/*`：统一查询执行面，提供 job 状态、事件、结果和取消能力
+  - `/api/v1/agent/semantic/execute`：Agent-first 查询执行入口，提交受治理查询到 `dw-query-gateway`，返回 gateway query id/status
 - `/api/v1/semantic/modeling-copilot/sessions/*`：建模助手 Copilot 的唯一公开 session API，负责对话状态、候选资产确认、Proposal Review、保存和发布门禁投影；内部 spec 生成与校验继续由 `SemanticModelDraftBuilder` 承接；旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路已下线，不再作为新的建模助手产品入口或公开会话 API。迁移期 Proposal API client、types、hooks 和 `SemanticModelingAgentSpec` 构建期类型可继续作为兼容面存在，但不代表新的公开会话契约
 - `/api/v1/semantic/domains/<domain_id>/context-preview`：Domain 业务上下文预览接口，只返回候选范围和 Agent 沙盒提示，不作为执行时 Join 或指标真相源
 - `/semantic/ontology`：业务语义工作台前端首期版本，已覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模与投影预览
@@ -390,7 +386,6 @@ frontend/src/
 
 - `/api/v1/agent/semantic/plan`
 - `/api/v1/agent/semantic/execute`
-- `/api/v1/query-execution/jobs/<query_id>`
 - `/api/v1/semantic-router/execute-plan`：命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
 - `/api/v1/execution-compiler/execute`：命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
 - `/api/v1/governance/audit-traces`：支持按 `principal_id / semantic_plan_id / sql_hash / decision / route_type / policy` 查询

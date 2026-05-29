@@ -155,7 +155,7 @@ class SqlAccessGovernanceRepository:
             self._session.add(row)
         row.name = str(data.get("name") or row.name or profile_code)
         row.description = data.get("description")
-        row.credential_mode = str(data.get("credential_mode") or row.credential_mode or "internal_query_execution")
+        row.credential_mode = str(data.get("credential_mode") or row.credential_mode or "gateway_binding")
         # data-platform 只保存逻辑执行画像；真实 RAM Role/User 绑定归 gateway CredentialBinding 管理。
         row.credential_ref = None
         row.data_level = str(data.get("data_level") or row.data_level or "M1").upper()

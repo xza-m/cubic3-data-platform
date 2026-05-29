@@ -46,6 +46,17 @@ def test_governance_policy_profile_and_decision_api(app, db_session):
     assert rejected_profile.status_code == 400
     assert "gateway CredentialBinding" in rejected_profile.get_json()["message"]
 
+    rejected_internal_profile = client.post(
+        "/api/v1/governance/execution-profiles",
+        json={
+            "profile_code": "mc_m2_internal",
+            "name": "误选平台内置执行",
+            "credential_mode": "internal_query_execution",
+        },
+    )
+    assert rejected_internal_profile.status_code == 400
+    assert "平台内置执行模式已下线" in rejected_internal_profile.get_json()["message"]
+
     created_policy = client.post(
         "/api/v1/governance/data-policies",
         json={

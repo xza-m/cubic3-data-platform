@@ -44,7 +44,6 @@ SEMANTIC_PROD_LIVE ?= 0
 	test-semantic-postgres-concurrency \
 	test-agent-runtime \
 	test-platform-agent-runtime \
-	test-query-execution \
 	preflight-agent-runtime \
 	live-agent-runtime \
 	test-modeling-agent \
@@ -110,7 +109,6 @@ help:
 	@printf '  %-26s %s\n' 'make test-semantic-postgres-concurrency' '真实 PostgreSQL 发布并发与 active snapshot 约束测试（设置 DATABASE_URL 后执行）'
 	@printf '  %-26s %s\n' 'make test-agent-runtime' 'Agent-first Runtime official 链路测试'
 	@printf '  %-26s %s\n' 'make test-platform-agent-runtime' '平台 Agent 推理 Runtime 适配器、仓储、API 与 Codex opt-in smoke 测试'
-	@printf '  %-26s %s\n' 'make test-query-execution' '统一查询执行面最小链路测试'
 	@printf '  %-26s %s\n' 'make preflight-agent-runtime' '真实环境 Agent Runtime 语义资产预检（不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make live-agent-runtime' '真实 MaxCompute 执行验收（opt-in，不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Copilot 与 Domain 上下文最小链路测试'
@@ -355,14 +353,6 @@ test-platform-agent-runtime:
 		tests/integration/test_agent_runtime_api.py \
 		tests/integration/agent_inference_runtime/test_codex_live_smoke.py
 
-test-query-execution:
-	@printf '%s\n' '[layer3][query-execution] 运行统一查询执行面最小链路测试'
-	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
-		tests/unit/domain/query_execution/test_entities.py \
-		tests/unit/application/query_execution \
-		tests/unit/infrastructure/query_execution \
-		tests/integration/query_execution
-
 preflight-agent-runtime:
 	@printf '%s\n' '[preflight][agent-runtime] 检查真实环境 active Ontology + active Cube 资产绑定'
 	PYTHONPATH=. $(PYTHON) scripts/checks/semantic_runtime_preflight.py \
@@ -380,7 +370,7 @@ live-agent-runtime:
 		--expected-metric "$(SEMANTIC_PREFLIGHT_METRIC)" \
 		--expected-dimension "school_name"
 
-verify-semantic: test-agent-runtime test-query-execution test-modeling-agent verify-backend verify-frontend smoke-semantic
+verify-semantic: test-agent-runtime test-modeling-agent verify-backend verify-frontend smoke-semantic
 
 semantic-baseline-dry-run:
 	@if [ -n "$(DATABASE_URL)" ]; then \

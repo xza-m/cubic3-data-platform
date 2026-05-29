@@ -45,7 +45,6 @@ from .interfaces.api.v1.execution_compiler import create_execution_compiler_blue
 from .interfaces.api.v1.governance import create_governance_blueprint
 from .interfaces.api.v1.agent import create_agent_blueprint
 from .interfaces.api.v1.agent_runtime import create_agent_runtime_blueprint
-from .interfaces.api.v1.query_execution import create_query_execution_blueprint
 from .interfaces.api.v1.scheduled_queries import bp as scheduled_queries_v1_bp
 from .interfaces.api.v1.access import bp as access_v1_bp
 from .interfaces.api.v1.access_preferences import bp as access_preferences_v1_bp
@@ -158,11 +157,6 @@ def create_app(role: str = "web") -> Flask:
         AccessPolicyDecisionORM,
         GovernanceAuditTraceORM,
     )
-    from .infrastructure.query_execution.models import (  # noqa
-        QueryExecutionEventORM,
-        QueryExecutionJobORM,
-        QueryResultObjectORM,
-    )
     from .infrastructure.agent_inference_runtime.models import (  # noqa
         AgentInferenceRuntimeArtifactORM,
         AgentInferenceRuntimeRunORM,
@@ -261,10 +255,6 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_agent_runtime_blueprint(
             container.agent_inference_runtime_repository,
-        ))
-        app.register_blueprint(create_query_execution_blueprint(
-            container.query_submission_service(),
-            container.query_result_service(),
         ))
         app.register_blueprint(create_governance_blueprint(
             container.ontology_audit_trace_repository(),

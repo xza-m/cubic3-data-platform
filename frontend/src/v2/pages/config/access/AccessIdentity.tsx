@@ -904,6 +904,19 @@ function GatewayObservabilityWorkspace() {
     physical_denied_count: 0,
     stability: 100,
     by_data_level: {},
+    queued_count: 0,
+    running_count: 0,
+    pending_count: 0,
+    avg_queue_wait_ms: 0,
+    max_current_queue_wait_ms: 0,
+    avg_execute_ms: 0,
+    remote_timeout_count: 0,
+    client_wait_timeout_count: 0,
+    timeout_count: 0,
+    rejected_count: 0,
+    result_object_count: 0,
+    spool_object_count: 0,
+    generated_at: null,
   }
   const rows = useMemo(() => runsQuery.data?.items ?? [], [runsQuery.data?.items])
   const isLoading = summaryQuery.isLoading || runsQuery.isLoading
@@ -936,7 +949,32 @@ function GatewayObservabilityWorkspace() {
           <EmptyState tone="danger" text={t('access.gateway.loadFailed', '网关观测加载失败，请检查 data-platform 到 dw-query-gateway 的服务令牌和网络连通性')} />
         </div>
       ) : null}
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-4">
+        <GatewayMetricCard
+          label={t('access.gateway.runtime.queue', '排队 / 运行 / 等待')}
+          value={isLoading ? '—' : `${summary.queued_count} / ${summary.running_count} / ${summary.pending_count}`}
+          detail={t('access.gateway.runtime.queueDetail', '来自 dw-query-gateway 的当前运行态')}
+          tone={summary.pending_count > 0 ? 'warning' : 'neutral'}
+        />
+        <GatewayMetricCard
+          label={t('access.gateway.runtime.queueWait', '排队等待')}
+          value={isLoading ? '—' : `${formatDurationMs(summary.avg_queue_wait_ms)} / ${formatDurationMs(summary.max_current_queue_wait_ms)}`}
+          detail={t('access.gateway.runtime.queueWaitDetail', '平均等待 / 当前最大等待')}
+          tone={summary.max_current_queue_wait_ms > 0 ? 'warning' : 'neutral'}
+        />
+        <GatewayMetricCard
+          label={t('access.gateway.runtime.executeMs', '执行耗时')}
+          value={isLoading ? '—' : formatDurationMs(summary.avg_execute_ms)}
+          detail={t('access.gateway.runtime.executeMsDetail', '平均执行耗时')}
+        />
+        <GatewayMetricCard
+          label={t('access.gateway.runtime.timeouts', '超时 / 拒绝')}
+          value={isLoading ? '—' : `${summary.timeout_count} / ${summary.rejected_count}`}
+          detail={t('access.gateway.runtime.timeoutsDetail', '远端、客户端等待和策略拒绝')}
+          tone={summary.timeout_count + summary.rejected_count > 0 ? 'warning' : 'neutral'}
+        />
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-5">
         <GatewayMetricCard
           label={t('access.gateway.metric.queries', '查询次数')}
           value={isLoading ? '—' : summary.query_count}
@@ -962,6 +1000,23 @@ function GatewayObservabilityWorkspace() {
           label={t('access.gateway.metric.stability', '稳定性')}
           value={isLoading ? '—' : `${summary.stability}%`}
           detail={t('access.gateway.metric.stabilityDetail', '成功率、P95 耗时和异常率')}
+        />
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <GatewayMetricCard
+          label={t('access.gateway.runtime.timeoutBreakdown', '超时拆分')}
+          value={isLoading ? '—' : `${summary.remote_timeout_count} / ${summary.client_wait_timeout_count}`}
+          detail={t('access.gateway.runtime.timeoutBreakdownDetail', '远端超时 / 客户端等待超时')}
+        />
+        <GatewayMetricCard
+          label={t('access.gateway.runtime.resultObjects', '结果对象')}
+          value={isLoading ? '—' : summary.result_object_count}
+          detail={t('access.gateway.runtime.resultObjectsDetail', 'gateway 管理的结果对象数量')}
+        />
+        <GatewayMetricCard
+          label={t('access.gateway.runtime.spoolObjects', 'Spool 对象')}
+          value={isLoading ? '—' : summary.spool_object_count}
+          detail={summary.generated_at ? t('access.gateway.runtime.generatedAt', '更新时间 {time}', { time: fmtDateTime(summary.generated_at) }) : t('access.gateway.runtime.generatedAtEmpty', '等待 gateway 汇总时间')}
         />
       </div>
 
@@ -993,6 +1048,12 @@ function GatewayObservabilityWorkspace() {
       <GatewayTraceDialog run={traceRun} onClose={() => setTraceRun(null)} />
     </div>
   )
+}
+
+function formatDurationMs(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0ms'
+  if (value < 1000) return `${Math.round(value)}ms`
+  return `${(value / 1000).toFixed(1)}s`
 }
 
 function GatewayMetricCard({
@@ -1499,6 +1560,8 @@ function ExecutionProfileDialog({
     setStatus(profile?.status ?? 'active')
   }, [open, profile])
 
+  const credentialModeOptions = getCredentialModeOptions(profile?.credential_mode)
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const payload: Partial<AccessExecutionProfile> & {
@@ -1539,7 +1602,7 @@ function ExecutionProfileDialog({
           label="执行模式 *"
           value={credentialMode}
           onChange={setCredentialMode}
-          options={['gateway_binding', 'internal_query_execution', 'inline_policy_decision']}
+          options={credentialModeOptions}
           formatOption={formatExecutionModeLabel}
         />
         <Field label="数据等级" value={dataLevel} onChange={setDataLevel} />
@@ -2638,11 +2701,19 @@ function formatTableLayerLabel(layer: string): string {
 export function formatExecutionModeLabel(mode: string): string {
   const labels: Record<string, string> = {
     gateway_binding: '网关执行画像',
-    internal_query_execution: '平台内置执行',
+    internal_query_execution: '已下线执行模式',
     inline_policy_decision: '仅做权限判定',
     preview_only: '仅预览',
   }
   return labels[mode] ?? mode
+}
+
+export function getCredentialModeOptions(currentMode?: string | null): string[] {
+  const activeModes = ['gateway_binding', 'inline_policy_decision']
+  if (currentMode === 'internal_query_execution') {
+    return [...activeModes, 'internal_query_execution']
+  }
+  return activeModes
 }
 
 export function formatPolicyEffectLabel(effect: string): string {

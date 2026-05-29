@@ -30,10 +30,6 @@ DEFAULT_REQUIRED_SCHEMA: dict[str, dict[str, tuple[str, ...]]] = {
         "columns": ("id", "status", "payload_json", "version"),
         "indexes": ("idx_semantic_modeling_proposals_status_updated",),
     },
-    "query_execution_jobs": {
-        "columns": ("id", "trace_id", "principal_id", "ticket_snapshot_json"),
-        "indexes": ("idx_query_execution_jobs_principal_created",),
-    },
     "governance_audit_traces": {
         "columns": ("id", "target_type", "principal_id", "decision", "traceability"),
         "indexes": ("ix_governance_audit_traces_principal_id",),

@@ -74,6 +74,8 @@ def create_governance_blueprint(audit_repository):
             return False, "data-platform 不保存真实 RAM 凭据，请在 dw-query-gateway CredentialBinding 中配置"
         if body.get("credential_mode") in {"ram_role", "ram_user"}:
             return False, "RAM Role/User 绑定属于 dw-query-gateway CredentialBinding，请使用 gateway_binding 执行模式"
+        if body.get("credential_mode") == "internal_query_execution":
+            return False, "平台内置执行模式已下线，请使用 gateway_binding 执行模式"
         return True, None
 
     def _validate_policy_payload(body: dict[str, Any]) -> tuple[bool, str | None]:

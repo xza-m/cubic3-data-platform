@@ -45,11 +45,6 @@ def _register_all_models():
     from app.domain.entities.config.channel import Channel                   # noqa
     from app.domain.entities.config.subscription import Subscription         # noqa
     from app.infrastructure.governance.models import GovernanceAuditTraceORM  # noqa
-    from app.infrastructure.query_execution.models import (  # noqa
-        QueryExecutionJobORM,
-        QueryExecutionEventORM,
-        QueryResultObjectORM,
-    )
     from app.infrastructure.agent_inference_runtime.models import (  # noqa
         AgentInferenceRuntimeArtifactORM,
         AgentInferenceRuntimeRunORM,

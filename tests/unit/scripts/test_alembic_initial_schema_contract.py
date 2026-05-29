@@ -43,7 +43,6 @@ def test_production_release_uses_single_initial_alembic_revision():
     for table_name in (
         "data_sources",
         "datasets",
-        "query_execution_jobs",
         "access_principals",
         "semantic_modeling_agent_sessions",
         "semantic_modeling_proposals",

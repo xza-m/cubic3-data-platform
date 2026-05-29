@@ -111,7 +111,10 @@ class DataSourceAdapter(ABC):
     @abstractmethod
     def execute_query(self, sql: str, limit: int = 100) -> Dict[str, Any]:
         """
-        执行查询SQL
+        执行查询 SQL。
+
+        该 SPI 面向查询工作台、SQL Lab、元数据探查和预览，不承接正式受治理数仓查询。
+        正式用户 / Agent 查询必须通过 dw-query-gateway。
         
         Args:
             sql: SQL语句
@@ -168,4 +171,3 @@ class DataSourceAdapter(ABC):
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器退出"""
         self.close()
-

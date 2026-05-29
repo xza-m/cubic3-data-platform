@@ -88,9 +88,9 @@ last_reviewed: 2026-05-25
     - 执行预览可返回 `allow / blocked` 执行结果
   - 当前已补入 Agent-ready Phase 1 治理收敛：
     - `/api/v1/agent/semantic/plan` 作为 Agent-first official Runtime 主入口，由 `AgentPlanHandler` 编排 `PrincipalResolver -> Pre-route Policy -> Semantic Router -> Semantic Mapper -> Execution Compiler -> Post-compile Policy`
-    - `/api/v1/agent/semantic/execute` 作为 Agent-first 查询执行入口，在 `policy_decision=allow` 时生成 `ExecutionTicketSnapshot` 并提交带 `QueryDSL v1` 治理快照的 `query_execution_jobs`；审批或拒绝只返回材料，不创建 job
-    - 统一查询执行面由 `QuerySubmissionService / QueryResultService / QueryExecutionWorkerService` 承接，Worker 只校验 ticket snapshot、Agent 语义 job 的 `QueryDSL v1` 快照和执行已编译 SQL，不读取 Ontology 或 Cube 资产；执行态支持 lease 续租、过期恢复、取消下沉、可重试提交和过期结果清理
-    - SQL Lab 的定位是数据开发同步查询工具面，可继续服务异构数据源调试；Query Execution 的定位是 Agent / Runtime 受治理执行面
+    - `/api/v1/agent/semantic/execute` 作为 Agent-first 查询执行入口，在 `policy_decision=allow` 时提交受治理查询到 `dw-query-gateway`；审批或拒绝只返回治理材料，不提交 gateway
+    - 本仓不再保留内部查询执行 Worker、执行 job 或结果 spool；`dw-query-gateway` 负责正式执行、SQL guard、审计、结果对象和运行态事实
+    - SQL Lab、查询工作台、元数据探查和预览的定位是交互式异构数据源工具面，继续走 DataSource Adapter SPI
     - official Runtime 只读取 active SQL runtime snapshot manifest 中的 published `Ontology` 与 published `Cube` `spec`；draft、Proposal 和 YAML 同名资产不得 fallback；诊断类 `/semantic-router/*` 保留 preview，用于工作台 route / binding / compile / policy / trace 排障
     - Bearer、API Key 和飞书委托入口统一归一为 `PrincipalContext`；请求体角色、JWT 角色声明和 `viewer_roles` 不参与授权
     - `Semantic Mapper` 输出稳定 `projection_result / resolved_bindings / binding_status / binding_issues`，`Execution Compiler` 输出 `query_dsl / logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；`QueryDSL v1` 是运行时唯一 SQL 生成输入，restricted 字段显式引用会被编译阻断

@@ -58,17 +58,17 @@ last_reviewed: 2026-05-25
 - 不让 runtime adapter 直接发布 Cube、修改 Ontology、写资产画像或执行生产查询。
 - 不把 `cubic3-agent-gateway` 作为当前数据平台主链依赖；gateway 可作为未来跨产品 control-plane 参考。
 - 不为每个业务模块设计一套独立 agent 协议。
-- 不替代现有 `/api/v1/agent/semantic/plan` official Semantic Runtime、`QueryDSL v1`、`ExecutionTicketSnapshot` 与 QueryExecutionWorker 治理执行链。
+- 不替代现有 `/api/v1/agent/semantic/plan` official Semantic Runtime、`QueryDSL v1`、治理决策与 `dw-query-gateway` 正式执行链。
 
 ### 2.3 与 official Semantic Runtime 的边界
 
-项目里已经存在 Agent-first official Semantic Runtime，负责从已发布 `Ontology / Cube / Policy` 生成治理后的计划、编译 `QueryDSL v1`、签发执行票据并进入查询执行面。本文新增的是生成式推理 runtime，职责是解释、候选生成、复审、修复建议和工作区 artifact。
+项目里已经存在 Agent-first official Semantic Runtime，负责从已发布 `Ontology / Cube / Policy` 生成治理后的计划、编译 `QueryDSL v1`，并将正式受治理查询提交到 `dw-query-gateway`。本文新增的是生成式推理 runtime，职责是解释、候选生成、复审、修复建议和工作区 artifact。
 
 两者边界固定如下：
 
 | 层 | 代表入口 / 服务 | 负责 | 不负责 |
 |---|---|---|---|
-| Official Semantic Runtime | `/api/v1/agent/semantic/plan`、`AgentPlanHandler`、`Execution Compiler`、`QueryExecutionWorker` | 正式查询规划、治理、票据、执行 | 调 LLM、Codex 工作区修复、长上下文复审 |
+| Official Semantic Runtime | `/api/v1/agent/semantic/plan`、`/api/v1/agent/semantic/execute`、`AgentPlanHandler`、`Execution Compiler`、`dw-query-gateway` | 正式查询规划、治理、gateway 提交 | 调 LLM、Codex 工作区修复、长上下文复审 |
 | Agent Inference Runtime | `AgentInferenceRuntimeService`、OpenAI / Codex adapter | 生成式推理、结构化建议、review / repair artifact | 发布语义资产、签发执行票据、绕过 QueryDSL 治理 |
 
 查询类 action 可以调用 Agent Inference Runtime 做意图解释、结果解释或失败修复建议，但正式执行仍必须回到 official Semantic Runtime。
@@ -167,7 +167,7 @@ OpenAI runtime 承担低延迟主链，Codex runtime 承担复审、复杂修复
 - `query.result.explain`
 - `query.failure.repair_suggestion`
 
-正式查询执行仍走已发布 Ontology、Cube、Policy、ExecutionTicket 和 QueryExecutionWorker。Agent Inference Runtime 只做推理和解释，不绕开治理执行面。
+正式查询执行仍走已发布 Ontology、Cube、Policy、GatewayAccessContext 和 `dw-query-gateway`。Agent Inference Runtime 只做推理和解释，不绕开治理执行面。
 
 ### 5.4 语义治理
 

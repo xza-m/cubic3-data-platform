@@ -28,3 +28,4 @@ last_reviewed: 2026-03-24
 - [ADR-008 BusinessMetric 采用语义公式而非执行公式](ADR-008-business-metric-semantic-formula.md)
 - [ADR-009 第一阶段引入最小 Execution Compiler Preview 验证闭环](ADR-009-minimal-execution-compiler-preview.md)
 - [ADR-010 生产语义资产采用 SQL Registry 作为事实源](ADR-010-semantic-sql-registry-production-source.md)
+- [ADR-011 数仓查询网关与本项目执行边界](ADR-011-dw-query-gateway-execution-boundary.md)

@@ -5,10 +5,11 @@ from flask import Blueprint, request
 from pydantic import ValidationError as PydanticValidationError
 
 from app.application.access.identity import AccessIdentityService, DelegationReplayStore
+from app.application.agent.semantic_execute_schema import AgentSemanticExecuteRequest
 from app.application.governance.access import PrincipalResolver
-from app.application.query_execution.schemas import AgentSemanticExecuteRequest
 from app.extensions import db
 from app.infrastructure.access.repositories import SqlAccessRepository
+from app.infrastructure.gateway.telemetry_client import GatewayQueryError
 from app.interfaces.api.middleware.auth import require_auth
 from app.interfaces.api.v1.principal_context import authenticated_user_from_g, principal_context_from_bearer
 from app.shared.exceptions import AuthenticationError, AuthorizationError, ValidationError
@@ -115,10 +116,12 @@ def create_agent_blueprint(agent_plan_handler, agent_execute_service=None):
             )
         except PydanticValidationError as exc:
             return error("请求参数错误", details=exc.errors())
+        except GatewayQueryError as exc:
+            return error(f"dw-query-gateway is not configured or unavailable: {exc}", status=503)
         except (AuthenticationError, AuthorizationError, ValidationError):
             raise
         except Exception as exc:
             return error(f"执行 Agent 语义查询失败: {exc}")
-        return success(data=payload)
+        return success(data=payload, status=202 if payload.get("status") == "submitted" else 200)
 
     return bp

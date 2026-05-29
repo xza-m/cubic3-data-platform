@@ -211,6 +211,19 @@ export interface GatewayTelemetrySummary {
   physical_denied_count: number
   stability: number
   by_data_level: Record<string, number>
+  queued_count: number
+  running_count: number
+  pending_count: number
+  avg_queue_wait_ms: number
+  max_current_queue_wait_ms: number
+  avg_execute_ms: number
+  remote_timeout_count: number
+  client_wait_timeout_count: number
+  timeout_count: number
+  rejected_count: number
+  result_object_count: number
+  spool_object_count: number
+  generated_at: string | null
 }
 
 export interface GatewayQueryRun {
@@ -442,6 +455,19 @@ export async function getGatewayTelemetrySummary(): Promise<GatewayTelemetrySumm
     physical_denied_count: Number(data?.physical_denied_count ?? 0),
     stability: Number(data?.stability ?? 100),
     by_data_level: data?.by_data_level ?? {},
+    queued_count: Number(data?.queued_count ?? 0),
+    running_count: Number(data?.running_count ?? 0),
+    pending_count: Number(data?.pending_count ?? 0),
+    avg_queue_wait_ms: Number(data?.avg_queue_wait_ms ?? 0),
+    max_current_queue_wait_ms: Number(data?.max_current_queue_wait_ms ?? 0),
+    avg_execute_ms: Number(data?.avg_execute_ms ?? 0),
+    remote_timeout_count: Number(data?.remote_timeout_count ?? 0),
+    client_wait_timeout_count: Number(data?.client_wait_timeout_count ?? 0),
+    timeout_count: Number(data?.timeout_count ?? 0),
+    rejected_count: Number(data?.rejected_count ?? 0),
+    result_object_count: Number(data?.result_object_count ?? 0),
+    spool_object_count: Number(data?.spool_object_count ?? 0),
+    generated_at: data?.generated_at ?? null,
   }
 }
 

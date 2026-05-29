@@ -6,8 +6,7 @@
 1. 读取当前仓库已发布 Cube / Ontology YAML 资产。
 2. 使用临时控制面数据库注册真实 MaxCompute 数据源。
 3. 通过真实 Flask API 调用 `/api/v1/agent/semantic/execute`。
-4. 驱动真实 `QueryExecutionWorkerService` 执行 SQL 并持久化结果。
-5. 校验 SQL 和结果不暴露 restricted 字段。
+4. 校验正式查询已提交到 `dw-query-gateway`，本仓不再创建本地执行 job。
 
 脚本不会打印 access_id / access_key 等敏感信息。
 """
@@ -141,62 +140,19 @@ def _ensure_success(response, *, action: str) -> dict[str, Any]:
     return payload.get("data") or payload
 
 
-def _assert_live_acceptance(
-    *,
-    args: argparse.Namespace,
-    job_payload: dict[str, Any],
-    result_payload: dict[str, Any],
-) -> None:
-    sql = str(job_payload.get("validated_sql") or job_payload.get("logical_sql") or "")
-    sql_lower = sql.lower()
-    result_columns = [str(item) for item in ((result_payload.get("preview") or {}).get("columns") or [])]
-    result_columns_lower = {item.lower() for item in result_columns}
-
-    required_sql_fragments = [
-        args.expected_table.lower(),
-        "group by",
-        args.expected_metric.lower(),
-        "ds >=",
-        "ds <=",
-    ]
-    for fragment in required_sql_fragments:
-        if fragment not in sql_lower:
-            raise AssertionError(f"SQL 缺少期望片段: {fragment}")
-    if args.expected_dimension.lower() not in sql_lower and not any(
-        args.expected_dimension.lower() in column for column in result_columns_lower
-    ):
-        raise AssertionError(
-            json.dumps(
-                {
-                    "reason": f"SQL/结果缺少学校维度: {args.expected_dimension}",
-                    "sql": sql,
-                    "result_columns": result_columns,
-                    "preview_rows": ((result_payload.get("preview") or {}).get("rows") or [])[:5],
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-
-    leaked_sql = sorted(field for field in RESTRICTED_FIELDS if field in sql_lower)
-    leaked_columns = sorted(field for field in RESTRICTED_FIELDS if field in result_columns_lower)
-    if leaked_sql or leaked_columns:
-        raise AssertionError(
-            f"restricted 字段泄露，SQL={leaked_sql or []}, columns={leaked_columns or []}"
-        )
-
-    rows = (result_payload.get("preview") or {}).get("rows") or []
-    if args.require_non_empty and not rows:
-        raise AssertionError("真实执行结果为空，不满足本次验收的学校维度评论数返回要求")
+def _assert_gateway_acceptance(execute_payload: dict[str, Any]) -> None:
+    if execute_payload.get("query_id"):
+        raise AssertionError(f"Agent execute 返回了本仓本地执行 job 字段: {execute_payload}")
+    gateway_query_id = execute_payload.get("gateway_query_id") or (execute_payload.get("gateway") or {}).get("query_id")
+    if not gateway_query_id:
+        raise RuntimeError(f"Agent execute 未返回 gateway_query_id: {execute_payload}")
 
 
 def run_acceptance(args: argparse.Namespace, *, workdir: Path, connection_config: dict[str, str]) -> dict[str, Any]:
     database_path = workdir / "agent_runtime_live.sqlite"
-    spool_dir = workdir / "query_execution_results"
 
     os.environ["FLASK_TESTING"] = "1"
     os.environ["DATABASE_URL"] = f"sqlite:///{database_path}"
-    os.environ["QUERY_EXECUTION_SPOOL_DIR"] = str(spool_dir)
     os.environ.setdefault("JWT_SECRET", "agent-runtime-live-acceptance")
 
     if str(ROOT) not in sys.path:
@@ -230,64 +186,18 @@ def run_acceptance(args: argparse.Namespace, *, workdir: Path, connection_config
             ),
             action="agent_semantic_execute",
         )
-        query_id = execute_payload.get("query_id")
-        if not query_id:
-            raise RuntimeError(f"Agent execute 未返回 query_id: {execute_payload}")
-
-        worker_job = app.container.query_execution_worker_service().process_next(
-            worker_id=f"live-agent-runtime-{os.getpid()}",
-        )
-        if worker_job is None:
-            raise RuntimeError("QueryExecutionWorkerService 未 claim 到刚提交的 job")
-
-        job_payload = _ensure_success(
-            client.get(f"/api/v1/query-execution/jobs/{query_id}"),
-            action="query_execution_status",
-        )
-        events_payload = _ensure_success(
-            client.get(f"/api/v1/query-execution/jobs/{query_id}/events"),
-            action="query_execution_events",
-        )
-        if job_payload.get("status") != "SUCCEEDED":
-            raise RuntimeError(
-                json.dumps(
-                    {
-                        "action": "worker_process_next",
-                        "query_id": query_id,
-                        "status": job_payload.get("status"),
-                        "error_code": job_payload.get("error_code"),
-                        "error_message": job_payload.get("error_message"),
-                        "events": events_payload,
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            )
-
-        result_payload = _ensure_success(
-            client.get(f"/api/v1/query-execution/jobs/{query_id}/results"),
-            action="query_execution_result",
-        )
-        if result_payload.get("status") != "READY":
-            raise RuntimeError(f"结果对象不是 READY: {result_payload}")
-
-        _assert_live_acceptance(args=args, job_payload=job_payload, result_payload=result_payload)
+        _assert_gateway_acceptance(execute_payload)
+        gateway = execute_payload.get("gateway") or {}
+        gateway_query_id = execute_payload.get("gateway_query_id") or gateway.get("query_id")
 
         return {
             "status": "passed",
             "question": args.question,
             "principal_id": args.principal_id,
             "roles": args.roles,
-            "query_id": query_id,
-            "engine_query_id": job_payload.get("engine_query_id"),
-            "semantic_plan_id": job_payload.get("semantic_plan_id"),
-            "sql": job_payload.get("validated_sql"),
-            "result": {
-                "row_count": result_payload.get("row_count"),
-                "columns": (result_payload.get("preview") or {}).get("columns") or [],
-                "preview_rows": ((result_payload.get("preview") or {}).get("rows") or [])[:5],
-            },
-            "events": [item.get("event_type") for item in events_payload.get("items", [])],
+            "gateway_query_id": gateway_query_id,
+            "gateway_status": gateway.get("status"),
+            "semantic_plan_id": (execute_payload.get("plan") or {}).get("semantic_plan_id"),
             "workdir": str(workdir) if args.keep_workdir else None,
         }
 
