@@ -143,9 +143,13 @@ from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import
 from app.infrastructure.agent_inference_runtime.sql_repository import (
     SqlAgentInferenceRuntimeRepository,
 )
+from app.infrastructure.agent_inference_runtime.sql_runtime_config_repository import (
+    SqlRuntimeConfigRepository,
+)
 from app.application.agent_inference_runtime.action_binding import ActionRuntimeBindingRegistry
 from app.application.agent_inference_runtime.management import AgentRuntimeManagementService
 from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
+from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 
 # Application - Agent
@@ -388,6 +392,18 @@ class Container(containers.DeclarativeContainer):
 
     agent_runtime_action_bindings = providers.Singleton(ActionRuntimeBindingRegistry)
 
+    agent_runtime_config_repository = providers.Factory(
+        SqlRuntimeConfigRepository,
+        session=db_session,
+    )
+
+    agent_runtime_config_service = providers.Factory(
+        RuntimeConfigService,
+        repository=agent_runtime_config_repository,
+        openai_config=config.agent_openai,
+        codex_config=config.agent_codex,
+    )
+
     agent_inference_runtime_router = providers.Singleton(
         AgentInferenceRuntimeRouter,
         adapters=providers.List(agent_openai_runtime_adapter),
@@ -399,11 +415,12 @@ class Container(containers.DeclarativeContainer):
         router=agent_inference_runtime_router,
     )
 
-    agent_runtime_management_service = providers.Singleton(
+    agent_runtime_management_service = providers.Factory(
         AgentRuntimeManagementService,
         openai_config=config.agent_openai,
         codex_config=config.agent_codex,
         action_bindings=agent_runtime_action_bindings,
+        runtime_config_service=agent_runtime_config_service,
     )
 
     agent_inference_runtime_repository = providers.Factory(

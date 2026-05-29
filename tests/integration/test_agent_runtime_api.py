@@ -8,8 +8,13 @@ from flask import Flask, g
 from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeArtifact,
     AgentInferenceRuntimeRun,
+    RuntimeManagementAuditEvent,
+    RuntimeOperationResult,
+    RuntimeProviderConfigSnapshot,
     RuntimeContextRef,
 )
+from app.application.agent_inference_runtime.management import AgentRuntimeManagementService
+from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.interfaces.api.middleware.error_handler import register_error_handlers
 from app.interfaces.api.v1.agent_runtime import create_agent_runtime_blueprint
 
@@ -138,6 +143,7 @@ class _RuntimeManagement:
         self.tested: list[str] = []
         self.started: list[str] = []
         self.stopped: list[str] = []
+        self.audit_events: list[dict[str, str | None]] = []
 
     def snapshot(self):
         return {
@@ -188,14 +194,32 @@ class _RuntimeManagement:
             return self.snapshot()["action_bindings"][1]
         return self.snapshot()["action_bindings"][0]
 
-    def test_provider(self, runtime_name: str):
+    def provider_config(self, runtime_name: str):
+        return {
+            "runtime_name": runtime_name,
+            "enabled": True,
+            "endpoint": "https://api.openai.com/v1",
+            "model": "gpt-5.1",
+            "api_key": "********",
+            "extra": {},
+            "updated_by": "alice",
+            "updated_at": "2026-05-29T00:00:00",
+        }
+
+    def test_provider(self, runtime_name: str, *, principal_id: str | None = None):
         self.tested.append(runtime_name)
+        self.audit_events.append(
+            {"runtime_name": runtime_name, "action": "test", "principal_id": principal_id}
+        )
         if runtime_name == "missing":
             raise KeyError(runtime_name)
         return self.snapshot()["providers"][0]
 
-    def start_provider(self, runtime_name: str):
+    def start_provider(self, runtime_name: str, *, principal_id: str | None = None):
         self.started.append(runtime_name)
+        self.audit_events.append(
+            {"runtime_name": runtime_name, "action": "start", "principal_id": principal_id}
+        )
         return {
             "runtime_name": runtime_name,
             "operation": "start",
@@ -204,7 +228,7 @@ class _RuntimeManagement:
             "details": {"pid": 4321},
         }
 
-    def stop_provider(self, runtime_name: str):
+    def stop_provider(self, runtime_name: str, *, principal_id: str | None = None):
         self.stopped.append(runtime_name)
         return {
             "runtime_name": runtime_name,
@@ -214,7 +238,7 @@ class _RuntimeManagement:
             "details": {"pid": 4321},
         }
 
-    def restart_provider(self, runtime_name: str):
+    def restart_provider(self, runtime_name: str, *, principal_id: str | None = None):
         return {
             "runtime_name": runtime_name,
             "operation": "restart",
@@ -240,6 +264,61 @@ class _RuntimeManagement:
             "events": ["run.started", "run.succeeded"],
             "details": {},
         }
+
+
+class _FakeCodexProcessManager:
+    def start(self):
+        return RuntimeOperationResult(
+            runtime_name="codex_app_server",
+            operation="start",
+            status="succeeded",
+            message="已提交 Codex app-server 启动。",
+            details={"profile": "local-codex-app-server"},
+        )
+
+
+class _RuntimeConfigRepository:
+    def __init__(self) -> None:
+        self.audit_events: list[RuntimeManagementAuditEvent] = []
+        self.configs: dict[str, RuntimeProviderConfigSnapshot] = {}
+
+    def get_provider_config(self, runtime_name: str):
+        return self.configs.get(runtime_name)
+
+    def upsert_provider_config(self, update):
+        snapshot = RuntimeProviderConfigSnapshot(
+            runtime_name=update.runtime_name,
+            enabled=update.enabled,
+            endpoint=update.endpoint,
+            model=update.model,
+            secret_ref=f"runtime_provider:{update.runtime_name}:api_key" if update.api_key else None,
+            extra=update.extra,
+            updated_by=update.updated_by,
+            updated_at=None,
+        )
+        self.configs[update.runtime_name] = snapshot
+        return snapshot
+
+    def record_audit_event(
+        self,
+        *,
+        runtime_name: str,
+        action: str,
+        principal_id: str | None,
+        status: str,
+        metadata: dict,
+    ):
+        audit = RuntimeManagementAuditEvent(
+            id=len(self.audit_events) + 1,
+            runtime_name=runtime_name,
+            action=action,
+            principal_id=principal_id,
+            status=status,
+            metadata=metadata,
+            created_at=None,
+        )
+        self.audit_events.append(audit)
+        return audit
 
 
 def _client(
@@ -443,6 +522,13 @@ def test_agent_runtime_api_tests_provider_via_management_service():
     assert resp.status_code == 200
     assert runtime_management.tested == ["openai_compatible"]
     assert resp.get_json()["data"]["status"] == "ready"
+    assert runtime_management.audit_events == [
+        {
+            "runtime_name": "openai_compatible",
+            "action": "test",
+            "principal_id": "alice",
+        }
+    ]
 
 
 def test_agent_runtime_api_starts_codex_without_accepting_frontend_command():
@@ -459,6 +545,93 @@ def test_agent_runtime_api_starts_codex_without_accepting_frontend_command():
     assert resp.status_code == 200
     assert runtime_management.started == ["codex_app_server"]
     assert resp.get_json()["data"]["details"]["pid"] == 4321
+    assert runtime_management.audit_events == [
+        {
+            "runtime_name": "codex_app_server",
+            "action": "start",
+            "principal_id": "alice",
+        }
+    ]
+
+
+def test_agent_runtime_api_writes_management_audit_event_to_repository():
+    runtime_config_repository = _RuntimeConfigRepository()
+    runtime_config_service = RuntimeConfigService(
+        repository=runtime_config_repository,
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "endpoint": "http://127.0.0.1:8799",
+        },
+    )
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "server_managed": True,
+            "endpoint": "http://127.0.0.1:8799",
+        },
+        runtime_config_service=runtime_config_service,
+        codex_process_manager=_FakeCodexProcessManager(),
+    )
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).post("/api/v1/agent-runtime/providers/codex_app_server/start")
+
+    assert resp.status_code == 200
+    audit = runtime_config_repository.audit_events[0]
+    assert audit.runtime_name == "codex_app_server"
+    assert audit.action == "start"
+    assert audit.principal_id == "alice"
+    assert audit.status == "succeeded"
+
+
+def test_agent_runtime_api_returns_masked_provider_config():
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: _RuntimeManagement(),
+    ).get("/api/v1/agent-runtime/providers/openai_compatible/config")
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["runtime_name"] == "openai_compatible"
+    assert data["api_key"] == "********"
+
+
+def test_agent_runtime_api_updates_provider_config_without_returning_secret():
+    runtime_config_repository = _RuntimeConfigRepository()
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={"enabled": False},
+        runtime_config_service=RuntimeConfigService(
+            repository=runtime_config_repository,
+            openai_config={"api_key": "", "api_base": "", "model": ""},
+            codex_config={"enabled": False},
+        ),
+    )
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).put(
+        "/api/v1/agent-runtime/providers/openai_compatible/config",
+        json={
+            "enabled": True,
+            "endpoint": "https://api.openai.com/v1",
+            "model": "gpt-5.1",
+            "api_key": "sk-live-value",
+        },
+    )
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["api_key"] == "********"
+    assert data["updated_by"] == "alice"
 
 
 def test_agent_runtime_api_exposes_codex_logs_and_capabilities():

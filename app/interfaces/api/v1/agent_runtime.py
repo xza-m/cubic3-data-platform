@@ -4,11 +4,12 @@ from dataclasses import asdict, is_dataclass
 from functools import wraps
 from typing import Any, Callable, Mapping
 
-from flask import Blueprint, current_app, g
+from flask import Blueprint, current_app, g, request
 
 from app.application.agent_inference_runtime.codex_process_manager import (
     CodexProcessManagerError,
 )
+from app.domain.agent_inference_runtime.types import RuntimeProviderConfigUpdate
 
 try:
     from app.interfaces.api.middleware.auth import require_identity  # type: ignore[attr-defined]
@@ -102,6 +103,14 @@ def _principal_id() -> str | None:
     return getattr(g, "principal_id", None) or getattr(g, "user_id", None)
 
 
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _not_found():
     return error(
         "Agent runtime run not found",
@@ -166,7 +175,7 @@ def create_agent_runtime_blueprint(
     def test_provider(runtime_name: str):
         management = _resolve_runtime_management(runtime_management_provider)
         try:
-            provider_status = management.test_provider(runtime_name)
+            provider_status = management.test_provider(runtime_name, principal_id=_principal_id())
         except KeyError:
             return error(
                 "Agent runtime provider not found",
@@ -175,12 +184,51 @@ def create_agent_runtime_blueprint(
             )
         return success(data=_plain(provider_status))
 
+    @bp.route("/providers/<runtime_name>/config", methods=["GET"])
+    @_require_identity_unless_testing
+    def provider_config(runtime_name: str):
+        management = _resolve_runtime_management(runtime_management_provider)
+        try:
+            provider_config = management.provider_config(runtime_name)
+        except KeyError:
+            return error(
+                "Agent runtime provider not found",
+                status=404,
+                details={"code": "RUNTIME_PROVIDER_NOT_FOUND", "runtime_name": runtime_name},
+            )
+        return success(data=_plain(provider_config))
+
+    @bp.route("/providers/<runtime_name>/config", methods=["PUT"])
+    @_require_identity_unless_testing
+    def update_provider_config(runtime_name: str):
+        management = _resolve_runtime_management(runtime_management_provider)
+        payload = request.get_json(silent=True) or {}
+        try:
+            provider_config = management.update_provider_config(
+                RuntimeProviderConfigUpdate(
+                    runtime_name=runtime_name,
+                    enabled=_coerce_bool(payload.get("enabled", True)),
+                    endpoint=payload.get("endpoint"),
+                    model=payload.get("model"),
+                    api_key=payload.get("api_key"),
+                    extra=dict(payload.get("extra") or {}),
+                    updated_by=_principal_id() or "unknown",
+                )
+            )
+        except KeyError:
+            return error(
+                "Agent runtime provider not found",
+                status=404,
+                details={"code": "RUNTIME_PROVIDER_NOT_FOUND", "runtime_name": runtime_name},
+            )
+        return success(data=provider_config.to_public_dict())
+
     @bp.route("/providers/<runtime_name>/start", methods=["POST"])
     @_require_identity_unless_testing
     def start_provider(runtime_name: str):
         return _runtime_management_operation(
             runtime_management_provider,
-            lambda management: management.start_provider(runtime_name),
+            lambda management: management.start_provider(runtime_name, principal_id=_principal_id()),
         )
 
     @bp.route("/providers/<runtime_name>/stop", methods=["POST"])
@@ -188,7 +236,7 @@ def create_agent_runtime_blueprint(
     def stop_provider(runtime_name: str):
         return _runtime_management_operation(
             runtime_management_provider,
-            lambda management: management.stop_provider(runtime_name),
+            lambda management: management.stop_provider(runtime_name, principal_id=_principal_id()),
         )
 
     @bp.route("/providers/<runtime_name>/restart", methods=["POST"])
@@ -196,7 +244,7 @@ def create_agent_runtime_blueprint(
     def restart_provider(runtime_name: str):
         return _runtime_management_operation(
             runtime_management_provider,
-            lambda management: management.restart_provider(runtime_name),
+            lambda management: management.restart_provider(runtime_name, principal_id=_principal_id()),
         )
 
     @bp.route("/providers/<runtime_name>/logs", methods=["GET"])

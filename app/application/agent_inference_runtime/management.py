@@ -9,13 +9,17 @@ from app.application.agent_inference_runtime.action_binding import (
 )
 from app.application.agent_inference_runtime.codex_process_manager import (
     CodexProcessManager,
+    CodexProcessManagerError,
 )
+from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.domain.agent_inference_runtime.types import (
     RuntimeActionBinding,
     RuntimeManagementSnapshot,
     RuntimeName,
     RuntimeOperationResult,
     RuntimeProviderCapabilities,
+    RuntimeProviderConfigSnapshot,
+    RuntimeProviderConfigUpdate,
     RuntimeProviderLogView,
     RuntimeProviderStatus,
 )
@@ -34,10 +38,12 @@ class AgentRuntimeManagementService:
         codex_config: Mapping[str, Any],
         action_bindings: ActionRuntimeBindingRegistry | None = None,
         codex_process_manager: CodexProcessManager | None = None,
+        runtime_config_service: RuntimeConfigService | None = None,
     ) -> None:
         self._openai_config = openai_config
         self._codex_config = codex_config
         self._action_bindings = action_bindings or ActionRuntimeBindingRegistry()
+        self._runtime_config_service = runtime_config_service
         self._codex_process_manager = codex_process_manager or CodexProcessManager(codex_config)
 
     def snapshot(self) -> RuntimeManagementSnapshot:
@@ -52,20 +58,85 @@ class AgentRuntimeManagementService:
     def resolve_action(self, action: str) -> RuntimeActionBinding:
         return self._action_bindings.resolve(action)
 
-    def test_provider(self, runtime_name: RuntimeName) -> RuntimeProviderStatus:
-        return self.provider_status(runtime_name)
+    def provider_config(self, runtime_name: RuntimeName) -> dict[str, Any]:
+        if self._runtime_config_service is None:
+            raise KeyError(runtime_name)
+        return self._runtime_config_service.provider_config_public(runtime_name)
 
-    def start_provider(self, runtime_name: RuntimeName) -> RuntimeOperationResult:
-        self._ensure_codex(runtime_name)
-        return self._codex_process_manager.start()
+    def update_provider_config(
+        self,
+        update: RuntimeProviderConfigUpdate,
+    ) -> RuntimeProviderConfigSnapshot:
+        if update.runtime_name not in {"openai_compatible", "codex_app_server"}:
+            raise KeyError(update.runtime_name)
+        if self._runtime_config_service is None:
+            raise RuntimeError("runtime config service is not configured")
+        return self._runtime_config_service.update_provider_config(update)
 
-    def stop_provider(self, runtime_name: RuntimeName) -> RuntimeOperationResult:
-        self._ensure_codex(runtime_name)
-        return self._codex_process_manager.stop()
+    def test_provider(
+        self,
+        runtime_name: RuntimeName,
+        *,
+        principal_id: str | None = None,
+    ) -> RuntimeProviderStatus:
+        try:
+            result = self.provider_status(runtime_name)
+        except Exception as exc:
+            self._audit(
+                runtime_name=runtime_name,
+                action="test",
+                principal_id=principal_id,
+                status="failed",
+                metadata={"error": str(exc)},
+            )
+            raise
+        self._audit(
+            runtime_name=runtime_name,
+            action="test",
+            principal_id=principal_id,
+            status=result.status,
+            metadata={"available": result.available, "configured": result.configured},
+        )
+        return result
 
-    def restart_provider(self, runtime_name: RuntimeName) -> RuntimeOperationResult:
-        self._ensure_codex(runtime_name)
-        return self._codex_process_manager.restart()
+    def start_provider(
+        self,
+        runtime_name: RuntimeName,
+        *,
+        principal_id: str | None = None,
+    ) -> RuntimeOperationResult:
+        return self._codex_operation(
+            runtime_name,
+            action="start",
+            principal_id=principal_id,
+            operation=self._codex_process_manager.start,
+        )
+
+    def stop_provider(
+        self,
+        runtime_name: RuntimeName,
+        *,
+        principal_id: str | None = None,
+    ) -> RuntimeOperationResult:
+        return self._codex_operation(
+            runtime_name,
+            action="stop",
+            principal_id=principal_id,
+            operation=self._codex_process_manager.stop,
+        )
+
+    def restart_provider(
+        self,
+        runtime_name: RuntimeName,
+        *,
+        principal_id: str | None = None,
+    ) -> RuntimeOperationResult:
+        return self._codex_operation(
+            runtime_name,
+            action="restart",
+            principal_id=principal_id,
+            operation=self._codex_process_manager.restart,
+        )
 
     def provider_logs(self, runtime_name: RuntimeName) -> RuntimeProviderLogView:
         self._ensure_codex(runtime_name)
@@ -88,29 +159,41 @@ class AgentRuntimeManagementService:
             raise KeyError(runtime_name)
 
     def _openai_status(self) -> RuntimeProviderStatus:
-        api_key = str(self._openai_config.get("api_key") or "").strip()
-        model = str(self._openai_config.get("model") or "").strip()
-        configured = bool(api_key and model)
+        config = self._provider_management_config("openai_compatible", self._openai_config)
+        enabled = _as_bool(config.get("enabled", True))
+        api_key = str(config.get("api_key") or "").strip()
+        model = str(config.get("model") or "").strip()
+        configured = bool(enabled and api_key and model)
+        if not enabled:
+            status = "disabled"
+            message = "OpenAI Runtime 已被管理配置禁用。"
+        elif configured:
+            status = "ready"
+            message = "OpenAI Runtime 已配置。"
+        else:
+            status = "missing_config"
+            message = "OpenAI Runtime 缺少 API Key 或模型配置。"
         return RuntimeProviderStatus(
             runtime_name="openai_compatible",
             label="OpenAI Runtime",
             configured=configured,
             available=configured,
-            status="ready" if configured else "missing_config",
-            message="OpenAI Runtime 已配置。" if configured else "OpenAI Runtime 缺少 API Key 或模型配置。",
+            status=status,
+            message=message,
             operations=["test_connection"] if configured else [],
             details={
                 "model": model,
-                "api_base": str(self._openai_config.get("api_base") or ""),
+                "api_base": str(config.get("api_base") or ""),
             },
         )
 
     def _codex_status(self) -> RuntimeProviderStatus:
-        enabled = _as_bool(self._codex_config.get("enabled"))
-        endpoint = str(self._codex_config.get("endpoint") or "").strip()
-        unix_socket = str(self._codex_config.get("unix_socket") or "").strip()
-        ui_managed = _as_bool(self._codex_config.get("ui_managed"))
-        server_managed = _as_bool(self._codex_config.get("server_managed"))
+        config = self._provider_management_config("codex_app_server", self._codex_config)
+        enabled = _as_bool(config.get("enabled"))
+        endpoint = str(config.get("endpoint") or "").strip()
+        unix_socket = str(config.get("unix_socket") or "").strip()
+        ui_managed = _as_bool(config.get("ui_managed"))
+        server_managed = _as_bool(config.get("server_managed"))
         configured = enabled and bool(endpoint or unix_socket)
         socket_exists = bool(unix_socket and Path(unix_socket).exists())
         available = bool(configured and (endpoint or socket_exists))
@@ -140,17 +223,77 @@ class AgentRuntimeManagementService:
             message=message,
             operations=operations,
             details={
-                "project_id": str(self._codex_config.get("project_id") or ""),
-                "project_root": str(self._codex_config.get("project_root") or ""),
-                "runtime_root": str(self._codex_config.get("runtime_root") or ""),
-                "transport": str(self._codex_config.get("transport") or ""),
+                "project_id": str(config.get("project_id") or ""),
+                "project_root": str(config.get("project_root") or ""),
+                "runtime_root": str(config.get("runtime_root") or ""),
+                "transport": str(config.get("transport") or ""),
                 "endpoint": endpoint,
                 "unix_socket": unix_socket,
-                "max_concurrency": self._codex_config.get("max_concurrency"),
+                "max_concurrency": config.get("max_concurrency"),
                 "ui_managed": ui_managed,
                 "server_managed": server_managed,
             },
         )
+
+    def _codex_operation(
+        self,
+        runtime_name: RuntimeName,
+        *,
+        action: str,
+        principal_id: str | None,
+        operation,
+    ) -> RuntimeOperationResult:
+        try:
+            self._ensure_codex(runtime_name)
+            result = operation()
+        except (KeyError, CodexProcessManagerError) as exc:
+            self._audit(
+                runtime_name=runtime_name,
+                action=action,
+                principal_id=principal_id,
+                status="failed",
+                metadata={"error": str(exc)},
+            )
+            raise
+        self._audit(
+            runtime_name=runtime_name,
+            action=action,
+            principal_id=principal_id,
+            status=result.status,
+            metadata=dict(result.details),
+        )
+        return result
+
+    def _provider_management_config(
+        self,
+        runtime_name: RuntimeName,
+        fallback: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        if self._runtime_config_service is None:
+            return fallback
+        return self._runtime_config_service.management_config(runtime_name)
+
+    def _audit(
+        self,
+        *,
+        runtime_name: RuntimeName,
+        action: str,
+        principal_id: str | None,
+        status: str,
+        metadata: dict[str, Any],
+    ) -> None:
+        if self._runtime_config_service is None:
+            return
+        try:
+            self._runtime_config_service.record_audit_event(
+                runtime_name=runtime_name,
+                action=action,
+                principal_id=principal_id,
+                status=status,
+                metadata=metadata,
+            )
+        except Exception:
+            return
 
 
 def _as_bool(value: Any) -> bool:

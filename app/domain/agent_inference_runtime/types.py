@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Mapping, Optional
 
 RuntimeName = Literal["openai_agents_sdk", "openai_compatible", "codex_app_server", "fake"]
@@ -158,3 +159,49 @@ class RuntimeProviderCapabilities:
     artifacts: List[str]
     events: List[str]
     details: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RuntimeProviderConfigUpdate:
+    runtime_name: RuntimeName
+    enabled: bool
+    endpoint: str | None
+    model: str | None
+    api_key: str | None
+    extra: dict[str, Any]
+    updated_by: str
+
+
+@dataclass(frozen=True)
+class RuntimeProviderConfigSnapshot:
+    runtime_name: RuntimeName
+    enabled: bool
+    endpoint: str | None
+    model: str | None
+    secret_ref: str | None
+    extra: dict[str, Any]
+    updated_by: str | None
+    updated_at: datetime | None
+
+    def to_public_dict(self) -> dict[str, Any]:
+        return {
+            "runtime_name": self.runtime_name,
+            "enabled": self.enabled,
+            "endpoint": self.endpoint,
+            "model": self.model,
+            "api_key": "********" if self.secret_ref else None,
+            "extra": self.extra,
+            "updated_by": self.updated_by,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+@dataclass(frozen=True)
+class RuntimeManagementAuditEvent:
+    id: int | None
+    runtime_name: RuntimeName
+    action: str
+    principal_id: str | None
+    status: str
+    metadata: dict[str, Any]
+    created_at: datetime | None
