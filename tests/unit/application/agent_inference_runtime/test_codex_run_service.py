@@ -160,6 +160,24 @@ def test_cancel_calls_provider_and_marks_local_run_cancelled():
     assert repo.runs["run_local_1"].status == "cancelled"
 
 
+def test_cancel_does_not_call_provider_or_overwrite_terminal_success():
+    service, client, repo = _service()
+    service.submit(_request())
+    client.poll_payload = {
+        "provider_run_id": "codex_run_1",
+        "status": "succeeded",
+        "usage": {"total_tokens": 11},
+    }
+    service.poll("run_local_1", principal_id="alice")
+
+    result = service.cancel("run_local_1", principal_id="alice")
+
+    assert client.cancelled == []
+    assert result["status"] == "succeeded"
+    assert result["provider_ref"]["provider_run_id"] == "codex_run_1"
+    assert repo.runs["run_local_1"].status == "succeeded"
+
+
 @pytest.mark.parametrize("method_name", ["poll", "cancel", "read_events", "collect_artifacts"])
 def test_wrong_principal_gets_permission_safe_not_found(method_name: str):
     service, client, _repo = _service()

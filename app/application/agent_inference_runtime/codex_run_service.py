@@ -27,6 +27,7 @@ class CodexRunService:
 
     runtime_name = "codex_app_server"
     _KNOWN_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled", "timeout"}
+    _TERMINAL_STATUSES = {"succeeded", "failed", "cancelled", "timeout"}
 
     def __init__(
         self,
@@ -98,6 +99,8 @@ class CodexRunService:
 
     def cancel(self, run_id: str, principal_id: str | None = None) -> dict[str, Any]:
         run = self._owned_run(run_id, principal_id)
+        if run.status in self._TERMINAL_STATUSES:
+            return _run_lifecycle_payload(run)
         try:
             provider_run_id = _stored_provider_run_id(run)
             provider_payload = _dict_or_error(self._client.cancel_run(provider_run_id))
