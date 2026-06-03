@@ -18,6 +18,7 @@ import {
   sourceTypeChip,
 } from './_shared/datasource-detail-content'
 import { fmtDateTime } from '@v2/lib/format'
+import { isConnectedDatasourceStatus } from '@v2/lib/factSources'
 import { t } from '@v2/i18n'
 
 import { PeekPanel } from '@v2/components/PeekPanel'
@@ -93,7 +94,7 @@ export default function Datasources() {
   // 模块摘要
   const summary = useMemo(() => {
     const total = allRows.length
-    const connected = allRows.filter((it) => it.connection_status === 'connected').length
+    const connected = allRows.filter((it) => isConnectedDatasourceStatus(it.connection_status)).length
     const errors = allRows.filter((it) => it.connection_status === 'error').length
     const byType = new Map<string, number>()
     for (const it of allRows) {
@@ -111,7 +112,7 @@ export default function Datasources() {
           {t('datasources.context.title', '数据源概览')}
         </div>
       ),
-      subtitle: t('datasources.context.subtitle', '统一管理外部连接与同步状态'),
+      subtitle: t('datasources.context.subtitle', '统一管理外部连接、目录同步与平台异构查询入口。'),
       body: (
         <div className="space-y-4 px-4 py-4">
           <CtxSection title={t('datasources.context.scale', '规模')}>

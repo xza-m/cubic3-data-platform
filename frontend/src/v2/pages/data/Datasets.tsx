@@ -82,8 +82,8 @@ export default function Datasets() {
 
   useEffect(() => {
     setContextPanel({
-      title: t('datasets.ctx.title', '数据集'),
-      subtitle: t('datasets.ctx.subtitle', '统一查看可建模和可查询的数据资产'),
+      title: t('datasets.ctx.title', '平台 Dataset'),
+      subtitle: t('datasets.ctx.subtitle', '基于物理表登记的消费抽象，不代表全量数据资产目录。'),
       body: (
         <div className="space-y-4 px-4 py-4">
           <CtxSection title={t('datasets.ctx.scale', '规模')}>
@@ -444,7 +444,7 @@ function EmptyState() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <Database size={20} style={{ color: 'var(--text-3)' }} />
-      <p className="text-xs" style={{ color: 'var(--text-3)' }}>{t('datasets.empty', '暂无数据集')}</p>
+      <p className="text-xs" style={{ color: 'var(--text-3)' }}>{t('datasets.empty', '暂无平台 Dataset')}</p>
     </div>
   )
 }

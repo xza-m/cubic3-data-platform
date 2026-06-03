@@ -3,7 +3,7 @@ doc_type: architecture-doc
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-06-03
 ---
 
 # 系统总览
@@ -19,6 +19,7 @@ last_reviewed: 2026-04-25
 `cubic3-data-platform` 当前是一个面向企业数据场景的数据应用平台，主线职责包括：
 
 - 数据源和数据集管理
+- 数据资产元数据事实与证据管理
 - SQL 查询与查询资产管理
 - 智能问数与多轮对话
 - 语义建模、领域建模和语义查询
@@ -37,7 +38,9 @@ graph LR
     Redis["Redis"]
     Postgres["PostgreSQL"]
     Worker["RQ Worker"]
-    SemanticFiles["语义 YAML 资产"]
+    SemanticRegistry["SQL Registry / Runtime Snapshot"]
+    YamlFixture["YAML fixture / debug"]
+    Gateway["dw-query-gateway"]
 
     Browser --> Vite
     Browser --> Nginx
@@ -45,23 +48,27 @@ graph LR
     Nginx -->|"/api 转发"| Flask
     Flask --> Postgres
     Flask --> Redis
-    Flask --> SemanticFiles
+    Flask --> SemanticRegistry
+    Flask -. local/debug .-> YamlFixture
+    Flask -->|受治理查询提交 / telemetry BFF| Gateway
     Worker --> Redis
     Worker --> Postgres
-    Worker --> SemanticFiles
+    Worker --> SemanticRegistry
 ```
 
 说明：
 
 - 开发模式下，浏览器通常通过 Vite 访问前端，再经 `/api` 代理访问后端
 - Docker 模式下，Nginx 同时承担静态资源托管和反向代理
-- 语义建模资产并非全部落数据库，而是由后端以 YAML 仓储形式管理
+- 生产语义资产事实源为 SQL Registry / Release / Runtime Snapshot；YAML 仅用于 local / fixture / debug
+- 正式 Agent / 用户数仓查询的执行事实在 `dw-query-gateway`；平台只做语义治理控制面、ticket 材料和观测 BFF
 
 ## 3. 主能力域
 
 当前主能力域可以按前后端共同的业务边界理解：
 
-- 数据中心：数据源、数据集、表结构、预览与统计
+- 数据中心：数据源、平台应用层 Dataset、表结构、预览与统计
+- 数据资产底座：表、字段、快照、画像、证据包和 Schema drift 线索
 - 查询中心：SQL 编辑、模板、历史、异步查询、可视化构建
 - 智能问数：交互型问答能力，会话、消息、LLM 适配与 Web / 飞书信道复用
 - 语义中心：Ontology、Catalog、Cube、Domain、View、Recipe、编译与查询；其中 `/semantic/ontology` 是业务语义工作台主入口，`/semantic/workbench` 当前承接语义诊断，旧路径只保留兼容跳转
@@ -102,13 +109,13 @@ graph LR
 
 典型路径是：
 
-`Semantic API -> Semantic Application Services -> YAML Repositories -> catalogs / cubes / domains / views / recipes`
+`Semantic API -> Semantic Application Services -> SQL Registry / Release / Runtime Snapshot`
 
 说明：
 
-- 语义资产当前采用“数据库元数据 + 文件资产”混合持久化
-- 数据集、数据源等事实仍以数据库为准
-- Cube、Domain、View、Recipe、Catalog 等语义对象由文件仓储承载
+- 生产语义资产以 SQL Registry / Release / Runtime Snapshot 为准
+- YAML 仓储只作为 local / fixture / debug adapter，不作为 official Runtime fallback
+- 数据源、平台应用层 Dataset、数据资产底座和 gateway telemetry 分属不同事实源，边界见 [decisions/ADR-012-dataset-data-asset-and-query-boundary.md](decisions/ADR-012-dataset-data-asset-and-query-boundary.md)
 
 ## 5. 当前稳定边界
 

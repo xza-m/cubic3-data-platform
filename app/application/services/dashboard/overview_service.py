@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, outerjoin, select
+from sqlalchemy import outerjoin, select
 from sqlalchemy.orm import Session
 
+from app.application.platform_facts.read_model import PlatformFactsReadModel
 from app.domain.entities.data_source import DataSource
-from app.domain.entities.dataset import Dataset
 from app.domain.entities.query_history import QueryHistory
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
 from app.shared.utils.time import utcnow
@@ -34,66 +34,21 @@ class DashboardOverviewService:
         previous_month_end = month_start - timedelta(microseconds=1)
         previous_month_start = datetime(previous_month_end.year, previous_month_end.month, 1, tzinfo=now.tzinfo)
 
-        datasource_total = self.session.execute(
-            select(func.count()).select_from(DataSource)
-        ).scalar_one()
-        connected_total = self.session.execute(
-            select(func.count()).select_from(DataSource).where(
-                DataSource.connection_status == 'connected'
-            )
-        ).scalar_one()
-        current_month_total = self.session.execute(
-            select(func.count()).select_from(DataSource).where(
-                DataSource.created_at >= month_start
-            )
-        ).scalar_one()
-        previous_month_total = self.session.execute(
-            select(func.count()).select_from(DataSource).where(
-                DataSource.created_at >= previous_month_start,
-                DataSource.created_at < month_start,
-            )
-        ).scalar_one()
-
-        dataset_total = self.session.execute(
-            select(func.count()).select_from(Dataset).where(
-                Dataset.is_deleted.is_(False)
-            )
-        ).scalar_one()
+        fact_read_model = PlatformFactsReadModel(self.session)
+        datasource_scale = fact_read_model.datasource_scale(
+            current_month_start=month_start,
+            previous_month_start=previous_month_start,
+        )
+        dataset_scale = fact_read_model.dataset_scale_for_dashboard(
+            current_week_start=current_week_start,
+            previous_week_start=previous_week_start,
+        )
         semantic_model_total = self._get_semantic_model_total()
-        current_week_dataset_total = self.session.execute(
-            select(func.count()).select_from(Dataset).where(
-                Dataset.is_deleted.is_(False),
-                Dataset.created_at >= current_week_start,
-            )
-        ).scalar_one()
-        previous_week_dataset_total = self.session.execute(
-            select(func.count()).select_from(Dataset).where(
-                Dataset.is_deleted.is_(False),
-                Dataset.created_at >= previous_week_start,
-                Dataset.created_at < current_week_start,
-            )
-        ).scalar_one()
-
-        today_query_count = self.session.execute(
-            select(func.count()).select_from(QueryHistory).where(
-                QueryHistory.executed_by == user_id,
-                QueryHistory.executed_at >= today_start,
-            )
-        ).scalar_one()
-
-        query_count_week = self.session.execute(
-            select(func.count()).select_from(QueryHistory).where(
-                QueryHistory.executed_by == user_id,
-                QueryHistory.executed_at >= query_window_start,
-            )
-        ).scalar_one()
-        query_success_count = self.session.execute(
-            select(func.count()).select_from(QueryHistory).where(
-                QueryHistory.executed_by == user_id,
-                QueryHistory.executed_at >= query_window_start,
-                QueryHistory.status == 'success',
-            )
-        ).scalar_one()
+        query_scale = fact_read_model.interactive_query_scale(
+            user_id=user_id,
+            today_start=today_start,
+            query_window_start=query_window_start,
+        )
 
         recent_query_rows = self.session.execute(
             select(
@@ -112,23 +67,23 @@ class DashboardOverviewService:
         ).all()
 
         datasource_connectivity = None
-        if datasource_total > 0:
-            datasource_connectivity = round(connected_total / datasource_total * 100, 1)
+        if datasource_scale.total > 0:
+            datasource_connectivity = round(datasource_scale.connected / datasource_scale.total * 100, 1)
 
         semantic_coverage = None
-        if dataset_total > 0 and semantic_model_total is not None and semantic_model_total > 0:
-            semantic_coverage = round(min(semantic_model_total / dataset_total, 1) * 100, 1)
+        if dataset_scale.total > 0 and semantic_model_total is not None and semantic_model_total > 0:
+            semantic_coverage = round(min(semantic_model_total / dataset_scale.total, 1) * 100, 1)
 
         query_success_rate = None
-        if query_count_week > 0:
-            query_success_rate = round(query_success_count / query_count_week * 100, 1)
+        if query_scale.window_total > 0:
+            query_success_rate = round(query_scale.window_success_total / query_scale.window_total * 100, 1)
 
         return {
             'stats': {
-                'datasource_total': datasource_total,
-                'dataset_total': dataset_total,
+                'datasource_total': datasource_scale.total,
+                'dataset_total': dataset_scale.total,
                 'semantic_model_total': semantic_model_total,
-                'today_query_count': today_query_count,
+                'today_query_count': query_scale.today,
                 'ai_chat_count': None,
             },
             'recent_queries': [
@@ -147,9 +102,16 @@ class DashboardOverviewService:
                 'query_success_rate': query_success_rate,
             },
             'trends': {
-                'datasource_month_delta': current_month_total - previous_month_total,
-                'dataset_week_delta': current_week_dataset_total - previous_week_dataset_total,
-                'query_count_week': query_count_week,
+                'datasource_month_delta': datasource_scale.current_month - datasource_scale.previous_month,
+                'dataset_week_delta': dataset_scale.current_week - dataset_scale.previous_week,
+                'query_count_week': query_scale.window_total,
+            },
+            'sources': {
+                'datasource_total': datasource_scale.source,
+                'connected_datasource_count': datasource_scale.source,
+                'dataset_total': dataset_scale.source,
+                'today_query_count': query_scale.source,
+                'recent_queries': query_scale.source,
             },
         }
 

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from app.domain.entities.data_source import DataSource
 from app.domain.entities.dataset import Dataset
 from app.domain.entities.query_history import QueryHistory
+from app.infrastructure.semantic.models import DataAssetTableORM
 from app.shared.enums import ConnectionStatus
 
 
@@ -56,6 +57,25 @@ def _make_history(identifier: int, index: int, *, executed_at, executed_by='test
     return history
 
 
+def _make_data_asset_table(identifier: str, name: str, *, created_at, lifecycle_status='active'):
+    return DataAssetTableORM(
+        id=identifier,
+        source_id='data-asset-smoke',
+        database='df_cb_258187',
+        schema='dw_smoke',
+        name=name,
+        title=name,
+        table_type='table',
+        lifecycle_status=lifecycle_status,
+        field_count=2,
+        sync_status='success',
+        profile_status='ready',
+        extra_json={},
+        created_at=created_at,
+        updated_at=created_at,
+    )
+
+
 def test_dashboard_overview_service_aggregates_real_counts(app, db_session, monkeypatch):
     from app.application.services.dashboard.overview_service import DashboardOverviewService
 
@@ -74,7 +94,9 @@ def test_dashboard_overview_service_aggregates_real_counts(app, db_session, monk
     ds_1 = _make_datasource(1, 'data_source_current_1', created_at=month_start + timedelta(days=1), status=ConnectionStatus.CONNECTED.value)
     ds_2 = _make_datasource(2, 'data_source_current_2', created_at=month_start + timedelta(days=2), status=ConnectionStatus.UNKNOWN.value)
     ds_3 = _make_datasource(3, 'data_source_previous', created_at=previous_month_start + timedelta(days=5), status=ConnectionStatus.CONNECTED.value)
-    db_session.add_all([ds_1, ds_2, ds_3])
+    # 兼容历史运行库里遗留的 success 状态，避免首页把可用数据源误算为 0% 连通。
+    ds_4 = _make_datasource(4, 'data_source_legacy_success', created_at=previous_month_start - timedelta(days=1), status='success')
+    db_session.add_all([ds_1, ds_2, ds_3, ds_4])
     db_session.flush()
 
     dataset_1 = _make_dataset(10, 'Dataset Current 1', created_at=week_start + timedelta(days=1))
@@ -99,14 +121,43 @@ def test_dashboard_overview_service_aggregates_real_counts(app, db_session, monk
     service = DashboardOverviewService(session=db_session)
     overview = service.get_overview(user_id='tester')
 
-    assert overview['stats']['datasource_total'] == 3
+    assert overview['stats']['datasource_total'] == 4
     assert overview['stats']['dataset_total'] == 3
     assert overview['stats']['today_query_count'] == 2
     assert overview['stats']['ai_chat_count'] is None
     assert len(overview['recent_queries']) == 5
-    assert overview['health']['datasource_connectivity'] == 66.7
+    assert overview['health']['datasource_connectivity'] == 75.0
     assert overview['health']['semantic_coverage'] is None
     assert overview['health']['query_success_rate'] == 85.7
     assert overview['trends']['datasource_month_delta'] == 1
     assert overview['trends']['dataset_week_delta'] == 1
     assert overview['trends']['query_count_week'] == 7
+    assert overview['sources']['datasource_total'] == 'data_sources'
+    assert overview['sources']['connected_datasource_count'] == 'data_sources'
+    assert overview['sources']['dataset_total'] == 'datasets'
+    assert overview['sources']['today_query_count'] == 'query_histories'
+    assert overview['sources']['recent_queries'] == 'query_histories'
+
+
+def test_dashboard_overview_service_prefers_data_asset_tables_when_legacy_datasets_empty(app, db_session, monkeypatch):
+    from app.application.services.dashboard.overview_service import DashboardOverviewService
+
+    now = datetime(2026, 6, 3, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr('app.application.services.dashboard.overview_service.utcnow', lambda: now)
+    week_start = now - timedelta(days=now.weekday())
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    previous_week_start = week_start - timedelta(days=7)
+
+    db_session.add_all([
+        _make_data_asset_table('tbl_current', 'dwd_current_df', created_at=week_start + timedelta(days=1)),
+        _make_data_asset_table('tbl_previous', 'dwd_previous_df', created_at=previous_week_start + timedelta(days=1)),
+        _make_data_asset_table('tbl_deleted', 'dwd_deleted_df', created_at=week_start + timedelta(days=1), lifecycle_status='deleted'),
+    ])
+    db_session.commit()
+
+    service = DashboardOverviewService(session=db_session)
+    overview = service.get_overview(user_id='tester')
+
+    assert overview['stats']['dataset_total'] == 2
+    assert overview['trends']['dataset_week_delta'] == 0
+    assert overview['sources']['dataset_total'] == 'data_asset_tables'

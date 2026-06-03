@@ -8,18 +8,21 @@
 import type { ReactNode } from 'react'
 import type { Datasource } from '@v2/api/datasources'
 import { fmtDateTime } from '@v2/lib/format'
+import { isConnectedDatasourceStatus, normalizeDatasourceConnectionStatus } from '@v2/lib/factSources'
 import { t } from '@v2/i18n'
 
 // ── 徽章渲染助手 ──────────────────────────────────────────────────────────────
 
 export function connectionStatusChip(status: string): ReactNode {
+  const normalized = normalizeDatasourceConnectionStatus(status)
   const map: Record<string, { label: string; tone: string }> = {
     connected:    { label: t('datasourceDetailContent.conn.connected', '已连接'),    tone: 'success' },
     disconnected: { label: t('datasourceDetailContent.conn.disconnected', '未连接'), tone: 'neutral' },
-    error:        { label: t('datasourceDetailContent.conn.error', '异常'),          tone: 'danger' },
-    testing:      { label: t('datasourceDetailContent.conn.testing', '测试中'),      tone: 'warning' },
+    failed:       { label: t('datasourceDetailContent.conn.error', '异常'),          tone: 'danger' },
+    pending:      { label: t('datasourceDetailContent.conn.testing', '测试中'),      tone: 'warning' },
+    unknown:      { label: t('datasourceDetailContent.conn.unknown', '未知'),        tone: 'neutral' },
   }
-  const { label = status, tone = 'neutral' } = map[status] ?? {}
+  const { label = status, tone = 'neutral' } = map[normalized] ?? {}
   return (
     <span
       className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium"
@@ -56,9 +59,9 @@ export function sourceTypeChip(type: string): ReactNode {
 
 export function datasourceTabLabel(item: Datasource): ReactNode {
   const dotColor =
-    item.connection_status === 'connected'
+    isConnectedDatasourceStatus(item.connection_status)
       ? 'var(--success)'
-      : item.connection_status === 'error'
+      : normalizeDatasourceConnectionStatus(item.connection_status) === 'failed'
         ? 'var(--danger)'
         : 'var(--text-3)'
   return (

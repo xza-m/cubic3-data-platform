@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-29
+last_reviewed: 2026-06-03
 ---
 
 # CUBIC3
@@ -63,8 +63,9 @@ CUBIC3（仓库名 `cubic3-data-platform`）是一个面向企业数据场景的
 ### Source Layer
 
 - 数据源管理：支持 PostgreSQL、MySQL、ClickHouse、MaxCompute 等数据源接入
-- 数据集管理：注册物理表、文件数据集和 SQL 生成的数据集
-- 元数据刷新：同步表结构并维护字段级元数据
+- 数据集管理：维护平台应用层 `Dataset`，用于数据提取、DataChat、交互式查询和应用编排
+- 数据资产底座：维护表、字段、快照、画像和证据包等元数据事实，不作为第二套 `Dataset`
+- 元数据刷新：同步表结构并维护字段级元数据和资产快照
 - 数据提取：支持任务化抽取、运行记录与结果交付
 
 Phase 1 当前已验证的数据中心主链路基线为：
@@ -76,7 +77,7 @@ Phase 1 当前已验证的数据中心主链路基线为：
 
 ### Semantic Layer
 
-- Cube 建模：基于物理表草拟 Cube 并保存为 YAML 定义
+- Cube 建模：基于物理表、平台 `Dataset` 或数据资产证据草拟 Cube，并通过 SQL Registry / Release / Runtime Snapshot 进入生产语义事实源；YAML 仅用于 local / fixture / debug
 - 领域建模：用目录、领域和 Join 关系组织业务语义
 - View / Recipe 管理：沉淀可复用的语义视图和分析配方
 - 语义查询：通过语义定义生成可执行查询

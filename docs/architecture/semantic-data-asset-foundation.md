@@ -3,12 +3,14 @@ doc_type: architecture
 status: current
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-05-23
+last_reviewed: 2026-06-03
 ---
 
 # 语义数据资产底座架构
 
 本文定义当前语义平台里的“数据资产底座”边界。结论是：数据资产底座只承载元数据事实层，不直接服务语义执行；语义侧通过 `AssetRef` 与 `EvidenceBundle` 读取资产引用和证据，再桥接到 Cube 工作台、Ontology-Cube Projection、本体工作台与语义治理。
+
+`Dataset` 的命名边界以 [ADR-012](decisions/ADR-012-dataset-data-asset-and-query-boundary.md) 为准：`Dataset` 是平台应用层的可查询 / 可消费抽象；数据资产底座可以引用 `Dataset`，但不新建第二套 “data asset dataset” 生命周期。
 
 ## 1. 架构结论
 
@@ -41,7 +43,7 @@ last_reviewed: 2026-05-23
 
 数据资产底座的事实粒度保持在“资产与快照”：
 
-- 资产：数据源、库表、Dataset、文件数据集、派生视图或 profiling 目标。
+- 资产：数据源、库表、平台应用层 `Dataset`、文件数据集、派生视图或 profiling 目标。这里的 `Dataset` 只作为被引用资产，不改变它在平台应用层的生命周期。
 - 字段：物理字段名、类型、注释、枚举线索、样例值、敏感级别线索。
 - 快照：schema snapshot、partition snapshot、profile summary、quality signal。
 - 来源：同步批次、外部数据源、缓存更新时间、扫描任务与操作人。

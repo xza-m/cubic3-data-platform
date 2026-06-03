@@ -3,7 +3,7 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-29
+last_reviewed: 2026-06-03
 ---
 
 # 技术栈与架构说明
@@ -105,6 +105,21 @@ graph LR
 | 大文件交付 | OSS |
 | BI 截图 | Superset |
 
+### 3.4 核心事实源边界
+
+核心概念按 [ADR-012](architecture/decisions/ADR-012-dataset-data-asset-and-query-boundary.md) 固定：
+
+| 概念 | 当前事实源 | 使用场景 |
+|---|---|---|
+| `DataSource` | `data_sources` | 外部连接、连接测试、异构 connector SPI |
+| 平台 `Dataset` | `datasets` / `dataset_fields` | 数据提取、DataChat、交互式查询、应用编排 |
+| 数据资产底座 | `data_asset_*` | 元数据事实、资产快照、画像、血缘、`AssetRef`、`EvidenceBundle` |
+| 语义资产 | SQL Registry / Release / Runtime Snapshot | 已发布 `Ontology / Cube / Binding / Policy` 和 Agent-first Runtime |
+| 平台交互式查询 | `query_histories` | SQL Lab、查询工作台、基于 connector 的异构查询历史 |
+| 生产数仓查询 | `dw-query-gateway` telemetry / query events | 正式用户 / Agent 问数执行事实、结果、队列和稳定性 |
+
+聚合统计不得混用上述事实源。特别是数据资产规模不能用旧 `datasets` 代替，正式 Agent 查询次数不能用本地 `query_histories` 冒充。
+
 ## 4. 后端分层结构
 
 ```text
@@ -194,6 +209,7 @@ app/
   - `/api/v1/agent/semantic/execute` 在 `allow` 决策下将受治理查询提交到 `dw-query-gateway`；`approval_required / deny` 不提交 gateway
   - `cubic3-data-platform` 不再保留内部查询执行 Worker、执行 job 或结果 spool；gateway 负责正式执行、审计、SQL guard、结果对象和运行态事实
   - SQL Lab、查询工作台、元数据探查和预览保留为交互式异构数据源工具面，继续走 DataSource Adapter SPI
+  - 平台交互式查询历史只代表 connector 工具面，不代表正式 Agent 问数执行事实；正式执行统计必须读取 gateway telemetry 或 BFF 投影
   - 权限职责边界固定为 data-platform 负责 `Principal / PermissionPackage / RoleBinding / DataPolicy / PolicyDecision / GatewayAccessContextPreview`，`dw-query-gateway` 负责接收可信 `GatewayAccessContext`、SQL guard 与 `CredentialBinding`，MaxCompute 负责 RAM / ACL 物理兜底；data-platform 不保存真实 RAM 凭据；gateway 到 MaxCompute 的落地方案见 `docs/architecture/access-gateway-maxcompute-ram.md`
   - `/semantic-router/execute-plan` 与 `/execution-compiler/execute` 已补 M3/raw/ODS 拦截，返回 `require_approval` 且不真实执行
   - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 查询
