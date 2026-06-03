@@ -3,7 +3,7 @@ doc_type: architecture-index
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-05-25
+last_reviewed: 2026-06-03
 ---
 
 # 架构设计目录
@@ -29,14 +29,15 @@ last_reviewed: 2026-05-25
 2. [backend.md](backend.md)：后端分层、依赖注入、异步任务与语义存储
 3. [frontend.md](frontend.md)：前端路由域、页面模型、数据访问与验证策略
 4. [decisions/README.md](decisions/README.md)：当前仍有效的架构决策记录
-5. [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)：Agent 语义规划、飞书 SSO Principal、两阶段权限、ExecutionProfile、ticket 与 gateway / MaxCompute RAM 适配边界
-6. [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)：访问网关到 MaxCompute 的 RAM User、Project Role、CredentialBinding、观测和 smoke 方案
-7. [source-candidate-recall-scoring.md](source-candidate-recall-scoring.md)：建模 Copilot 从业务问题召回候选数据源的本地元数据打分、解释和门槛
-8. [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)：数据资产底座作为元数据事实层，通过 `AssetRef + EvidenceBundle` 桥接 Cube、本体、投影与语义治理，并复用现有 Schema drift 链路
-9. [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)：拟采纳设计；物理表 / Dataset / 数据资产证据进入 Cube 与本体建模前，统一经过字段候选层做类型映射、角色判断、指标语义推断与 Review
-10. [agent-runtime-platform.md](agent-runtime-platform.md)：平台级 Agent 推理 Runtime 当前基线与目标设计；OpenAI-compatible 已接入，Codex app-server 当前是 workspace / client / adapter skeleton 和 opt-in live smoke
-11. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
-12. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
+5. [decisions/ADR-012-dataset-data-asset-and-query-boundary.md](decisions/ADR-012-dataset-data-asset-and-query-boundary.md)：固定 `Dataset`、数据资产底座、平台交互式查询和 `dw-query-gateway` 生产执行事实源边界
+6. [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)：Agent 语义规划、飞书 SSO Principal、两阶段权限、ExecutionProfile、ticket 与 gateway / MaxCompute RAM 适配边界
+7. [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)：访问网关到 MaxCompute 的 RAM User、Project Role、CredentialBinding、观测和 smoke 方案
+8. [source-candidate-recall-scoring.md](source-candidate-recall-scoring.md)：建模 Copilot 从业务问题召回候选数据源的本地元数据打分、解释和门槛
+9. [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)：数据资产底座作为元数据事实层，通过 `AssetRef + EvidenceBundle` 桥接 Cube、本体、投影与语义治理，并复用现有 Schema drift 链路
+10. [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)：拟采纳设计；物理表 / Dataset / 数据资产证据进入 Cube 与本体建模前，统一经过字段候选层做类型映射、角色判断、指标语义推断与 Review
+11. [agent-runtime-platform.md](agent-runtime-platform.md)：平台级 Agent 推理 Runtime 当前基线与目标设计；OpenAI-compatible 已接入，Codex app-server 当前是 workspace / client / adapter skeleton 和 opt-in live smoke
+12. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
+13. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
 
 ## 当前文件
 
@@ -48,6 +49,8 @@ last_reviewed: 2026-05-25
   - React SPA 路由结构、页面域、共享壳层与校验策略
 - [decisions/README.md](decisions/README.md)
   - ADR 索引与维护规则
+- [decisions/ADR-012-dataset-data-asset-and-query-boundary.md](decisions/ADR-012-dataset-data-asset-and-query-boundary.md)
+  - 固定 `DataSource`、平台应用层 `Dataset`、数据资产底座、语义资产、平台交互式查询历史和 `dw-query-gateway` 查询遥测的职责边界；新增聚合统计和页面文案的事实源约束
 - [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)
   - 数据资产底座只作为元数据事实层，不直接服务语义；通过 `AssetRef + EvidenceBundle` 为 Cube 工作台、Ontology-Cube Projection、本体工作台与语义治理提供证据；Schema 漂移复用 `SchemaSyncService + AssetSnapshotSchemaInspector + SemanticGovernanceIssueService`
 - [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)

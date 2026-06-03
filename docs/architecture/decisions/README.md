@@ -3,7 +3,7 @@ doc_type: adr-index
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-03-24
+last_reviewed: 2026-06-03
 ---
 
 # ADR 目录
@@ -29,3 +29,4 @@ last_reviewed: 2026-03-24
 - [ADR-009 第一阶段引入最小 Execution Compiler Preview 验证闭环](ADR-009-minimal-execution-compiler-preview.md)
 - [ADR-010 生产语义资产采用 SQL Registry 作为事实源](ADR-010-semantic-sql-registry-production-source.md)
 - [ADR-011 数仓查询网关与本项目执行边界](ADR-011-dw-query-gateway-execution-boundary.md)
+- [ADR-012 Dataset、数据资产与查询执行边界](ADR-012-dataset-data-asset-and-query-boundary.md)

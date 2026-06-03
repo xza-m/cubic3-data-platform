@@ -68,6 +68,7 @@ import type {
   AccessServicePrincipal,
   GatewayRuntimeAlerts,
   GatewayQueryRun,
+  GatewayTelemetrySummary,
   CreatedApiKey,
 } from '@v2/api/access'
 import { AppError } from '@v2/api/types'
@@ -88,6 +89,8 @@ const EMPTY_GATEWAY_ALERTS: GatewayRuntimeAlerts = {
   summary: {},
   evaluated_at: null,
 }
+
+const GATEWAY_RECORD_PAGE_SIZE = 10
 
 export default function AccessIdentity({ view = 'permissions' }: AccessIdentityProps) {
   const [tab, setTab] = useState<TabId>('principals')
@@ -908,6 +911,7 @@ function PermissionAuditWorkspace() {
 
 function GatewayObservabilityWorkspace() {
   const [traceRun, setTraceRun] = useState<GatewayQueryRun | null>(null)
+  const [recordPage, setRecordPage] = useState(1)
   const summaryQuery = useGatewayTelemetrySummary()
   const alertsQuery = useGatewayRuntimeAlerts()
   const runsQuery = useGatewayQueryRuns({ limit: 200 })
@@ -941,8 +945,13 @@ function GatewayObservabilityWorkspace() {
   const rows = useMemo(() => runsQuery.data?.items ?? [], [runsQuery.data?.items])
   const isLoading = summaryQuery.isLoading || alertsQuery.isLoading || runsQuery.isLoading
   const isError = summaryQuery.isError || alertsQuery.isError || runsQuery.isError
+  const dataQuality = useMemo(() => summarizeGatewayDataQuality(rows), [rows])
   const trendRows = useMemo(() => buildGatewayTrend(rows), [rows])
   const trendSummary = useMemo(() => summarizeGatewayTrend(trendRows), [trendRows])
+  const paginatedRows = useMemo(
+    () => paginateGatewayRows(rows, recordPage, GATEWAY_RECORD_PAGE_SIZE),
+    [recordPage, rows],
+  )
   const breakdownRows = useMemo(
     () => Object.entries(summary.by_data_level ?? {}).map(([level, count]) => ({ level, count: Number(count) })),
     [summary.by_data_level],
@@ -972,6 +981,7 @@ function GatewayObservabilityWorkspace() {
         </div>
       ) : null}
       <GatewayAlertPanel evaluation={alertEvaluation} loading={alertsQuery.isLoading} />
+      <GatewayDataQualityPanel quality={dataQuality} loading={runsQuery.isLoading} />
       <div className="grid gap-3 md:grid-cols-4">
         <GatewayMetricCard
           label={t('access.gateway.runtime.queue', '排队 / 运行 / 等待')}
@@ -1022,7 +1032,7 @@ function GatewayObservabilityWorkspace() {
         <GatewayMetricCard
           label={t('access.gateway.metric.stability', '稳定性')}
           value={isLoading ? '—' : `${summary.stability}%`}
-          detail={t('access.gateway.metric.stabilityDetail', '成功率、P95 耗时和异常率')}
+          detail={formatGatewayStabilityBasis(summary)}
         />
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -1045,7 +1055,7 @@ function GatewayObservabilityWorkspace() {
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="min-w-0">
-          <AccessTrendPanel rows={trendRows} summary={trendSummary} />
+          <AccessTrendPanel rows={trendRows} summary={trendSummary} quality={dataQuality} />
           <section className="mt-4 rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
             <PanelTitle title={t('access.gateway.records.section', '全平台访问记录')} count={rows.length} />
             {isLoading ? (
@@ -1053,7 +1063,15 @@ function GatewayObservabilityWorkspace() {
             ) : rows.length === 0 ? (
               <EmptyState text={t('access.gateway.records.empty', '暂无网关执行记录')} />
             ) : (
-              <GatewayExecutionRecordTable rows={rows.slice(0, 30)} onOpenTrace={setTraceRun} />
+              <>
+                <GatewayExecutionRecordTable rows={paginatedRows.items} onOpenTrace={setTraceRun} />
+                <ListPagination
+                  page={paginatedRows.page}
+                  pageSize={paginatedRows.pageSize}
+                  total={paginatedRows.total}
+                  onPageChange={setRecordPage}
+                />
+              </>
             )}
           </section>
         </section>
@@ -1165,6 +1183,52 @@ function GatewayAlertPanel({
   )
 }
 
+function GatewayDataQualityPanel({
+  quality,
+  loading,
+}: {
+  quality: GatewayDataQualitySummary
+  loading: boolean
+}) {
+  if (loading || !quality.hasDataGap) return null
+  return (
+    <section
+      className="mb-3 rounded-md border px-3 py-2 text-xs"
+      style={{ borderColor: 'var(--warning)', background: 'var(--warning-soft)' }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <AlertTriangle size={14} style={{ color: 'var(--warning)' }} />
+        <span className="font-medium" style={{ color: 'var(--text-1)' }}>
+          {t('access.gateway.quality.title', '最近执行记录存在字段缺失')}
+        </span>
+        <Chip tone={quality.hasIdentityGap ? 'warning' : 'neutral'}>
+          {t('access.gateway.quality.identityMissing', '身份缺失 {count}/{total}', {
+            count: quality.identityMissingCount,
+            total: quality.total,
+          })}
+        </Chip>
+        <Chip tone={quality.dataLevelMissingCount > 0 ? 'warning' : 'neutral'}>
+          {t('access.gateway.quality.levelMissing', '等级缺失 {count}/{total}', {
+            count: quality.dataLevelMissingCount,
+            total: quality.total,
+          })}
+        </Chip>
+        <Chip tone={quality.executionProfileMissingCount > 0 ? 'warning' : 'neutral'}>
+          {t('access.gateway.quality.profileMissing', '执行画像缺失 {count}/{total}', {
+            count: quality.executionProfileMissingCount,
+            total: quality.total,
+          })}
+        </Chip>
+      </div>
+      {quality.hasIdentityGap ? (
+        <div className="mt-1 pl-6" style={{ color: 'var(--text-3)' }}>
+          {t('access.gateway.quality.identityNote', 'DAU 只能按 gateway 返回的 principal / actor 计算；缺身份的记录不会计入活跃主体。')}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
 function GatewayMetricCard({
   label,
   value,
@@ -1194,12 +1258,15 @@ function GatewayMetricCard({
 function AccessTrendPanel({
   rows,
   summary,
+  quality,
 }: {
   rows: AccessTrendPoint[]
   summary: GatewayTrendSummary
+  quality: GatewayDataQualitySummary
 }) {
   const maxCount = Math.max(1, ...rows.map((row) => row.total))
   const maxDau = Math.max(1, ...rows.map((row) => row.dau))
+  const latestDauValue = summary.latestDayQueries > 0 && summary.latestDayDau === 0 && quality.hasIdentityGap ? '—' : summary.latestDayDau
   return (
     <section className="mt-4 rounded-md border p-3 text-xs" style={{ borderColor: 'var(--border)' }}>
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -1226,8 +1293,8 @@ function AccessTrendPanel({
         />
         <TrendSummaryItem
           label={t('access.gateway.trend.latestDau', '最新日 DAU')}
-          value={summary.latestDayDau}
-          detail={t('access.gateway.trend.latestDauDetail', '去重 principal / actor')}
+          value={latestDauValue}
+          detail={quality.hasIdentityGap ? t('access.gateway.trend.latestDauMissing', 'gateway 未返回部分身份') : t('access.gateway.trend.latestDauDetail', '去重 principal / actor')}
         />
         <TrendSummaryItem
           label={t('access.gateway.trend.windowDau', '窗口活跃主体')}
@@ -1288,7 +1355,7 @@ function TrendSummaryItem({
   detail,
 }: {
   label: string
-  value: number
+  value: number | string
   detail: string
 }) {
   return (
@@ -1360,11 +1427,11 @@ function GatewayExecutionRecordTable({
               {row.created_at ? fmtDateTime(row.created_at) : '—'}
             </td>
             <td className="max-w-[220px] px-4 py-2.5">
-              <IdentityName value={row.principal_id || '—'} />
+              <GatewayRunActorCell row={row} />
             </td>
-            <td className="px-4 py-2.5">{formatDataLevelLabel(row.data_level || '')}</td>
+            <td className="px-4 py-2.5">{row.data_level ? formatDataLevelLabel(row.data_level) : <span style={{ color: 'var(--text-3)' }}>{t('access.gateway.records.missingLevel', '未返回等级')}</span>}</td>
             <td className="px-4 py-2.5">
-              <div className="font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.execution_profile_code || '—'}</div>
+              <div className="font-mono text-[11px]" style={{ color: row.execution_profile_code ? 'var(--text-2)' : 'var(--text-3)' }}>{row.execution_profile_code || t('access.gateway.records.missingProfile', '未返回执行画像')}</div>
               <div className="mt-1 font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.credential_ref || '—'}</div>
             </td>
             <td className="px-4 py-2.5">
@@ -1385,6 +1452,26 @@ function GatewayExecutionRecordTable({
         ))}
       </tbody>
     </table>
+  )
+}
+
+function GatewayRunActorCell({ row }: { row: GatewayQueryRun }) {
+  if (row.principal_id) return <IdentityName value={row.principal_id} />
+  if (row.actor_id) {
+    return (
+      <div>
+        <div className="font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.actor_id}</div>
+        <div className="mt-1 text-[11px]" style={{ color: 'var(--text-3)' }}>{row.actor_type || t('access.gateway.records.actor', 'actor')}</div>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <span style={{ color: 'var(--text-3)' }}>{t('access.gateway.records.missingActor', '未知主体')}</span>
+      <div className="mt-1 text-[11px]" style={{ color: 'var(--warning)' }}>
+        {t('access.gateway.records.missingActorHint', 'gateway 未返回 principal / actor')}
+      </div>
+    </div>
   )
 }
 
@@ -2765,6 +2852,70 @@ interface GatewayTrendSummary {
   peakLabel: string
 }
 
+interface GatewayDataQualitySummary {
+  total: number
+  identityMissingCount: number
+  dataLevelMissingCount: number
+  executionProfileMissingCount: number
+  hasIdentityGap: boolean
+  hasDataGap: boolean
+}
+
+interface GatewayRowsPage<T> {
+  items: T[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+  start: number
+  end: number
+}
+
+export function formatGatewayStabilityBasis(summary: Pick<GatewayTelemetrySummary, 'query_count' | 'success_count' | 'stability'>): string {
+  const total = Number(summary.query_count || 0)
+  const success = Number(summary.success_count || 0)
+  if (total <= 0) return t('access.gateway.metric.stabilityNoSample', '暂无查询样本')
+  const stability = Number(summary.stability)
+  return t('access.gateway.metric.stabilityBasis', '网关稳定性 {rate}%；成功 {success} / 查询 {total}', {
+    success,
+    total,
+    rate: formatRatioPercent(stability),
+  })
+}
+
+export function summarizeGatewayDataQuality(rows: GatewayQueryRun[]): GatewayDataQualitySummary {
+  const total = rows.length
+  const identityMissingCount = rows.filter((row) => !gatewayRunActorKey(row)).length
+  const dataLevelMissingCount = rows.filter((row) => !String(row.data_level || '').trim()).length
+  const executionProfileMissingCount = rows.filter((row) => !String(row.execution_profile_code || '').trim()).length
+  return {
+    total,
+    identityMissingCount,
+    dataLevelMissingCount,
+    executionProfileMissingCount,
+    hasIdentityGap: total > 0 && identityMissingCount > 0,
+    hasDataGap: total > 0 && (identityMissingCount > 0 || dataLevelMissingCount > 0 || executionProfileMissingCount > 0),
+  }
+}
+
+export function paginateGatewayRows<T>(rows: T[], page: number, pageSize = GATEWAY_RECORD_PAGE_SIZE): GatewayRowsPage<T> {
+  const total = rows.length
+  const safePageSize = Math.max(1, Math.trunc(pageSize) || GATEWAY_RECORD_PAGE_SIZE)
+  const totalPages = Math.max(1, Math.ceil(total / safePageSize))
+  const safePage = Math.min(Math.max(Math.trunc(page) || 1, 1), totalPages)
+  const startIndex = (safePage - 1) * safePageSize
+  const endIndex = Math.min(total, startIndex + safePageSize)
+  return {
+    items: rows.slice(startIndex, endIndex),
+    page: safePage,
+    pageSize: safePageSize,
+    total,
+    totalPages,
+    start: total === 0 ? 0 : startIndex + 1,
+    end: endIndex,
+  }
+}
+
 export function buildGatewayTrend(rows: GatewayQueryRun[]): AccessTrendPoint[] {
   const validKeys = rows
     .map((row) => dateKey(row.created_at))
@@ -2826,6 +2977,11 @@ function gatewayRunActorKey(row: GatewayQueryRun): string | null {
   if (principalId) return principalId
   const actorId = String(row.actor_id || '').trim()
   return actorId || null
+}
+
+function formatRatioPercent(value: number): string {
+  if (!Number.isFinite(value)) return '0'
+  return value.toFixed(2).replace(/\.?0+$/, '')
 }
 
 function dateKey(value: string | null | undefined): string | null {

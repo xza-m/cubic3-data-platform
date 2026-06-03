@@ -5,6 +5,7 @@ import { ToolbarSearch } from '@v2/components/CommonControls'
 import { ListPagination } from '@v2/components/ListPagination'
 import { useAppShell } from '@v2/layout/AppShell'
 import { ContextActions, ContextRow, ContextSection } from '@v2/layout/Inspector'
+import { normalizeDataAssetSyncStatus } from '@v2/lib/factSources'
 import { t } from '@v2/i18n'
 import {
   getDataAssetTableEvidence,
@@ -240,7 +241,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
   useEffect(() => {
     setContextPanel({
       title: '数据资产底座',
-      subtitle: '物理元数据、字段、血缘与质量的统一入口',
+      subtitle: '元数据事实层：物理表、字段、血缘与质量的统一入口',
       body: (
         <>
           <ContextSection title="资产覆盖">
@@ -308,7 +309,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
             </div>
             <h1 className="mt-1 text-xl font-semibold text-1">{activeLabel}</h1>
             <p className="mt-1 max-w-3xl text-xs text-3">
-              汇总物理表、字段、血缘、质量和同步任务，为语义建模提供可复用的资产目录。
+              汇总物理表、字段、血缘、质量和同步任务，为语义建模提供可复用的元数据事实层；Dataset 类型资产通过 asset_type='dataset' 表达。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -957,9 +958,10 @@ function formatStats(stats: Record<string, unknown> | null | undefined) {
 }
 
 function StatusChip({ status }: { status: string }) {
-  if (status === 'synced') return <Chip tone="success">已同步</Chip>
-  if (status === 'failed') return <Chip tone="danger">失败</Chip>
-  if (status === 'pending') return <Chip tone="warning">待同步</Chip>
+  const normalized = normalizeDataAssetSyncStatus(status)
+  if (normalized === 'synced') return <Chip tone="success">已同步</Chip>
+  if (normalized === 'failed') return <Chip tone="danger">失败</Chip>
+  if (normalized === 'pending') return <Chip tone="warning">待同步</Chip>
   return <Chip>{status || '未知'}</Chip>
 }
 

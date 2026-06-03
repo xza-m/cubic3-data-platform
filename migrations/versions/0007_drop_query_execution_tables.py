@@ -1,7 +1,7 @@
 """drop query execution tables
 
 Revision ID: 0007_drop_query_execution_tables
-Revises: 0006_agent_runtime_artifact_storage
+Revises: 0006_agent_runtime_artifacts
 Create Date: 2026-05-29
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 
 
 revision = "0007_drop_query_execution_tables"
-down_revision = "0006_agent_runtime_artifact_storage"
+down_revision = "0006_agent_runtime_artifacts"
 branch_labels = None
 depends_on = None
 

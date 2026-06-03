@@ -12,6 +12,7 @@
 #     3. 无重复 revision 标识
 #     4. 所有 down_revision 引用的 id 都存在（无孤立）
 #     5. 无环
+#     6. revision id 不超过 Alembic 默认 version_num 长度 32
 #
 #   这能覆盖日常 Day 0 最常见风险："有人合了迁移但没 rebase 导致分叉"、
 #   "漏删回滚的迁移导致孤儿 head"——比 `alembic upgrade head --sql` 更便宜。
@@ -40,6 +41,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_VERSIONS = REPO_ROOT / "migrations" / "versions"
+MAX_ALEMBIC_REVISION_ID_LENGTH = 32
 
 
 @dataclass
@@ -57,6 +59,7 @@ class Report:
     duplicates: list[str] = field(default_factory=list)
     orphans: list[tuple[str, str]] = field(default_factory=list)  # (rev, missing_down)
     cycles: list[list[str]] = field(default_factory=list)
+    revision_id_length_violations: list[tuple[str, str, int]] = field(default_factory=list)
     total: int = 0
 
     @property
@@ -67,6 +70,7 @@ class Report:
             and not self.duplicates
             and not self.orphans
             and not self.cycles
+            and not self.revision_id_length_violations
         )
 
 
@@ -160,6 +164,8 @@ def analyze(versions_dir: Path) -> Report:
         rev = parse_version_file(p)
         if not rev:
             continue
+        if len(rev.id) > MAX_ALEMBIC_REVISION_ID_LENGTH:
+            rpt.revision_id_length_violations.append((p.name, rev.id, len(rev.id)))
         if rev.id in revs:
             rpt.duplicates.append(rev.id)
             continue
@@ -228,6 +234,13 @@ def print_text(rpt: Report, versions_dir: Path, revs: dict[str, Rev] | None = No
             print(f"    {rid} -> down_revision {miss} not found", file=sys.stderr)
     if rpt.cycles:
         print(f"[alembic-guard] ✗ cycle detected: {rpt.cycles}", file=sys.stderr)
+    if rpt.revision_id_length_violations:
+        print(
+            f"[alembic-guard] ✗ revision id longer than Alembic version_num({MAX_ALEMBIC_REVISION_ID_LENGTH}):",
+            file=sys.stderr,
+        )
+        for filename, revision_id, length in rpt.revision_id_length_violations:
+            print(f"    {filename}: {revision_id} ({length})", file=sys.stderr)
     if len(rpt.heads) > 1:
         print(f"[alembic-guard] ✗ multiple heads ({len(rpt.heads)}); 合并或线性化后再上 Day 0。", file=sys.stderr)
     elif len(rpt.heads) == 0:
@@ -272,6 +285,10 @@ def main() -> int:
                     "duplicates": rpt.duplicates,
                     "orphans": [{"rev": a, "missing_down": b} for a, b in rpt.orphans],
                     "cycles": rpt.cycles,
+                    "revision_id_length_violations": [
+                        {"file": filename, "revision": revision_id, "length": length}
+                        for filename, revision_id, length in rpt.revision_id_length_violations
+                    ],
                     "versions_dir": str(versions_dir),
                 },
                 ensure_ascii=False,

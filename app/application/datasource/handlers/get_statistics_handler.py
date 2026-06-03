@@ -3,6 +3,7 @@
 """
 from typing import Dict, Any
 from sqlalchemy import select, func, Engine, case
+from app.application.platform_facts.source_status import CONNECTED_DATASOURCE_STATUSES
 from app.domain.entities.data_source import DataSource
 from app.application.datasource.queries.get_statistics import GetStatisticsQuery
 
@@ -42,7 +43,7 @@ class GetStatisticsHandler:
             
             # 已连接数
             connected_stmt = select(func.count()).select_from(DataSource).where(
-                DataSource.connection_status == 'connected'
+                DataSource.connection_status.in_(CONNECTED_DATASOURCE_STATUSES)
             )
             connected = conn.execute(connected_stmt).scalar()
             

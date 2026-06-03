@@ -3,12 +3,12 @@ doc_type: baseline
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-04-25
+last_reviewed: 2026-06-03
 ---
 
 # 文档与实现对齐说明
 
-**更新时间**：2026-04-25
+**更新时间**：2026-06-03
 **对齐原则**：以当前代码实现、启动脚本、依赖清单和实际路由为准；历史文档保留，但不再作为默认标准。
 
 ## 1. 本次梳理范围
@@ -41,6 +41,7 @@ last_reviewed: 2026-04-25
 | 查询中心 IA | `/queries/editor` 等子页仍被当作主入口 | 当前主入口统一收口为 `/queries`，旧查询子页只保留兼容重定向 | 已更新前端与架构文档 |
 | 语义中心 IA | `/semantic/tools`、`/semantic/overview` 等旧入口仍被默认引用，或把 `/semantic/workbench` 当作业务语义主入口 | 当前主入口为 `/semantic/ontology`；`/semantic/workbench` 是语义诊断工作台；Cube、Domain、View 保留独立资产页，旧入口只保留兼容重定向 | 已更新前端、架构文档与 v2 路由/API 审计 |
 | 查询中心 IA | `/queries/history`、`/queries/visual`、`/queries/my` 等被误写为旧兼容入口 | 当前 `/queries` 是查询工作台，`/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是有效子路由 | 已更新 README、前端说明与审计文档 |
+| Dataset / 数据资产 / 查询事实源 | `Dataset`、数据资产底座、平台查询历史和 gateway telemetry 被混用为同一类统计事实 | 当前 `Dataset` 是平台应用层可查询 / 可消费抽象；数据资产底座是元数据事实与证据层；平台交互式查询读 `query_histories`；正式 Agent / 用户数仓查询执行事实读 `dw-query-gateway` | 新增 ADR-012，并同步 README、架构目录、技术栈基线和系统总览 |
 | 智能问数 UI | 文档描述 `DataChat` 前端已展示语义执行来源 | 后端 `/api/v1/conversations` 主链仍存在，v2 `/data-chat` 当前是 Placeholder | 已改为后端能力与前端占位分开描述 |
 | 验证入口 | `make test-regression*`、`make semantic-layout` 仍被当作当前入口 | Round 4 D+21 后 legacy regression 与 `semantic-layout` 目标已移除；当前前端默认入口是 `make verify-frontend`、v2 smoke 是 `make smoke-frontend` | 已更新启动、前端和语义验证说明 |
 | 前端 coverage | `make coverage-frontend` 被描述为 90% 总门槛 + 核心页 100% | 当前 `make coverage-frontend` 显式 skip；实际守护由 `frontend/vitest.config.ts` 的 v2 子树 80% 阈值承接 | 已更新启动与前端说明 |

@@ -1,19 +1,22 @@
 // frontend/src/v2/pages/Dashboard.tsx
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
+  AlertTriangle,
   ArrowUpRight,
   BookOpen,
   Brain,
+  CheckCircle2,
+  CircleDot,
   Code2,
   Database,
+  Gauge,
   Plus,
   Search,
   ShieldCheck,
-  Sparkles,
   Table2,
+  TrendingDown,
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react'
@@ -21,48 +24,9 @@ import { Card, CardBody, CardHead, Chip, Skeleton, SkeletonRows } from '@v2/comp
 import { RefreshButton } from '@v2/components/CommonControls'
 import { RetryState } from '@v2/components/LoadState'
 import { useAppShell } from '@v2/layout/AppShell'
-import { apiClient } from '@v2/api/client'
+import { useDashboardOverview } from '@v2/hooks/dashboard'
+import type { RecentQuery } from '@v2/api/dashboard'
 import { t } from '@v2/i18n'
-
-// TODO(round-2): move to @v2/api/dashboard.ts and @v2/hooks/dashboard.ts
-interface DashboardStats {
-  datasource_total: number | null
-  dataset_total: number | null
-  semantic_model_total: number | null
-  today_query_count: number | null
-}
-
-interface DashboardTrends {
-  datasource_month_delta: number | null
-  dataset_week_delta: number | null
-  query_count_week: number | null
-}
-
-interface DashboardHealth {
-  datasource_connectivity: number | null
-  semantic_coverage: number | null
-  query_success_rate: number | null
-}
-
-interface RecentQuery {
-  id: string | number
-  name: string
-  datasource_name: string | null
-  status: 'success' | 'failed' | 'timeout' | 'queued' | 'running' | string
-  executed_at: string | null
-}
-
-interface DashboardOverviewResponse {
-  stats: DashboardStats
-  trends: DashboardTrends
-  health: DashboardHealth
-  recent_queries: RecentQuery[]
-}
-
-async function getDashboardOverview(): Promise<DashboardOverviewResponse> {
-  const res = await apiClient.get<{ data: DashboardOverviewResponse }>('/dashboard/overview')
-  return res.data.data
-}
 
 const formatNumber = (n: number | null | undefined): string => {
   if (n == null) return '—'
@@ -95,7 +59,7 @@ const learningModules = [
     href: '/tutorials/semantic-modeling.html',
     icon: Brain,
     level: '进阶',
-    tone: '#7c3aed',
+    tone: 'var(--violet)',
   },
   {
     title: '开发应用与推送',
@@ -103,7 +67,7 @@ const learningModules = [
     href: '/tutorials/app-development.html',
     icon: Code2,
     level: '入门',
-    tone: '#0f766e',
+    tone: 'var(--success)',
   },
   {
     title: '权限治理闭环',
@@ -111,9 +75,51 @@ const learningModules = [
     href: '/tutorials/access-governance.html',
     icon: ShieldCheck,
     level: '管理员',
-    tone: '#b91c1c',
+    tone: 'var(--danger)',
   },
 ]
+
+interface AttentionItem {
+  label: string
+  description: string
+  value: string
+  status: string
+  tone: 'accent' | 'success' | 'warning' | 'danger' | 'neutral'
+  href: string
+  icon: LucideIcon
+}
+
+const healthTone = (value: number | null | undefined): AttentionItem['tone'] => {
+  if (value == null) return 'warning'
+  const normalized = normalizePercent(value)
+  if (normalized >= 95) return 'success'
+  if (normalized >= 80) return 'warning'
+  return 'danger'
+}
+
+const healthStatus = (value: number | null | undefined): string => {
+  if (value == null) return '待补充样本'
+  const normalized = normalizePercent(value)
+  if (normalized >= 95) return '稳定'
+  if (normalized >= 80) return '需关注'
+  return '需处理'
+}
+
+const toneIcon: Record<AttentionItem['tone'], LucideIcon> = {
+  accent: CircleDot,
+  success: CheckCircle2,
+  warning: AlertTriangle,
+  danger: AlertTriangle,
+  neutral: CircleDot,
+}
+
+const attentionToneStyle: Record<AttentionItem['tone'], { background: string; color: string }> = {
+  accent: { background: 'var(--accent-soft)', color: 'var(--accent)' },
+  success: { background: 'var(--success-soft)', color: 'var(--success)' },
+  warning: { background: 'var(--warning-soft)', color: 'var(--warning)' },
+  danger: { background: 'var(--danger-soft)', color: 'var(--danger)' },
+  neutral: { background: 'var(--bg-hover)', color: 'var(--text-2)' },
+}
 
 const statusChip = (status: RecentQuery['status']) => {
   switch (status) {
@@ -152,10 +158,7 @@ const formatTime = (raw: string | null | undefined): string => {
 
 export default function Dashboard() {
   const { setBreadcrumbs, setTopBarActions } = useAppShell()
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<DashboardOverviewResponse>({
-    queryKey: ['dashboard', 'overview'],
-    queryFn: getDashboardOverview,
-  })
+  const { data, isLoading, isError, error, refetch, isFetching } = useDashboardOverview()
 
   useEffect(() => {
     setBreadcrumbs([t('nav.dashboard', '总览')])
@@ -173,6 +176,49 @@ export default function Dashboard() {
   const trends = data?.trends
   const health = data?.health
   const recent = data?.recent_queries ?? []
+  const datasetSourceLabel =
+    data?.sources?.dataset_total === 'datasets'
+      ? t('kpi.datasets.source.platform_dataset', '回退到平台 Dataset')
+      : t('kpi.datasets.source.data_assets', '资产事实层 · data_asset_tables')
+  const querySourceLabel = t('kpi.queries.source.interactive', '交互式查询 · query_histories')
+  const attentionItems: AttentionItem[] = [
+    {
+      label: t('dashboard.attention.datasource', '数据源健康'),
+      description: t('dashboard.attention.datasource.desc', '连接状态会影响查询、建模和资产同步。'),
+      value: formatPercent(health?.datasource_connectivity),
+      status: healthStatus(health?.datasource_connectivity),
+      tone: healthTone(health?.datasource_connectivity),
+      href: '/data-center/datasources',
+      icon: Database,
+    },
+    {
+      label: t('dashboard.attention.semantic', '语义覆盖'),
+      description: t('dashboard.attention.semantic.desc', '覆盖率越高，Agent 与业务指标越容易走正式语义链路。'),
+      value: formatPercent(health?.semantic_coverage),
+      status: healthStatus(health?.semantic_coverage),
+      tone: healthTone(health?.semantic_coverage),
+      href: '/semantic/ontology',
+      icon: Brain,
+    },
+    {
+      label: t('dashboard.attention.query', '查询活动'),
+      description: t('dashboard.attention.query.desc', '关注最近执行记录，快速发现查询失败或无人使用的情况。'),
+      value: `${formatNumber(stats?.today_query_count)} / ${formatNumber(trends?.query_count_week)}`,
+      status: recent.length > 0 ? t('dashboard.attention.query.active', '有执行记录') : t('dashboard.attention.query.empty', '暂无记录'),
+      tone: recent.length > 0 ? 'success' : 'warning',
+      href: '/queries/history',
+      icon: Activity,
+    },
+    {
+      label: t('dashboard.attention.governance', '访问治理'),
+      description: t('dashboard.attention.governance.desc', '检查平台角色、数据访问规则和审计链路是否覆盖核心主体。'),
+      value: formatNumber(stats?.semantic_model_total),
+      status: t('dashboard.attention.governance.status', '查看策略'),
+      tone: 'accent',
+      href: '/config/access',
+      icon: ShieldCheck,
+    },
+  ]
 
   return (
     <div className="flex-1 overflow-y-auto scroll-thin px-5 py-5">
@@ -181,7 +227,7 @@ export default function Dashboard() {
           <CardBody className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <Sparkles size={16} className="text-[color:var(--accent)]" />
+                <Gauge size={16} className="text-[color:var(--accent)]" />
                 <span className="text-[11px] uppercase tracking-wider text-3">
                   Cubic³ Platform
                 </span>
@@ -215,10 +261,10 @@ export default function Dashboard() {
           />
           <KpiCard
             icon={Table2}
-            label={t('kpi.datasets', '数据集')}
+            label={t('kpi.data_assets', '数据资产')}
             value={stats?.dataset_total}
             trend={trends?.dataset_week_delta}
-            trendLabel={t('kpi.trend.week', '较上周')}
+            trendLabel={`${t('kpi.trend.week', '较上周')} · ${datasetSourceLabel}`}
             loading={isLoading}
           />
           <KpiCard
@@ -230,46 +276,74 @@ export default function Dashboard() {
           />
           <KpiCard
             icon={Activity}
-            label={t('kpi.queries.today', '今日查询')}
+            label={t('kpi.queries.today', '平台查询')}
             value={stats?.today_query_count}
             trend={trends?.query_count_week}
-            trendLabel={t('kpi.queries.week', '近 7 日累计')}
+            trendLabel={`${t('kpi.queries.week', '近 7 日累计')} · ${querySourceLabel}`}
             loading={isLoading}
           />
         </div>
 
-        <Card>
-          <CardHead
-            title={<h2 className="flex items-center gap-2 text-[13px] font-semibold text-1"><BookOpen size={14} /> 开始学习</h2>}
-            subtitle="按真实工作流学习查询、建模、应用和权限治理。每个教程都可独立打开。"
-          />
-          <CardBody className="!p-0">
-            <div className="grid grid-cols-1 divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0" style={{ borderColor: 'var(--border)' }}>
-              <div>
-                <div className="border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-3" style={{ borderColor: 'var(--border)' }}>
-                  基础课程
-                </div>
-                {learningModules.slice(0, 2).map((item) => (
-                  <LearningRow key={item.href} item={item} />
-                ))}
-              </div>
-              <div>
-                <div className="border-b px-4 py-2 text-[11px] font-medium uppercase tracking-wider text-3" style={{ borderColor: 'var(--border)' }}>
-                  场景练习
-                </div>
-                {learningModules.slice(2).map((item) => (
-                  <LearningRow key={item.href} item={item} />
-                ))}
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <CardHead
+              title={
+                <h2 className="flex items-center gap-2 text-[13px] font-semibold text-1">
+                  <AlertTriangle size={14} /> {t('dashboard.attention.title', '运行关注')}
+                </h2>
+              }
+              subtitle={t('dashboard.attention.subtitle', '按健康度、活动和治理入口推导当前最值得处理的事项。')}
+            />
+            <CardBody className="!p-0">
+              <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {attentionItems.map((item) => (
+                  <AttentionRow key={item.href} item={item} />
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHead title={t('dashboard.health', '平台健康度')} />
+            <CardBody>
+              <div className="space-y-3">
+                <HealthBar
+                  label={t('health.datasource', '数据源连通率')}
+                  value={health?.datasource_connectivity}
+                  loading={isLoading}
+                />
+                <HealthBar
+                  label={t('health.semantic', '语义覆盖率')}
+                  value={health?.semantic_coverage}
+                  loading={isLoading}
+                />
+                <HealthBar
+                  label={t('health.query', '近 7 日查询成功率')}
+                  value={health?.query_success_rate}
+                  loading={isLoading}
+                  emptyText={t('health.query.empty', '暂无近 7 日执行记录')}
+                />
+              </div>
+              <div className="mt-5 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+                <div className="text-[11px] uppercase tracking-wider text-3">
+                  {t('dashboard.quicklinks', '快捷入口')}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <QuickLink to="/data-center/datasources/new" icon={Database} label={t('quick.datasource', '新建数据源')} />
+                  <QuickLink to="/data-center/datasets/register" icon={Plus} label={t('quick.dataset', '登记数据集')} />
+                  <QuickLink to="/queries" icon={Search} label={t('quick.query', '编写查询')} />
+                  <QuickLink to="/semantic/ontology" icon={Brain} label={t('quick.semantic', '维护本体')} />
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+          <Card className="xl:col-span-2">
+            <CardHead
               title={t('dashboard.recent.queries', '最近查询')}
-              extra={<span className="text-[11px] text-3">{t('dashboard.recent.source', '来自 query_history')}</span>}
+              extra={<span className="text-[11px] text-3">{t('dashboard.recent.source', '平台交互式查询 · query_histories')}</span>}
             />
             <CardBody className="!p-0">
               {isLoading ? (
@@ -311,36 +385,15 @@ export default function Dashboard() {
           </Card>
 
           <Card>
-            <CardHead title={t('dashboard.health', '平台健康度')} />
-            <CardBody>
-              <div className="space-y-3">
-                <HealthBar
-                  label={t('health.datasource', '数据源连通率')}
-                  value={health?.datasource_connectivity}
-                  loading={isLoading}
-                />
-                <HealthBar
-                  label={t('health.semantic', '语义覆盖率')}
-                  value={health?.semantic_coverage}
-                  loading={isLoading}
-                />
-                <HealthBar
-                  label={t('health.query', '近 7 日查询成功率')}
-                  value={health?.query_success_rate}
-                  loading={isLoading}
-                  emptyText={t('health.query.empty', '暂无近 7 日执行记录')}
-                />
-              </div>
-              <div className="mt-5 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
-                <div className="text-[11px] uppercase tracking-wider text-3">
-                  {t('dashboard.quicklinks', '快捷入口')}
-                </div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <QuickLink to="/data-center/datasources/new" icon={Database} label={t('quick.datasource', '新建数据源')} />
-                  <QuickLink to="/data-center/datasets/register" icon={Plus} label={t('quick.dataset', '登记数据集')} />
-                  <QuickLink to="/queries" icon={Search} label={t('quick.query', '编写查询')} />
-                  <QuickLink to="/semantic/ontology" icon={Brain} label={t('quick.semantic', '维护本体')} />
-                </div>
+            <CardHead
+              title={<h2 className="flex items-center gap-2 text-[13px] font-semibold text-1"><BookOpen size={14} /> 开始学习</h2>}
+              subtitle="教程下沉为辅助入口，主工作台优先呈现运行状态。"
+            />
+            <CardBody className="!p-0">
+              <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                {learningModules.map((item) => (
+                  <LearningRow key={item.href} item={item} compact />
+                ))}
               </div>
             </CardBody>
           </Card>
@@ -360,6 +413,10 @@ interface KpiCardProps {
 }
 
 function KpiCard({ icon: Icon, label, value, trend, trendLabel, loading }: KpiCardProps) {
+  const trendIcon = trend != null && trend < 0 ? TrendingDown : TrendingUp
+  const TrendIcon = trendIcon
+  const trendTone =
+    trend == null ? undefined : trend < 0 ? 'var(--danger)' : trend > 0 ? 'var(--success)' : 'var(--text-3)'
   return (
     <Card>
       <CardBody>
@@ -369,8 +426,8 @@ function KpiCard({ icon: Icon, label, value, trend, trendLabel, loading }: KpiCa
             {label}
           </div>
           {trend != null ? (
-            <div className="flex items-center gap-1 text-[11px] text-[color:var(--success)]">
-              <TrendingUp size={11} />
+            <div className="flex items-center gap-1 text-[11px]" style={{ color: trendTone }}>
+              <TrendIcon size={11} />
               {trend > 0 ? `+${trend}` : trend}
             </div>
           ) : null}
@@ -393,14 +450,15 @@ interface LearningRowProps {
     level: string
     tone: string
   }
+  compact?: boolean
 }
 
-function LearningRow({ item }: LearningRowProps) {
+function LearningRow({ item, compact = false }: LearningRowProps) {
   const Icon = item.icon
   return (
     <a
       href={item.href}
-      className="group flex items-center gap-3 border-b px-4 py-4 transition-colors last:border-b-0 hover:bg-[color:var(--bg-hover)]"
+      className={`group flex items-center gap-3 border-b px-4 transition-colors last:border-b-0 hover:bg-[color:var(--bg-hover)] ${compact ? 'py-3' : 'py-4'}`}
       style={{ borderColor: 'var(--border)' }}
     >
       <span
@@ -422,6 +480,40 @@ function LearningRow({ item }: LearningRowProps) {
         <ArrowUpRight size={12} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
       </span>
     </a>
+  )
+}
+
+function AttentionRow({ item }: { item: AttentionItem }) {
+  const Icon = item.icon
+  const StatusIcon = toneIcon[item.tone]
+  const toneStyle = attentionToneStyle[item.tone]
+  return (
+    <Link
+      to={item.href}
+      className="group flex items-center gap-3 border-b px-4 py-3 transition-colors last:border-b-0 hover:bg-[color:var(--bg-hover)]"
+      style={{ borderColor: 'var(--border)' }}
+    >
+      <span
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md"
+        style={toneStyle}
+        aria-hidden
+      >
+        <Icon size={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-[13px] font-semibold text-1">{item.label}</span>
+          <Chip tone={item.tone} className="shrink-0">
+            <StatusIcon size={10} /> {item.status}
+          </Chip>
+        </span>
+        <span className="mt-1 block truncate text-[12px] text-3">{item.description}</span>
+      </span>
+      <span className="flex min-w-[72px] shrink-0 items-center justify-end gap-2 text-right">
+        <span className="font-mono text-[13px] font-semibold text-1">{item.value}</span>
+        <ArrowUpRight size={12} className="text-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+      </span>
+    </Link>
   )
 }
 

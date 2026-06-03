@@ -1,6 +1,6 @@
 """add agent runtime artifact storage metadata
 
-Revision ID: 0006_agent_runtime_artifact_storage
+Revision ID: 0006_agent_runtime_artifacts
 Revises: 0005_agent_runtime_management
 Create Date: 2026-05-29
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = "0006_agent_runtime_artifact_storage"
+revision = "0006_agent_runtime_artifacts"
 down_revision = "0005_agent_runtime_management"
 branch_labels = None
 depends_on = None

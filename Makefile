@@ -35,6 +35,7 @@ SEMANTIC_PROD_LIVE ?= 0
 	verify-docs \
 	verify-detect \
 	verify-changed \
+	fact-source-guard \
 	review \
 	verify-semantic \
 	verify-semantic-prod \
@@ -96,7 +97,7 @@ help:
 	@printf '  %-26s %s\n' 'make verify-backend' '后端交付入口（backend lint/typecheck/test/smoke）'
 	@printf '  %-26s %s\n' 'make verify-frontend' '前端交付入口（lint + tokens + i18n + tsc + build + test + smoke；是 local-ci 的严格超集）'
 	@printf '  %-26s %s\n' 'make verify-cutover' 'Round 3 Day 0 cutover 专用闸门（v2-only · scripts/cutover/deploy.sh 调用）'
-	@printf '  %-26s %s\n' 'make verify-docs' '文档交付入口（docs-health）'
+	@printf '  %-26s %s\n' 'make verify-docs' '文档交付入口（docs-health + fact-source-guard）'
 	@printf '  %-26s %s\n' 'make verify-detect' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 检测命中的验证规则'
 	@printf '  %-26s %s\n' 'make verify-changed' '按 VERIFY_FILES 或 VERIFY_BASE 指定的 diff 执行最低必跑 verify-* 目标'
 	@printf '  %-26s %s\n' 'make review' '审阅前总入口（verify + docs-health + docs-impact）'
@@ -136,6 +137,7 @@ help:
 	@printf '  %-26s %s\n' 'make smoke-frontend' '前端平台壳层 smoke（== local-smoke）'
 	@printf '  %-26s %s\n' 'make smoke-access' '权限体系产品闭环 smoke（Principal / API Key / DataPolicy / Agent）'
 	@printf '  %-26s %s\n' 'make docs-health' '文档健康检查'
+	@printf '  %-26s %s\n' 'make fact-source-guard' 'ADR-012 事实源口径守护'
 	@printf '%s\n' ''
 	@printf '%s\n' '本地闸门（GitLab CI 未就位时的替代入口）:'
 	@printf '  %-26s %s\n' 'make local-ci' '本地等价 CI（verify-frontend 去掉 smoke/integration 的严格子集，~2 min，无需 docker）'
@@ -288,7 +290,7 @@ verify-alembic:
 	@printf '%s\n' '[cutover][gate] alembic 拓扑离线自检（single head + no orphans）'
 	$(PYTHON) scripts/checks/alembic_head_guard.py
 
-verify-docs: docs-health
+verify-docs: docs-health fact-source-guard
 
 verify-detect:
 	@printf '%s\n' '[routing] 检测当前改动命中的验证规则并输出建议目标'
@@ -450,6 +452,10 @@ coverage-report:
 docs-health:
 	@printf '%s\n' '[docs] 运行文档健康检查'
 	$(PYTHON) scripts/check_docs_health.py --scope all
+
+fact-source-guard:
+	@printf '%s\n' '[docs] 运行 ADR-012 事实源口径守护'
+	$(PYTHON) scripts/checks/fact_source_guard.py
 
 docs-impact:
 	@printf '%s\n' '[docs] 运行文档影响检查'

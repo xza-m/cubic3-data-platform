@@ -3,7 +3,7 @@ doc_type: architecture-doc
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-03-24
+last_reviewed: 2026-06-03
 ---
 
 # 后端架构
@@ -32,7 +32,7 @@ last_reviewed: 2026-03-24
 - `app/application/`
   - 放用例级服务、commands、queries、handlers、跨领域协调逻辑
 - `app/infrastructure/`
-  - 放仓储实现、数据库、缓存、外部系统适配器、任务与语义文件仓储
+  - 放仓储实现、数据库、缓存、外部系统适配器、任务、语义 SQL Registry 仓储与 local / fixture adapter
 - `app/interfaces/`
   - 放 HTTP API、middleware、外部信道适配入口
 
@@ -63,7 +63,7 @@ last_reviewed: 2026-03-24
 - 各类 Repository 提供
 - 各类 Application Handler / Service 提供
 - LLM 适配器与 Agent 服务提供
-- 语义层服务与 YAML 仓储提供
+- 语义层服务、SQL Registry 仓储、Runtime Snapshot 服务与 local / fixture YAML adapter 提供
 
 这个容器是当前后端的关键装配点。新增核心能力时，优先考虑把生命周期和依赖关系收敛进容器，而不是在 blueprint 或 handler 中手工组装。
 
@@ -75,11 +75,13 @@ last_reviewed: 2026-03-24
   - 平台元数据、业务实体、查询资产、应用与配置中心数据
 - Redis
   - 缓存、任务队列、中间状态协调
-- 文件型语义资产
+- SQL Registry / Release / Runtime Snapshot
+  - 生产语义资产事实源，承载已发布 `Ontology / Cube / Binding / Policy` 与 official Runtime 只读快照
+- local / fixture YAML adapter
   - 位于 `app/infrastructure/semantic/`
-  - 通过 YAML 仓储管理 `catalogs/`、`cubes/`、`domains/`、`views/`、`recipes/`
+  - 仅用于本地 fixture、示例 seed 和调试导出，不作为 official Runtime fallback
 
-这意味着语义层不是纯数据库建模，也不是纯前端本地状态，而是后端持有的文件仓储模型。
+这意味着语义层的生产事实源已经收敛到数据库 registry；文件型资产只保留为本地开发和诊断辅助，不再定义生产发布链路。
 
 ## 6. 异步任务与事件
 
@@ -104,7 +106,7 @@ last_reviewed: 2026-03-24
 - `ViewPublishService`
 - `SemanticLayerService`
 
-它们通过 `semantic.py` blueprint 暴露能力，并通过 YAML 仓储和数据集仓储协同工作。
+它们通过 `semantic.py`、`semantic_assets.py`、`semantic_releases.py` 等 blueprint 暴露能力。生产链路通过 SQL Registry / Release / Runtime Snapshot 协同，建模辅助可以读取平台应用层 `Dataset`、数据资产证据和 local / fixture YAML adapter。
 
 ### CubeModelingService 维度/指标自动识别
 
