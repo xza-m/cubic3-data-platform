@@ -488,7 +488,7 @@ html.dark .cmdk-backdrop {
   color: white;
 }
 .btn-primary:hover {
-  background: #1f6bf0;
+  background: color-mix(in srgb, var(--accent) 88%, var(--text-1));
 }
 .btn-ghost {
   border-color: transparent;
@@ -511,7 +511,7 @@ html.dark .cmdk-backdrop {
   color: white;
 }
 .btn-danger:hover {
-  background: #b91c1c;
+  background: color-mix(in srgb, var(--danger) 88%, var(--text-1));
 }
 
 /* highlight search */

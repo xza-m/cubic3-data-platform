@@ -4,8 +4,8 @@
 //
 // 覆盖：
 //   - 登录后默认 landing 能渲染 /dashboard
-//   - KPI 卡片（数据源 / 数据集 / 语义模型 / 今日查询）可见
-//   - "最近查询" / "平台健康度" 两个主卡片可见
+//   - KPI 卡片（数据源 / 数据资产 / 语义模型 / 平台查询）可见
+//   - "运行关注" / "最近查询" / "平台健康度" 主卡片可见
 //   - 顶部导航到「查询工作台」CTA 可点
 //
 // 本 spec 不覆盖深度交互；用途是"壳能起、默认首屏不炸"。
@@ -66,23 +66,29 @@ test('P23 Dashboard 首屏 KPI + 侧卡片可见 @p23', async ({ page }) => {
 
   // KPI 卡片
   await expect(page.getByText('数据源').first()).toBeVisible()
-  await expect(page.getByText('数据集').first()).toBeVisible()
+  await expect(page.getByText('数据资产').first()).toBeVisible()
   await expect(page.getByText('语义模型').first()).toBeVisible()
-  await expect(page.getByText('今日查询').first()).toBeVisible()
+  await expect(page.getByText('平台查询').first()).toBeVisible()
 
-  // 最近查询 + 平台健康度 两个次要卡片
+  // 运行关注 + 最近查询 + 平台健康度 三个主工作区
+  await expect(page.getByText('运行关注').first()).toBeVisible()
   await expect(page.getByText('最近查询').first()).toBeVisible()
   await expect(page.getByText('平台健康度').first()).toBeVisible()
+
+  // 运行关注把关键状态提前，并提供可直接处理的入口。
+  await expect(page.getByRole('link', { name: /数据源健康/ })).toHaveAttribute('href', '/data-center/datasources')
+  await expect(page.getByRole('link', { name: /语义覆盖/ })).toHaveAttribute('href', '/semantic/ontology')
+  await expect(page.getByRole('link', { name: /查询活动/ })).toHaveAttribute('href', '/queries/history')
+  await expect(page.getByRole('link', { name: /访问治理/ })).toHaveAttribute('href', '/config/access')
 
   // 来自 fixture 的最近查询内容
   await expect(page.getByText('SELECT count(*) FROM lessons').first()).toBeVisible()
   await expect(page.getByText('近 7 日查询成功率').first()).toBeVisible()
   await expect(page.getByText('99%').first()).toBeVisible()
 
-  // 首页需要提供模块教程入口，避免首屏信息过空。
+  // 首页仍保留教程入口，但下沉为辅助入口，避免压过运行状态。
   await expect(page.getByRole('heading', { name: '开始学习' })).toBeVisible()
-  await expect(page.getByText('基础课程')).toBeVisible()
-  await expect(page.getByText('场景练习')).toBeVisible()
+  await expect(page.getByText('教程下沉为辅助入口，主工作台优先呈现运行状态。')).toBeVisible()
   await expect(page.getByRole('link', { name: /自助查询入门/ })).toHaveAttribute('href', /\/tutorials\/self-service-query\.html$/)
   await expect(page.getByRole('link', { name: /语义建模工作流/ })).toHaveAttribute('href', /\/tutorials\/semantic-modeling\.html$/)
   await expect(page.getByRole('link', { name: /开发应用与推送/ })).toHaveAttribute('href', /\/tutorials\/app-development\.html$/)

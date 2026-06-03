@@ -5,12 +5,15 @@ import {
   formatDataLevelLabel,
   formatExecutionModeLabel,
   formatGatewayAlertSeverityLabel,
+  formatGatewayStabilityBasis,
   formatPolicyEffectLabel,
   formatPolicyScopeChips,
   gatewayAlertTone,
   getCredentialModeOptions,
+  paginateGatewayRows,
   replaceDataAccessPackageCode,
   replacePlatformPackageCode,
+  summarizeGatewayDataQuality,
   splitAccessPackages,
   summarizeGatewayTrend,
 } from './AccessIdentity'
@@ -85,6 +88,44 @@ describe('AccessIdentity 管理员文案', () => {
       peakQueries: 3,
       peakLabel: '05/28',
     })
+  })
+
+  it('说明稳定性使用 gateway 返回口径，并补充成功查询样本数', () => {
+    expect(formatGatewayStabilityBasis({
+      success_count: 900,
+      query_count: 1000,
+      stability: 97.3,
+    } as any)).toBe('网关稳定性 97.3%；成功 900 / 查询 1000')
+  })
+
+  it('统计最近网关记录的身份、等级和执行画像缺失情况', () => {
+    const rows = [
+      { query_id: 'q1', principal_id: 'u1', data_level: 'M1', execution_profile_code: 'mc_m1_reader' },
+      { query_id: 'q2', principal_id: null, actor_id: null, data_level: null, execution_profile_code: null },
+      { query_id: 'q3', actor_id: 'agent-a', data_level: null, execution_profile_code: 'mc_m0_reader' },
+    ] as any
+
+    expect(summarizeGatewayDataQuality(rows)).toEqual({
+      total: 3,
+      identityMissingCount: 1,
+      dataLevelMissingCount: 2,
+      executionProfileMissingCount: 1,
+      hasIdentityGap: true,
+      hasDataGap: true,
+    })
+  })
+
+  it('默认把网关访问记录按每页 10 条分页', () => {
+    const rows = Array.from({ length: 23 }, (_, index) => ({ query_id: `q${index + 1}` })) as any
+
+    expect(paginateGatewayRows(rows, 1)).toMatchObject({
+      page: 1,
+      pageSize: 10,
+      totalPages: 3,
+      start: 1,
+      end: 10,
+    })
+    expect(paginateGatewayRows(rows, 3).items.map((row: any) => row.query_id)).toEqual(['q21', 'q22', 'q23'])
   })
 
   it('把成员配置拆成平台角色和数据访问权限，并且同组只显示一个选择', () => {
