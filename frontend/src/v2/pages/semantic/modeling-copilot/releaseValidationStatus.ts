@@ -1,4 +1,5 @@
 import type { ReleasePreview } from "./releasePreview";
+import { t } from "@v2/i18n";
 
 export interface ReleaseValidationGroup {
   title: string;
@@ -35,25 +36,37 @@ export function buildPublishCheckGroups(input: PublishCheckGroupsInput) {
   return [
     {
       id: "draft-completeness",
-      title: "语义草案完整性",
+      title: t(
+        "semanticModeling.releaseValidation.draftCompleteness.title",
+        "语义草案完整性",
+      ),
       status: input.draftCompleteness.status,
       detail: input.draftCompleteness.message,
     },
     {
       id: "semantic-compile",
-      title: "语义编译",
+      title: t(
+        "semanticModeling.releaseValidation.semanticCompile.title",
+        "语义编译",
+      ),
       status: input.semanticCompile.status,
       detail: input.semanticCompile.message,
     },
     {
       id: "execution-validation",
-      title: "执行验证",
+      title: t(
+        "semanticModeling.releaseValidation.executionValidation.title",
+        "执行验证",
+      ),
       status: input.executionValidation.status,
       detail: input.executionValidation.message,
     },
     {
       id: "consumer-validation",
-      title: "消费者可用性",
+      title: t(
+        "semanticModeling.releaseValidation.consumerValidation.title",
+        "消费者可用性",
+      ),
       status: input.consumerValidation.status,
       detail: input.consumerValidation.message,
     },
@@ -67,38 +80,79 @@ export function buildReleaseValidationGroups(
 
   return {
     semanticCenter: {
-      title: "语义中心发布",
+      title: t(
+        "semanticModeling.releaseValidation.semanticCenter.title",
+        "语义中心发布",
+      ),
       statusLabel:
         preview.semanticCompile.status === "passed"
-          ? "语义中心可发布"
-          : "待修复",
+          ? t(
+              "semanticModeling.releaseValidation.semanticCenter.ready",
+              "语义中心可发布",
+            )
+          : t(
+              "semanticModeling.releaseValidation.semanticCenter.needsFix",
+              "待修复",
+            ),
       description:
-        "发布目标是语义中心；Data Agent、BI、数据分析只消费发布快照。",
+        t(
+          "semanticModeling.releaseValidation.semanticCenter.description",
+          "发布目标是语义中心；Data Agent、BI、数据分析只消费发布快照。",
+        ),
     },
     semanticCompile: {
-      title: "语义编译",
+      title: t(
+        "semanticModeling.releaseValidation.semanticCompile.title",
+        "语义编译",
+      ),
       statusLabel: statusLabel(preview.semanticCompile.status),
       description:
-        preview.semanticCompile.message || "语义中心编译预演状态。",
+        preview.semanticCompile.message ||
+        t(
+          "semanticModeling.releaseValidation.semanticCompile.description",
+          "语义中心编译预演状态。",
+        ),
     },
     gateway: {
-      title: "Gateway 执行面验证",
+      title: t(
+        "semanticModeling.releaseValidation.gateway.title",
+        "Gateway 执行面验证",
+      ),
       statusLabel: gatewayDisconnected
-        ? "执行面未接通"
+        ? t(
+            "semanticModeling.releaseValidation.gateway.disconnected",
+            "执行面未接通",
+          )
         : statusLabel(preview.gatewayValidation.status),
       description: gatewayDisconnected
-        ? "Gateway SQL dry-run 当前未接通，不影响语义中心发布结果；当前 SQL 尚未完成物理执行验证。"
-        : preview.gatewayValidation.message || "Gateway SQL dry-run 状态。",
+        ? t(
+            "semanticModeling.releaseValidation.gateway.disconnectedDescription",
+            "Gateway SQL dry-run 当前未接通，不影响语义中心发布结果；当前 SQL 尚未完成物理执行验证。",
+          )
+        : preview.gatewayValidation.message ||
+          t(
+            "semanticModeling.releaseValidation.gateway.description",
+            "Gateway SQL dry-run 状态。",
+          ),
     },
     consumer: {
-      title: "消费者验证",
+      title: t(
+        "semanticModeling.releaseValidation.consumer.title",
+        "消费者验证",
+      ),
       statusLabel:
         preview.consumerValidation.status === "pending" &&
         preview.gatewayValidation.status !== "passed"
-          ? "等待执行面验证"
+          ? t(
+              "semanticModeling.releaseValidation.consumer.waitingExecution",
+              "等待执行面验证",
+            )
           : statusLabel(preview.consumerValidation.status),
       description:
-        "消费者验证基于语义中心发布快照和执行面验证结果。",
+        t(
+          "semanticModeling.releaseValidation.consumer.description",
+          "消费者验证基于语义中心发布快照和执行面验证结果。",
+        ),
     },
   };
 }
@@ -114,8 +168,17 @@ export function isGatewayExecutionDisconnected(
 }
 
 function statusLabel(status: string): string {
-  if (status === "passed") return "已通过";
-  if (status === "failed") return "未通过";
-  if (status === "not_configured") return "未配置";
-  return "待校验";
+  if (status === "passed") {
+    return t("semanticModeling.releaseValidation.status.passed", "已通过");
+  }
+  if (status === "failed") {
+    return t("semanticModeling.releaseValidation.status.failed", "未通过");
+  }
+  if (status === "not_configured") {
+    return t(
+      "semanticModeling.releaseValidation.status.notConfigured",
+      "未配置",
+    );
+  }
+  return t("semanticModeling.releaseValidation.status.pending", "待校验");
 }

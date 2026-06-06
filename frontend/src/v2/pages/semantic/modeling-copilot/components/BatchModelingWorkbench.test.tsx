@@ -45,6 +45,20 @@ const scannedProject: SemanticBuildProject = {
       status: 'ready_for_review',
       primary_action: 'open_builder',
       evidence: ['表画像显示行为时间字段完整。'],
+      modeling_source: {
+        source_kind: 'physical_table',
+        source_id: 1,
+        database: 'dw',
+        schema: null,
+        table: 'dwd_learning_activity_df',
+        evidence_bundle: {
+          schema_snapshot: {
+            table: 'dwd_learning_activity_df',
+            columns: [{ name: 'student_id', type: 'string' }],
+            partitions: ['ds'],
+          },
+        },
+      },
     },
   ],
 }
@@ -86,11 +100,12 @@ describe('BatchModelingWorkbench', () => {
     expect(mockCreateProject).toHaveBeenCalledWith({
       name: '学情分析',
       business_domain: '学情分析',
-      scope: {
+      scope: expect.objectContaining({
+        batch_run_id: expect.stringMatching(/^run-/),
         source_count: 28,
         strategy: 'balanced',
         include_existing_semantics: true,
-      },
+      }),
     })
     expect(mockScanProject).toHaveBeenCalledWith({ projectId: 'build-learning', body: { strategy: 'balanced' } })
     expect(screen.queryByRole('button', { name: /发布/ })).not.toBeInTheDocument()
@@ -104,7 +119,15 @@ describe('BatchModelingWorkbench', () => {
     fireEvent.click(await screen.findByRole('button', { name: '进入资产建设画布' }))
 
     expect(onOpenBuilder).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'build-learning:fact:dwd-learning-activity-df', project_id: 'build-learning' }),
+      expect.objectContaining({
+        id: 'build-learning:fact:dwd-learning-activity-df',
+        project_id: 'build-learning',
+        modeling_source: expect.objectContaining({
+          source_id: 1,
+          database: 'dw',
+          table: 'dwd_learning_activity_df',
+        }),
+      }),
     )
   })
 
@@ -216,13 +239,14 @@ describe('BatchModelingWorkbench', () => {
     expect(mockCreateProject).toHaveBeenCalledWith({
       name: '学情分析',
       business_domain: '学情分析',
-      scope: {
+      scope: expect.objectContaining({
+        batch_run_id: expect.stringMatching(/^run-/),
         source_count: 18,
         strategy: 'balanced',
         include_existing_semantics: true,
         recommendation_empty: true,
         selected_sources: ['ods_manual_fact_df'],
-      },
+      }),
     })
   })
 
@@ -304,5 +328,24 @@ describe('BatchModelingWorkbench', () => {
     )
     expect(await screen.findByText('重复候选')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '标记重复' })).toBeDisabled()
+  })
+
+  it('候选资产操作失败时展示错误反馈', async () => {
+    const user = userEvent.setup()
+    const actionSpy = vi.fn((_variables, options) => {
+      options?.onError?.(new Error('后端返回 500'))
+    })
+    vi.mocked(useApplySemanticAssetPackageAction).mockReturnValue({
+      mutate: actionSpy,
+      isPending: false,
+    } as never)
+
+    render(<BatchModelingWorkbench onOpenBuilder={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: '生成批量建设队列' }))
+    await screen.findByText('学情分析事实主题候选')
+    await user.click(screen.getByRole('button', { name: '暂缓' }))
+
+    expect(await screen.findByText('后端返回 500')).toBeInTheDocument()
   })
 })

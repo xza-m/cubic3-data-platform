@@ -81,6 +81,7 @@ export interface SemanticAssetPackage {
   status: SemanticAssetPackageStatus
   primary_action: string
   evidence: string[]
+  modeling_source?: Record<string, unknown>
   ontology_suggestions?: Array<Record<string, unknown>>
   cube_suggestions?: Record<string, unknown>
   field_candidates?: SemanticFieldCandidate[]

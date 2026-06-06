@@ -38,6 +38,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
   const [submittedScope, setSubmittedScope] = useState<BatchModelingScope | null>(null)
   const [project, setProject] = useState<SemanticBuildProject | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [manualFallback, setManualFallback] = useState(false)
   const [manualSource, setManualSource] = useState('manual_selected_source')
   const createProject = useCreateSemanticBuildProject()
@@ -53,10 +54,12 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
     setSubmitError(null)
     setProject(null)
     try {
+      const batchRunId = createBatchRunId()
       const created = await createProject.mutateAsync({
         name: scope.businessDomain,
         business_domain: scope.businessDomain,
         scope: {
+          batch_run_id: batchRunId,
           source_count: scope.sourceCount,
           strategy: scope.strategy,
           include_existing_semantics: scope.includeExistingSemantics,
@@ -77,6 +80,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
   }
 
   function handlePackageAction(item: SemanticAssetPackage, action: 'defer' | 'mark_duplicate') {
+    setActionError(null)
     applyPackageAction.mutate(
       {
         projectId: item.project_id,
@@ -91,6 +95,9 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
           if (isSemanticAssetPackageResult(result)) {
             setProject((current) => replaceProjectAssetPackage(current, result))
           }
+        },
+        onError: (error) => {
+          setActionError(error instanceof Error ? error.message : '候选资产操作失败')
         },
       },
     )
@@ -250,6 +257,11 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
 
             {hasGenerated ? (
               <div className="mt-4 grid gap-3">
+                {actionError ? (
+                  <div className="rounded-[8px] border px-3 py-2 text-[12px] text-danger" style={{ borderColor: 'var(--danger)' }}>
+                    {actionError}
+                  </div>
+                ) : null}
                 {queueItems.map((item) => {
                   const queueStatus = toBatchQueueStatus(item.status)
                   const queueItem = toBatchQueueItem(item)
@@ -297,7 +309,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                         <Button
                           size="sm"
                           variant="default"
-                          disabled={!canOpenBuilder}
+                          disabled={!canOpenBuilder || isDeferred || isDuplicate}
                           onClick={() => {
                             if (canOpenBuilder) onOpenBuilder(item)
                           }}
@@ -347,7 +359,14 @@ function toBatchQueueItem(item: SemanticAssetPackage): BatchModelingQueueItem {
     status: toSharedBatchQueueStatus(status),
     primaryAction: toBatchQueuePrimaryAction(item.primary_action),
     evidence: item.evidence,
+    modelingSource: item.modeling_source,
   }
+}
+
+function createBatchRunId(): string {
+  const timestamp = Date.now().toString(36)
+  const random = Math.random().toString(36).slice(2, 8) || '000000'
+  return `run-${timestamp}-${random}`
 }
 
 function toBatchQueueStatus(status: SemanticAssetPackage['status']): WorkbenchQueueStatus {

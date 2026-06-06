@@ -21,5 +21,12 @@ describe('browser E2E fixture client', () => {
     })
     expect(replied.data.data.workbench_state).toBeTruthy()
     expect(replied.data.data.workbench_state.semantic_canvas.objects[0].name).toBe('student_comment')
+
+    const releasePreview = await client.post(`/semantic/modeling-copilot/sessions/${session.id}/release-preview`, {
+      sample_questions: ['昨天评论数是多少？'],
+    })
+    expect(releasePreview.data.data.workbench_state.release_preview.target).toBe('semantic_center')
+    expect(releasePreview.data.data.workbench_state.release_preview.compiled_sql).toBe('')
+    expect(releasePreview.data.data.workbench_state.release_preview.gateway_validation.status).toBe('not_configured')
   })
 })

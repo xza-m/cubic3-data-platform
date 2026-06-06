@@ -44,6 +44,7 @@ vi.mock('@v2/api/semantic', () => ({
   publishDomain: vi.fn(),
   publishSemanticModelingCopilotProposal: vi.fn(),
   publishSemanticModelingProposal: vi.fn(),
+  previewSemanticModelingCopilotRelease: vi.fn(),
   previewSemanticModelingCopilotSandbox: vi.fn(),
   readSemanticFile: vi.fn(),
   renameSemanticModelingCopilotSession: vi.fn(),
@@ -106,6 +107,7 @@ import {
   useConfirmSemanticModelingCopilotAssumption,
   useAcceptSemanticModelingCopilotCubeDraft,
   usePreviewSemanticModelingCopilotSandbox,
+  usePreviewSemanticModelingCopilotRelease,
   useSaveSemanticModelingCopilotProposal,
   usePublishSemanticModelingCopilotProposal,
   useUpdateSemanticModelingCopilotSpec,
@@ -555,6 +557,7 @@ describe('semantic - modeling copilot sessions', () => {
     ok(api.confirmSemanticModelingCopilotAssumption as ReturnType<typeof vi.fn>, session)
     ok(api.acceptSemanticModelingCopilotCubeDraft as ReturnType<typeof vi.fn>, session)
     ok(api.previewSemanticModelingCopilotSandbox as ReturnType<typeof vi.fn>, session)
+    ok(api.previewSemanticModelingCopilotRelease as ReturnType<typeof vi.fn>, session)
     ok(api.saveSemanticModelingCopilotProposal as ReturnType<typeof vi.fn>, session)
     ok(api.publishSemanticModelingCopilotProposal as ReturnType<typeof vi.fn>, session)
     ok(api.patchSemanticModelingCopilotSpec as ReturnType<typeof vi.fn>, session)
@@ -591,6 +594,14 @@ describe('semantic - modeling copilot sessions', () => {
       await preview.result.current.mutateAsync({ sessionId: 's1', body: { dry_run: true } })
     })
 
+    const releasePreview = renderHook(() => usePreviewSemanticModelingCopilotRelease(), { wrapper })
+    await act(async () => {
+      await releasePreview.result.current.mutateAsync({
+        sessionId: 's1',
+        body: { sample_questions: ['昨天评论数是多少？'] },
+      })
+    })
+
     const save = renderHook(() => useSaveSemanticModelingCopilotProposal(), { wrapper })
     await act(async () => {
       await save.result.current.mutateAsync({ sessionId: 's1', body: { reviewer: 'test' } })
@@ -617,6 +628,9 @@ describe('semantic - modeling copilot sessions', () => {
     expect(api.confirmSemanticModelingCopilotAssumption).toHaveBeenCalledWith('s1', { confirmation_id: 'c1', value: true })
     expect(api.acceptSemanticModelingCopilotCubeDraft).toHaveBeenCalledWith('s1', { source: 'cube' })
     expect(api.previewSemanticModelingCopilotSandbox).toHaveBeenCalledWith('s1', { dry_run: true })
+    expect(api.previewSemanticModelingCopilotRelease).toHaveBeenCalledWith('s1', {
+      sample_questions: ['昨天评论数是多少？'],
+    })
     expect(api.saveSemanticModelingCopilotProposal).toHaveBeenCalledWith('s1', { reviewer: 'test' })
     expect(api.publishSemanticModelingCopilotProposal).toHaveBeenCalledWith('s1', { publish_targets: { cube: true } })
     expect(api.patchSemanticModelingCopilotSpec).toHaveBeenCalledWith('s1', { spec: { spec_version: 'v1' } })

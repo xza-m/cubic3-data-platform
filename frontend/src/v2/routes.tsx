@@ -41,6 +41,15 @@ function LegacyRedirect({ to }: { to: string }) {
   return <Navigate to={`${resolved}${search}${hash}`} replace />
 }
 
+function ModelingCopilotSessionRedirect() {
+  const { sessionId } = useParams<{ sessionId?: string }>()
+  const { search, hash } = useLocation()
+  const nextSearch = new URLSearchParams(search)
+  if (sessionId) nextSearch.set('sessionId', sessionId)
+  const query = nextSearch.toString()
+  return <Navigate to={`/semantic/modeling-workbench/quick${query ? `?${query}` : ''}${hash}`} replace />
+}
+
 // ── 已实现的页面 ──────────────────────────────────────────────────────────────
 const Login = lazy(() => import('@v2/pages/Login'))
 const Dashboard = lazy(() => import('@v2/pages/Dashboard'))
@@ -108,7 +117,7 @@ const OntologyMetrics = lazy(() => import('@v2/pages/semantic/ontology/Metrics')
 const OntologyRelations = lazy(() => import('@v2/pages/semantic/ontology/Relations'))
 const OntologyGovernance = lazy(() => import('@v2/pages/semantic/ontology/Governance'))
 const DevTools = lazy(() => import('@v2/pages/semantic/devtools/DevTools'))
-const SemanticModelingCopilot = lazy(() => import('@v2/pages/semantic/modeling-copilot/ModelingAgent'))
+const SemanticModelingWorkbench = lazy(() => import('@v2/pages/semantic/modeling-copilot/SemanticModelingWorkbench'))
 const Assets = lazy(() => import('@v2/pages/semantic/assets/Assets'))
 const AssetTables = lazy(() => import('@v2/pages/semantic/assets/Tables'))
 const AssetFields = lazy(() => import('@v2/pages/semantic/assets/Fields'))
@@ -298,9 +307,13 @@ export default function AppRoutes() {
             {/* 语义诊断工作台 */}
             <Route path="workbench" element={wrap(<DevTools />)} />
 
-            {/* 顶层建模助手 Copilot 任务流：不归属于 Cube 层级 */}
-            <Route path="modeling-copilot/new" element={wrap(<SemanticModelingCopilot />)} />
-            <Route path="modeling-copilot/:sessionId" element={wrap(<SemanticModelingCopilot />)} />
+            {/* 顶层语义建设工作台：不归属于 Cube 层级 */}
+            <Route path="modeling-workbench" element={wrap(<SemanticModelingWorkbench />)} />
+            <Route path="modeling-workbench/quick" element={wrap(<SemanticModelingWorkbench />)} />
+            <Route path="modeling-workbench/:projectId/candidate/:candidateId" element={wrap(<SemanticModelingWorkbench />)} />
+            <Route path="modeling-copilot/new" element={<Navigate to="/semantic/modeling-workbench/quick" replace />} />
+            <Route path="modeling-copilot/batch" element={<Navigate to="/semantic/modeling-workbench" replace />} />
+            <Route path="modeling-copilot/:sessionId" element={<ModelingCopilotSessionRedirect />} />
 
             {/* 数据资产底座 */}
             <Route path="assets">

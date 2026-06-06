@@ -1029,6 +1029,13 @@ export const previewSemanticModelingCopilotSandbox = (sessionId: string, body?: 
     MODELING_COPILOT_LONG_REQUEST,
   )
 
+export const previewSemanticModelingCopilotRelease = (sessionId: string, body?: Record<string, unknown>) =>
+  post<SemanticModelingCopilotSession>(
+    `/semantic/modeling-copilot/sessions/${sessionId}/release-preview`,
+    body,
+    MODELING_COPILOT_LONG_REQUEST,
+  )
+
 export const saveSemanticModelingCopilotProposal = (sessionId: string, body?: Record<string, unknown>) =>
   post<SemanticModelingCopilotSession>(
     `/semantic/modeling-copilot/sessions/${sessionId}/save-proposal`,

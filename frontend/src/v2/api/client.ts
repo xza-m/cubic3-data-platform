@@ -265,6 +265,57 @@ function browserE2eFixtureData(method: string, path: string, body: Record<string
       },
     }
   }
+  if (method === 'POST' && /^\/semantic\/modeling-copilot\/sessions\/[^/]+\/release-preview$/.test(path)) {
+    const sessionId = path.split('/')[4] || 'fixture_modeling_session'
+    return {
+      id: sessionId,
+      user_goal: '创建学生评论语义模型',
+      entry_type: 'business_question',
+      status: 'active',
+      state: 'ready_to_publish',
+      conversation: [
+        { role: 'assistant', content: '已生成发布前校验预演，发布目标为语义中心。' },
+      ],
+      workbench_state: {
+        agent_message: '已生成发布前校验预演，发布目标为语义中心。',
+        semantic_canvas: {
+          objects: [{ id: 'student_comment', name: 'student_comment', title: '学生评论', status: 'draft' }],
+          metrics: [{ id: 'student_comment_total_count', name: 'student_comment_total_count', title: '学生评论总数' }],
+          dimensions: [],
+          bindings: [],
+          policies: [],
+        },
+        release_preview: {
+          target: 'semantic_center',
+          semantic_compile: {
+            status: 'not_configured',
+            message: '语义中心编译预演未配置，未生成物理 SQL。',
+          },
+          compiled_sql: '',
+          release_diff: { added: ['cube.student_comment'], changed: [], removed: [] },
+          impact_summary: {
+            affected_assets: ['cube.student_comment'],
+            affected_consumers: ['Data Agent', 'BI', '数据分析'],
+            risk_level: 'low',
+          },
+          gateway_validation: {
+            status: 'not_configured',
+            message: '等待语义中心返回物理 SQL，未调用 gateway SQL dry-run。',
+          },
+          consumer_validation: {
+            status: 'pending',
+            samples: Array.isArray(body.sample_questions)
+              ? body.sample_questions.map((question) => ({
+                  question: String(question),
+                  consumer: 'semantic_center',
+                  status: 'pending_gateway_validation',
+                }))
+              : [],
+          },
+        },
+      },
+    }
+  }
   if (method === 'GET') return { items: [], total: 0, page: 1, page_size: 20 }
   return {}
 }

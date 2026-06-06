@@ -19,12 +19,19 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type ElementType,
   type KeyboardEvent,
   type RefObject,
   type ReactNode,
+  type SetStateAction,
 } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   ArrowUp,
   Bot,
@@ -59,6 +66,7 @@ import {
   useToast,
   type ChipTone,
 } from "@v2/components/ui";
+import { t } from "@v2/i18n";
 import { AppError } from "@v2/api/types";
 import type {
   AgentRuntimeManagementSnapshot,
@@ -160,7 +168,10 @@ const SESSION_PAGE_SIZE = 8;
 
 interface ModelingAgentProps {
   workbenchContext?: WorkbenchCandidateState | null;
+  embeddedInWorkbench?: boolean;
 }
+
+type CubeDraftAcceptanceMode = "explicit" | "candidate_locked";
 
 function buildWorkbenchInitialGoal(context: WorkbenchCandidateState | null): string {
   if (!context) return "";
@@ -181,11 +192,17 @@ function toCopilotWorkbenchContext(context: WorkbenchCandidateState): Record<str
     grain: context.grain,
     risk: context.risk,
     evidence: context.evidence,
+    ...(context.modelingSource ? { modeling_source: context.modelingSource } : {}),
   };
 }
 
-export default function ModelingAgent({ workbenchContext = null }: ModelingAgentProps) {
+export default function ModelingAgent({
+  workbenchContext = null,
+  embeddedInWorkbench = false,
+}: ModelingAgentProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const toast = useToast();
 
@@ -195,8 +212,14 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
     [sessionsQ.data?.items],
   );
 
+  const querySessionId = searchParams.get("sessionId");
+  const [workbenchSessionId, setWorkbenchSessionId] = useState<string | null>(
+    querySessionId,
+  );
   const activeSessionId =
-    routeSessionId && routeSessionId !== "new" ? routeSessionId : null;
+    routeSessionId && routeSessionId !== "new"
+      ? routeSessionId
+      : workbenchSessionId;
   const sessionQ = useSemanticModelingCopilotSession(
     activeSessionId ?? undefined,
   );
@@ -258,6 +281,46 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
         workbenchContext.grain,
       ].join(":")
     : "";
+
+  useEffect(() => {
+    setWorkbenchSessionId(querySessionId);
+  }, [querySessionId]);
+
+  const openSession = useCallback(
+    (sessionId: string, options?: { replace?: boolean }) => {
+      if (!embeddedInWorkbench) {
+        navigate(`/semantic/modeling-copilot/${sessionId}`, options);
+        return;
+      }
+      setWorkbenchSessionId(sessionId);
+      const nextSearch = new URLSearchParams(location.search);
+      nextSearch.set("sessionId", sessionId);
+      const query = nextSearch.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: query ? `?${query}` : "",
+        },
+        options,
+      );
+    },
+    [embeddedInWorkbench, location.pathname, location.search, navigate],
+  );
+
+  const clearWorkbenchSession = useCallback(() => {
+    setWorkbenchSessionId(null);
+    if (!embeddedInWorkbench) return;
+    const nextSearch = new URLSearchParams(location.search);
+    nextSearch.delete("sessionId");
+    const query = nextSearch.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: query ? `?${query}` : "",
+      },
+      { replace: true },
+    );
+  }, [embeddedInWorkbench, location.pathname, location.search, navigate]);
   const prefilledContextRef = useRef<string | null>(null);
   const prefilledDraftRef = useRef<string>("");
   const recentSessions = useMemo(
@@ -286,9 +349,13 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
   // ── 会话不存在时回到新建页 ──────────────────────────────────────────────
   useEffect(() => {
     if (sessionQ.isError) {
-      navigate("/semantic/modeling-workbench/quick", { replace: true });
+      if (embeddedInWorkbench) {
+        clearWorkbenchSession();
+      } else {
+        navigate("/semantic/modeling-workbench/quick", { replace: true });
+      }
     }
-  }, [sessionQ.isError, navigate]);
+  }, [clearWorkbenchSession, embeddedInWorkbench, navigate, sessionQ.isError]);
 
   useEffect(() => {
     setSessionPage((page) => Math.min(page, totalSessionPages - 1));
@@ -325,7 +392,7 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
             ? { workbench_context: toCopilotWorkbenchContext(workbenchContext) }
             : {}),
         });
-        navigate(`/semantic/modeling-copilot/${target.id}`);
+        openSession(target.id);
       }
       await sendMessage.mutateAsync({ sessionId: target.id, message: text });
       setDraft("");
@@ -337,7 +404,7 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
         setLocalError(formatCopilotError(error));
       }
     }
-  }, [draft, session, createSession, sendMessage, navigate, workbenchContext]);
+  }, [draft, session, createSession, sendMessage, openSession, workbenchContext]);
 
   const handleConfirm = async (
     confirmation: CopilotConfirmation,
@@ -506,7 +573,11 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
       await deleteSession.mutateAsync(target.id);
       toast.show({ tone: "success", title: "会话已删除" });
       if (target.id === activeSessionId) {
-        navigate("/semantic/modeling-workbench/quick");
+        if (embeddedInWorkbench) {
+          clearWorkbenchSession();
+        } else {
+          navigate("/semantic/modeling-workbench/quick");
+        }
       }
     } catch (error) {
       toast.show({
@@ -560,6 +631,16 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
         | Record<string, unknown>
         | undefined
     )?.status === "published",
+  );
+  const isBatchCandidateMode = workbenchContext?.workbenchMode === "batch";
+  const sourceCandidateActionsLocked = Boolean(
+    isBatchCandidateMode &&
+      (hasReviewableSpec || session?.current_proposal_id || isPublished),
+  );
+  const cubeDraftAcceptanceMode: CubeDraftAcceptanceMode =
+    isBatchCandidateMode ? "candidate_locked" : "explicit";
+  const cubeDraftChangeActionsLocked = Boolean(
+    isBatchCandidateMode && (session?.current_proposal_id || isPublished),
   );
   const showSandbox =
     !!session && hasReviewableSpec && !isPending && !isPublished;
@@ -750,123 +831,22 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
         />
       </Dialog>
 
-      {/* 左栏：sessions 列表 */}
-      <aside
-        className="flex w-[256px] shrink-0 flex-col border-r"
-        style={{
-          background: "var(--bg-surface)",
-          borderColor: "var(--border)",
-        }}
-      >
-        <div
-          className="flex items-center gap-2 border-b px-3 py-3"
-          style={{ borderColor: "var(--border)" }}
-        >
-          <div className="flex items-center gap-2 text-[13px] font-semibold text-1">
-            <span
-              className="flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold text-white"
-              style={{
-                background: "linear-gradient(135deg, var(--accent), #7B5BFF)",
-              }}
-            >
-              C³
-            </span>
-            <span>语义冷启动</span>
-          </div>
-        </div>
-        <div className="px-3 py-2.5">
-          <button
-            type="button"
-            className="group flex w-full items-center gap-2.5 rounded-[10px] border px-3 py-2.5 text-left transition hover:border-[color:var(--accent)]"
-            style={{
-              borderColor: "rgba(37,99,235,0.22)",
-              background: "var(--accent-soft)",
-            }}
-            onClick={() => navigate("/semantic/modeling-workbench/quick")}
-          >
-            <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-white"
-              style={{
-                background: "linear-gradient(135deg, var(--accent), #7B5BFF)",
-              }}
-            >
-              <Sparkles size={15} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold text-1">
-                语义资产冷启动
-              </span>
-              <span className="block truncate text-[11px] text-3">
-                新建语义资产会话
-              </span>
-            </span>
-            <TrendingUp size={14} className="shrink-0 text-accent" />
-          </button>
-        </div>
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-thin px-2 pb-2">
-          <div className="flex items-center justify-between px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-3">
-            <span>最近 3 天</span>
-            <span>{recentSessions.length}</span>
-          </div>
-          {sessionsQ.isLoading ? (
-            <div className="px-2 py-3 text-[12px] text-3">加载中…</div>
-          ) : recentSessions.length === 0 ? (
-            <div className="px-2 py-3 text-[12px] text-3">
-              近 3 天暂无会话
-              {hiddenOlderSessions > 0
-                ? `，已隐藏 ${hiddenOlderSessions} 条更早记录`
-                : ""}
-            </div>
-          ) : (
-            <>
-              {visibleSessions.map((s) => (
-                <SessionItem
-                  key={s.id}
-                  session={s}
-                  active={s.id === activeSessionId}
-                  onSelect={() =>
-                    navigate(`/semantic/modeling-copilot/${s.id}`)
-                  }
-                  onRename={() => void handleRenameSession(s)}
-                  onDelete={() => void handleDeleteSession(s)}
-                />
-              ))}
-              {recentSessions.length > SESSION_PAGE_SIZE ? (
-                <div
-                  className="mt-2 flex items-center justify-between border-t px-2 pt-2 text-[11px]"
-                  style={{ borderColor: "var(--border)" }}
-                >
-                  <button
-                    type="button"
-                    className="text-3 disabled:text-4"
-                    disabled={sessionPage === 0}
-                    onClick={() =>
-                      setSessionPage((page) => Math.max(0, page - 1))
-                    }
-                  >
-                    上一页
-                  </button>
-                  <span className="text-3">
-                    {sessionPage + 1}/{totalSessionPages}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-3 disabled:text-4"
-                    disabled={sessionPage >= totalSessionPages - 1}
-                    onClick={() =>
-                      setSessionPage((page) =>
-                        Math.min(totalSessionPages - 1, page + 1),
-                      )
-                    }
-                  >
-                    下一页
-                  </button>
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
-      </aside>
+      {!embeddedInWorkbench ? (
+        <SessionRail
+          activeSessionId={activeSessionId}
+          hiddenOlderSessions={hiddenOlderSessions}
+          onCreate={() => navigate("/semantic/modeling-workbench/quick")}
+          onDelete={handleDeleteSession}
+          onRename={handleRenameSession}
+          onSelect={(target) => openSession(target.id)}
+          recentSessions={recentSessions}
+          sessionPage={sessionPage}
+          sessionsLoading={sessionsQ.isLoading}
+          setSessionPage={setSessionPage}
+          totalSessionPages={totalSessionPages}
+          visibleSessions={visibleSessions}
+        />
+      ) : null}
 
       {/* 主区：topbar + 建设主流程 + 右侧 Artifact Panel */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -920,10 +900,15 @@ export default function ModelingAgent({ workbenchContext = null }: ModelingAgent
                     onAcceptCubeDraft={handleAcceptCubeDraft}
                     onSwapCubeSource={handleSwapCubeSource}
                     onOpenWorkbench={openSpecArtifact}
+                    onReleasePreview={handleReleasePreview}
                     onPublish={handlePublish}
                     isPending={isPending}
+                    isReleasePreviewing={previewRelease.isPending}
                     isPublishing={publishProposal.isPending}
                     isPublished={isPublished}
+                    sourceCandidateActionsLocked={sourceCandidateActionsLocked}
+                    cubeDraftAcceptanceMode={cubeDraftAcceptanceMode}
+                    cubeDraftChangeActionsLocked={cubeDraftChangeActionsLocked}
                   />
                   <section
                     data-testid="field-candidate-main-canvas"
@@ -1072,6 +1057,149 @@ function BuilderStepper({ activeStepId }: { activeStepId: BuilderStepId }) {
         })}
       </ol>
     </nav>
+  );
+}
+
+function SessionRail({
+  activeSessionId,
+  hiddenOlderSessions,
+  onCreate,
+  onDelete,
+  onRename,
+  onSelect,
+  recentSessions,
+  sessionPage,
+  sessionsLoading,
+  setSessionPage,
+  totalSessionPages,
+  visibleSessions,
+}: {
+  activeSessionId: string | null;
+  hiddenOlderSessions: number;
+  onCreate: () => void;
+  onDelete: (target: SemanticModelingCopilotSession) => void;
+  onRename: (target: SemanticModelingCopilotSession) => void;
+  onSelect: (target: SemanticModelingCopilotSession) => void;
+  recentSessions: SemanticModelingCopilotSession[];
+  sessionPage: number;
+  sessionsLoading: boolean;
+  setSessionPage: Dispatch<SetStateAction<number>>;
+  totalSessionPages: number;
+  visibleSessions: SemanticModelingCopilotSession[];
+}) {
+  return (
+    <aside
+      className="flex w-[256px] shrink-0 flex-col border-r"
+      style={{
+        background: "var(--bg-surface)",
+        borderColor: "var(--border)",
+      }}
+    >
+      <div
+        className="flex items-center gap-2 border-b px-3 py-3"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-1">
+          <span
+            className="flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold text-white"
+            style={{
+              background: "linear-gradient(135deg, var(--accent), #7B5BFF)",
+            }}
+          >
+            C³
+          </span>
+          <span>语义冷启动</span>
+        </div>
+      </div>
+      <div className="px-3 py-2.5">
+        <button
+          type="button"
+          className="group flex w-full items-center gap-2.5 rounded-[10px] border px-3 py-2.5 text-left transition hover:border-[color:var(--accent)]"
+          style={{
+            borderColor: "rgba(37,99,235,0.22)",
+            background: "var(--accent-soft)",
+          }}
+          onClick={onCreate}
+        >
+          <span
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-white"
+            style={{
+              background: "linear-gradient(135deg, var(--accent), #7B5BFF)",
+            }}
+          >
+            <Sparkles size={15} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13px] font-semibold text-1">
+              语义资产冷启动
+            </span>
+            <span className="block truncate text-[11px] text-3">
+              新建语义资产会话
+            </span>
+          </span>
+          <TrendingUp size={14} className="shrink-0 text-accent" />
+        </button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-thin px-2 pb-2">
+        <div className="flex items-center justify-between px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-3">
+          <span>最近 3 天</span>
+          <span>{recentSessions.length}</span>
+        </div>
+        {sessionsLoading ? (
+          <div className="px-2 py-3 text-[12px] text-3">加载中…</div>
+        ) : recentSessions.length === 0 ? (
+          <div className="px-2 py-3 text-[12px] text-3">
+            近 3 天暂无会话
+            {hiddenOlderSessions > 0
+              ? `，已隐藏 ${hiddenOlderSessions} 条更早记录`
+              : ""}
+          </div>
+        ) : (
+          <>
+            {visibleSessions.map((s) => (
+              <SessionItem
+                key={s.id}
+                session={s}
+                active={s.id === activeSessionId}
+                onSelect={() => onSelect(s)}
+                onRename={() => onRename(s)}
+                onDelete={() => onDelete(s)}
+              />
+            ))}
+            {recentSessions.length > SESSION_PAGE_SIZE ? (
+              <div
+                className="mt-2 flex items-center justify-between border-t px-2 pt-2 text-[11px]"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <button
+                  type="button"
+                  className="text-3 disabled:text-4"
+                  disabled={sessionPage === 0}
+                  onClick={() => setSessionPage((page) => Math.max(0, page - 1))}
+                >
+                  上一页
+                </button>
+                <span className="text-3">
+                  {sessionPage + 1}/{totalSessionPages}
+                </span>
+                <button
+                  type="button"
+                  className="text-3 disabled:text-4"
+                  disabled={sessionPage >= totalSessionPages - 1}
+                  onClick={() =>
+                    setSessionPage((page) =>
+                      Math.min(totalSessionPages - 1, page + 1),
+                    )
+                  }
+                >
+                  下一页
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -4393,10 +4521,15 @@ function Thread({
   onAcceptCubeDraft,
   onSwapCubeSource,
   onOpenWorkbench,
+  onReleasePreview,
   onPublish,
   isPending,
+  isReleasePreviewing,
   isPublishing,
   isPublished,
+  sourceCandidateActionsLocked,
+  cubeDraftAcceptanceMode,
+  cubeDraftChangeActionsLocked,
 }: {
   session: SemanticModelingCopilotSession;
   evidenceOpen: Record<string, boolean>;
@@ -4408,10 +4541,15 @@ function Thread({
   onAcceptCubeDraft: () => void;
   onSwapCubeSource: (currentTable?: string) => void;
   onOpenWorkbench: () => void;
+  onReleasePreview: () => void;
   onPublish: () => void;
   isPending: boolean;
+  isReleasePreviewing: boolean;
   isPublishing: boolean;
   isPublished: boolean;
+  sourceCandidateActionsLocked: boolean;
+  cubeDraftAcceptanceMode: CubeDraftAcceptanceMode;
+  cubeDraftChangeActionsLocked: boolean;
 }) {
   const conversation = session.conversation ?? [];
   const cards = useMemo(() => buildAssistantCards(session), [session]);
@@ -4451,10 +4589,15 @@ function Thread({
           onAcceptCubeDraft={onAcceptCubeDraft}
           onSwapCubeSource={onSwapCubeSource}
           onOpenWorkbench={onOpenWorkbench}
+          onReleasePreview={onReleasePreview}
           onPublish={onPublish}
           workbenchState={session.workbench_state}
+          isReleasePreviewing={isReleasePreviewing}
           isPublishing={isPublishing}
           isPublished={isPublished}
+          sourceCandidateActionsLocked={sourceCandidateActionsLocked}
+          cubeDraftAcceptanceMode={cubeDraftAcceptanceMode}
+          cubeDraftChangeActionsLocked={cubeDraftChangeActionsLocked}
         />
       ))}
       {isPending ? <TypingTurn /> : null}
@@ -4476,10 +4619,15 @@ function Turn({
   onAcceptCubeDraft,
   onSwapCubeSource,
   onOpenWorkbench,
+  onReleasePreview,
   onPublish,
   workbenchState,
+  isReleasePreviewing,
   isPublishing,
   isPublished,
+  sourceCandidateActionsLocked,
+  cubeDraftAcceptanceMode,
+  cubeDraftChangeActionsLocked,
 }: {
   turn: SemanticModelingCopilotMessage;
   isLastAssistant: boolean;
@@ -4494,10 +4642,15 @@ function Turn({
   onAcceptCubeDraft: () => void;
   onSwapCubeSource: (currentTable?: string) => void;
   onOpenWorkbench: () => void;
+  onReleasePreview: () => void;
   onPublish: () => void;
   workbenchState?: SemanticModelingCopilotSession["workbench_state"];
+  isReleasePreviewing: boolean;
   isPublishing: boolean;
   isPublished: boolean;
+  sourceCandidateActionsLocked: boolean;
+  cubeDraftAcceptanceMode: CubeDraftAcceptanceMode;
+  cubeDraftChangeActionsLocked: boolean;
 }) {
   const isUser = turn.role === "user";
   return (
@@ -4514,7 +4667,7 @@ function Turn({
       </span>
       <div className="min-w-0 flex-1">
         <div className="mb-1 text-[12px] font-semibold text-1">
-          {isUser ? "You" : "Copilot"}
+          {isUser ? "我" : "AI 建模助手"}
         </div>
         <div className="whitespace-pre-wrap text-[14px] leading-6 text-1">
           {turn.content}
@@ -4532,10 +4685,15 @@ function Turn({
                 onAcceptCubeDraft={onAcceptCubeDraft}
                 onSwapCubeSource={onSwapCubeSource}
                 onOpenWorkbench={onOpenWorkbench}
+                onReleasePreview={onReleasePreview}
                 onPublish={onPublish}
                 workbenchState={workbenchState}
+                isReleasePreviewing={isReleasePreviewing}
                 isPublishing={isPublishing}
                 isPublished={isPublished}
+                sourceCandidateActionsLocked={sourceCandidateActionsLocked}
+                cubeDraftAcceptanceMode={cubeDraftAcceptanceMode}
+                cubeDraftChangeActionsLocked={cubeDraftChangeActionsLocked}
               />
             ))}
           </div>
@@ -4584,7 +4742,7 @@ function TypingTurn() {
         C³
       </span>
       <div className="min-w-0 flex-1">
-        <div className="mb-1 text-[12px] font-semibold text-1">Copilot</div>
+        <div className="mb-1 text-[12px] font-semibold text-1">AI 建模助手</div>
         <div className="inline-flex items-center gap-1 py-1 text-3">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--text-3)]" />
           <span
@@ -4612,10 +4770,15 @@ function CardRenderer({
   onAcceptCubeDraft,
   onSwapCubeSource,
   onOpenWorkbench,
+  onReleasePreview,
   onPublish,
   workbenchState,
+  isReleasePreviewing,
   isPublishing,
   isPublished,
+  sourceCandidateActionsLocked,
+  cubeDraftAcceptanceMode,
+  cubeDraftChangeActionsLocked,
 }: {
   card: AssistantCard;
   onConfirm: (confirmation: CopilotConfirmation) => void;
@@ -4625,10 +4788,15 @@ function CardRenderer({
   onAcceptCubeDraft: () => void;
   onSwapCubeSource: (currentTable?: string) => void;
   onOpenWorkbench: () => void;
+  onReleasePreview: () => void;
   onPublish: () => void;
   workbenchState?: SemanticModelingCopilotSession["workbench_state"];
+  isReleasePreviewing: boolean;
   isPublishing: boolean;
   isPublished: boolean;
+  sourceCandidateActionsLocked: boolean;
+  cubeDraftAcceptanceMode: CubeDraftAcceptanceMode;
+  cubeDraftChangeActionsLocked: boolean;
 }) {
   if (card.type === "discovered") {
     return <DiscoveredCard canvas={card.canvas} candidates={card.candidates} />;
@@ -4638,6 +4806,7 @@ function CardRenderer({
       <SourceCandidateCard
         candidates={card.candidates}
         onConfirm={onConfirmSourceCandidate}
+        actionsLocked={sourceCandidateActionsLocked}
       />
     );
   }
@@ -4650,6 +4819,8 @@ function CardRenderer({
         onAccept={onAcceptCubeDraft}
         onSwapSource={() => onSwapCubeSource(card.candidateTable)}
         onOpenWorkbench={onOpenWorkbench}
+        acceptanceMode={cubeDraftAcceptanceMode}
+        changeActionsLocked={cubeDraftChangeActionsLocked}
       />
     );
   }
@@ -4676,7 +4847,9 @@ function CardRenderer({
         nextSteps={card.nextSteps}
         published={card.published}
         publishResult={card.publishResult}
+        onReleasePreview={onReleasePreview}
         onPublish={onPublish}
+        isReleasePreviewing={isReleasePreviewing}
         isPublishing={isPublishing}
         isPublished={isPublished}
         workbenchState={workbenchState}
@@ -4793,9 +4966,11 @@ function DiscoveredCard({
 function SourceCandidateCard({
   candidates,
   onConfirm,
+  actionsLocked = false,
 }: {
   candidates: CopilotSourceCandidate[];
   onConfirm: (candidate: CopilotSourceCandidate) => void;
+  actionsLocked?: boolean;
 }) {
   return (
     <CardShell
@@ -4880,13 +5055,22 @@ function SourceCandidateCard({
                     <DataAssetCandidateEvidence evidence={dataAssetEvidence} />
                   ) : null}
                   <div className="mt-2">
-                    <Button
-                      size="sm"
-                      variant="primary"
-                      onClick={() => onConfirm(candidate)}
-                    >
-                      <CheckCircle2 size={12} /> 使用此来源
-                    </Button>
+                    {actionsLocked ? (
+                      <Chip tone="success">
+                        {t(
+                          "semantic.modeling.copilot.sourceCandidate.confirmed",
+                          "来源已确认",
+                        )}
+                      </Chip>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => onConfirm(candidate)}
+                      >
+                        <CheckCircle2 size={12} /> 使用此来源
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -5220,7 +5404,9 @@ function SavedCard({
   nextSteps: _nextSteps,
   published,
   publishResult,
+  onReleasePreview,
   onPublish,
+  isReleasePreviewing,
   isPublishing,
   isPublished,
   workbenchState,
@@ -5230,7 +5416,9 @@ function SavedCard({
   nextSteps: SemanticModelingCopilotSession["workbench_state"]["next_steps"];
   published: boolean;
   publishResult?: Record<string, unknown>;
+  onReleasePreview: () => void;
   onPublish: () => void;
+  isReleasePreviewing: boolean;
   isPublishing: boolean;
   isPublished: boolean;
   workbenchState?: SemanticModelingCopilotSession["workbench_state"];
@@ -5251,6 +5439,8 @@ function SavedCard({
     hasProposal: Boolean(proposalId),
     published: published || isPublished,
   });
+  const needsReleasePreview =
+    !publishGuard.canPublish && publishGuard.reason.includes("发布预演");
 
   if (published || isPublished) {
     const cubeName = (
@@ -5326,6 +5516,17 @@ function SavedCard({
           </pre>
         ) : null}
         <div className="flex items-center gap-2 pt-1">
+          {needsReleasePreview ? (
+            <Button
+              data-testid="saved-card-release-preview"
+              size="sm"
+              variant="default"
+              onClick={onReleasePreview}
+              loading={isReleasePreviewing}
+            >
+              <FlaskConical size={12} /> 运行发布预演
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="primary"
@@ -5365,6 +5566,8 @@ function CubeDraftCard({
   onAccept,
   onSwapSource,
   onOpenWorkbench,
+  acceptanceMode = "explicit",
+  changeActionsLocked = false,
 }: {
   cube: Record<string, unknown>;
   candidateTable?: string;
@@ -5372,6 +5575,8 @@ function CubeDraftCard({
   onAccept: () => void;
   onSwapSource: () => void;
   onOpenWorkbench?: () => void;
+  acceptanceMode?: CubeDraftAcceptanceMode;
+  changeActionsLocked?: boolean;
 }) {
   const [showYaml, setShowYaml] = useState(false);
   const yamlText = useMemo(() => dumpCubeYaml(cube), [cube]);
@@ -5379,27 +5584,52 @@ function CubeDraftCard({
   const source = String(
     cube.source ?? cube.table ?? candidateTable ?? "未指定",
   );
-  const dimensions = Array.isArray(cube.dimensions)
-    ? cube.dimensions.length
-    : 0;
-  const measures = Array.isArray(cube.measures) ? cube.measures.length : 0;
+  const dimensions = collectionCount(cube.dimensions);
+  const measures = collectionCount(cube.measures);
+  const candidateLocked = acceptanceMode === "candidate_locked";
+  const showAcceptAction = !accepted && !candidateLocked;
+  const showSwapSourceAction = !accepted && !changeActionsLocked;
 
   return (
     <CardShell
       title={accepted ? "语义草稿（已接受）" : "建议新建语义资产"}
       icon={FileCode2}
       progress={
-        <Chip tone={accepted ? "success" : "warning"}>
-          {accepted ? "已锁定" : "待接受"}
+        <Chip tone={accepted || candidateLocked ? "success" : "warning"}>
+          {accepted
+            ? "已锁定"
+            : candidateLocked
+              ? t(
+                  "semantic.modeling.copilot.cubeDraft.candidateConfirmed",
+                  "候选已确认",
+                )
+              : "待接受"}
         </Chip>
       }
     >
       <div className="flex flex-col gap-2 px-4 py-3 text-[13px] leading-6">
         {!accepted ? (
           <div className="text-2 text-[12.5px]">
-            没有匹配到现成的语义资产，系统基于业务表为你生成了一份语义草稿。检查无误后可直接「
-            {BUILDER_ACTION_COPY.saveButton}
-            」生成待发布语义资产；也可以先接受草稿锁定当前语义配置。
+            {candidateLocked ? (
+              changeActionsLocked ? (
+                t(
+                  "semantic.modeling.copilot.cubeDraft.historyOnly",
+                  "已进入发布流程，历史语义草稿仅作为本次候选建设记录保留。",
+                )
+              ) : (
+                t(
+                  "semantic.modeling.copilot.cubeDraft.batchReady",
+                  "批量候选已确认来源，当前草稿可直接「{action}」生成待发布语义资产；需要调整时在右侧编辑语义配置。",
+                  { action: BUILDER_ACTION_COPY.saveButton },
+                )
+              )
+            ) : (
+              <>
+                没有匹配到现成的语义资产，系统基于业务表为你生成了一份语义草稿。检查无误后可直接「
+                {BUILDER_ACTION_COPY.saveButton}
+                」生成待发布语义资产；也可以先接受草稿锁定当前语义配置。
+              </>
+            )}
           </div>
         ) : null}
         <div className="flex flex-col gap-1 text-3 text-[12.5px]">
@@ -5433,7 +5663,7 @@ function CubeDraftCard({
           </pre>
         ) : null}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {!accepted ? (
+          {showAcceptAction ? (
             <Button size="sm" variant="primary" onClick={onAccept}>
               <CheckCircle2 size={12} /> 接受草稿
             </Button>
@@ -5443,20 +5673,36 @@ function CubeDraftCard({
               <Edit3 size={12} /> 在右侧编辑语义配置
             </Button>
           ) : null}
-          {!accepted ? (
+          {showSwapSourceAction ? (
             <Button size="sm" variant="default" onClick={onSwapSource}>
               <Edit3 size={12} /> 换一张源表
             </Button>
           ) : null}
           {!accepted ? (
             <span className="text-[11.5px] text-3">
-              在工作台直接改字段或换源表，语义配置自动校验；主按钮会应用当前草稿。
+              {candidateLocked
+                ? changeActionsLocked
+                  ? t(
+                      "semantic.modeling.copilot.cubeDraft.workflowLocked",
+                      "当前语义资产已进入后续流程。",
+                    )
+                  : t(
+                      "semantic.modeling.copilot.cubeDraft.mainActionAppliesCandidate",
+                      "主按钮会应用当前候选草稿。",
+                    )
+                : "在工作台直接改字段或换源表，语义配置自动校验；主按钮会应用当前草稿。"}
             </span>
           ) : null}
         </div>
       </div>
     </CardShell>
   );
+}
+
+function collectionCount(value: unknown): number {
+  if (Array.isArray(value)) return value.length;
+  if (isRecord(value)) return Object.keys(value).length;
+  return 0;
 }
 
 function KvRow({ k, v }: { k: string; v: ReactNode }) {
@@ -5798,7 +6044,7 @@ function Composer({
             onChange={(event) => onChange(event.target.value)}
             placeholder={
               hasSession
-                ? "继续告诉 Copilot：补充口径、追加候选、或要求解释..."
+                ? "继续告诉 AI 建模助手：补充口径、追加候选、或要求解释..."
                 : "描述你想分析的数据，例如：「查询最近 7 天学生评论数，按学校汇总」"
             }
             onKeyDown={handleKeyDown}

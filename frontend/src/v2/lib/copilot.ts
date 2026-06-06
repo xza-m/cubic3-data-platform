@@ -54,13 +54,14 @@ export function buildAssistantCards(session: SemanticModelingCopilotSession): As
   if (state.sandbox_preview) {
     cards.push({ type: 'sandbox_result', preview: state.sandbox_preview })
   }
-  const proposalId = state.save_result?.proposal_id || state.proposal_summary?.id || session.current_proposal_id || undefined
+  const proposalSummary = asRecord(state.proposal_summary)
+  const proposalId = state.save_result?.proposal_id || proposalSummary?.id || session.current_proposal_id || undefined
   const publishResult = asRecord(state.publish_result)
-  if (proposalId || state.proposal_summary || publishResult) {
+  if (proposalId || publishResult) {
     cards.push({
       type: 'saved',
       proposalId: proposalId ? String(proposalId) : undefined,
-      proposalSummary: asRecord(state.proposal_summary) ?? undefined,
+      proposalSummary: proposalSummary ?? undefined,
       nextSteps: state.next_steps,
       published: publishResult?.status === 'published',
       publishResult: publishResult ?? undefined,
@@ -146,7 +147,7 @@ export function isCubeDraftAccepted(state?: SemanticModelingCopilotWorkbenchStat
 export function readinessLabel(session: SemanticModelingCopilotSession | null | undefined): string {
   if (!session) return '等你描述需求'
   const readiness = session.workbench_state?.readiness
-  if ((session.workbench_state?.publish_result as Record<string, unknown> | undefined)?.status === 'published') return '已发布 · Data Agent 可消费'
+  if ((session.workbench_state?.publish_result as Record<string, unknown> | undefined)?.status === 'published') return '已发布 · 消费者可验证'
   if (session.current_proposal_id) return '语义已就绪 · 待发布'
   const requiredCount = session.workbench_state?.required_confirmations?.length ?? 0
   if (requiredCount > 0) return `请确认 ${requiredCount} 项口径`

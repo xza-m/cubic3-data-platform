@@ -45,6 +45,7 @@ import {
   materializeView,
   publishDomain,
   publishSemanticModelingProposal,
+  previewSemanticModelingCopilotRelease,
   previewSemanticModelingCopilotSandbox,
   previewDomainContext,
   readSemanticFile,
@@ -382,6 +383,18 @@ export function usePreviewSemanticModelingCopilotSandbox() {
   return useMutation({
     mutationFn: ({ sessionId, body }: { sessionId: string; body?: Record<string, unknown> }) =>
       previewSemanticModelingCopilotSandbox(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+    },
+  })
+}
+
+export function usePreviewSemanticModelingCopilotRelease() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body?: Record<string, unknown> }) =>
+      previewSemanticModelingCopilotRelease(sessionId, body),
     onSuccess: (data) => {
       qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
       qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
