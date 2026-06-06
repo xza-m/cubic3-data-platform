@@ -3,7 +3,7 @@ doc_type: prd-index
 status: maintained
 source_of_truth: secondary
 owner: product
-last_reviewed: 2026-03-24
+last_reviewed: 2026-06-04
 ---
 
 # PRD 目录
@@ -25,6 +25,11 @@ last_reviewed: 2026-03-24
 - [语义层建设 PRD](semantic_layer_prd.md)
   - 语义层目标、数据模型、API 和演进设计的核心来源之一
   - 状态：高价值设计文档，但部分章节仍需结合当前实现辨别是否已落地
+- [语义建设工作台 PRD](semantic_cold_start_builder_prd.md)
+  - 聚焦数据建模工程师如何基于业务域、数仓表、字段证据和已有语义资产冷启动建设可发布到语义中心的语义资产包
+  - 状态：产品设计输入，当前收敛为统一“语义建设工作台”；快速单资产和批量冷启动只是同一工作台的两种模式。
+  - 首期统一入口为 `/semantic/modeling-workbench`；快速单资产模式为 `/semantic/modeling-workbench/quick`；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 仅作为兼容重定向入口
+  - 发布校验首期已提供只读 release-preview API 契约；前端发布预演面板已消费 `workbench_state.release_preview`，后端先把候选 Spec 投影为临时 runtime manifest 并复用 `ExecutionCompilerPreviewService -> QueryCompiler` 生成物理 SQL，再通过可注入 gateway SQL dry-run 适配器对接执行面
 - [语义平台生产级重构 Spec](semantic_platform_production_refactor_spec.md)
   - 跟踪方案 B 的生产级重构：SQL-only Registry、发布治理、Copilot 状态机、Runtime 快照、权限审计、测试隔离和三期任务规划
   - 状态：重构设计输入和进度跟踪入口，不代表当前已全部落地

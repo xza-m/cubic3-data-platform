@@ -122,7 +122,7 @@ Phase 1 当前已验证的数据中心主链路基线为：
 
 - 工作台：`/dashboard`
 - 查询分析中心：`/queries`
-- 建模助手 Copilot：`/semantic/modeling-copilot/new`
+- 语义建设工作台：`/semantic/modeling-workbench`（快速单资产入口为 `/semantic/modeling-workbench/quick`；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 仅保留兼容重定向）
 - 业务语义工作台：`/semantic/ontology`
 - 语义诊断工作台：`/semantic/workbench`
 
@@ -160,11 +160,12 @@ Phase 1 当前已验证的数据中心主链路基线为：
 - `/api/v1/execution-compiler/plan-preview`：返回统一执行计划预览结构
 - `/api/v1/execution-compiler/execute`：支持 `sql / retrieval / tool` 最小真实执行，并统一返回 `governance_trace / audit_trace_id`
 
-当前已落地的建模助手 Copilot 最小增强包括：
+当前已落地的语义建设工作台最小增强包括：
 
 - `/api/v1/semantic/modeling-copilot/sessions`
 - `/api/v1/semantic/modeling-copilot/sessions/<session_id>`
 - `/api/v1/semantic/modeling-copilot/sessions/<session_id>/messages`
+- `/api/v1/semantic/modeling-copilot/sessions/<session_id>/release-preview`
 - `/api/v1/semantic/modeling-agent/proposals`
 - `/api/v1/semantic/modeling-agent/proposals/<proposal_id>/validate`
 - `/api/v1/semantic/modeling-agent/proposals/<proposal_id>/publish`
@@ -304,6 +305,7 @@ python run_worker.py
 - 查询工作台、SQL Lab、元数据探查和预览走本仓 DataSource Adapter SPI
 - 正式用户 / Agent 发起、需要审计和治理的数仓查询统一提交到 `dw-query-gateway`；本仓不再启动查询执行 Worker
 - 网关观测页通过 `QUERY_GATEWAY_BASE_URL` 和 `QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN` 读取 `dw-query-gateway` telemetry / readyz，展示基础告警、队列、稳定性和最近执行记录
+- 语义建设工作台的发布预演先把候选 Spec 投影为临时 runtime manifest，并复用语义中心 `ExecutionCompilerPreviewService -> QueryCompiler` 编译生成物理 SQL，再通过 `QUERY_GATEWAY_SQL_DRY_RUN_PATH` 调用 `dw-query-gateway` 做 SQL dry-run；gateway 不接收 `semantic_spec`，未生成物理 SQL 时不会调用 gateway
 
 默认情况下，Vite 开发服务器运行在 `http://localhost:3000`。如果你没有启动 Nginx，而是直接让前端代理到 Flask，请显式设置：
 

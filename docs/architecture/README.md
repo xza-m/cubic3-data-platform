@@ -101,13 +101,13 @@ last_reviewed: 2026-06-03
     - `/api/v1/semantic-router/execute-plan` 与 `/api/v1/execution-compiler/execute` 命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
     - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 过滤
     - `/api/docs/openapi.json` 作为唯一 OpenAPI 输出入口，当前已为第一批只读 / 预览 / 审计接口补入 Agent 风险扩展和字段级 `data` schema；`make typecheck-contracts` 负责阻断核心契约缺失、重复 `operationId` 与非法 Agent 扩展字段
-  - 当前建模助手统一收敛为 Modeling Copilot 契约：
-    - `/semantic/modeling-copilot/new` 与 `/semantic/modeling-copilot/:sessionId` 是语义中心顶层建模助手产品入口，不归入 `/semantic/cubes/new` 层级
+  - 当前建模助手统一收敛为语义建设工作台契约：
+    - `/semantic/modeling-workbench`、`/semantic/modeling-workbench/quick` 与候选详情路由是语义中心顶层冷启动产品入口，不归入 `/semantic/cubes/new` 层级；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 仅保留兼容重定向
     - `/api/v1/semantic/modeling-copilot/sessions/*` 是唯一 Copilot 会话 API；旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路已下线，不再作为新的建模助手产品入口或公开会话 API
     - 迁移期 Proposal 兼容面仍可保留为内部 / 前端兼容 client、types、hooks，例如 Proposal API 与 `SemanticModelingAgentSpec` 构建期类型；这些兼容面不代表新的产品入口或公开会话契约
     - 内部 `SemanticModelDraftBuilder` 继续承接确定性 spec 生成、校验、候选资产确认、Proposal 保存和发布门禁材料组装；它是应用层构建器，不是公开 API 名称
     - 数据资产底座只提供元数据事实、`AssetRef` 与 `EvidenceBundle`，不直接生成语义真相；Copilot 草案优先使用证据包里的 `schema_snapshot`，缺失时才走 datasource adapter fallback
-    - `/semantic/modeling-copilot/new` 的 Copilot 体验采用 Chat-first 结构：中间 Chat 始终是注意力中心，右侧 Artifact 面板按需展示 `Review / Spec / Source / Preview / Trace`，生成的 Proposal Review 不阻断对话流；当前五个 artifact 均已接入产品化主链路
+    - `/semantic/modeling-workbench/quick` 的单资产体验采用建设主流程结构：中间主画布承载业务问题、字段候选、口径确认和语义草案，右侧 Artifact 面板按需展示 `Review / Spec / Source / Preview / Trace`，生成的 Proposal Review 不阻断建设流；当前五个 artifact 均已接入产品化主链路
     - `/api/v1/semantic/modeling-copilot/sessions/<session_id>/review` 是建模助手的只读 artifact 投影，用于展示候选变更、阻塞项、原因解释、源表证据、Trace 回放、Publish Gate 和发布后验收；它不引入第二套语义资产模型，正式真相仍是已发布 Cube、Ontology、Binding 与 Policy
     - Modeling Copilot session / Proposal 是构建期协作状态，生产默认通过 `SEMANTIC_MODELING_COPILOT_STORE=sql` 写入 PostgreSQL；YAML 仓储只保留为 local / fixture adapter
     - 生产语义资产事实源已切到 SQL Registry / Release / Runtime Snapshot；YAML 仅用于本地 fixture、示例 seed 和调试导出，不做生产双写或离线迁移输入；架构决策见 ADR-010
