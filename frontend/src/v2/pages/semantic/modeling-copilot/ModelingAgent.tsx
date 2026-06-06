@@ -2808,7 +2808,7 @@ function ReleasePreviewPanel({ preview }: { preview: ReleasePreview | null }) {
   const message =
     preview?.semanticCompile.message ||
     preview?.gatewayValidation.message ||
-    "点击运行发布预演后，这里会展示语义中心编译结果、gateway SQL dry-run 与消费者样例校验结果。";
+    "点击运行发布预演后，这里会展示语义中心编译、执行验证与消费者样例校验结果。";
   const compiledSql =
     preview?.compiledSql.trim() || "等待语义中心返回物理 SQL";
   const samples = preview?.consumerValidation.samples ?? [];
@@ -2898,7 +2898,7 @@ function ReleasePreviewPanel({ preview }: { preview: ReleasePreview | null }) {
           value={releasePreviewStatusLabel(semanticCompileStatus)}
         />
         <PreviewFact
-          label="Gateway SQL dry-run"
+          label="执行验证"
           value={gatewayStatusLabel}
         />
         <PreviewFact
