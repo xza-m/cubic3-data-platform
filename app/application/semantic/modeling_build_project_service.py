@@ -137,6 +137,19 @@ class ModelingBuildProjectService:
         package = self._require_package(project.id, package_id)
         return package.model_dump(mode="json")
 
+    def get_package_proposal_readiness(
+        self,
+        project_id: str,
+        package_id: str,
+        *,
+        principal_id: str | None = None,
+    ) -> Dict[str, Any]:
+        project = self._require_project(project_id, principal_id)
+        package = self._require_package(project.id, package_id)
+        package = refresh_package_review_state(package)
+        self.repository.save_package(package)
+        return package.proposal_readiness.model_dump(mode="json")
+
     def update_asset_package(
         self,
         project_id: str,

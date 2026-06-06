@@ -152,6 +152,20 @@ def create_semantic_modeling_workbench_blueprint(service: Any) -> Blueprint:
         except Exception as exc:
             return _workbench_error("获取语义候选资产", exc)
 
+    @bp.get("/projects/<project_id>/packages/<package_id>/proposal-readiness")
+    @_require_identity_unless_testing
+    def get_package_proposal_readiness(project_id: str, package_id: str):
+        try:
+            return success(
+                data=service.get_package_proposal_readiness(
+                    project_id,
+                    package_id,
+                    principal_id=_principal_id(),
+                )
+            )
+        except Exception as exc:
+            return _workbench_error("获取语义候选资产发布准备状态", exc)
+
     @bp.patch("/projects/<project_id>/packages/<package_id>")
     @_require_identity_unless_testing
     def update_asset_package(project_id: str, package_id: str):

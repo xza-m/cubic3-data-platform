@@ -45,6 +45,14 @@ class _ServiceStub:
             "target": "semantic_center",
         }
 
+    def get_package_proposal_readiness(self, project_id, package_id, *, principal_id=None):
+        self.calls.append(("get_package_proposal_readiness", project_id, package_id, principal_id))
+        return {
+            "status": "ready",
+            "blocking_reasons": [],
+            "required_bindings": ["object_to_cube", "property_to_dimension", "metric_to_measure"],
+        }
+
 
 def _client(service):
     app = Flask(__name__)
@@ -158,5 +166,24 @@ def test_modeling_workbench_asset_package_action_route():
         "build-learning",
         "build-learning:fact:dwd-learning",
         {"action": "defer", "reason": "等待业务 owner 确认"},
+        None,
+    )
+
+
+def test_modeling_workbench_asset_package_proposal_readiness_route():
+    service = _ServiceStub()
+    client = _client(service)
+
+    resp = client.get(
+        "/api/v1/semantic/modeling-workbench/projects/build-learning"
+        "/packages/build-learning:fact:dwd-learning/proposal-readiness"
+    )
+
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["status"] == "ready"
+    assert service.calls[-1] == (
+        "get_package_proposal_readiness",
+        "build-learning",
+        "build-learning:fact:dwd-learning",
         None,
     )

@@ -940,3 +940,34 @@ def test_build_project_service_rejects_self_merge_package_action():
             {"action": "merge", "target_package_id": package_id},
             principal_id="alice",
         )
+
+
+def test_build_project_service_returns_proposal_readiness_for_package():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+    from app.domain.semantic.modeling_build_project import FieldCandidate
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+    package = repo.get_package(package_id)
+    package.field_candidates = [
+        FieldCandidate(
+            id="student_id",
+            field="student_id",
+            label="学生",
+            role="dimension",
+            risk="low",
+            action="accepted",
+            cube_binding={"kind": "dimension", "name": "student_id"},
+            ontology_binding={"kind": "property", "object": "student", "name": "student_id"},
+        )
+    ]
+    package.ontology_suggestions = [{"type": "object", "name": "student"}]
+    repo.save_package(package)
+
+    readiness = service.get_package_proposal_readiness(project["id"], package_id, principal_id="alice")
+
+    assert readiness["status"] == "ready"
+    assert readiness["blocking_reasons"] == []
