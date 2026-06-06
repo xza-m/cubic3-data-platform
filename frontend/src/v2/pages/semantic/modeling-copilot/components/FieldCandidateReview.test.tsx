@@ -83,7 +83,7 @@ describe('FieldCandidateReview', () => {
   it('未提供 onAction 时展示只读态且不渲染动作按钮', () => {
     render(<FieldCandidateReview candidates={candidates} />)
 
-    expect(screen.getByLabelText('改写 评论数')).toBeDisabled()
+    expect(screen.queryByLabelText('改写 评论数')).not.toBeInTheDocument()
     expect(screen.getByText('只读')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: '采纳 评论数' }),
@@ -167,6 +167,17 @@ describe('FieldCandidateReview', () => {
     expect(screen.getByText('已采纳')).toBeInTheDocument()
   })
 
+  it('支持展示暂缓 action 状态', () => {
+    render(
+      <FieldCandidateReview
+        candidates={[{ ...candidates[0], action: 'deferred' }]}
+      />,
+    )
+
+    expect(screen.getByText('评论数')).toBeInTheDocument()
+    expect(screen.getByText('已暂缓')).toBeInTheDocument()
+  })
+
   it('展示空态', () => {
     render(<FieldCandidateReview candidates={[]} />)
 
@@ -230,6 +241,33 @@ describe('FieldCandidateReview', () => {
 
     expect(screen.queryByText('student_id')).not.toBeInTheDocument()
     expect(screen.getByText('duration_sec')).toBeInTheDocument()
+  })
+
+  it('高风险筛选无结果时展示筛选空态并支持返回全部', async () => {
+    const user = userEvent.setup()
+    render(
+      <FieldCandidateReview
+        candidates={[
+          {
+            ...candidates[0],
+            id: 'low_1',
+            field: 'student_id',
+            label: '学生',
+            role: 'dimension',
+            risk: 'low',
+          },
+        ]}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '只看高风险' }))
+
+    expect(screen.getByText('当前筛选无高风险字段')).toBeInTheDocument()
+    expect(screen.queryByText('student_id')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '显示全部' }))
+
+    expect(screen.getByText('student_id')).toBeInTheDocument()
   })
 
   it('低风险批量采纳只提交 pending low risk candidates', async () => {

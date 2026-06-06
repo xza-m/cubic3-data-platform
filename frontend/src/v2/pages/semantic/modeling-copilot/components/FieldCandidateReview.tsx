@@ -133,6 +133,23 @@ export function FieldCandidateReview({
             先确认来源证据，再生成字段候选表。
           </p>
         </div>
+      ) : visibleCandidates.length === 0 ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 rounded-[8px] border px-3 py-3"
+          style={{
+            borderColor: 'var(--border)',
+            background: 'var(--bg-surface-2)',
+          }}
+        >
+          <div className="font-semibold text-1">当前筛选无高风险字段</div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setRiskFilter('all')}
+          >
+            显示全部
+          </Button>
+        </div>
       ) : (
         <div
           className="overflow-x-auto rounded-[8px] border"
@@ -254,17 +271,19 @@ function FieldCandidateReviewRow({
       <td className="min-w-[220px] max-w-[360px] px-3 py-2.5 leading-5 text-3">
         {candidate.evidence || '暂无证据'}
       </td>
-      <td className="min-w-[260px] px-3 py-2.5">
-        <div className="flex flex-col gap-2">
-          <Input
-            aria-label={`改写 ${label}`}
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-            disabled={!canAct}
-            readOnly={!canAct}
-            className="h-8 min-w-[180px]"
-          />
-          {canAct ? (
+      <td
+        className={
+          canAct ? 'min-w-[260px] px-3 py-2.5' : 'w-[72px] px-3 py-2.5'
+        }
+      >
+        {canAct ? (
+          <div className="flex flex-col gap-2">
+            <Input
+              aria-label={`改写 ${label}`}
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              className="h-8 min-w-[180px]"
+            />
             <div className="flex flex-wrap gap-1.5">
               <Button
                 size="sm"
@@ -298,12 +317,10 @@ function FieldCandidateReviewRow({
                 忽略 {label}
               </Button>
             </div>
-          ) : (
-            <div>
-              <Chip>只读</Chip>
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <Chip>只读</Chip>
+        )}
       </td>
     </tr>
   )
@@ -350,5 +367,6 @@ function actionText(
   if (value === 'accepted') return '已采纳'
   if (value === 'ignored') return '已忽略'
   if (value === 'renamed') return '已改写'
+  if (value === 'deferred') return '已暂缓'
   return '待处理'
 }
