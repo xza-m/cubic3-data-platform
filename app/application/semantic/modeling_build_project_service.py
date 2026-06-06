@@ -196,7 +196,10 @@ class ModelingBuildProjectService:
             package.risk = "medium"
             package.evidence = ["已退回重生成，等待重新扫描候选证据。"]
             self._record_operation(package, action, reason)
-            self.repository.save_package(refresh_package_review_state(package))
+            package = refresh_package_review_state(package)
+            self.repository.save_package(package)
+            packages = self.repository.list_packages(project.id)
+            self.repository.save_project(self._with_package_summary(project, packages))
             return package.model_dump(mode="json")
         if action == "split":
             return self._split_package(project, package, payload, reason)

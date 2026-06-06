@@ -615,6 +615,40 @@ def test_build_project_service_applies_defer_and_duplicate_package_actions():
     assert duplicated["operation_history"][-1]["action"] == "mark_duplicate"
 
 
+def test_build_project_service_regenerate_refreshes_project_risk_summary():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+    service.update_asset_package(
+        project["id"],
+        package_id,
+        {"risk": "high", "status": "in_review"},
+        principal_id="alice",
+    )
+
+    high_risk_project = service.get_project(project["id"], principal_id="alice")
+    assert high_risk_project["risk_summary"] == {"low": 1, "medium": 1, "high": 1}
+
+    regenerated = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {"action": "regenerate", "reason": "重新扫描候选证据"},
+        principal_id="alice",
+    )
+    persisted_project = repo.get_project(project["id"])
+
+    assert regenerated["risk"] == "medium"
+    assert persisted_project.risk_summary["high"] == 0
+    assert persisted_project.risk_summary["medium"] == 2
+    refreshed_project = service.get_project(project["id"], principal_id="alice")
+    assert refreshed_project["risk_summary"]["high"] == 0
+    assert refreshed_project["risk_summary"]["medium"] == 2
+
+
 def test_build_project_service_splits_package_by_field_candidates():
     from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
     from app.domain.semantic.modeling_build_project import FieldCandidate
