@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Dict
+from typing import Any, Dict, Protocol
 
 from app.domain.semantic.modeling_build_project import (
     FieldCandidate,
@@ -13,9 +13,33 @@ from app.domain.semantic.modeling_build_project import (
     normalize_build_project_id,
     refresh_package_review_state,
 )
-from app.domain.semantic.ports.modeling_build_project_repository import (
-    IModelingBuildProjectRepository,
-)
+
+
+class IModelingBuildProjectRepository(Protocol):
+    """Build Project 仓储协议，避免工作台服务运行时依赖外部 port 文件。"""
+
+    def get_project(self, project_id: str) -> ModelingBuildProject | None: ...
+
+    def save_project(self, project: ModelingBuildProject) -> None: ...
+
+    def list_projects(
+        self,
+        principal_id: str | None = None,
+        *,
+        limit: int = 50,
+    ) -> list[ModelingBuildProject]: ...
+
+    def get_package(self, package_id: str) -> ModelingAssetPackage | None: ...
+
+    def list_packages(self, project_id: str) -> list[ModelingAssetPackage]: ...
+
+    def save_package(self, package: ModelingAssetPackage) -> None: ...
+
+    def save_scan_result(
+        self,
+        project: ModelingBuildProject,
+        packages: list[ModelingAssetPackage],
+    ) -> None: ...
 
 
 class ModelingBuildProjectService:
@@ -266,13 +290,18 @@ class ModelingBuildProjectService:
         project: ModelingBuildProject,
         strategy: str,
     ) -> list[ModelingAssetPackage]:
-        selected_sources = list(project.scope.get("selected_sources") or [])
+        selected_sources = [
+            str(source).strip()
+            for source in list(project.scope.get("selected_sources") or [])
+            if str(source).strip()
+        ]
         if not selected_sources:
-            selected_sources = ["manual_selected_source"]
+            manual_source = str(project.scope.get("manual_selected_source") or "").strip()
+            selected_sources = [manual_source or "manual_selected_source"]
         risk: RiskLevel = "medium" if strategy != "exploratory" else "high"
         packages: list[ModelingAssetPackage] = []
         for source in selected_sources:
-            source_name = str(source).strip() or "manual_selected_source"
+            source_name = source or "manual_selected_source"
             packages.append(
                 ModelingAssetPackage(
                     id=create_asset_package_id(project.id, source_name, "fact"),

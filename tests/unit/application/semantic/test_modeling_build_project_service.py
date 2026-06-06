@@ -565,6 +565,29 @@ def test_build_project_scan_falls_back_to_selected_sources_when_recommendation_e
     assert "自动推荐证据不足" in package["evidence"][0]
 
 
+def test_build_project_scan_falls_back_to_manual_source_when_selected_sources_empty():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project(
+        {
+            "name": "手动源表建设",
+            "business_domain": "手动源表",
+            "scope": {
+                "recommendation_empty": True,
+                "manual_selected_source": "ods_manual_fact_df",
+            },
+        },
+        principal_id="alice",
+    )
+
+    scanned = service.scan_project(project["id"], {}, principal_id="alice")
+
+    assert scanned["asset_package_count"] == 1
+    assert scanned["asset_packages"][0]["source"] == "ods_manual_fact_df"
+
+
 def test_build_project_service_applies_defer_and_duplicate_package_actions():
     from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
 
