@@ -10,6 +10,7 @@ REQUIRED_GATEWAY_ENV_KEYS = {
     "QUERY_GATEWAY_BASE_URL",
     "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN",
     "QUERY_GATEWAY_TIMEOUT_SECONDS",
+    "QUERY_GATEWAY_SQL_DRY_RUN_PATH",
 }
 
 
@@ -30,6 +31,9 @@ def test_backend_injects_query_gateway_environment_from_compose_env():
     assert env["QUERY_GATEWAY_BASE_URL"].startswith("${QUERY_GATEWAY_BASE_URL")
     assert env["QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN"] == "${QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN}"
     assert env["QUERY_GATEWAY_TIMEOUT_SECONDS"].startswith("${QUERY_GATEWAY_TIMEOUT_SECONDS")
+    assert env["QUERY_GATEWAY_SQL_DRY_RUN_PATH"].startswith(
+        "${QUERY_GATEWAY_SQL_DRY_RUN_PATH"
+    )
 
 
 def test_rq_worker_keeps_query_gateway_environment_aligned_with_backend():

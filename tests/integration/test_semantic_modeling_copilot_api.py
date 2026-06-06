@@ -114,6 +114,22 @@ class _CopilotStub:
         self.calls.append(("save_proposal", session_id, payload, principal_id))
         return {"id": session_id, "current_proposal_id": "proposal_1"}
 
+    def preview_release(self, session_id, payload, *, principal_id=None):
+        self.calls.append(("preview_release", session_id, payload, principal_id))
+        if session_id == "s_other_user":
+            raise PermissionError("AgentSession s_other_user 属于其他用户，不能访问")
+        return {
+            "id": session_id,
+            "workbench_state": {
+                "release_preview": {
+                    "target": "semantic_center",
+                    "compiled_sql": "",
+                    "release_diff": {"added": ["cube.learning_activity"], "changed": [], "removed": []},
+                    "gateway_validation": {"status": "not_configured"},
+                }
+            },
+        }
+
     def publish_proposal(self, session_id, payload, *, principal_id=None):
         self.calls.append(("publish_proposal", session_id, payload, principal_id))
         return {
@@ -447,6 +463,24 @@ def test_modeling_copilot_repair_run_endpoint_returns_validation_error_without_c
     assert resp.get_json()["details"]["code"] == "COPILOT_VALIDATION_ERROR"
 
 
+def test_release_preview_route_calls_service():
+    client, service = _client()
+    payload = {
+        "namespace": "default",
+        "sample_questions": ["昨天学习行为数是多少？"],
+    }
+
+    resp = client.post(
+        "/api/v1/semantic/modeling-copilot/sessions/session_1/release-preview",
+        json=payload,
+    )
+
+    assert resp.status_code == 200
+    body = resp.get_json()["data"]
+    assert body["workbench_state"]["release_preview"]["target"] == "semantic_center"
+    assert service.calls == [("preview_release", "session_1", payload, None)]
+
+
 @pytest.mark.parametrize(
     ("runtime_code", "expected_status"),
     [
@@ -509,6 +543,10 @@ def test_modeling_copilot_authenticated_session_paths_pass_current_principal():
         json={"cube": {"name": "student_comment_cube"}},
     )
     client.post(f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/save-proposal", json={})
+    client.post(
+        f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/release-preview",
+        json={"namespace": "default"},
+    )
     client.post(f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/publish", json={})
     client.post(f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/review-runs", json={})
     client.post(f"/api/v1/semantic/modeling-copilot/sessions/{session_id}/repair-runs", json={})
@@ -522,6 +560,7 @@ def test_modeling_copilot_authenticated_session_paths_pass_current_principal():
         ("sandbox", session_id, {}, "alice"),
         ("update_spec", session_id, {"cube": {"name": "student_comment_cube"}}, "alice"),
         ("save_proposal", session_id, {}, "alice"),
+        ("preview_release", session_id, {"namespace": "default"}, "alice"),
         ("publish_proposal", session_id, {}, "alice"),
         ("start_review_run", session_id, "alice"),
         ("start_repair_run", session_id, "alice"),
@@ -543,6 +582,18 @@ def test_modeling_copilot_cross_user_review_run_returns_403():
     client, _ = _auth_client_with_roles("viewer", user_id="alice")
 
     resp = client.post("/api/v1/semantic/modeling-copilot/sessions/s_other_user/review-runs")
+
+    assert resp.status_code == 403
+    assert resp.get_json()["details"]["code"] == "COPILOT_FORBIDDEN"
+
+
+def test_modeling_copilot_cross_user_release_preview_returns_403():
+    client, _ = _auth_client_with_roles("viewer", user_id="alice")
+
+    resp = client.post(
+        "/api/v1/semantic/modeling-copilot/sessions/s_other_user/release-preview",
+        json={"namespace": "default"},
+    )
 
     assert resp.status_code == 403
     assert resp.get_json()["details"]["code"] == "COPILOT_FORBIDDEN"

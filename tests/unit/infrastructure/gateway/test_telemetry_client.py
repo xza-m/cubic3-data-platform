@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from app.infrastructure.gateway.telemetry_client import GatewayTelemetryClient, normalize_gateway_summary
+import pytest
+
+from app.infrastructure.gateway.telemetry_client import (
+    GatewayQueryClient,
+    GatewayQueryError,
+    GatewayTelemetryClient,
+    normalize_gateway_summary,
+)
 
 
 def test_normalize_gateway_summary_keeps_runtime_metrics():
@@ -144,3 +151,101 @@ def test_gateway_telemetry_client_reads_readyz_raw_payload(monkeypatch):
     assert readiness["status"] == "healthy"
     assert readiness["checks"]["worker"] == "ok"
     assert calls[0][0] == "http://dw-query-gateway:8000/readyz"
+
+
+def test_gateway_query_client_posts_sql_dry_run(monkeypatch):
+    class _Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {
+                "success": True,
+                "data": {
+                    "status": "passed",
+                    "compiled_sql": "SELECT 1",
+                    "telemetry": {"dry_run_id": "dry_1"},
+                },
+            }
+
+    calls = []
+
+    def fake_post(url, *, json=None, headers=None, timeout=None):
+        calls.append((url, json, headers, timeout))
+        return _Response()
+
+    monkeypatch.setattr("app.infrastructure.gateway.telemetry_client.requests.post", fake_post)
+    client = GatewayQueryClient(
+        base_url="http://dw-query-gateway:8000",
+        platform_service_token="platform-secret",
+        timeout_seconds=3,
+        sql_dry_run_path="/api/v1/queries/dry-run",
+    )
+
+    result = client.dry_run_sql(
+        {
+            "sql": "SELECT 1",
+            "access_context": {
+                "resource_set_physical": [{"project": "qa_live_1"}],
+                "semantic_asset_refs": ["cube.student_comment"],
+            },
+            "idempotency_key": "semantic-release-preview:default:session_1",
+            "runtime_options": {"mode": "semantic_release_preview"},
+        }
+    )
+
+    assert result["status"] == "passed"
+    assert result["compiled_sql"] == "SELECT 1"
+    assert calls == [
+        (
+            "http://dw-query-gateway:8000/api/v1/queries/dry-run",
+            {
+                "sql": "SELECT 1",
+                "project": "qa_live_1",
+                "access_context": {
+                    "resource_set_physical": [{"project": "qa_live_1"}],
+                    "semantic_asset_refs": ["cube.student_comment"],
+                },
+                "idempotency_key": "semantic-release-preview:default:session_1",
+                "runtime_options": {
+                    "mode": "semantic_release_preview",
+                    "dry_run": True,
+                },
+            },
+            {"X-Platform-Service-Token": "platform-secret"},
+            3,
+        )
+    ]
+
+
+def test_gateway_query_client_sql_dry_run_maps_gateway_error(monkeypatch):
+    class _Response:
+        status_code = 502
+
+        @staticmethod
+        def json():
+            return {"success": False, "error": {"message": "gateway down"}}
+
+    def fake_post(url, *, json=None, headers=None, timeout=None):
+        return _Response()
+
+    monkeypatch.setattr("app.infrastructure.gateway.telemetry_client.requests.post", fake_post)
+    client = GatewayQueryClient(
+        base_url="http://dw-query-gateway:8000",
+        platform_service_token="platform-secret",
+        timeout_seconds=3,
+    )
+
+    with pytest.raises(GatewayQueryError, match="gateway SQL dry-run failed: 502"):
+        client.dry_run_sql({"sql": "SELECT 1"})
+
+
+def test_gateway_query_client_sql_dry_run_rejects_semantic_spec():
+    client = GatewayQueryClient(
+        base_url="http://dw-query-gateway:8000",
+        platform_service_token="platform-secret",
+        timeout_seconds=3,
+    )
+
+    with pytest.raises(GatewayQueryError, match="does not accept semantic_spec"):
+        client.dry_run_sql({"sql": "SELECT 1", "semantic_spec": {}})

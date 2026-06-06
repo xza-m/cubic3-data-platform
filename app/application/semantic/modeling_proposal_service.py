@@ -823,7 +823,7 @@ class ModelingProposalService:
                     "id": f"runtime_{reason}",
                     "status": "needs_confirmation",
                     "title": self._reason_title(str(reason)),
-                    "description": "发布前该项会影响正式 Data Agent 消费，确认后仍需走保存和发布链路。",
+                    "description": "发布前该项会影响语义中心发布快照的消费者验证，确认后仍需走保存和发布链路。",
                     "technical_hint": str(reason),
                 }
             )

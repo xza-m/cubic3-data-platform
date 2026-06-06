@@ -58,10 +58,18 @@ class GatewayTelemetryClient:
 class GatewayQueryClient:
     """data-platform 向 dw-query-gateway 下发已授权查询。"""
 
-    def __init__(self, *, base_url: str, platform_service_token: str, timeout_seconds: int = 5) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        platform_service_token: str,
+        timeout_seconds: int = 5,
+        sql_dry_run_path: str = "/api/v1/queries/dry-run",
+    ) -> None:
         self._base_url = base_url.rstrip("/")
         self._token = platform_service_token
         self._timeout_seconds = timeout_seconds
+        self._sql_dry_run_path = _normalize_path(sql_dry_run_path)
 
     def execute_sql(
         self,
@@ -93,12 +101,54 @@ class GatewayQueryClient:
             raise GatewayQueryError(str(error.get("message") or "gateway query failed"))
         return payload.get("data") or {}
 
+    def dry_run_sql(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """调用 gateway 侧物理 SQL dry-run；gateway 不接收 semantic spec。"""
+
+        payload = dict(payload or {})
+        if "semantic_spec" in payload:
+            raise GatewayQueryError("gateway SQL dry-run does not accept semantic_spec")
+        sql = str(payload.get("sql") or "").strip()
+        if not sql:
+            raise GatewayQueryError("gateway SQL dry-run requires sql")
+        access_context = payload.get("access_context")
+        if not isinstance(access_context, dict):
+            access_context = {}
+        runtime_options = payload.get("runtime_options")
+        if not isinstance(runtime_options, dict):
+            runtime_options = {}
+        runtime_options = {**runtime_options, "dry_run": True}
+
+        response = requests.post(
+            f"{self._base_url}{self._sql_dry_run_path}",
+            json={
+                "sql": sql,
+                "project": payload.get("project") or _default_project(access_context),
+                "access_context": access_context,
+                "idempotency_key": payload.get("idempotency_key"),
+                "runtime_options": runtime_options,
+            },
+            headers={"X-Platform-Service-Token": self._token},
+            timeout=self._timeout_seconds,
+        )
+        if response.status_code >= 400:
+            raise GatewayQueryError(f"gateway SQL dry-run failed: {response.status_code}")
+        response_payload = response.json()
+        if response_payload.get("success") is False:
+            error = response_payload.get("error") or {}
+            raise GatewayQueryError(str(error.get("message") or "gateway SQL dry-run failed"))
+        return response_payload.get("data") or {}
+
 
 def _default_project(access_context: dict[str, Any]) -> str | None:
     for item in access_context.get("resource_set_physical") or []:
         if isinstance(item, dict) and item.get("project"):
             return str(item["project"])
     return None
+
+
+def _normalize_path(path: str | None) -> str:
+    value = str(path or "").strip() or "/api/v1/queries/dry-run"
+    return value if value.startswith("/") else f"/{value}"
 
 
 def normalize_gateway_summary(payload: dict[str, Any]) -> dict[str, Any]:

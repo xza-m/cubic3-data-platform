@@ -130,6 +130,18 @@ def _codex_run_service_from_config_service(repository, config_service_provider):
     )
 
 
+def _semantic_release_gateway_sql_dry_run(gateway_client_factory, platform_service_token: str | None):
+    """按 gateway token 是否配置决定是否启用物理 SQL dry-run。"""
+
+    if not str(platform_service_token or "").strip():
+        return None
+
+    def _dry_run(payload):
+        return gateway_client_factory().dry_run_sql(payload)
+
+    return _dry_run
+
+
 # Infrastructure
 from app.infrastructure.repositories.datasource_repository import DatasourceRepository
 from app.infrastructure.repositories.dataset_repository import DatasetRepository
@@ -222,11 +234,16 @@ from app.application.semantic.data_asset_agent_app import DataAssetAgentApp
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
 from app.application.semantic.field_candidates import FieldCandidateService
+from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_proposal_service import ModelingProposalService
 from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
 from app.application.semantic.publish_gate_service import PublishGateService
+from app.application.semantic.release_validation_preview import (
+    ReleaseValidationPreviewService,
+    build_semantic_compile_preview_adapter,
+)
 from app.application.semantic.runtime_snapshot_service import RuntimeSnapshotService
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
@@ -256,6 +273,9 @@ from app.infrastructure.semantic.yaml_modeling_proposal_repository import (
 )
 from app.infrastructure.semantic.sql_modeling_agent_session_repository import (
     SqlModelingAgentSessionRepository,
+)
+from app.infrastructure.semantic.sql_modeling_build_project_repository import (
+    SqlModelingBuildProjectRepository,
 )
 from app.infrastructure.semantic.sql_modeling_proposal_repository import (
     SqlModelingProposalRepository,
@@ -886,6 +906,7 @@ class Container(containers.DeclarativeContainer):
         base_url=config.query_gateway.base_url,
         platform_service_token=config.query_gateway.platform_service_token,
         timeout_seconds=config.query_gateway.timeout_seconds,
+        sql_dry_run_path=config.query_gateway.sql_dry_run_path,
     )
 
     agent_semantic_execute_service = providers.Factory(
@@ -937,6 +958,16 @@ class Container(containers.DeclarativeContainer):
         proposals_dir=_os.path.join(_semantic_base, "modeling_proposals"),
     )
 
+    semantic_modeling_workbench_repository = providers.Singleton(
+        SqlModelingBuildProjectRepository,
+        session=db_session,
+    )
+
+    semantic_modeling_workbench_service = providers.Singleton(
+        ModelingBuildProjectService,
+        repository=semantic_modeling_workbench_repository,
+    )
+
     semantic_modeling_proposal_service = providers.Singleton(
         ModelingProposalService,
         repository=semantic_modeling_proposal_repository,
@@ -944,6 +975,23 @@ class Container(containers.DeclarativeContainer):
         readiness_checker=semantic_modeling_copilot_readiness_checker,
         asset_registry_repository=semantic_asset_registry_repository,
         release_service=semantic_release_service,
+    )
+
+    semantic_release_gateway_sql_dry_run = providers.Callable(
+        _semantic_release_gateway_sql_dry_run,
+        gateway_client_factory=gateway_query_client.provider,
+        platform_service_token=config.query_gateway.platform_service_token,
+    )
+
+    semantic_release_compile_preview = providers.Callable(
+        build_semantic_compile_preview_adapter,
+        compiler_preview_service=execution_compiler_preview_service,
+    )
+
+    semantic_release_validation_preview_service = providers.Singleton(
+        ReleaseValidationPreviewService,
+        semantic_compile_preview=semantic_release_compile_preview,
+        gateway_sql_dry_run=semantic_release_gateway_sql_dry_run,
     )
 
     semantic_evidence_builder = providers.Singleton(SemanticEvidenceBuilder)
@@ -961,6 +1009,7 @@ class Container(containers.DeclarativeContainer):
         agent_app=semantic_modeling_agent_app,
         tools=semantic_modeling_copilot_tools,
         proposal_service=semantic_modeling_proposal_service,
+        release_preview_service=semantic_release_validation_preview_service,
     )
     
     execute_sql_preview_handler = providers.Factory(
@@ -1511,6 +1560,13 @@ def init_container(app: Flask) -> Container:
             'base_url': os.getenv('QUERY_GATEWAY_BASE_URL', app.config.get('QUERY_GATEWAY_BASE_URL', 'http://dw-query-gateway:8000')),
             'platform_service_token': os.getenv('QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN', app.config.get('QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN', '')),
             'timeout_seconds': int(os.getenv('QUERY_GATEWAY_TIMEOUT_SECONDS', app.config.get('QUERY_GATEWAY_TIMEOUT_SECONDS', 5))),
+            'sql_dry_run_path': os.getenv(
+                'QUERY_GATEWAY_SQL_DRY_RUN_PATH',
+                app.config.get(
+                    'QUERY_GATEWAY_SQL_DRY_RUN_PATH',
+                    '/api/v1/queries/dry-run',
+                ),
+            ),
         },
         'semantic_modeling': {
             'copilot_store': app.config.get('SEMANTIC_MODELING_COPILOT_STORE', 'sql'),
