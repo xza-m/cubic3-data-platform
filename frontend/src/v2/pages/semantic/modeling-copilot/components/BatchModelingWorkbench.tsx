@@ -31,6 +31,7 @@ interface BatchModelingWorkbenchProps {
 }
 
 const STRATEGIES: BatchModelingStrategy[] = ['conservative', 'balanced', 'exploratory']
+type WorkbenchQueueStatus = BatchQueueStatus | 'duplicate_candidate'
 
 export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbenchProps) {
   const [scope, setScope] = useState<BatchModelingScope>(BATCH_MODELING_DEFAULT_SCOPE)
@@ -38,6 +39,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
   const [project, setProject] = useState<SemanticBuildProject | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [manualFallback, setManualFallback] = useState(false)
+  const [manualSource, setManualSource] = useState('manual_selected_source')
   const createProject = useCreateSemanticBuildProject()
   const scanProject = useScanSemanticBuildProject()
   const applyPackageAction = useApplySemanticAssetPackageAction()
@@ -61,7 +63,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
           ...(manualFallback
             ? {
                 recommendation_empty: true,
-                selected_sources: ['manual_selected_source'],
+                selected_sources: [manualSource.trim() || 'manual_selected_source'],
               }
             : {}),
         },
@@ -72,6 +74,26 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : '生成候选资产队列失败')
     }
+  }
+
+  function handlePackageAction(item: SemanticAssetPackage, action: 'defer' | 'mark_duplicate') {
+    applyPackageAction.mutate(
+      {
+        projectId: item.project_id,
+        packageId: item.id,
+        body: {
+          action,
+          reason: action === 'defer' ? '用户在候选队列暂缓' : '用户在候选队列标记重复',
+        },
+      },
+      {
+        onSuccess: (result) => {
+          if (isSemanticAssetPackageResult(result)) {
+            setProject((current) => replaceProjectAssetPackage(current, result))
+          }
+        },
+      },
+    )
   }
 
   return (
@@ -112,6 +134,20 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
               />
               推荐为空时使用手动选表降级
             </label>
+            {manualFallback ? (
+              <>
+                <label className="mt-2 block text-[12px] font-medium text-2" htmlFor="batch-modeling-manual-source">
+                  手动源表名
+                </label>
+                <Input
+                  id="batch-modeling-manual-source"
+                  className="mt-2"
+                  value={manualSource}
+                  onChange={(event) => setManualSource(event.target.value)}
+                  placeholder="ods_manual_fact_df"
+                />
+              </>
+            ) : null}
           </div>
 
           <label className="mt-4 block text-[12px] font-medium text-2" htmlFor="batch-modeling-domain">
@@ -215,8 +251,11 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
             {hasGenerated ? (
               <div className="mt-4 grid gap-3">
                 {queueItems.map((item) => {
+                  const queueStatus = toBatchQueueStatus(item.status)
                   const queueItem = toBatchQueueItem(item)
                   const canOpenBuilder = canOpenBatchQueueBuilder(queueItem)
+                  const isDeferred = item.status === 'deferred'
+                  const isDuplicate = item.status === 'duplicate_candidate'
 
                   return (
                     <article key={item.id} className="rounded-[8px] border p-3" style={{ borderColor: 'var(--border)' }}>
@@ -228,7 +267,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          <Chip tone={batchQueueStatusTone(queueItem.status)}>{batchQueueStatusLabel(queueItem.status)}</Chip>
+                          <Chip tone={workbenchQueueStatusTone(queueStatus)}>{workbenchQueueStatusLabel(queueStatus)}</Chip>
                           <Chip tone={batchModelingRiskTone(item.risk)}>{batchModelingRiskLabel(item.risk)}</Chip>
                         </div>
                       </div>
@@ -242,28 +281,16 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                         <Button
                           size="sm"
                           variant="ghost"
-                          disabled={applyPackageAction.isPending}
-                          onClick={() =>
-                            applyPackageAction.mutate({
-                              projectId: item.project_id,
-                              packageId: item.id,
-                              body: { action: 'defer', reason: '用户在候选队列暂缓' },
-                            })
-                          }
+                          disabled={applyPackageAction.isPending || isDeferred}
+                          onClick={() => handlePackageAction(item, 'defer')}
                         >
                           暂缓
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
-                          disabled={applyPackageAction.isPending}
-                          onClick={() =>
-                            applyPackageAction.mutate({
-                              projectId: item.project_id,
-                              packageId: item.id,
-                              body: { action: 'mark_duplicate', reason: '用户在候选队列标记重复' },
-                            })
-                          }
+                          disabled={applyPackageAction.isPending || isDuplicate}
+                          onClick={() => handlePackageAction(item, 'mark_duplicate')}
                         >
                           标记重复
                         </Button>
@@ -308,6 +335,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
 }
 
 function toBatchQueueItem(item: SemanticAssetPackage): BatchModelingQueueItem {
+  const status = toBatchQueueStatus(item.status)
   return {
     id: item.id,
     title: item.title,
@@ -316,18 +344,67 @@ function toBatchQueueItem(item: SemanticAssetPackage): BatchModelingQueueItem {
     grain: item.grain,
     confidence: item.confidence,
     risk: item.risk,
-    status: toBatchQueueStatus(item.status),
+    status: toSharedBatchQueueStatus(status),
     primaryAction: toBatchQueuePrimaryAction(item.primary_action),
     evidence: item.evidence,
   }
 }
 
-function toBatchQueueStatus(status: SemanticAssetPackage['status']): BatchQueueStatus {
-  if (status === 'needs_scope' || status === 'high_risk' || status === 'deferred') return status
+function toBatchQueueStatus(status: SemanticAssetPackage['status']): WorkbenchQueueStatus {
+  if (status === 'needs_scope' || status === 'high_risk' || status === 'deferred' || status === 'duplicate_candidate') return status
   return 'ready_for_review'
+}
+
+function toSharedBatchQueueStatus(status: WorkbenchQueueStatus): BatchQueueStatus {
+  return status === 'duplicate_candidate' ? 'ready_for_review' : status
+}
+
+function workbenchQueueStatusLabel(status: WorkbenchQueueStatus): string {
+  if (status === 'duplicate_candidate') return '重复候选'
+  return batchQueueStatusLabel(status)
+}
+
+function workbenchQueueStatusTone(status: WorkbenchQueueStatus): ReturnType<typeof batchQueueStatusTone> {
+  if (status === 'duplicate_candidate') return 'warning'
+  return batchQueueStatusTone(status)
 }
 
 function toBatchQueuePrimaryAction(action: string): BatchQueuePrimaryAction {
   if (action === 'regenerate' || action === 'defer' || action === 'merge') return action
   return 'open_builder'
+}
+
+function isSemanticAssetPackageResult(result: unknown): result is SemanticAssetPackage {
+  return Boolean(result && typeof result === 'object' && 'id' in result && 'project_id' in result)
+}
+
+function replaceProjectAssetPackage(
+  current: SemanticBuildProject | null,
+  updatedPackage: SemanticAssetPackage,
+): SemanticBuildProject | null {
+  if (!current?.asset_packages) return current
+
+  let matched = false
+  const assetPackages = current.asset_packages.map((item) => {
+    if (item.id !== updatedPackage.id) return item
+    matched = true
+    return { ...item, ...updatedPackage }
+  })
+
+  if (!matched) return current
+
+  return {
+    ...current,
+    asset_packages: assetPackages,
+    asset_package_count: assetPackages.length,
+    risk_summary: countRiskSummary(assetPackages),
+  }
+}
+
+function countRiskSummary(assetPackages: SemanticAssetPackage[]): Record<string, number> {
+  const summary = { low: 0, medium: 0, high: 0 }
+  for (const item of assetPackages) {
+    summary[item.risk] += 1
+  }
+  return summary
 }

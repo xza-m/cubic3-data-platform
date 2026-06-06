@@ -197,6 +197,35 @@ describe('BatchModelingWorkbench', () => {
     expect(screen.getByLabelText('推荐为空，使用手动选表模式')).toBeInTheDocument()
   })
 
+  it('手动选表降级使用输入源表创建 Build Project 候选队列', async () => {
+    const user = userEvent.setup()
+    render(<BatchModelingWorkbench onOpenBuilder={vi.fn()} />)
+
+    expect(screen.queryByLabelText('手动源表名')).not.toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('推荐为空，使用手动选表模式'))
+    const manualSourceInput = screen.getByLabelText('手动源表名')
+
+    expect(manualSourceInput).toBeEnabled()
+
+    await user.clear(manualSourceInput)
+    await user.type(manualSourceInput, 'ods_manual_fact_df')
+    await user.click(screen.getByRole('button', { name: '生成批量建设队列' }))
+
+    expect(await screen.findByText('学情分析事实主题候选')).toBeInTheDocument()
+    expect(mockCreateProject).toHaveBeenCalledWith({
+      name: '学情分析',
+      business_domain: '学情分析',
+      scope: {
+        source_count: 18,
+        strategy: 'balanced',
+        include_existing_semantics: true,
+        recommendation_empty: true,
+        selected_sources: ['ods_manual_fact_df'],
+      },
+    })
+  })
+
   it('候选资产支持暂缓和标记重复动作', async () => {
     const user = userEvent.setup()
     const onOpenBuilder = vi.fn()
@@ -213,7 +242,67 @@ describe('BatchModelingWorkbench', () => {
     await user.click(screen.getAllByRole('button', { name: '暂缓' })[0])
     await user.click(screen.getAllByRole('button', { name: '标记重复' })[0])
 
-    expect(actionSpy).toHaveBeenCalledWith(expect.objectContaining({ body: { action: 'defer', reason: '用户在候选队列暂缓' } }))
-    expect(actionSpy).toHaveBeenCalledWith(expect.objectContaining({ body: { action: 'mark_duplicate', reason: '用户在候选队列标记重复' } }))
+    expect(actionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { action: 'defer', reason: '用户在候选队列暂缓' } }),
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+    expect(actionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { action: 'mark_duplicate', reason: '用户在候选队列标记重复' } }),
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('暂缓动作成功后即时更新队列状态并禁用重复暂缓', async () => {
+    const user = userEvent.setup()
+    const actionSpy = vi.fn((_variables, options) => {
+      options?.onSuccess?.({
+        ...scannedProject.asset_packages![0],
+        status: 'deferred',
+      })
+    })
+    vi.mocked(useApplySemanticAssetPackageAction).mockReturnValue({
+      mutate: actionSpy,
+      isPending: false,
+    } as never)
+
+    render(<BatchModelingWorkbench onOpenBuilder={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: '生成批量建设队列' }))
+    await screen.findByText('学情分析事实主题候选')
+    await user.click(screen.getByRole('button', { name: '暂缓' }))
+
+    expect(actionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { action: 'defer', reason: '用户在候选队列暂缓' } }),
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+    expect(await screen.findByText('已暂缓')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '暂缓' })).toBeDisabled()
+  })
+
+  it('标记重复成功后显示重复候选并禁用重复标记', async () => {
+    const user = userEvent.setup()
+    const actionSpy = vi.fn((_variables, options) => {
+      options?.onSuccess?.({
+        ...scannedProject.asset_packages![0],
+        status: 'duplicate_candidate',
+      })
+    })
+    vi.mocked(useApplySemanticAssetPackageAction).mockReturnValue({
+      mutate: actionSpy,
+      isPending: false,
+    } as never)
+
+    render(<BatchModelingWorkbench onOpenBuilder={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: '生成批量建设队列' }))
+    await screen.findByText('学情分析事实主题候选')
+    await user.click(screen.getByRole('button', { name: '标记重复' }))
+
+    expect(actionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { action: 'mark_duplicate', reason: '用户在候选队列标记重复' } }),
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+    expect(await screen.findByText('重复候选')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '标记重复' })).toBeDisabled()
   })
 })
