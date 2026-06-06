@@ -1,6 +1,7 @@
 """语义建设 Build Project 应用服务。"""
 from __future__ import annotations
 
+import hashlib
 from copy import deepcopy
 from typing import Any, Dict, Protocol
 
@@ -362,8 +363,8 @@ class ModelingBuildProjectService:
         package = refresh_package_review_state(package)
         new_type = str(payload.get("package_type") or package.package_type)
         new_title = str(payload.get("title") or f"{package.title}拆分候选")
-        field_slug = "-".join(sorted(field_ids))
-        new_source = f"{package.source}_{new_type}_{field_slug}_split"
+        field_fingerprint = _field_group_fingerprint(field_ids)
+        new_source = f"{package.source}_{new_type}_fg_{field_fingerprint}_split"
         created = ModelingAssetPackage(
             id=create_asset_package_id(project.id, new_source, new_type),
             project_id=project.id,
@@ -512,3 +513,8 @@ class ModelingBuildProjectService:
         if not text:
             raise ValueError(f"{field} 不能为空")
         return text
+
+
+def _field_group_fingerprint(field_ids: set[str]) -> str:
+    joined = "\0".join(sorted(field_ids))
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:10]

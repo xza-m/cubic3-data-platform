@@ -812,6 +812,67 @@ def test_build_project_service_split_package_ids_include_moved_fields():
     assert all(repo.get_package(package_id) is not None for package_id in created_ids)
 
 
+def test_build_project_service_split_package_ids_use_stable_hash_for_collisions_and_length():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+    from app.domain.semantic.modeling_build_project import FieldCandidate
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+    long_field_id = "very_long_metric_" + "x" * 180
+    package = repo.get_package(package_id)
+    package.field_candidates = [
+        FieldCandidate(id="a_b", field="a_b", label="下划线字段", role="measure", risk="medium"),
+        FieldCandidate(id="a-b", field="a-b", label="横线字段", role="measure", risk="medium"),
+        FieldCandidate(id=long_field_id, field=long_field_id, label="长字段", role="measure", risk="medium"),
+    ]
+    repo.save_package(package)
+
+    underscore_split = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {
+            "action": "split",
+            "field_candidate_ids": ["a_b"],
+            "package_type": "metric",
+            "reason": "归一化碰撞验证",
+        },
+        principal_id="alice",
+    )
+    hyphen_split = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {
+            "action": "split",
+            "field_candidate_ids": ["a-b"],
+            "package_type": "metric",
+            "reason": "归一化碰撞验证",
+        },
+        principal_id="alice",
+    )
+    long_split = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {
+            "action": "split",
+            "field_candidate_ids": [long_field_id],
+            "package_type": "metric",
+            "reason": "长字段验证",
+        },
+        principal_id="alice",
+    )
+
+    collision_ids = {
+        underscore_split["created_package"]["id"],
+        hyphen_split["created_package"]["id"],
+    }
+    assert len(collision_ids) == 2
+    assert all(repo.get_package(package_id) is not None for package_id in collision_ids)
+    assert len(long_split["created_package"]["id"]) < 160
+
+
 def test_build_project_service_split_and_merge_use_scan_result_batch_write():
     from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
     from app.domain.semantic.modeling_build_project import FieldCandidate
