@@ -125,19 +125,44 @@ export interface ScanSemanticBuildProjectBody {
 
 export interface UpdateSemanticAssetPackageBody {
   status?: SemanticAssetPackageStatus
+  risk?: SemanticAssetPackageRisk
   evidence?: string[]
   ontology_suggestions?: Array<Record<string, unknown>>
   cube_suggestions?: Record<string, unknown>
 }
 
-export interface SemanticAssetPackageActionBody {
-  action: SemanticAssetPackageAction
-  reason?: string
-  field_candidate_ids?: string[]
-  title?: string
-  package_type?: SemanticAssetPackageType
-  target_package_id?: string
+export interface SemanticAssetPackageSplitResult {
+  source_package: SemanticAssetPackage
+  created_package: SemanticAssetPackage
 }
+
+export interface SemanticAssetPackageMergeResult {
+  target_package: SemanticAssetPackage
+  source_package: SemanticAssetPackage
+}
+
+export type SemanticAssetPackageActionResult =
+  | SemanticAssetPackage
+  | SemanticAssetPackageSplitResult
+  | SemanticAssetPackageMergeResult
+
+export type SemanticAssetPackageActionBody =
+  | {
+      action: 'defer' | 'mark_duplicate' | 'regenerate'
+      reason?: string
+    }
+  | {
+      action: 'split'
+      reason?: string
+      field_candidate_ids: string[]
+      title?: string
+      package_type?: SemanticAssetPackageType
+    }
+  | {
+      action: 'merge'
+      reason?: string
+      target_package_id: string
+    }
 
 export const listSemanticBuildProjects = () =>
   get<SemanticBuildProjectListResponse>('/semantic/modeling-workbench/projects')
@@ -171,7 +196,7 @@ export const applySemanticAssetPackageAction = (
   packageId: string,
   body: SemanticAssetPackageActionBody,
 ) =>
-  post<SemanticAssetPackage | Record<string, unknown>>(
+  post<SemanticAssetPackageActionResult>(
     `/semantic/modeling-workbench/projects/${encodeURIComponent(projectId)}/packages/${encodeURIComponent(packageId)}/actions`,
     body,
   )

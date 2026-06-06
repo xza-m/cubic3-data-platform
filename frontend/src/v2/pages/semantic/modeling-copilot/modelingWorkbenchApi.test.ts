@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
 const mockGet = vi.hoisted(() => vi.fn())
 const mockPost = vi.hoisted(() => vi.fn())
@@ -19,8 +19,14 @@ import {
   getSemanticBuildProject,
   scanSemanticBuildProject,
   updateSemanticAssetPackage,
+  type SemanticAssetPackage,
   type SemanticAssetPackageActionBody,
+  type SemanticAssetPackageActionResult,
+  type SemanticAssetPackageMergeResult,
+  type SemanticAssetPackageRisk,
+  type SemanticAssetPackageSplitResult,
   type SemanticBuildProject,
+  type UpdateSemanticAssetPackageBody,
 } from '@v2/api/semanticModelingWorkbench'
 
 describe('semanticModelingWorkbench api', () => {
@@ -81,6 +87,54 @@ describe('semanticModelingWorkbench api', () => {
       body,
       undefined,
     )
+  })
+
+  it('types package action bodies and action results precisely', () => {
+    const updateBody: UpdateSemanticAssetPackageBody = {
+      risk: 'high',
+    }
+    expectTypeOf(updateBody.risk).toEqualTypeOf<SemanticAssetPackageRisk | undefined>()
+
+    const splitBody: SemanticAssetPackageActionBody = {
+      action: 'split',
+      field_candidate_ids: ['field-candidate-1'],
+      title: '学情事实拆分包',
+      package_type: 'fact',
+    }
+    const mergeBody: SemanticAssetPackageActionBody = {
+      action: 'merge',
+      target_package_id: 'build-learning:fact:dwd_learning_activity_df',
+    }
+
+    const typedSplitBody: Extract<SemanticAssetPackageActionBody, { action: 'split' }> = splitBody
+    const typedMergeBody: Extract<SemanticAssetPackageActionBody, { action: 'merge' }> = mergeBody
+
+    const typedPackage = {} as SemanticAssetPackage
+    const splitResult: SemanticAssetPackageSplitResult = {
+      source_package: typedPackage,
+      created_package: typedPackage,
+    }
+    const mergeResult: SemanticAssetPackageMergeResult = {
+      target_package: typedPackage,
+      source_package: typedPackage,
+    }
+
+    const splitActionResult: SemanticAssetPackageActionResult = splitResult
+    const mergeActionResult: SemanticAssetPackageActionResult = mergeResult
+    const actionResultPromise = {} as ReturnType<typeof applySemanticAssetPackageAction>
+    const typedActionResultPromise: Promise<SemanticAssetPackageActionResult> = actionResultPromise
+    void typedSplitBody
+    void typedMergeBody
+    void splitActionResult
+    void mergeActionResult
+    void typedActionResultPromise
+
+    // @ts-expect-error split actions must include field_candidate_ids.
+    const invalidSplitBody: SemanticAssetPackageActionBody = { action: 'split' }
+    // @ts-expect-error merge actions must include target_package_id.
+    const invalidMergeBody: SemanticAssetPackageActionBody = { action: 'merge' }
+    void invalidSplitBody
+    void invalidMergeBody
   })
 
   it('defines project type with semantic center target', () => {
