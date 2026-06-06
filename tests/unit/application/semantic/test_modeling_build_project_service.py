@@ -167,6 +167,7 @@ class InMemoryBuildProjectRepository:
         self.projects = {}
         self.packages = {}
         self.scan_commits = 0
+        self.save_package_calls = 0
 
     def get_project(self, project_id):
         return self.projects.get(project_id)
@@ -187,6 +188,7 @@ class InMemoryBuildProjectRepository:
         return [item for item in self.packages.values() if item.project_id == project_id]
 
     def save_package(self, package):
+        self.save_package_calls += 1
         self.packages[package.id] = package
 
     def save_scan_result(self, project, packages):
@@ -245,6 +247,53 @@ def test_build_project_service_updates_candidate_status():
     assert updated["risk"] == "high"
     assert updated["target"] == "semantic_center"
     assert service.get_project(project["id"], principal_id="alice")["risk_summary"]["high"] == 1
+
+
+def test_build_project_service_update_refreshes_proposal_readiness():
+    from app.application.semantic.modeling_build_project_service import (
+        ModelingBuildProjectService,
+    )
+    from app.domain.semantic.modeling_build_project import FieldCandidate, refresh_package_review_state
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project(
+        {"name": "学情分析", "business_domain": "学情分析"},
+        principal_id="alice",
+    )
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+    package = repo.get_package(package_id)
+    package.field_candidates = [
+        FieldCandidate(
+            id="field_student_id",
+            field="student_id",
+            label="学生",
+            role="dimension",
+            cube_binding={"kind": "dimension", "name": "student_id"},
+            ontology_binding={"kind": "property", "object": "student", "name": "student_id"},
+            risk="low",
+            action="accepted",
+        )
+    ]
+    package.ontology_suggestions = []
+    repo.save_package(refresh_package_review_state(package))
+
+    assert repo.get_package(package_id).proposal_readiness.status == "blocked"
+
+    updated = service.update_asset_package(
+        project["id"],
+        package_id,
+        {
+            "ontology_suggestions": [
+                {"type": "object", "name": "learning_activity", "title": "学习行为"}
+            ]
+        },
+        principal_id="alice",
+    )
+
+    assert updated["proposal_readiness"]["status"] == "ready"
+    assert updated["review_summary"]["can_generate_proposal"] is True
 
 
 def test_build_project_service_rejects_cross_user_access():
@@ -342,6 +391,37 @@ def test_build_project_service_repeated_scan_preserves_reviewed_package_fields()
     assert reviewed["risk"] == "high"
     assert reviewed["evidence"] == ["业务 owner 已确认优先审阅。"]
     assert reviewed["ontology_suggestions"] == [{"type": "object", "name": "reviewed"}]
+
+
+def test_build_project_service_scan_after_regenerate_accepts_new_material_and_keeps_history():
+    from app.application.semantic.modeling_build_project_service import (
+        ModelingBuildProjectService,
+    )
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project(
+        {"name": "学情分析", "business_domain": "学情分析"},
+        principal_id="alice",
+    )
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+    created_at = repo.get_package(package_id).created_at
+
+    service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {"action": "regenerate", "reason": "证据过期"},
+        principal_id="alice",
+    )
+    rescanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package = next(item for item in rescanned["asset_packages"] if item["id"] == package_id)
+
+    assert package["evidence"][0] == "表画像显示行为时间、学生、课程和学校字段完整。"
+    assert package["status"] == "ready_for_review"
+    assert package["risk"] == "low"
+    assert package["operation_history"][-1]["action"] == "regenerate"
+    assert package["created_at"] == created_at
 
 
 def test_asset_package_review_summary_counts_field_states():
@@ -682,6 +762,105 @@ def test_build_project_service_splits_package_by_field_candidates():
     assert result["created_package"]["split_from_package_id"] == package_id
     assert [item["id"] for item in result["created_package"]["field_candidates"]] == ["duration_sec"]
     assert [item.id for item in repo.get_package(package_id).field_candidates] == ["student_id"]
+
+
+def test_build_project_service_split_package_ids_include_moved_fields():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+    from app.domain.semantic.modeling_build_project import FieldCandidate
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+    package = repo.get_package(package_id)
+    package.field_candidates = [
+        FieldCandidate(id="student_id", field="student_id", label="学生", role="dimension", risk="low"),
+        FieldCandidate(id="duration_sec", field="duration_sec", label="学习时长", role="measure", risk="medium"),
+        FieldCandidate(id="score", field="score", label="得分", role="measure", risk="medium"),
+    ]
+    repo.save_package(package)
+
+    duration_split = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {
+            "action": "split",
+            "field_candidate_ids": ["duration_sec"],
+            "package_type": "metric",
+            "reason": "学习时长独立审阅",
+        },
+        principal_id="alice",
+    )
+    score_split = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {
+            "action": "split",
+            "field_candidate_ids": ["score"],
+            "package_type": "metric",
+            "reason": "得分独立审阅",
+        },
+        principal_id="alice",
+    )
+    created_ids = {
+        duration_split["created_package"]["id"],
+        score_split["created_package"]["id"],
+    }
+
+    assert len(created_ids) == 2
+    assert all(repo.get_package(package_id) is not None for package_id in created_ids)
+
+
+def test_build_project_service_split_and_merge_use_scan_result_batch_write():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+    from app.domain.semantic.modeling_build_project import FieldCandidate
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    source_id = scanned["asset_packages"][0]["id"]
+    target_id = scanned["asset_packages"][1]["id"]
+    source = repo.get_package(source_id)
+    source.field_candidates = [
+        FieldCandidate(id="duration_sec", field="duration_sec", label="学习时长", role="measure", risk="medium"),
+        FieldCandidate(id="score", field="score", label="得分", role="measure", risk="medium"),
+    ]
+    repo.save_package(source)
+
+    save_calls_before_split = repo.save_package_calls
+    scan_commits_before_split = repo.scan_commits
+    service.apply_asset_package_action(
+        project["id"],
+        source_id,
+        {
+            "action": "split",
+            "field_candidate_ids": ["duration_sec"],
+            "package_type": "metric",
+            "reason": "指标组独立审阅",
+        },
+        principal_id="alice",
+    )
+
+    assert repo.save_package_calls == save_calls_before_split
+    assert repo.scan_commits == scan_commits_before_split + 1
+
+    save_calls_before_merge = repo.save_package_calls
+    scan_commits_before_merge = repo.scan_commits
+    service.apply_asset_package_action(
+        project["id"],
+        source_id,
+        {
+            "action": "merge",
+            "target_package_id": target_id,
+            "reason": "候选重复",
+        },
+        principal_id="alice",
+    )
+
+    assert repo.save_package_calls == save_calls_before_merge
+    assert repo.scan_commits == scan_commits_before_merge + 1
 
 
 def test_build_project_service_rejects_self_merge_package_action():

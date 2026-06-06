@@ -157,7 +157,7 @@ class ModelingBuildProjectService:
         for field in allowed_fields:
             if field in payload:
                 next_payload[field] = deepcopy(payload[field])
-        updated = ModelingAssetPackage(**next_payload)
+        updated = refresh_package_review_state(ModelingAssetPackage(**next_payload))
         self.repository.save_package(updated)
 
         packages = self.repository.list_packages(project.id)
@@ -362,7 +362,8 @@ class ModelingBuildProjectService:
         package = refresh_package_review_state(package)
         new_type = str(payload.get("package_type") or package.package_type)
         new_title = str(payload.get("title") or f"{package.title}拆分候选")
-        new_source = f"{package.source}_{new_type}_split"
+        field_slug = "-".join(sorted(field_ids))
+        new_source = f"{package.source}_{new_type}_{field_slug}_split"
         created = ModelingAssetPackage(
             id=create_asset_package_id(project.id, new_source, new_type),
             project_id=project.id,
@@ -379,10 +380,7 @@ class ModelingBuildProjectService:
         )
         self._record_operation(created, "split_created", reason)
         created = refresh_package_review_state(created)
-        self.repository.save_package(package)
-        self.repository.save_package(created)
-        packages = self.repository.list_packages(project.id)
-        self.repository.save_project(self._with_package_summary(project, packages))
+        self._save_package_batch(project, replacements=[package], additions=[created])
         return {
             "source_package": package.model_dump(mode="json"),
             "created_package": created.model_dump(mode="json"),
@@ -407,10 +405,9 @@ class ModelingBuildProjectService:
         self._record_operation(target, "merge_target", reason)
         package.status = "duplicate_candidate"
         self._record_operation(package, "merge_source", reason)
-        self.repository.save_package(refresh_package_review_state(target))
-        self.repository.save_package(refresh_package_review_state(package))
-        packages = self.repository.list_packages(project.id)
-        self.repository.save_project(self._with_package_summary(project, packages))
+        target = refresh_package_review_state(target)
+        package = refresh_package_review_state(package)
+        self._save_package_batch(project, replacements=[target, package])
         return {
             "target_package": target.model_dump(mode="json"),
             "source_package": package.model_dump(mode="json"),
@@ -462,6 +459,10 @@ class ModelingBuildProjectService:
         if existing is None:
             return package
         next_payload = package.model_dump(mode="json")
+        if existing.operation_history and existing.operation_history[-1].get("action") == "regenerate":
+            next_payload["created_at"] = deepcopy(existing.created_at)
+            next_payload["operation_history"] = deepcopy(existing.operation_history)
+            return ModelingAssetPackage(**next_payload)
         for field in (
             "status",
             "risk",
@@ -472,6 +473,32 @@ class ModelingBuildProjectService:
         ):
             next_payload[field] = deepcopy(getattr(existing, field))
         return ModelingAssetPackage(**next_payload)
+
+    def _save_package_batch(
+        self,
+        project: ModelingBuildProject,
+        *,
+        replacements: list[ModelingAssetPackage],
+        additions: list[ModelingAssetPackage] | None = None,
+    ) -> None:
+        replacement_by_id = {package.id: package for package in replacements}
+        packages: list[ModelingAssetPackage] = []
+        seen_ids: set[str] = set()
+        for current in self.repository.list_packages(project.id):
+            package = replacement_by_id.pop(current.id, current)
+            packages.append(package)
+            seen_ids.add(package.id)
+        for package in replacement_by_id.values():
+            if package.id not in seen_ids:
+                packages.append(package)
+                seen_ids.add(package.id)
+        for package in additions or []:
+            if package.id in seen_ids:
+                packages = [package if item.id == package.id else item for item in packages]
+            else:
+                packages.append(package)
+                seen_ids.add(package.id)
+        self.repository.save_scan_result(self._with_package_summary(project, packages), packages)
 
     def _required_text(
         self,
