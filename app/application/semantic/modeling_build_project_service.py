@@ -398,6 +398,8 @@ class ModelingBuildProjectService:
         target_id = str(payload.get("target_package_id") or "").strip()
         if not target_id:
             raise ValueError("merge 需要 target_package_id")
+        if target_id == package.id:
+            raise ValueError("merge 目标不能是当前包")
         target = self._require_package(project.id, target_id)
         target.field_candidates.extend(package.field_candidates)
         target.evidence.extend([f"合并 {package.title}: {reason or '候选重复'}"])

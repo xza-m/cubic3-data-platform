@@ -682,3 +682,21 @@ def test_build_project_service_splits_package_by_field_candidates():
     assert result["created_package"]["split_from_package_id"] == package_id
     assert [item["id"] for item in result["created_package"]["field_candidates"]] == ["duration_sec"]
     assert [item.id for item in repo.get_package(package_id).field_candidates] == ["student_id"]
+
+
+def test_build_project_service_rejects_self_merge_package_action():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+
+    with pytest.raises(ValueError, match="目标不能是当前包"):
+        service.apply_asset_package_action(
+            project["id"],
+            package_id,
+            {"action": "merge", "target_package_id": package_id},
+            principal_id="alice",
+        )
