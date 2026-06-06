@@ -57,7 +57,11 @@ class ModelingBuildProjectService:
     ) -> Dict[str, Any]:
         name = self._required_text(payload, "name", fallback=payload.get("business_domain"))
         business_domain = self._required_text(payload, "business_domain", fallback=name)
+        scope = dict(payload.get("scope") or {})
         project_id = normalize_build_project_id(str(payload.get("id") or name))
+        batch_run_id = self._normalize_batch_run_id(scope.get("batch_run_id"))
+        if batch_run_id and not payload.get("id"):
+            project_id = f"{project_id}-{batch_run_id}"
         existing = self.repository.get_project(project_id)
         if existing is not None:
             if existing.created_by and existing.created_by != principal_id:
@@ -68,7 +72,7 @@ class ModelingBuildProjectService:
             name=name,
             business_domain=business_domain,
             created_by=principal_id,
-            scope=dict(payload.get("scope") or {}),
+            scope=scope,
         )
         self.repository.save_project(project)
         return self._dump_project(project)
@@ -240,6 +244,20 @@ class ModelingBuildProjectService:
                     "表画像显示行为时间、学生、课程和学校字段完整。",
                     "血缘使用中已被学情报表消费。",
                 ],
+                modeling_source=self._modeling_source(
+                    "dwd_learning_activity_df",
+                    title=f"{domain}事实主题候选",
+                    columns=[
+                        {"name": "activity_id", "type": "string", "comment": "学习行为 ID"},
+                        {"name": "student_id", "type": "string", "comment": "学生 ID"},
+                        {"name": "school_id", "type": "string", "comment": "学校 ID"},
+                        {"name": "course_id", "type": "string", "comment": "课程 ID"},
+                        {"name": "activity_type", "type": "string", "comment": "学习行为类型"},
+                        {"name": "activity_time", "type": "datetime", "comment": "行为发生时间"},
+                        {"name": "duration_sec", "type": "bigint", "comment": "学习时长秒数"},
+                        {"name": "ds", "type": "string", "comment": "分区日期", "is_partition": True},
+                    ],
+                ),
                 ontology_suggestions=[
                     {"type": "object", "name": "learning_activity", "title": "学习行为"}
                 ],
@@ -261,6 +279,17 @@ class ModelingBuildProjectService:
                     "维表主键稳定，字段中文名与业务术语一致。",
                     "已有语义中心对象可作为复用参考。",
                 ],
+                modeling_source=self._modeling_source(
+                    "dim_school_df",
+                    title=f"{domain}学校维度候选",
+                    columns=[
+                        {"name": "school_id", "type": "string", "comment": "学校 ID"},
+                        {"name": "school_name", "type": "string", "comment": "学校名称"},
+                        {"name": "province", "type": "string", "comment": "省份"},
+                        {"name": "city", "type": "string", "comment": "城市"},
+                        {"name": "ds", "type": "string", "comment": "分区日期", "is_partition": True},
+                    ],
+                ),
                 ontology_suggestions=[
                     {"type": "object", "name": "school", "title": "学校"}
                 ],
@@ -287,6 +316,17 @@ class ModelingBuildProjectService:
                     "存在多种活跃口径，需要业务 owner 确认。",
                     "可从最近 7 天查询需求回推时间过滤口径。",
                 ],
+                modeling_source=self._modeling_source(
+                    "dws_learning_student_activity_di",
+                    title=f"{domain}活跃学生指标候选",
+                    columns=[
+                        {"name": "ds", "type": "string", "comment": "统计日期", "is_partition": True},
+                        {"name": "student_id", "type": "string", "comment": "学生 ID"},
+                        {"name": "school_id", "type": "string", "comment": "学校 ID"},
+                        {"name": "active_days", "type": "bigint", "comment": "活跃天数"},
+                        {"name": "activity_count", "type": "bigint", "comment": "学习行为次数"},
+                    ],
+                ),
                 ontology_suggestions=[
                     {
                         "type": "metric",
@@ -301,6 +341,50 @@ class ModelingBuildProjectService:
             ),
         ]
         return [refresh_package_review_state(package) for package in packages]
+
+    @staticmethod
+    def _modeling_source(
+        table: str,
+        *,
+        title: str,
+        columns: list[Dict[str, Any]],
+        source_id: int = 1,
+        database: str = "dw",
+        schema: str | None = None,
+    ) -> Dict[str, Any]:
+        """生成候选包进入单资产 builder 所需的最小建模源证据。"""
+
+        return {
+            "source_kind": "physical_table",
+            "source_id": source_id,
+            "database": database,
+            "schema": schema,
+            "table": table,
+            "name": table,
+            "title": title,
+            "asset_ref": {
+                "kind": "physical_table",
+                "source_id": source_id,
+                "database": database,
+                "schema": schema,
+                "table": table,
+            },
+            "evidence_bundle": {
+                "schema_snapshot": {
+                    "snapshot_id": f"workbench:{database}:{table}",
+                    "database": database,
+                    "schema": schema,
+                    "table": table,
+                    "title": title,
+                    "columns": columns,
+                    "partitions": [
+                        column["name"]
+                        for column in columns
+                        if column.get("is_partition") or column.get("partition")
+                    ],
+                }
+            },
+        }
 
     def _fallback_packages_from_scope(
         self,
@@ -526,6 +610,15 @@ class ModelingBuildProjectService:
         if not text:
             raise ValueError(f"{field} 不能为空")
         return text
+
+    def _normalize_batch_run_id(self, value: Any) -> str | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        normalized = normalize_build_project_id(text)
+        if normalized.startswith("build-"):
+            normalized = normalized[len("build-") :]
+        return normalized[:64] or None
 
 
 def _field_group_fingerprint(field_ids: set[str]) -> str:

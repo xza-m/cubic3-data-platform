@@ -222,6 +222,36 @@ def test_build_project_service_creates_project_and_scan_queue():
     assert repo.list_packages(project["id"])[0].target == "semantic_center"
 
 
+def test_build_project_service_batch_run_id_creates_isolated_project_container():
+    from app.application.semantic.modeling_build_project_service import (
+        ModelingBuildProjectService,
+    )
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+
+    first = service.create_project(
+        {
+            "name": "学情分析",
+            "business_domain": "学情分析",
+            "scope": {"batch_run_id": "run-a"},
+        },
+        principal_id="alice",
+    )
+    second = service.create_project(
+        {
+            "name": "学情分析",
+            "business_domain": "学情分析",
+            "scope": {"batch_run_id": "run-b"},
+        },
+        principal_id="alice",
+    )
+
+    assert first["id"] == "build-xue-qing-fen-xi-run-a"
+    assert second["id"] == "build-xue-qing-fen-xi-run-b"
+    assert first["business_domain"] == second["business_domain"] == "学情分析"
+
+
 def test_build_project_service_updates_candidate_status():
     from app.application.semantic.modeling_build_project_service import (
         ModelingBuildProjectService,
@@ -666,6 +696,43 @@ def test_build_project_scan_falls_back_to_manual_source_when_selected_sources_em
 
     assert scanned["asset_package_count"] == 1
     assert scanned["asset_packages"][0]["source"] == "ods_manual_fact_df"
+
+
+def test_build_project_scan_embeds_modeling_source_for_batch_builder_context():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    fact_package = next(item for item in scanned["asset_packages"] if item["source"] == "dwd_learning_activity_df")
+
+    modeling_source = fact_package["modeling_source"]
+    assert modeling_source["source_kind"] == "physical_table"
+    assert modeling_source["source_id"] == 1
+    assert modeling_source["database"] == "dw"
+    assert modeling_source["table"] == "dwd_learning_activity_df"
+    assert modeling_source["asset_ref"] == {
+        "kind": "physical_table",
+        "source_id": 1,
+        "database": "dw",
+        "schema": None,
+        "table": "dwd_learning_activity_df",
+    }
+    schema_snapshot = modeling_source["evidence_bundle"]["schema_snapshot"]
+    assert schema_snapshot["table"] == "dwd_learning_activity_df"
+    assert schema_snapshot["partitions"] == ["ds"]
+    assert [column["name"] for column in schema_snapshot["columns"]] == [
+        "activity_id",
+        "student_id",
+        "school_id",
+        "course_id",
+        "activity_type",
+        "activity_time",
+        "duration_sec",
+        "ds",
+    ]
 
 
 def test_build_project_service_applies_defer_and_duplicate_package_actions():

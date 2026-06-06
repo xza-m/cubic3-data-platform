@@ -88,6 +88,7 @@ class ModelingAssetPackage(BaseModel):
     status: AssetPackageStatus = "ready_for_review"
     primary_action: str = "open_builder"
     evidence: List[str] = Field(default_factory=list)
+    modeling_source: Dict[str, Any] = Field(default_factory=dict)
     ontology_suggestions: List[Dict[str, Any]] = Field(default_factory=list)
     cube_suggestions: Dict[str, Any] = Field(default_factory=dict)
     field_candidates: List[FieldCandidate] = Field(default_factory=list)
