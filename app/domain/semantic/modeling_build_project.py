@@ -42,6 +42,8 @@ class FieldCandidate(BaseModel):
 
 
 class FieldReviewSummary(BaseModel):
+    """字段候选审阅摘要；blocking 表示阻塞事项数，不是字段数。"""
+
     total: int = 0
     accepted: int = 0
     pending: int = 0
@@ -211,6 +213,9 @@ def build_proposal_readiness(package: ModelingAssetPackage) -> ProposalReadiness
 def refresh_package_review_state(package: ModelingAssetPackage) -> ModelingAssetPackage:
     package.review_summary = build_review_summary(package)
     package.proposal_readiness = build_proposal_readiness(package)
+    package.review_summary.can_generate_proposal = (
+        package.proposal_readiness.status == "ready"
+    )
     return package
 
 

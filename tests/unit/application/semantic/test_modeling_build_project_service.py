@@ -455,3 +455,83 @@ def test_asset_package_can_generate_proposal_after_required_light_ontology_bindi
     assert readiness.status == "ready"
     assert readiness.required_bindings == ["object_to_cube", "property_to_dimension", "metric_to_measure"]
     assert readiness.blocking_reasons == []
+
+
+def test_refresh_package_review_state_aligns_summary_with_readiness_blockers():
+    from app.domain.semantic.modeling_build_project import (
+        FieldCandidate,
+        ModelingAssetPackage,
+        refresh_package_review_state,
+    )
+
+    package = ModelingAssetPackage(
+        id="build-learning:fact:dwd-learning-activity-df",
+        project_id="build-learning",
+        title="学情分析事实主题候选",
+        package_type="fact",
+        source="dwd_learning_activity_df",
+        grain="一条学习行为事件",
+        field_candidates=[
+            FieldCandidate(
+                id="field_student_id",
+                field="student_id",
+                label="学生",
+                role="dimension",
+                cube_binding={"kind": "dimension", "name": "student_id"},
+                ontology_binding={"kind": "property", "object": "student", "name": "student_id"},
+                risk="low",
+                action="accepted",
+                evidence=["字段画像显示非空率 100%。"],
+            ),
+            FieldCandidate(
+                id="field_duration",
+                field="duration_sec",
+                label="学习时长",
+                role="measure",
+                cube_binding={"kind": "measure", "name": "learning_duration", "aggregation": "sum"},
+                ontology_binding={"kind": "metric", "object": "learning_activity", "name": "learning_duration"},
+                risk="medium",
+                action="accepted",
+                evidence=["指标口径来自历史查询。"],
+            ),
+        ],
+    )
+
+    refresh_package_review_state(package)
+
+    assert package.proposal_readiness.status == "blocked"
+    assert "primary_business_object_missing" in package.proposal_readiness.blocking_reasons
+    assert package.review_summary.can_generate_proposal is False
+
+
+def test_review_summary_blocking_counts_blocking_items_not_fields():
+    from app.domain.semantic.modeling_build_project import (
+        FieldCandidate,
+        ModelingAssetPackage,
+        build_review_summary,
+    )
+
+    package = ModelingAssetPackage(
+        id="build-learning:fact:dwd-learning-activity-df",
+        project_id="build-learning",
+        title="学情分析事实主题候选",
+        package_type="fact",
+        source="dwd_learning_activity_df",
+        grain="一条学习行为事件",
+        field_candidates=[
+            FieldCandidate(
+                id="field_duration",
+                field="duration_sec",
+                label="学习时长",
+                role="measure",
+                risk="medium",
+                action="accepted",
+                evidence=["指标口径来自历史查询。"],
+            ),
+        ],
+    )
+
+    summary = build_review_summary(package)
+
+    assert summary.blocking == 2
+    assert summary.blocking_reasons == ["cube_binding_missing", "ontology_binding_missing"]
