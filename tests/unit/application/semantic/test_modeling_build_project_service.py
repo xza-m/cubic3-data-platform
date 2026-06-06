@@ -535,3 +535,93 @@ def test_review_summary_blocking_counts_blocking_items_not_fields():
 
     assert summary.blocking == 2
     assert summary.blocking_reasons == ["cube_binding_missing", "ontology_binding_missing"]
+
+
+def test_build_project_scan_falls_back_to_selected_sources_when_recommendation_empty():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project(
+        {
+            "name": "新数据源建设",
+            "business_domain": "新数据源",
+            "scope": {
+                "selected_sources": ["ods_new_fact_df"],
+                "strategy": "conservative",
+                "recommendation_empty": True,
+            },
+        },
+        principal_id="alice",
+    )
+
+    scanned = service.scan_project(project["id"], {}, principal_id="alice")
+
+    assert scanned["asset_package_count"] == 1
+    package = scanned["asset_packages"][0]
+    assert package["source"] == "ods_new_fact_df"
+    assert package["status"] == "needs_scope"
+    assert package["risk"] == "medium"
+    assert "自动推荐证据不足" in package["evidence"][0]
+
+
+def test_build_project_service_applies_defer_and_duplicate_package_actions():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+
+    deferred = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {"action": "defer", "reason": "等待业务 owner 确认"},
+        principal_id="alice",
+    )
+    duplicated = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {"action": "mark_duplicate", "reason": "与已发布 Cube 重复"},
+        principal_id="alice",
+    )
+
+    assert deferred["status"] == "deferred"
+    assert duplicated["status"] == "duplicate_candidate"
+    assert duplicated["operation_history"][-1]["action"] == "mark_duplicate"
+
+
+def test_build_project_service_splits_package_by_field_candidates():
+    from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+    from app.domain.semantic.modeling_build_project import FieldCandidate
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    project = service.create_project({"name": "学情分析", "business_domain": "学情分析"}, principal_id="alice")
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+    package_id = scanned["asset_packages"][0]["id"]
+    package = repo.get_package(package_id)
+    package.field_candidates = [
+        FieldCandidate(id="student_id", field="student_id", label="学生", role="dimension", risk="low"),
+        FieldCandidate(id="duration_sec", field="duration_sec", label="学习时长", role="measure", risk="medium"),
+    ]
+    repo.save_package(package)
+
+    result = service.apply_asset_package_action(
+        project["id"],
+        package_id,
+        {
+            "action": "split",
+            "field_candidate_ids": ["duration_sec"],
+            "title": "学情分析指标候选",
+            "package_type": "metric",
+            "reason": "指标组独立审阅",
+        },
+        principal_id="alice",
+    )
+
+    assert result["created_package"]["title"] == "学情分析指标候选"
+    assert result["created_package"]["split_from_package_id"] == package_id
+    assert [item["id"] for item in result["created_package"]["field_candidates"]] == ["duration_sec"]
+    assert [item.id for item in repo.get_package(package_id).field_candidates] == ["student_id"]
