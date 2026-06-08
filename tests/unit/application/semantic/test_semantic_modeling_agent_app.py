@@ -144,7 +144,7 @@ def test_start_review_proposal_builds_async_codex_run_request():
     request = run_service.requests[0]
     assert request.app_id == "semantic_modeling"
     assert request.action == "semantic.modeling.review_proposal"
-    assert request.preferred_runtime == "codex_app_server"
+    assert request.preferred_runtime == "codex_sdk"
     assert request.execution_mode == "async"
     assert request.principal_id == "alice"
     assert request.runtime_context_ref.session_id == "session_1"
@@ -208,7 +208,7 @@ def test_start_repair_validation_failure_builds_async_codex_run_request():
     assert result["run_id"] == "run_review_1"
     request = run_service.requests[0]
     assert request.action == "semantic.modeling.repair_validation_failure"
-    assert request.preferred_runtime == "codex_app_server"
+    assert request.preferred_runtime == "codex_sdk"
     assert request.execution_mode == "async"
     assert request.runtime_context_ref.turn_id.startswith("repair_")
     assert request.input["session_id"] == "session_1"

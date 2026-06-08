@@ -80,26 +80,24 @@ def _modeling_proposal_repository(store: str, session, proposals_dir: str):
     raise ValueError(f"unsupported semantic modeling copilot store: {store}")
 
 
-def _codex_ws_client_from_config(config):
-    """按管理配置即时创建 Codex WS client，避免联通测试使用旧配置。"""
+def _codex_sdk_client_from_config(config, *, registry):
+    """按管理配置获取 Codex SDK client，保证 run lifecycle 状态可被轮询。"""
 
-    provider_extra = config.get("provider_extra")
-    if not isinstance(provider_extra, dict):
-        provider_extra = {}
-    project_root = str(provider_extra.get("project_root") or config.get("project_root") or os.getcwd())
-    return CodexAppServerWebSocketClient(
-        endpoint=str(config.get("endpoint") or ""),
-        project_root=project_root,
-        runtime_workspace_roots=_codex_workspace_roots(config, provider_extra, project_root),
-        timeout_seconds=_parse_positive_int(
-            provider_extra.get("timeout_seconds", config.get("timeout_seconds")),
-            default=10,
-        ),
-    )
+    project_root = str(config.get("project_root") or os.getcwd())
+    merged = dict(config)
+    merged["project_root"] = project_root
+    merged["runtime_workspace_roots"] = _codex_workspace_roots(config, project_root)
+    return registry.client_for_config(merged)
 
 
-def _codex_workspace_roots(config, provider_extra, project_root: str) -> list[str]:
-    raw_roots = provider_extra.get("runtime_workspace_roots") or config.get("runtime_workspace_roots")
+def _codex_sdk_client_factory_from_registry(registry):
+    """生成管理服务 / run service 共用的 Codex SDK client factory。"""
+
+    return lambda config: _codex_sdk_client_from_config(config, registry=registry)
+
+
+def _codex_workspace_roots(config, project_root: str) -> list[str]:
+    raw_roots = config.get("runtime_workspace_roots")
     if raw_roots is None:
         roots = [project_root]
     elif isinstance(raw_roots, (list, tuple, set)):
@@ -119,15 +117,27 @@ def _openai_runtime_adapter_from_config_service(config_service_provider):
     )
 
 
-def _codex_run_service_from_config_service(repository, config_service_provider):
-    """让 Codex run 每次提交/轮询前读取当前 WebSocket 配置。"""
+def _codex_run_service_from_config_service(repository, config_service_provider, codex_client_factory):
+    """让 Codex run 每次提交/轮询前读取当前 SDK 配置。"""
 
     return CodexRunService(
-        client_provider=lambda: _codex_ws_client_from_config(
-            config_service_provider().management_config("codex_app_server")
+        client_provider=lambda: codex_client_factory(
+            config_service_provider().management_config("codex_sdk")
         ),
         repository=repository,
     )
+
+
+def _semantic_release_gateway_sql_dry_run(gateway_client_factory, platform_service_token: str | None):
+    """按 gateway token 是否配置决定是否启用物理 SQL dry-run。"""
+
+    if not str(platform_service_token or "").strip():
+        return None
+
+    def _dry_run(payload):
+        return gateway_client_factory().dry_run_sql(payload)
+
+    return _dry_run
 
 
 # Infrastructure
@@ -190,7 +200,7 @@ from app.infrastructure.adapters.llm.openai_compatible import OpenAICompatibleAd
 from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import (
     OpenAICompatibleRuntimeAdapter,
 )
-from app.infrastructure.agent_inference_runtime.codex_ws_client import CodexAppServerWebSocketClient
+from app.infrastructure.agent_inference_runtime.codex_sdk_client import CodexSdkClientRegistry
 from app.infrastructure.agent_inference_runtime.sql_repository import (
     SqlAgentInferenceRuntimeRepository,
 )
@@ -222,11 +232,16 @@ from app.application.semantic.data_asset_agent_app import DataAssetAgentApp
 from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
 from app.application.semantic.field_candidates import FieldCandidateService
+from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_proposal_service import ModelingProposalService
 from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
 from app.application.semantic.publish_gate_service import PublishGateService
+from app.application.semantic.release_validation_preview import (
+    ReleaseValidationPreviewService,
+    build_semantic_compile_preview_adapter,
+)
 from app.application.semantic.runtime_snapshot_service import RuntimeSnapshotService
 from app.application.semantic.source_candidate_recall_service import SourceCandidateRecallService
 from app.application.semantic.semantic_definition_service import SemanticDefinitionService
@@ -256,6 +271,9 @@ from app.infrastructure.semantic.yaml_modeling_proposal_repository import (
 )
 from app.infrastructure.semantic.sql_modeling_agent_session_repository import (
     SqlModelingAgentSessionRepository,
+)
+from app.infrastructure.semantic.sql_modeling_build_project_repository import (
+    SqlModelingBuildProjectRepository,
 )
 from app.infrastructure.semantic.sql_modeling_proposal_repository import (
     SqlModelingProposalRepository,
@@ -458,15 +476,12 @@ class Container(containers.DeclarativeContainer):
         router=agent_inference_runtime_router,
     )
 
-    agent_codex_ws_client = providers.Factory(
-        CodexAppServerWebSocketClient,
-        endpoint=config.agent_codex.endpoint,
-        project_root=config.agent_codex.project_root,
-        runtime_workspace_roots=providers.List(config.agent_codex.project_root),
-        timeout_seconds=config.agent_codex.timeout_seconds,
-    )
+    agent_codex_sdk_client_registry = providers.Singleton(CodexSdkClientRegistry)
 
-    agent_codex_ws_client_factory = providers.Object(_codex_ws_client_from_config)
+    agent_codex_sdk_client_factory = providers.Singleton(
+        _codex_sdk_client_factory_from_registry,
+        registry=agent_codex_sdk_client_registry,
+    )
 
     agent_runtime_management_service = providers.Factory(
         AgentRuntimeManagementService,
@@ -474,7 +489,7 @@ class Container(containers.DeclarativeContainer):
         codex_config=config.agent_codex,
         action_bindings=agent_runtime_action_bindings,
         runtime_config_service=agent_runtime_config_service,
-        codex_ws_client_factory=agent_codex_ws_client_factory,
+        codex_client_factory=agent_codex_sdk_client_factory,
     )
 
     agent_inference_runtime_repository = providers.Factory(
@@ -485,6 +500,7 @@ class Container(containers.DeclarativeContainer):
     codex_run_service = providers.Factory(
         _codex_run_service_from_config_service,
         config_service_provider=agent_runtime_config_service.provider,
+        codex_client_factory=agent_codex_sdk_client_factory,
         repository=agent_inference_runtime_repository,
     )
     
@@ -886,6 +902,7 @@ class Container(containers.DeclarativeContainer):
         base_url=config.query_gateway.base_url,
         platform_service_token=config.query_gateway.platform_service_token,
         timeout_seconds=config.query_gateway.timeout_seconds,
+        sql_dry_run_path=config.query_gateway.sql_dry_run_path,
     )
 
     agent_semantic_execute_service = providers.Factory(
@@ -937,6 +954,16 @@ class Container(containers.DeclarativeContainer):
         proposals_dir=_os.path.join(_semantic_base, "modeling_proposals"),
     )
 
+    semantic_modeling_workbench_repository = providers.Singleton(
+        SqlModelingBuildProjectRepository,
+        session=db_session,
+    )
+
+    semantic_modeling_workbench_service = providers.Singleton(
+        ModelingBuildProjectService,
+        repository=semantic_modeling_workbench_repository,
+    )
+
     semantic_modeling_proposal_service = providers.Singleton(
         ModelingProposalService,
         repository=semantic_modeling_proposal_repository,
@@ -944,6 +971,23 @@ class Container(containers.DeclarativeContainer):
         readiness_checker=semantic_modeling_copilot_readiness_checker,
         asset_registry_repository=semantic_asset_registry_repository,
         release_service=semantic_release_service,
+    )
+
+    semantic_release_gateway_sql_dry_run = providers.Callable(
+        _semantic_release_gateway_sql_dry_run,
+        gateway_client_factory=gateway_query_client.provider,
+        platform_service_token=config.query_gateway.platform_service_token,
+    )
+
+    semantic_release_compile_preview = providers.Callable(
+        build_semantic_compile_preview_adapter,
+        compiler_preview_service=execution_compiler_preview_service,
+    )
+
+    semantic_release_validation_preview_service = providers.Singleton(
+        ReleaseValidationPreviewService,
+        semantic_compile_preview=semantic_release_compile_preview,
+        gateway_sql_dry_run=semantic_release_gateway_sql_dry_run,
     )
 
     semantic_evidence_builder = providers.Singleton(SemanticEvidenceBuilder)
@@ -961,6 +1005,7 @@ class Container(containers.DeclarativeContainer):
         agent_app=semantic_modeling_agent_app,
         tools=semantic_modeling_copilot_tools,
         proposal_service=semantic_modeling_proposal_service,
+        release_preview_service=semantic_release_validation_preview_service,
     )
     
     execute_sql_preview_handler = providers.Factory(
@@ -1484,14 +1529,12 @@ def init_container(app: Flask) -> Container:
         'agent_codex': {
             'enabled': _parse_bool(os.getenv('AGENT_CODEX_ENABLED', app.config.get('AGENT_CODEX_ENABLED', False))),
             'ui_managed': _parse_bool(os.getenv('AGENT_CODEX_UI_MANAGED', app.config.get('AGENT_CODEX_UI_MANAGED', False))),
-            'server_managed': _parse_bool(os.getenv('AGENT_CODEX_SERVER_MANAGED', app.config.get('AGENT_CODEX_SERVER_MANAGED', False))),
-            'command_profile': os.getenv('AGENT_CODEX_COMMAND_PROFILE', app.config.get('AGENT_CODEX_COMMAND_PROFILE', 'local-codex-app-server')),
-            'allowed_project_roots': os.getenv('AGENT_CODEX_ALLOWED_PROJECT_ROOTS', app.config.get('AGENT_CODEX_ALLOWED_PROJECT_ROOTS', '')),
             'project_id': os.getenv('AGENT_CODEX_PROJECT_ID', app.config.get('AGENT_CODEX_PROJECT_ID', 'cubic3-data-platform')),
             'project_root': os.getenv('AGENT_CODEX_PROJECT_ROOT', app.config.get('AGENT_CODEX_PROJECT_ROOT', os.getcwd())),
             'runtime_root': os.getenv('AGENT_CODEX_RUNTIME_ROOT', app.config.get('AGENT_CODEX_RUNTIME_ROOT', '.cubic3/agent-codex')),
-            'transport': os.getenv('AGENT_CODEX_TRANSPORT', app.config.get('AGENT_CODEX_TRANSPORT', 'ws')),
-            'endpoint': os.getenv('AGENT_CODEX_ENDPOINT', app.config.get('AGENT_CODEX_ENDPOINT', '')),
+            'sandbox': os.getenv('AGENT_CODEX_SANDBOX', app.config.get('AGENT_CODEX_SANDBOX', 'read-only')),
+            'codex_path': os.getenv('AGENT_CODEX_PATH', app.config.get('AGENT_CODEX_PATH', '')),
+            'base_url': os.getenv('AGENT_CODEX_BASE_URL', app.config.get('AGENT_CODEX_BASE_URL', '')),
             'timeout_seconds': _parse_positive_int(
                 os.getenv(
                     'AGENT_CODEX_TIMEOUT_SECONDS',
@@ -1511,6 +1554,13 @@ def init_container(app: Flask) -> Container:
             'base_url': os.getenv('QUERY_GATEWAY_BASE_URL', app.config.get('QUERY_GATEWAY_BASE_URL', 'http://dw-query-gateway:8000')),
             'platform_service_token': os.getenv('QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN', app.config.get('QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN', '')),
             'timeout_seconds': int(os.getenv('QUERY_GATEWAY_TIMEOUT_SECONDS', app.config.get('QUERY_GATEWAY_TIMEOUT_SECONDS', 5))),
+            'sql_dry_run_path': os.getenv(
+                'QUERY_GATEWAY_SQL_DRY_RUN_PATH',
+                app.config.get(
+                    'QUERY_GATEWAY_SQL_DRY_RUN_PATH',
+                    '/api/v1/queries/dry-run',
+                ),
+            ),
         },
         'semantic_modeling': {
             'copilot_store': app.config.get('SEMANTIC_MODELING_COPILOT_STORE', 'sql'),

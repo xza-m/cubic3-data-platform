@@ -108,6 +108,7 @@ frontend/coverage/
 # ============================================================================
 uploads/
 extraction_results/
+cache/
 *.csv
 *.xlsx
 *.xls
@@ -115,6 +116,7 @@ extraction_results/
 # ============================================================================
 # Frontend (Node.js / React)
 # ============================================================================
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/build/

@@ -50,7 +50,7 @@ class ActionRuntimeBindingRegistry:
             return RuntimeActionBinding(
                 action=action,
                 default_runtime="openai_compatible",
-                allowed_runtimes=["openai_compatible", "codex_app_server"],
+                allowed_runtimes=["openai_compatible", "codex_sdk"],
                 expose_selector=True,
                 requires_connection=False,
                 reason="expert_runtime_choice",
@@ -67,8 +67,8 @@ class ActionRuntimeBindingRegistry:
         if action in self._FIXED_CODEX_ACTIONS or self._is_codex_action(action):
             return RuntimeActionBinding(
                 action=action,
-                default_runtime="codex_app_server",
-                allowed_runtimes=["codex_app_server"],
+                default_runtime="codex_sdk",
+                allowed_runtimes=["codex_sdk"],
                 expose_selector=False,
                 requires_connection=True,
                 reason="fixed_codex_workspace",

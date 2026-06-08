@@ -13,7 +13,6 @@ from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeArtifact,
     AgentInferenceRuntimeRun,
     RuntimeManagementAuditEvent,
-    RuntimeOperationResult,
     RuntimeProviderConfigSnapshot,
     RuntimeContextRef,
 )
@@ -67,7 +66,7 @@ class _Repo:
                 run_id="run_corrupt_provider_ref",
                 app_id="semantic_modeling",
                 action="semantic.modeling.review_proposal",
-                runtime_name="codex_app_server",
+                runtime_name="codex_sdk",
                 status="running",
                 runtime_context_ref=RuntimeContextRef(
                     project_id="cubic3-data-platform",
@@ -223,7 +222,7 @@ class _RunObject:
     run_id = "run_object"
     app_id = "semantic_modeling"
     action = "semantic.modeling.review_proposal"
-    runtime_name = "codex_app_server"
+    runtime_name = "codex_sdk"
     status = "failed"
     runtime_context_ref = _ContextRefObject()
     principal_id = "bob"
@@ -309,12 +308,12 @@ class _RuntimeManagement:
                     "details": {"model": "gpt-4o-mini"},
                 },
                 {
-                    "runtime_name": "codex_app_server",
-                    "label": "Codex App Server",
+                    "runtime_name": "codex_sdk",
+                    "label": "Codex SDK",
                     "configured": False,
                     "available": False,
                     "status": "disabled",
-                    "message": "Codex app-server 未启用。",
+                    "message": "Codex SDK 未启用。",
                     "operations": [],
                     "details": {"ui_managed": False},
                 },
@@ -330,8 +329,8 @@ class _RuntimeManagement:
                 },
                 {
                     "action": "semantic.modeling.review_proposal",
-                    "default_runtime": "codex_app_server",
-                    "allowed_runtimes": ["codex_app_server"],
+                    "default_runtime": "codex_sdk",
+                    "allowed_runtimes": ["codex_sdk"],
                     "expose_selector": False,
                     "requires_connection": True,
                     "reason": "fixed_codex_workspace",
@@ -374,7 +373,7 @@ class _RuntimeManagement:
             "runtime_name": runtime_name,
             "operation": "start",
             "status": "succeeded",
-            "message": "已提交 Codex app-server 启动。",
+            "message": "Codex SDK provider 不支持前端启停。",
             "details": {"pid": 4321},
         }
 
@@ -384,7 +383,7 @@ class _RuntimeManagement:
             "runtime_name": runtime_name,
             "operation": "stop",
             "status": "succeeded",
-            "message": "已停止 Codex app-server。",
+            "message": "Codex SDK provider 不支持前端启停。",
             "details": {"pid": 4321},
         }
 
@@ -393,7 +392,7 @@ class _RuntimeManagement:
             "runtime_name": runtime_name,
             "operation": "restart",
             "status": "succeeded",
-            "message": "已重启 Codex app-server。",
+            "message": "Codex SDK provider 不支持前端启停。",
             "details": {"pid": 4322},
         }
 
@@ -414,17 +413,6 @@ class _RuntimeManagement:
             "events": ["run.started", "run.succeeded"],
             "details": {},
         }
-
-
-class _FakeCodexProcessManager:
-    def start(self):
-        return RuntimeOperationResult(
-            runtime_name="codex_app_server",
-            operation="start",
-            status="succeeded",
-            message="已提交 Codex app-server 启动。",
-            details={"profile": "local-codex-app-server"},
-        )
 
 
 class _RuntimeConfigRepository:
@@ -471,6 +459,12 @@ class _RuntimeConfigRepository:
         )
         self.audit_events.append(audit)
         return audit
+
+    def get_latest_audit_event(self, runtime_name: str, *, action: str | None = None):
+        for event in reversed(self.audit_events):
+            if event.runtime_name == runtime_name and (action is None or event.action == action):
+                return event
+        return None
 
 
 def _client(
@@ -776,7 +770,7 @@ def test_agent_runtime_api_serializes_repository_returned_objects():
 
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["runtime_name"] == "codex_app_server"
+    assert data["runtime_name"] == "codex_sdk"
     assert data["runtime_context_ref"]["session_id"] == "s2"
     assert data["error"]["code"] == "CODEX_RUNTIME_UNAVAILABLE"
 
@@ -1271,7 +1265,7 @@ def test_agent_runtime_api_exposes_platform_runtime_management_snapshot():
     assert resp.status_code == 200
     data = resp.get_json()["data"]
     assert data["providers"][0]["runtime_name"] == "openai_compatible"
-    assert data["providers"][1]["runtime_name"] == "codex_app_server"
+    assert data["providers"][1]["runtime_name"] == "codex_sdk"
     assert data["action_bindings"][0]["expose_selector"] is False
     assert data["can_manage"] is False
 
@@ -1298,7 +1292,7 @@ def test_agent_runtime_api_resolves_action_binding_without_frontend_runtime_swit
 
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["default_runtime"] == "codex_app_server"
+    assert data["default_runtime"] == "codex_sdk"
     assert data["expose_selector"] is False
     assert data["requires_connection"] is True
 
@@ -1323,27 +1317,26 @@ def test_agent_runtime_api_tests_provider_via_management_service():
     ]
 
 
-def test_agent_runtime_api_starts_codex_without_accepting_frontend_command():
-    runtime_management = _RuntimeManagement()
+def test_agent_runtime_api_rejects_codex_sdk_start_without_accepting_frontend_command():
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={
+            "enabled": True,
+            "ui_managed": True,
+            "project_root": "/repo/project",
+        },
+    )
 
     resp = _client(
         lambda: _Repo(),
         runtime_management_provider=lambda: runtime_management,
     ).post(
-        "/api/v1/agent-runtime/providers/codex_app_server/start",
+        "/api/v1/agent-runtime/providers/codex_sdk/start",
         json={"command": "rm -rf /"},
     )
 
-    assert resp.status_code == 200
-    assert runtime_management.started == ["codex_app_server"]
-    assert resp.get_json()["data"]["details"]["pid"] == 4321
-    assert runtime_management.audit_events == [
-        {
-            "runtime_name": "codex_app_server",
-            "action": "start",
-            "principal_id": "alice",
-        }
-    ]
+    assert resp.status_code == 403
+    assert resp.get_json()["details"]["code"] == "RUNTIME_OPERATION_DISABLED"
 
 
 def test_agent_runtime_api_writes_management_audit_event_to_repository():
@@ -1354,8 +1347,7 @@ def test_agent_runtime_api_writes_management_audit_event_to_repository():
         codex_config={
             "enabled": True,
             "ui_managed": True,
-            "server_managed": True,
-            "endpoint": "http://127.0.0.1:8799",
+            "project_root": "/repo/project",
         },
     )
     runtime_management = AgentRuntimeManagementService(
@@ -1363,24 +1355,23 @@ def test_agent_runtime_api_writes_management_audit_event_to_repository():
         codex_config={
             "enabled": True,
             "ui_managed": True,
-            "server_managed": True,
-            "endpoint": "http://127.0.0.1:8799",
+            "project_root": "/repo/project",
         },
         runtime_config_service=runtime_config_service,
-        codex_process_manager=_FakeCodexProcessManager(),
     )
 
     resp = _client(
         lambda: _Repo(),
         runtime_management_provider=lambda: runtime_management,
-    ).post("/api/v1/agent-runtime/providers/codex_app_server/start")
+    ).post("/api/v1/agent-runtime/providers/codex_sdk/start")
 
-    assert resp.status_code == 200
+    assert resp.status_code == 403
     audit = runtime_config_repository.audit_events[0]
-    assert audit.runtime_name == "codex_app_server"
+    assert audit.runtime_name == "codex_sdk"
     assert audit.action == "start"
     assert audit.principal_id == "alice"
-    assert audit.status == "succeeded"
+    assert audit.status == "failed"
+    assert audit.metadata["error"] == "Codex SDK provider 不支持前端启停。"
 
 
 def test_agent_runtime_api_returns_masked_provider_config():
@@ -1474,19 +1465,19 @@ def test_agent_runtime_api_rejects_non_admin_mutating_management_routes_outside_
         headers=headers,
     )
     start_resp = client.post(
-        "/api/v1/agent-runtime/providers/codex_app_server/start",
+        "/api/v1/agent-runtime/providers/codex_sdk/start",
         headers=headers,
     )
     stop_resp = client.post(
-        "/api/v1/agent-runtime/providers/codex_app_server/stop",
+        "/api/v1/agent-runtime/providers/codex_sdk/stop",
         headers=headers,
     )
     restart_resp = client.post(
-        "/api/v1/agent-runtime/providers/codex_app_server/restart",
+        "/api/v1/agent-runtime/providers/codex_sdk/restart",
         headers=headers,
     )
     logs_resp = client.get(
-        "/api/v1/agent-runtime/providers/codex_app_server/logs",
+        "/api/v1/agent-runtime/providers/codex_sdk/logs",
         headers=headers,
     )
 
@@ -1520,6 +1511,34 @@ def test_agent_runtime_api_rejects_non_mapping_provider_extra_payload():
 
     assert resp.status_code == 400
     assert resp.get_json()["details"]["code"] == "RUNTIME_PROVIDER_CONFIG_INVALID"
+
+
+def test_agent_runtime_api_rejects_codex_sdk_project_path_extra_payload():
+    runtime_config_repository = _RuntimeConfigRepository()
+    runtime_management = AgentRuntimeManagementService(
+        openai_config={"api_key": "", "api_base": "", "model": ""},
+        codex_config={"enabled": True, "project_root": "/repo/current"},
+        runtime_config_service=RuntimeConfigService(
+            repository=runtime_config_repository,
+            openai_config={"api_key": "", "api_base": "", "model": ""},
+            codex_config={"enabled": True, "project_root": "/repo/current"},
+        ),
+    )
+
+    resp = _client(
+        lambda: _Repo(),
+        runtime_management_provider=lambda: runtime_management,
+    ).put(
+        "/api/v1/agent-runtime/providers/codex_sdk/config",
+        json={"enabled": True, "extra": {"project_root": "/repo/other"}},
+    )
+
+    assert resp.status_code == 400
+    assert resp.get_json()["details"] == {
+        "code": "RUNTIME_PROVIDER_CONFIG_INVALID",
+        "field": "extra.project_root",
+    }
+    assert runtime_config_repository.configs == {}
 
 
 def test_agent_runtime_api_rejects_non_object_provider_config_payloads():
@@ -1591,8 +1610,8 @@ def test_agent_runtime_api_exposes_codex_logs_and_capabilities():
         runtime_management_provider=lambda: _RuntimeManagement(),
     )
 
-    logs_resp = client.get("/api/v1/agent-runtime/providers/codex_app_server/logs")
-    capabilities_resp = client.get("/api/v1/agent-runtime/providers/codex_app_server/capabilities")
+    logs_resp = client.get("/api/v1/agent-runtime/providers/codex_sdk/logs")
+    capabilities_resp = client.get("/api/v1/agent-runtime/providers/codex_sdk/capabilities")
 
     assert logs_resp.status_code == 200
     assert logs_resp.get_json()["data"]["lines"] == ["ready"]

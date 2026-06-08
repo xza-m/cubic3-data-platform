@@ -16,6 +16,10 @@ const LIVE_QUESTION =
 const EXPECTED_SOURCE_TABLE = 'dwd_interaction_comment_reports_df'
 const LIVE_SEMANTIC_NAMESPACE =
   process.env.P34_LIVE_SEMANTIC_NAMESPACE || process.env.SEMANTIC_FIXTURE_NAMESPACE || ''
+const LIVE_VIEWER_ROLES = (process.env.P34_LIVE_VIEWER_ROLES || 'ops_readonly')
+  .split(',')
+  .map((role) => role.trim())
+  .filter(Boolean)
 const REPO_ROOT = path.resolve(process.cwd(), '..')
 const TRACKED_STUDENT_COMMENT_ASSET_FILES = [
   'app/infrastructure/ontology/glossary/student_comment.yml',
@@ -224,10 +228,11 @@ async function openPublishedSession(page: Page, token: string, sessionId: string
     window.sessionStorage.setItem('v2.access_token', accessToken)
     window.localStorage.setItem('auth_token', accessToken)
   }, token)
-  await page.goto(`/semantic/modeling-copilot/${sessionId}`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`/semantic/modeling-workbench/quick?sessionId=${sessionId}`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByTestId('chat-workspace')).toBeVisible()
   await expect(page.getByText(LIVE_QUESTION).first()).toBeVisible()
-  await expect(page.getByText(/语义已发布|Data Agent 可消费|已发布/).first()).toBeVisible()
+  await expect(page.getByText(/已发布到语义中心|语义中心已发布/).first()).toBeVisible()
+  await expect(page.getByText(/正式 Data Agent/)).toHaveCount(0)
 }
 
 function namespacePatch(): Record<string, string> {
@@ -237,6 +242,34 @@ function namespacePatch(): Record<string, string> {
     semantic_namespace: LIVE_SEMANTIC_NAMESPACE,
     test_namespace: LIVE_SEMANTIC_NAMESPACE,
   }
+}
+
+function assertReleasePreviewCompiled(session: CopilotSession): void {
+  const state = stateOf(session)
+  const releasePreview = objectAt(state.release_preview)
+  expect(releasePreview.target, `release_preview target 异常: ${JSON.stringify(releasePreview)}`)
+    .toBe('semantic_center')
+
+  const semanticCompile = objectAt(releasePreview.semantic_compile)
+  expect(semanticCompile.status, `semantic_compile 未通过: ${JSON.stringify(semanticCompile)}`).toBe('passed')
+
+  const compiledSql = String(releasePreview.compiled_sql || '')
+  expect(compiledSql, `release-preview 未生成 compiled_sql: ${JSON.stringify(releasePreview)}`)
+    .toContain('SELECT')
+  expect(compiledSql, `compiled_sql 未落到学生评论源表: ${compiledSql}`).toContain(EXPECTED_SOURCE_TABLE)
+
+  const queryDsl = objectAt(semanticCompile.query_dsl)
+  const measures = Array.isArray(queryDsl.measures) ? queryDsl.measures.map(String) : []
+  expect(measures.some((measure) => measure.endsWith('.total_count')), `QueryDSL measures 异常: ${JSON.stringify(queryDsl)}`)
+    .toBeTruthy()
+
+  const gatewayValidation = objectAt(releasePreview.gateway_validation)
+  const gatewayStatus = String(gatewayValidation.status || '')
+  expect(gatewayStatus, `gateway_validation 缺少状态: ${JSON.stringify(gatewayValidation)}`).toBeTruthy()
+  expect(
+    JSON.stringify(gatewayValidation),
+    `gateway 不应因为缺少语义编译 SQL 而停住: ${JSON.stringify(gatewayValidation)}`,
+  ).not.toContain('等待语义中心返回物理 SQL')
 }
 
 test('P34 live 真实后端完成 session -> deterministic draft -> proposal -> publish @live @p34', async ({
@@ -301,6 +334,20 @@ test('P34 live 真实后端完成 session -> deterministic draft -> proposal -> 
     )
     const proposalId = session.current_proposal_id || String(objectAt(stateOf(session).advanced_refs).proposal_id || '')
     expect(proposalId, `保存 Proposal 后缺少 proposal id: ${JSON.stringify(session)}`).toBeTruthy()
+
+    session = await api<CopilotSession>(
+      request,
+      'POST',
+      `/api/v1/semantic/modeling-copilot/sessions/${session.id}/release-preview`,
+      auth.headers,
+      {
+        namespace: LIVE_SEMANTIC_NAMESPACE || 'default',
+        sample_questions: [QUESTION],
+        viewer_roles: LIVE_VIEWER_ROLES,
+      },
+    )
+    assertReleasePreviewCompiled(session)
+    console.log(`[p34-live] release_preview_session_id=${session.id}`)
 
     session = await api<CopilotSession>(
       request,

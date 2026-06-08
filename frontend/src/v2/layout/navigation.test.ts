@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { findLayout, findModule, NAV_MODULES } from './navigation'
+import zhMessages from '../i18n/zh.json'
+import enMessages from '../i18n/en.json'
 
 describe('navigation access entry', () => {
   it('权限治理入口指向 Access 工作台', () => {
@@ -39,7 +41,7 @@ describe('findLayout', () => {
     expect(resolved.hideBreadcrumbs).toBe(false)
   })
 
-  it('语义中心默认双栏，但 modeling-copilot 子路由切到 fullBleed', () => {
+  it('语义中心默认双栏，但语义建设工作台和 modeling-copilot 兼容路由切到 fullBleed', () => {
     const semantic = NAV_MODULES.find((m) => m.id === 'semantic')!
     const ontology = findLayout('/semantic/ontology', semantic)
     expect(ontology).toEqual({
@@ -48,8 +50,29 @@ describe('findLayout', () => {
       hideBreadcrumbs: false,
     })
 
+    const workbench = findLayout('/semantic/modeling-workbench', semantic)
+    expect(workbench).toEqual({
+      secondarySidebar: false,
+      inspector: false,
+      hideBreadcrumbs: true,
+    })
+
+    const candidate = findLayout('/semantic/modeling-workbench/batch-project/candidate/fact-learning-activity', semantic)
+    expect(candidate).toEqual({
+      secondarySidebar: false,
+      inspector: false,
+      hideBreadcrumbs: true,
+    })
+
     const copilot = findLayout('/semantic/modeling-copilot/new', semantic)
     expect(copilot).toEqual({
+      secondarySidebar: false,
+      inspector: false,
+      hideBreadcrumbs: true,
+    })
+
+    const batch = findLayout('/semantic/modeling-copilot/batch', semantic)
+    expect(batch).toEqual({
       secondarySidebar: false,
       inspector: false,
       hideBreadcrumbs: true,
@@ -75,10 +98,37 @@ describe('findLayout', () => {
 })
 
 describe('findModule + findLayout 组合', () => {
+  it('/semantic/modeling-workbench 命中 semantic 模块并应用 fullBleed', () => {
+    const module = findModule('/semantic/modeling-workbench')
+    expect(module?.id).toBe('semantic')
+    const layout = findLayout('/semantic/modeling-workbench', module!)
+    expect(layout.secondarySidebar).toBe(false)
+    expect(layout.inspector).toBe(false)
+    expect(layout.hideBreadcrumbs).toBe(true)
+  })
+
+  it('/semantic/modeling-workbench/:projectId/candidate/:candidateId 命中 semantic 模块并应用 fullBleed', () => {
+    const module = findModule('/semantic/modeling-workbench/batch-project/candidate/fact-learning-activity')
+    expect(module?.id).toBe('semantic')
+    const layout = findLayout('/semantic/modeling-workbench/batch-project/candidate/fact-learning-activity', module!)
+    expect(layout.secondarySidebar).toBe(false)
+    expect(layout.inspector).toBe(false)
+    expect(layout.hideBreadcrumbs).toBe(true)
+  })
+
   it('/semantic/modeling-copilot/new 命中 semantic 模块并应用 fullBleed', () => {
     const module = findModule('/semantic/modeling-copilot/new')
     expect(module?.id).toBe('semantic')
     const layout = findLayout('/semantic/modeling-copilot/new', module!)
+    expect(layout.secondarySidebar).toBe(false)
+    expect(layout.inspector).toBe(false)
+    expect(layout.hideBreadcrumbs).toBe(true)
+  })
+
+  it('/semantic/modeling-copilot/batch 命中 semantic 模块并应用 fullBleed', () => {
+    const module = findModule('/semantic/modeling-copilot/batch')
+    expect(module?.id).toBe('semantic')
+    const layout = findLayout('/semantic/modeling-copilot/batch', module!)
     expect(layout.secondarySidebar).toBe(false)
     expect(layout.inspector).toBe(false)
     expect(layout.hideBreadcrumbs).toBe(true)
@@ -91,7 +141,8 @@ describe('数据资产底座导航', () => {
     const assetItems = semantic?.subnav?.filter((item) => item.section === '数据资产底座') ?? []
     const buildItems = semantic?.subnav?.filter((item) => item.section === '语义构建') ?? []
 
-    expect(buildItems.map((item) => item.label)).toEqual(['建模助手 Copilot'])
+    expect(buildItems.map((item) => item.label)).toEqual(['语义建设'])
+    expect(buildItems.map((item) => item.path)).toEqual(['/semantic/modeling-workbench'])
     expect(assetItems.map((item) => item.label)).toEqual([
       '资产雷达',
       '物理表',
@@ -108,5 +159,17 @@ describe('数据资产底座导航', () => {
       '/semantic/assets/lineage-usage',
       '/semantic/assets/sync',
     ])
+  })
+})
+
+describe('semantic navigation i18n', () => {
+  it('zh/en 保留统一工作台入口和旧冷启动 key', () => {
+    expect(zhMessages['nav.semantic.sub.modelingWorkbench']).toBe('语义建设')
+    expect(enMessages['nav.semantic.sub.modelingWorkbench']).toBe('Semantic modeling')
+
+    expect(zhMessages).toHaveProperty('nav.semantic.sub.modelingBuilder')
+    expect(zhMessages).toHaveProperty('nav.semantic.sub.batchColdStart')
+    expect(enMessages).toHaveProperty('nav.semantic.sub.modelingBuilder')
+    expect(enMessages).toHaveProperty('nav.semantic.sub.batchColdStart')
   })
 })

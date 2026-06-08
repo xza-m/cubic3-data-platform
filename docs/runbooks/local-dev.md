@@ -96,7 +96,10 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 
 ### 2.4 Agent Runtime 本地配置
 
-本地默认只启用 OpenAI-compatible runtime，不默认连接真实 Codex app-server。Codex runtime 已有 workspace / run lifecycle / artifact 权限模型的契约实现；真实主链路目标是本机 WebSocket app-server，live smoke 必须显式 opt-in，避免普通开发启动时创建长任务工作区或连接本机 app-server。
+本地默认只启用 OpenAI-compatible runtime，不默认连接真实 Codex SDK。Codex runtime 已有 run lifecycle / artifact 权限模型的契约实现；真实 SDK 调用必须显式 opt-in，避免普通开发启动时创建长任务工作区。
+
+`AGENT_CODEX_PROJECT_ROOT` 只指向当前服务自己的工作目录。本项目不管理多个外部 Codex 项目环境；其他项目需要使用 Codex SDK 时，应在各自服务内配置自己的 project root / runtime root。
+Docker 模式下，后端镜像会在构建阶段安装与 SDK 配套的 Linux Codex CLI；`docker-compose.yml` 会透传 `AGENT_CODEX_*`，但默认仍保持 `AGENT_CODEX_ENABLED=false`。
 
 ```bash
 export AGENT_OPENAI_API_KEY=...
@@ -105,13 +108,17 @@ export AGENT_OPENAI_MODEL=gpt-4o-mini
 export AGENT_OPENAI_TIMEOUT_SECONDS=60
 export AGENT_CODEX_ENABLED=false
 export AGENT_CODEX_UI_MANAGED=false
-export AGENT_CODEX_SERVER_MANAGED=false
-export AGENT_CODEX_COMMAND_PROFILE=local-codex-app-server
-export AGENT_CODEX_ALLOWED_PROJECT_ROOTS=/Users/xuan/Work/cursor_projects
 export AGENT_CODEX_PROJECT_ROOT="$(pwd)"
 export AGENT_CODEX_RUNTIME_ROOT=.cubic3/agent-codex
-export AGENT_CODEX_TRANSPORT=ws
-export AGENT_CODEX_ENDPOINT=ws://127.0.0.1:8799
+export AGENT_CODEX_SANDBOX=read-only
+export AGENT_CODEX_PATH=
+export AGENT_CODEX_BASE_URL=
+```
+
+如需在 Docker compose 中验证真实 Codex SDK provider，显式带环境变量启动：
+
+```bash
+AGENT_CODEX_ENABLED=true docker compose up --build -d backend rq_worker nginx
 ```
 
 如需只验证平台 runtime 的本地回归，使用：
@@ -120,28 +127,26 @@ export AGENT_CODEX_ENDPOINT=ws://127.0.0.1:8799
 make test-platform-agent-runtime
 ```
 
-真实 Codex app-server 目标主链路是本机 WebSocket。先手动启动 app-server，再用后续 WebSocket client smoke 验证：
+真实 Codex SDK live smoke 需要先安装并认证 Codex SDK / CLI，再显式开启 live 变量。该入口会验证 SDK
+healthcheck、capabilities，以及一次 `semantic.modeling.review_proposal` 的 submit / poll / events / artifacts
+生命周期：
 
 ```bash
-codex app-server --listen ws://127.0.0.1:8799
 export AGENT_CODEX_LIVE=1
 export AGENT_CODEX_ENABLED=true
-export AGENT_CODEX_TRANSPORT=ws
-export AGENT_CODEX_ENDPOINT=ws://127.0.0.1:8799
 export AGENT_CODEX_PROJECT_ROOT="$(pwd)"
-export AGENT_CODEX_ALLOWED_PROJECT_ROOTS="$(pwd)"
-PYTHONPATH=. python -m pytest --no-cov tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py -q
+export AGENT_CODEX_SANDBOX=read-only
+PYTHONPATH=. python -m pytest --no-cov tests/integration/agent_inference_runtime/test_codex_sdk_live_smoke.py -q
 ```
 
 ### 2.5 AI Runtime 平台设置页
 
-AI 能力不在具体业务 Copilot 内做 provider 切换。平台设置页负责展示 provider 状态、连接测试和可管理的 Codex 启动动作；业务页面只消费 action binding 结果。
+AI 能力不在具体业务 Copilot 内做 provider 切换。平台设置页负责展示 provider 状态、连接测试和诊断能力；业务页面只消费 action binding 结果。
 
 1. 在前端打开 `/settings?tab=agent-runtime`。
-2. 确认 `AGENT_CODEX_ALLOWED_PROJECT_ROOTS` 包含当前仓库根目录。
-3. 点击 `启动 Codex`，平台只会执行 `AGENT_CODEX_COMMAND_PROFILE=local-codex-app-server` 对应的后端白名单命令。
-4. 点击 `连接测试`，成功后 capabilities 面板展示 app-server 工具和上下文能力。
-5. 建模 Copilot 主链不展示 runtime selector；复审、修复和审计入口固定使用 Codex runtime，需要连接时只提示进入平台设置页处理。
+2. 确认 `AGENT_CODEX_PROJECT_ROOT` 指向当前仓库根目录。
+3. 点击 `连接测试`，成功后 provider 会展示为 `ready / 可调用`；刷新后状态来自最近一次同配置连接测试审计，不在列表刷新时重复触发 SDK healthcheck。
+4. 建模 Copilot 主链不展示 runtime selector；复审、修复和审计入口固定使用 Codex runtime，需要连接时只提示进入平台设置页处理。
 
 ## 3. 开发就绪检查
 

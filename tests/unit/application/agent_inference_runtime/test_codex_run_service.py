@@ -13,7 +13,7 @@ from app.domain.agent_inference_runtime.types import (
     RuntimePolicy,
 )
 from app.infrastructure.agent_inference_runtime.codex_client import (
-    CodexAppServerClientError,
+    CodexSdkClientError,
     ProviderRunRef,
 )
 
@@ -48,7 +48,7 @@ class _Client:
         self.submitted.append(request)
         return ProviderRunRef(
             provider_run_id="codex_run_1",
-            provider="codex-app-server",
+            provider="codex-sdk",
             provider_thread_id="thread_provider_1",
         )
 
@@ -97,7 +97,7 @@ def _request() -> AgentInferenceRuntimeRequest:
         context_pack={"diff": []},
         output_schema="semantic.review.v1",
         runtime_policy=RuntimePolicy(max_runtime_seconds=300, allow_network=False),
-        preferred_runtime="codex_app_server",
+        preferred_runtime="codex_sdk",
         execution_mode="async",
         semantic_runtime_pin=None,
         asset_revision_refs=[],
@@ -151,12 +151,12 @@ def test_submit_creates_local_run_and_sends_domain_request():
     assert client.submitted[0].input == {"proposal_id": "proposal_1"}
     assert client.submitted[0].context_pack == {"diff": []}
     saved = repo.runs["run_local_1"]
-    assert saved.runtime_name == "codex_app_server"
+    assert saved.runtime_name == "codex_sdk"
     assert saved.status == "queued"
     assert saved.principal_id == "alice"
     assert saved.provider_ref == {
         "provider_run_id": "codex_run_1",
-        "provider": "codex-app-server",
+        "provider": "codex-sdk",
         "provider_thread_id": "thread_provider_1",
     }
 
@@ -178,7 +178,7 @@ def test_poll_fetches_provider_status_and_updates_run_usage_error_and_provider_r
     assert saved.error is None
     assert saved.provider_ref == {
         "provider_run_id": "codex_run_1",
-        "provider": "codex-app-server",
+        "provider": "codex-sdk",
         "provider_thread_id": "thread_provider_1",
         "status": "succeeded",
         "result": {"summary": "reviewed"},
@@ -276,8 +276,8 @@ def test_poll_transient_provider_error_does_not_overwrite_terminal_success():
     service.poll("run_local_1", principal_id="alice")
 
     def _raise_provider_error(provider_run_id: str):
-        raise CodexAppServerClientError(
-            "Codex app-server provider 调用失败。",
+        raise CodexSdkClientError(
+            "Codex SDK provider 调用失败。",
             code="RUNTIME_PROVIDER_ERROR",
             details={"path": f"/runs/{provider_run_id}"},
         )

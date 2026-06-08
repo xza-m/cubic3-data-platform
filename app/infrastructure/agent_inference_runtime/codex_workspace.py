@@ -1,4 +1,4 @@
-"""Codex app-server runtime 本地 workspace 契约。"""
+"""Codex SDK runtime 本地 workspace 契约。"""
 from __future__ import annotations
 
 from dataclasses import dataclass

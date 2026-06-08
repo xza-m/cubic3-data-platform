@@ -204,6 +204,45 @@ class SemanticModelingProposalORM(db.Model):
     updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class SemanticModelingBuildProjectORM(db.Model):
+    """语义建设 Build Project 持久化模型。"""
+
+    __tablename__ = "semantic_modeling_build_projects"
+    __table_args__ = (
+        Index("idx_semantic_build_projects_principal_updated", "created_by", "updated_at"),
+        Index("idx_semantic_build_projects_status_updated", "status", "updated_at"),
+        {"extend_existing": True},
+    )
+
+    id = Column(String(128), primary_key=True)
+    created_by = Column(String(128), nullable=True)
+    status = Column(String(32), nullable=False, default="draft")
+    payload_json = Column(JsonType, nullable=False, default=dict)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class SemanticModelingAssetPackageORM(db.Model):
+    """语义建设候选 Asset Package 持久化模型。"""
+
+    __tablename__ = "semantic_modeling_asset_packages"
+    __table_args__ = (
+        Index("idx_semantic_asset_packages_project_status", "project_id", "status"),
+        Index("idx_semantic_asset_packages_risk", "risk"),
+        {"extend_existing": True},
+    )
+
+    id = Column(String(160), primary_key=True)
+    project_id = Column(String(128), nullable=False)
+    status = Column(String(32), nullable=False, default="ready_for_review")
+    risk = Column(String(32), nullable=False, default="medium")
+    payload_json = Column(JsonType, nullable=False, default=dict)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
 class DataAssetTableORM(db.Model):
     """数据资产底座物理表事实。"""
 

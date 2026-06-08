@@ -5,7 +5,7 @@ from dependency_injector import providers
 from app.application.extraction.handlers.execute_task_handler import ExecuteTaskHandler
 from app.application.semantic.data_asset_agent_app import DataAssetAgentApp
 from app.di.container import Container
-from app.infrastructure.agent_inference_runtime.codex_ws_client import CodexAppServerWebSocketClient
+from app.infrastructure.agent_inference_runtime.codex_sdk_client import CodexSdkClient
 from app.infrastructure.semantic.sql_modeling_agent_session_repository import (
     SqlModelingAgentSessionRepository,
 )
@@ -67,56 +67,54 @@ def test_data_asset_agent_app_wires_to_platform_agent_runtime():
     assert app._runtime_service is container.agent_inference_runtime_service()
 
 
-def test_codex_run_service_wires_real_ws_client(tmp_path):
+def test_codex_run_service_wires_sdk_client(tmp_path):
     container = Container()
     container.config.from_dict({
         "agent_codex": {
-            "endpoint": "ws://127.0.0.1:8799",
+            "enabled": True,
             "project_root": str(tmp_path),
             "timeout_seconds": 5,
         },
     })
 
-    client = container.agent_codex_ws_client()
+    client = container.agent_codex_sdk_client_factory()({
+        "enabled": True,
+        "project_root": str(tmp_path),
+        "timeout_seconds": 5,
+    })
 
-    assert isinstance(client, CodexAppServerWebSocketClient)
-    assert client._endpoint == "ws://127.0.0.1:8799"
+    assert isinstance(client, CodexSdkClient)
     assert client._project_root == str(tmp_path)
     assert client._runtime_workspace_roots == [str(tmp_path)]
+    assert client._timeout_seconds == 5
 
 
-def test_runtime_management_codex_ws_client_factory_uses_management_config(tmp_path):
+def test_runtime_management_codex_sdk_client_factory_keeps_project_root_env_bound(tmp_path):
     container = Container()
     env_root = tmp_path / "env"
-    managed_root = tmp_path / "managed"
     container.config.from_dict({
         "agent_openai": {"api_key": "", "model": ""},
         "agent_codex": {
             "enabled": True,
-            "transport": "ws",
-            "endpoint": "ws://127.0.0.1:8799",
             "project_root": str(env_root),
             "timeout_seconds": 5,
         },
     })
 
-    client = container.agent_codex_ws_client_factory()({
+    client = container.agent_codex_sdk_client_factory()({
         "enabled": True,
-        "transport": "ws",
-        "endpoint": "ws://127.0.0.1:8801",
         "project_root": str(env_root),
         "timeout_seconds": 5,
         "provider_extra": {
-            "project_root": str(managed_root),
-            "runtime_workspace_roots": [str(managed_root), str(tmp_path / "shared")],
+            "project_root": str(tmp_path / "managed"),
+            "runtime_workspace_roots": [str(tmp_path / "managed"), str(tmp_path / "shared")],
             "timeout_seconds": 7,
         },
     })
 
-    assert isinstance(client, CodexAppServerWebSocketClient)
-    assert client._endpoint == "ws://127.0.0.1:8801"
-    assert client._project_root == str(managed_root)
-    assert client._runtime_workspace_roots == [str(managed_root), str(tmp_path / "shared")]
+    assert isinstance(client, CodexSdkClient)
+    assert client._project_root == str(env_root)
+    assert client._runtime_workspace_roots == [str(env_root)]
     assert client._timeout_seconds == 7
 
 
@@ -147,18 +145,16 @@ def test_openai_runtime_adapter_uses_runtime_config_service():
     }
 
 
-def test_codex_run_service_uses_runtime_config_service_for_current_ws_client(tmp_path):
+def test_codex_run_service_uses_runtime_config_service_for_current_sdk_client(tmp_path):
     container = Container()
     project_root = tmp_path / "runtime-project"
     project_root.mkdir()
 
     class _ConfigService:
         def management_config(self, runtime_name):
-            assert runtime_name == "codex_app_server"
+            assert runtime_name == "codex_sdk"
             return {
                 "enabled": True,
-                "transport": "ws",
-                "endpoint": "ws://127.0.0.1:8802",
                 "project_root": str(tmp_path / "env-project"),
                 "timeout_seconds": 5,
                 "provider_extra": {
@@ -174,8 +170,7 @@ def test_codex_run_service_uses_runtime_config_service_for_current_ws_client(tmp
     service = container.codex_run_service()
     client = service._current_client()
 
-    assert isinstance(client, CodexAppServerWebSocketClient)
-    assert client._endpoint == "ws://127.0.0.1:8802"
-    assert client._project_root == str(project_root)
-    assert client._runtime_workspace_roots == [str(project_root), str(tmp_path / "shared")]
+    assert isinstance(client, CodexSdkClient)
+    assert client._project_root == str(tmp_path / "env-project")
+    assert client._runtime_workspace_roots == [str(tmp_path / "env-project")]
     assert client._timeout_seconds == 9

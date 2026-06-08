@@ -46,3 +46,11 @@ class RuntimeConfigRepositoryPort(Protocol):
         metadata: dict,
     ) -> RuntimeManagementAuditEvent:
         ...
+
+    def get_latest_audit_event(
+        self,
+        runtime_name: RuntimeName,
+        *,
+        action: str | None = None,
+    ) -> RuntimeManagementAuditEvent | None:
+        ...

@@ -37,6 +37,7 @@ from .interfaces.api.v1.subscriptions import app_instance_subscriptions_bp
 from .interfaces.api.v1.semantic import create_semantic_blueprint
 from .interfaces.api.v1.semantic_assets import create_semantic_assets_blueprint
 from .interfaces.api.v1.semantic_releases import create_semantic_releases_blueprint
+from .interfaces.api.v1.semantic_modeling_workbench import create_semantic_modeling_workbench_blueprint
 from .interfaces.api.v1.semantic_modeling_copilot import create_semantic_modeling_copilot_blueprint
 from .interfaces.api.v1.ontology import create_ontology_blueprint
 from .interfaces.api.v1.semantic_mapper import create_semantic_mapper_blueprint
@@ -64,6 +65,7 @@ def assert_semantic_modeling_copilot_routes(app: Flask) -> None:
     required_rules = {
         "/api/v1/semantic/modeling-copilot/sessions",
         "/api/v1/semantic/modeling-copilot/sessions/<session_id>/messages",
+        "/api/v1/semantic/modeling-copilot/sessions/<session_id>/release-preview",
         "/api/v1/semantic/modeling-copilot/sessions/<session_id>/publish",
     }
     registered_rules = {rule.rule for rule in app.url_map.iter_rules()}
@@ -171,7 +173,9 @@ def create_app(role: str = "web") -> Flask:
         SemanticAssetDependencyORM,
         SemanticAssetORM,
         SemanticAssetRevisionORM,
+        SemanticModelingAssetPackageORM,
         SemanticModelingAgentSessionORM,
+        SemanticModelingBuildProjectORM,
         SemanticModelingProposalORM,
         SemanticReleaseAssetORM,
         SemanticReleaseORM,
@@ -232,6 +236,9 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_semantic_releases_blueprint(
             container.semantic_release_service(),
+        ))
+        app.register_blueprint(create_semantic_modeling_workbench_blueprint(
+            container.semantic_modeling_workbench_service(),
         ))
         register_semantic_modeling_copilot_blueprint(app, container)
         app.register_blueprint(create_ontology_blueprint(

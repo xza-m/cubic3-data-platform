@@ -38,7 +38,7 @@ describe('inferEntryType', () => {
 describe('entryTypeLabel', () => {
   it('返回三种入口类型的中文标签', () => {
     expect(entryTypeLabel('business_question')).toBe('业务问题')
-    expect(entryTypeLabel('table_known')).toBe('已知事实表')
+    expect(entryTypeLabel('table_known')).toBe('已知数仓表')
     expect(entryTypeLabel('semantic_gap')).toBe('未命中 Trace')
     expect(entryTypeLabel(undefined)).toBe('业务问题')
   })
@@ -66,7 +66,7 @@ describe('readinessLabel / readinessTone', () => {
     const s = mkSession({
       workbench_state: { publish_result: { status: 'published' } },
     })
-    expect(readinessLabel(s)).toBe('已发布 · Data Agent 可消费')
+    expect(readinessLabel(s)).toBe('已发布 · 消费者可验证')
     expect(readinessTone(s)).toBe('success')
   })
 
@@ -182,6 +182,22 @@ describe('buildAssistantCards', () => {
     if (saved?.type === 'saved') {
       expect(saved.proposalId).toBe('proposal_xyz')
     }
+  })
+
+  it('空 proposal_summary 不输出 saved 卡，避免把未生成 spec 误报成待发布', () => {
+    const cards = buildAssistantCards(
+      makeSession({
+        source_candidates: [{ id: 'source_1', name: 'dwd_learning_activity_df' }],
+        readiness: {
+          canonical_ready: false,
+          exploratory_ready: false,
+          reasons: ['source_candidate_confirmation_required', 'spec_not_generated'],
+        },
+        proposal_summary: {},
+      }),
+    )
+
+    expect(cards.map((c) => c.type)).toEqual(['source_candidates'])
   })
 
   it('卡片顺序：discovered -> confirmation -> sandbox -> saved', () => {

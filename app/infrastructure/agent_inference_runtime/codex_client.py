@@ -1,4 +1,4 @@
-"""Codex app-server transport client 协议定义。"""
+"""Codex SDK provider client 协议定义。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,12 +18,12 @@ class ProviderThreadRef:
 @dataclass(frozen=True)
 class ProviderRunRef:
     provider_run_id: str
-    provider: str = "codex-app-server"
+    provider: str = "codex-sdk"
     provider_thread_id: str | None = None
 
 
-class CodexAppServerClientError(RuntimeError):
-    """Codex app-server transport 调用失败。"""
+class CodexSdkClientError(RuntimeError):
+    """Codex SDK provider 调用失败。"""
 
     def __init__(
         self,
@@ -39,7 +39,7 @@ class CodexAppServerClientError(RuntimeError):
         self.status_code = status_code
 
 
-class CodexAppServerClient(Protocol):
+class CodexSdkProviderClient(Protocol):
     def healthcheck(self) -> Dict[str, Any]:
         ...
 
@@ -70,13 +70,13 @@ class CodexAppServerClient(Protocol):
         ...
 
 
-class UnavailableCodexAppServerClient:
-    """WS client 尚未接入时使用的显式失败实现。"""
+class UnavailableCodexSdkProviderClient:
+    """Codex SDK client 尚未接入时使用的显式失败实现。"""
 
     def __init__(
         self,
         *,
-        reason: str = "Codex app-server WebSocket client 尚未接入。",
+        reason: str = "Codex SDK client 尚未接入。",
     ) -> None:
         self._reason = reason
 
@@ -109,10 +109,10 @@ class UnavailableCodexAppServerClient:
     def collect_artifacts(self, provider_run_id: str) -> List[Dict[str, Any]]:
         raise self._error()
 
-    def _error(self) -> CodexAppServerClientError:
-        return CodexAppServerClientError(
+    def _error(self) -> CodexSdkClientError:
+        return CodexSdkClientError(
             self._reason,
             code="RUNTIME_PROVIDER_NOT_IMPLEMENTED",
-            details={"transport": "ws"},
+            details={"transport": "sdk", "provider": "codex-sdk"},
             status_code=501,
         )

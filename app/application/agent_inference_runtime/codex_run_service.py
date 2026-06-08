@@ -1,4 +1,4 @@
-"""Codex app-server 异步 run 生命周期服务。"""
+"""Codex SDK 异步 run 生命周期服务。"""
 from __future__ import annotations
 
 from typing import Any, Mapping
@@ -9,7 +9,7 @@ from app.domain.agent_inference_runtime.types import (
     AgentInferenceRuntimeRun,
 )
 from app.infrastructure.agent_inference_runtime.codex_client import (
-    CodexAppServerClientError,
+    CodexSdkClientError,
     ProviderRunRef,
 )
 
@@ -22,9 +22,9 @@ class CodexRunNotFoundError(KeyError):
 
 
 class CodexRunService:
-    """管理 Codex app-server 异步 run，不承载语义业务逻辑。"""
+    """管理 Codex SDK 异步 run，不承载语义业务逻辑。"""
 
-    runtime_name = "codex_app_server"
+    runtime_name = "codex_sdk"
     _KNOWN_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled", "timeout"}
     _TERMINAL_STATUSES = {"succeeded", "failed", "cancelled", "timeout"}
 
@@ -76,7 +76,7 @@ class CodexRunService:
             usage = _dict_field(provider_payload, "usage")
             error = _status_error(status, provider_payload)
             provider_ref = _merge_provider_ref(run.provider_ref, provider_payload)
-        except CodexAppServerClientError as exc:
+        except CodexSdkClientError as exc:
             status = run.status
             usage = dict(run.usage)
             error = dict(run.error) if run.error is not None else None
@@ -109,7 +109,7 @@ class CodexRunService:
                 status = "cancelled"
             error = _status_error(status, provider_payload)
             provider_ref = _merge_provider_ref(run.provider_ref, provider_payload)
-        except (CodexAppServerClientError, ValueError) as exc:
+        except (CodexSdkClientError, ValueError) as exc:
             status = "failed"
             error = _provider_error(exc)
             provider_ref = dict(run.provider_ref or {})
@@ -229,9 +229,9 @@ def _dict_field(payload: Mapping[str, Any], field: str) -> dict[str, Any]:
     raise _invalid_provider_payload(f"{field} must be a dict")
 
 
-def _invalid_provider_payload(message: str) -> CodexAppServerClientError:
-    return CodexAppServerClientError(
-        "Codex app-server provider 返回非法 payload。",
+def _invalid_provider_payload(message: str) -> CodexSdkClientError:
+    return CodexSdkClientError(
+        "Codex SDK provider 返回非法 payload。",
         code="RUNTIME_PROVIDER_RESPONSE_INVALID",
         details={"reason": message},
     )
@@ -246,13 +246,13 @@ def _status_error(status: str, payload: Mapping[str, Any]) -> dict[str, Any] | N
     if status == "failed":
         return {
             "code": "RUNTIME_PROVIDER_FAILED",
-            "message": f"Codex app-server run ended with status={payload.get('status', status)}",
+            "message": f"Codex SDK run ended with status={payload.get('status', status)}",
         }
     return None
 
 
 def _provider_error(exc: Exception) -> dict[str, Any]:
-    if isinstance(exc, CodexAppServerClientError):
+    if isinstance(exc, CodexSdkClientError):
         return {"code": exc.code, "message": str(exc), **dict(exc.details)}
     return {
         "code": "RUNTIME_PROVIDER_RESPONSE_INVALID",

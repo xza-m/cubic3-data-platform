@@ -119,6 +119,10 @@ class QueryGatewayConfig(BaseModel):
     base_url: str = Field(default="http://dw-query-gateway:8000", description="dw-query-gateway 基础 URL")
     platform_service_token: str = Field(default="", description="data-platform 调用 gateway 的服务令牌")
     timeout_seconds: int = Field(default=5, ge=1, le=60, description="网关请求超时时间（秒）")
+    sql_dry_run_path: str = Field(
+        default="/api/v1/queries/dry-run",
+        description="dw-query-gateway 物理 SQL dry-run 契约路径",
+    )
 
 
 class SemanticModelingConfig(BaseModel):
@@ -245,6 +249,10 @@ class AppConfig(BaseModel):
                 base_url=os.getenv('QUERY_GATEWAY_BASE_URL', 'http://dw-query-gateway:8000'),
                 platform_service_token=os.getenv('QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN', ''),
                 timeout_seconds=int(os.getenv('QUERY_GATEWAY_TIMEOUT_SECONDS', '5')),
+                sql_dry_run_path=os.getenv(
+                    'QUERY_GATEWAY_SQL_DRY_RUN_PATH',
+                    '/api/v1/queries/dry-run',
+                ),
             ),
             semantic_modeling=SemanticModelingConfig(
                 copilot_store=os.getenv('SEMANTIC_MODELING_COPILOT_STORE', 'sql'),
@@ -319,6 +327,7 @@ class AppConfig(BaseModel):
             'QUERY_GATEWAY_BASE_URL': self.query_gateway.base_url,
             'QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN': self.query_gateway.platform_service_token,
             'QUERY_GATEWAY_TIMEOUT_SECONDS': self.query_gateway.timeout_seconds,
+            'QUERY_GATEWAY_SQL_DRY_RUN_PATH': self.query_gateway.sql_dry_run_path,
 
             # 语义建模 Copilot
             'SEMANTIC_MODELING_COPILOT_STORE': self.semantic_modeling.copilot_store,

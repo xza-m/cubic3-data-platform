@@ -29,12 +29,14 @@ class SemanticModelingCopilotService:
         tools: ModelingToolRegistry,
         proposal_service: Any,
         source_scoring_config: Optional[SourceCandidateScoringConfig] = None,
+        release_preview_service: Any | None = None,
     ):
         self._sessions = session_repository
         self._agent_app = agent_app
         self._tools = tools
         self._proposal_service = proposal_service
         self._source_scoring_config = source_scoring_config or SourceCandidateScoringConfig.default()
+        self._release_preview_service = release_preview_service
         self._logger = logging.getLogger(__name__)
 
     def _save_session(self, session: AgentSession) -> None:
@@ -100,13 +102,22 @@ class SemanticModelingCopilotService:
         principal_id = str(principal_id).strip() if principal_id else None
         title = payload.get("title")
         title = str(title).strip() if title else None
+        workbench_state = self._initial_workbench_state(user_goal, entry_type)
+        workbench_context = self._normalize_workbench_context(payload.get("workbench_context"))
+        if workbench_context:
+            entry_type = "table_known"
+            workbench_state = self._seed_workbench_context(
+                workbench_state,
+                user_goal=user_goal,
+                context=workbench_context,
+            )
         session = AgentSession(
             id=str(payload.get("id") or f"modeling_session_{uuid4().hex}"),
             user_goal=user_goal,
             entry_type=entry_type,  # type: ignore[arg-type]
             principal_id=principal_id,
             title=title,
-            workbench_state=self._initial_workbench_state(user_goal, entry_type),
+            workbench_state=workbench_state,
         )
         session.add_message(role="user", content=user_goal)
         session.record_event(
@@ -412,6 +423,86 @@ class SemanticModelingCopilotService:
         self._save_session(session)
         return self._dump(session)
 
+    def preview_release(
+        self,
+        session_id: str,
+        payload: Optional[Dict[str, Any]] = None,
+        *,
+        principal_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """基于当前 session raw_spec 生成发布前只读校验预演，不发布、不应用资产。"""
+        session = self._require(session_id)
+        self._authorize(session, principal_id)
+        self._hydrate_session_spec(session)
+        state = deepcopy(session.workbench_state)
+        raw_spec = state.get("raw_spec")
+        if not self._has_reviewable_spec(raw_spec):
+            raise ValueError("缺少可校验的语义 Spec")
+        if self._release_preview_service is None:
+            raise ValueError("release preview service 未配置")
+
+        payload_dict = dict(payload or {})
+        previous_spec = payload_dict.get("previous_spec")
+        preview = self._release_preview_service.preview(
+            session_id=session.id,
+            namespace=str(payload_dict.get("namespace") or "default"),
+            spec=deepcopy(raw_spec),
+            previous_spec=deepcopy(previous_spec) if isinstance(previous_spec, dict) else None,
+            sample_questions=self._release_preview_sample_questions(
+                payload_dict.get("sample_questions")
+            ),
+            viewer_roles=self._release_preview_viewer_roles(
+                payload_dict.get("viewer_roles")
+            ),
+        )
+        state["release_preview"] = preview
+        state["agent_message"] = "已生成发布前校验预演，发布目标为语义中心。"
+        session.workbench_state = state
+        session.add_message(role="assistant", content=state["agent_message"])
+        session.record_event(
+            "session_action",
+            actor=principal_id,
+            action="preview_release",
+            payload={
+                "namespace": preview.get("namespace"),
+                "gateway_status": (preview.get("gateway_validation") or {}).get("status"),
+            },
+        )
+        self._save_session(session)
+        return self._dump(session)
+
+    def _release_preview_sample_questions(self, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            question = value.strip()
+            return [question] if question else []
+        if isinstance(value, dict):
+            return []
+        if isinstance(value, (list, tuple, set)):
+            return [
+                question
+                for question in (str(item).strip() for item in value)
+                if question
+            ]
+        return []
+
+    def _release_preview_viewer_roles(self, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            values = value.split(",")
+        elif isinstance(value, (list, tuple, set)):
+            values = value
+        else:
+            return []
+        result: list[str] = []
+        for item in values:
+            role = str(item).strip()
+            if role and role not in result:
+                result.append(role)
+        return result
+
     def publish_proposal(
         self,
         session_id: str,
@@ -440,7 +531,7 @@ class SemanticModelingCopilotService:
         review_payload = {
             "approved_by": body.get("approved_by") or "semantic_owner",
             "review_type": body.get("review_type") or "single_owner",
-            "comment": body.get("comment") or "Copilot 一键发布",
+            "comment": body.get("comment") or "AI 建模助手一键发布",
         }
         publish_targets = body.get("publish_targets")
 
@@ -476,7 +567,8 @@ class SemanticModelingCopilotService:
             "reasons": [],
         }
         state["agent_message"] = (
-            f"语义 {proposal_id} 已发布。Cube 与 Ontology 已上线，正式 Data Agent 现在可以消费这套语义了。"
+            f"语义 {proposal_id} 已发布到语义中心。Cube 与轻本体锚定已进入发布快照；"
+            "Data Agent、BI、数据分析等消费者可基于同一快照继续验证。"
         )
         state["suggested_actions"] = ["continue_modeling", "open_data_chat"]
         session.workbench_state = state
@@ -577,7 +669,8 @@ class SemanticModelingCopilotService:
         message = str(payload.get("message") or payload.get("content") or "").strip()
         if not message:
             raise ValueError("缺少必填字段: message")
-        session.add_message(role="user", content=message)
+        if not self._is_duplicate_user_turn(session, message):
+            session.add_message(role="user", content=message)
         deterministic_reply = self._handle_deterministic_chat_action(session, message, payload)
         if deterministic_reply is not None:
             session.add_message(role="assistant", content=deterministic_reply)
@@ -671,7 +764,7 @@ class SemanticModelingCopilotService:
             elif spec_status == "failed":
                 state["agent_message"] = (
                     f"已按推荐值确认 {len(confirmations)} 项口径，但 spec 生成失败。"
-                    "请在 Chat 里补充源表或让 Copilot 重新生成。"
+                    "请在对话里补充源表或让 AI 建模助手重新生成。"
                 )
             elif spec_status == "missing_source":
                 state["agent_message"] = (
@@ -701,6 +794,33 @@ class SemanticModelingCopilotService:
         raw_spec = state.get("raw_spec") if isinstance(state.get("raw_spec"), dict) else {}
         if has_reviewable_spec(raw_spec):
             return None
+        if state.get("source_candidates"):
+            message_text = "已从建模工作台带入候选数据来源。请先确认来源，我会基于它生成可审阅 spec。"
+            state["agent_message"] = message_text
+            state["readiness"] = {
+                "canonical_ready": False,
+                "exploratory_ready": False,
+                "reasons": ["source_candidate_confirmation_required", "spec_not_generated"],
+            }
+            state["suggested_actions"] = ["confirm_source_candidate"]
+            state["advanced_refs"] = {
+                **(state.get("advanced_refs") or {}),
+                "spec_available": False,
+                "source_candidates_available": True,
+                "trace_available": True,
+            }
+            session.workbench_state = state
+            self._append_tool_trace(session, {
+                "tool": "rank_candidate_assets",
+                "status": "skipped",
+                "summary": "已存在工作台候选来源，跳过重新召回",
+            })
+            self._append_tool_trace(session, {
+                "tool": "generate_semantic_draft",
+                "status": "skipped",
+                "summary": "等待确认工作台候选来源",
+            })
+            return message_text
 
         context_session = session.model_dump(mode="json")
         context_session["workbench_state"] = state
@@ -789,7 +909,7 @@ class SemanticModelingCopilotService:
         candidate_id = str(payload.get("candidate_id") or payload.get("source_candidate_id") or "").strip()
         candidate = self._pick_source_candidate(candidates, candidate_id, message)
         if candidate is None:
-            return "我还没有可确认的数据来源候选。请先告诉我源表/数据集，或重新让 Copilot 检索候选来源。"
+            return "我还没有可确认的数据来源候选。请先告诉我源表/数据集，或重新让 AI 建模助手检索候选来源。"
 
         candidate = self._repair_source_candidate_by_rules(session.user_goal, candidate, candidates)
         source_payload = self._source_payload_from_candidate(candidate)
@@ -949,7 +1069,7 @@ class SemanticModelingCopilotService:
         elif spec_status == "failed":
             state["agent_message"] = (
                 f"已确认 {confirmation_id}，但 spec 生成失败。"
-                "请在 Chat 里补充源表或让 Copilot 重新生成。"
+                "请在对话里补充源表或让 AI 建模助手重新生成。"
             )
         elif spec_status == "missing_source":
             state["agent_message"] = (
@@ -986,7 +1106,7 @@ class SemanticModelingCopilotService:
         if spec_status == "generated":
             state["agent_message"] = "已根据已确认口径补齐可审阅 spec。你可以继续沙盒预演，或应用语义保存 Proposal。"
         elif spec_status == "failed":
-            state["agent_message"] = "已确认口径，但 spec 生成失败。请在 Chat 里补充源表或让 Copilot 重新生成。"
+            state["agent_message"] = "已确认口径，但 spec 生成失败。请在对话里补充源表或让 AI 建模助手重新生成。"
         elif spec_status == "missing_source":
             state["agent_message"] = "已确认口径，但还缺少可生成 spec 的源表线索。请继续补充物理表或候选数据集。"
         else:
@@ -1134,14 +1254,18 @@ class SemanticModelingCopilotService:
                     "database": payload.get("database"),
                     "schema": payload.get("schema"),
                     "table": payload.get("table"),
+                    **({"asset_ref": deepcopy(payload["asset_ref"])} if isinstance(payload.get("asset_ref"), dict) else {}),
+                    **({"evidence_bundle": deepcopy(payload["evidence_bundle"])} if isinstance(payload.get("evidence_bundle"), dict) else {}),
                 }
-            if source_kind == "physical_table" and payload.get("source_id") and payload.get("database") and payload.get("table"):
+            if source_kind == "physical_table" and payload.get("table"):
                 return {
                     "source_kind": "physical_table",
                     "source_id": payload.get("source_id"),
                     "database": payload.get("database"),
                     "schema": payload.get("schema"),
                     "table": payload.get("table"),
+                    **({"asset_ref": deepcopy(payload["asset_ref"])} if isinstance(payload.get("asset_ref"), dict) else {}),
+                    **({"evidence_bundle": deepcopy(payload["evidence_bundle"])} if isinstance(payload.get("evidence_bundle"), dict) else {}),
                 }
         return {}
 
@@ -1181,7 +1305,7 @@ class SemanticModelingCopilotService:
                 "table": candidate.get("table"),
                 **extra_payload,
             }
-        if source_kind == "physical_table" and candidate.get("source_id") and candidate.get("database") and candidate.get("table"):
+        if source_kind == "physical_table" and candidate.get("table"):
             return {
                 "source_kind": "physical_table",
                 "source_id": candidate.get("source_id"),
@@ -1354,7 +1478,7 @@ class SemanticModelingCopilotService:
         )
         state = deepcopy(session.workbench_state)
         state["sandbox_preview"] = result
-        state["agent_message"] = "已完成草稿态沙盒预演，不会污染正式 Data Agent runtime。"
+        state["agent_message"] = "已完成草稿态沙盒预演，不会写入语义中心发布快照。"
         session.workbench_state = state
         session.add_message(role="assistant", content=state["agent_message"])
         self._save_session(session)
@@ -1428,7 +1552,7 @@ class SemanticModelingCopilotService:
         ):
             proposal_patch["embedded_spec"] = deepcopy(raw_spec)
         else:
-            raise ValueError("SPEC_REQUIRED: 当前会话还没有可保存、可校验的 raw_spec，请先让 Copilot 生成 spec 或在右侧 Spec 面板补齐。")
+            raise ValueError("SPEC_REQUIRED: 当前会话还没有可保存、可校验的 raw_spec，请先让 AI 建模助手生成 spec 或在右侧 Spec 面板补齐。")
         # Agent-led 场景里的候选表只是证据与确认材料，不作为用户已选择的物理建模源。
         if proposal_patch.get("source_kind") == "business_question":
             proposal_patch.pop("table", None)
@@ -1688,6 +1812,117 @@ class SemanticModelingCopilotService:
             "advanced_refs": {"proposal_id": None, "spec_available": False, "trace_available": False},
         }
 
+    def _normalize_workbench_context(self, value: Any) -> Dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        source = str(value.get("source") or value.get("table") or "").strip()
+        if not source:
+            return {}
+        target = str(value.get("target") or "semantic_center").strip()
+        if target and target != "semantic_center":
+            return {}
+        evidence = value.get("evidence")
+        modeling_source = value.get("modelingSource") or value.get("modeling_source")
+        return {
+            "workbench_mode": str(value.get("workbenchMode") or value.get("workbench_mode") or "").strip(),
+            "project_id": str(value.get("projectId") or value.get("project_id") or "").strip(),
+            "candidate_id": str(value.get("candidateId") or value.get("candidate_id") or "").strip(),
+            "candidate_title": str(value.get("candidateTitle") or value.get("candidate_title") or "").strip(),
+            "source": source,
+            "grain": str(value.get("grain") or "").strip(),
+            "risk": str(value.get("risk") or "medium").strip(),
+            "evidence": [str(item) for item in evidence if item is not None] if isinstance(evidence, list) else [],
+            "modeling_source": deepcopy(modeling_source) if isinstance(modeling_source, dict) else {},
+            "target": "semantic_center",
+        }
+
+    def _seed_workbench_context(
+        self,
+        state: Dict[str, Any],
+        *,
+        user_goal: str,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        next_state = deepcopy(state)
+        source = str(context.get("source") or "").strip()
+        database, table = self._split_source_name(source)
+        modeling_source = context.get("modeling_source") if isinstance(context.get("modeling_source"), dict) else {}
+        source_table = str(modeling_source.get("table") or table or source).strip()
+        source_database = modeling_source.get("database") if modeling_source.get("database") is not None else database
+        source_schema = modeling_source.get("schema")
+        candidate_id = str(context.get("candidate_id") or table or source).strip()
+        candidate = {
+            "id": f"workbench:{candidate_id or table or source}",
+            "asset_type": "workbench_candidate",
+            "source_kind": str(modeling_source.get("source_kind") or "physical_table"),
+            "source_id": modeling_source.get("source_id"),
+            "database": source_database,
+            "schema": source_schema,
+            "table": source_table,
+            "name": source,
+            "title": str(modeling_source.get("title") or context.get("candidate_title") or source),
+            "confidence": "medium",
+            "risk": str(context.get("risk") or "medium"),
+            "evidence": context.get("evidence") or [],
+            "workbench_context": context,
+        }
+        if isinstance(modeling_source.get("asset_ref"), dict):
+            candidate["asset_ref"] = deepcopy(modeling_source["asset_ref"])
+        if isinstance(modeling_source.get("evidence_bundle"), dict):
+            candidate["evidence_bundle"] = deepcopy(modeling_source["evidence_bundle"])
+        next_state["source_candidates"] = [candidate]
+        next_state["agent_message"] = (
+            f"已从语义建设工作台带入候选来源 {source}。请确认来源后生成可审阅 spec。"
+        )
+        next_state["readiness"] = {
+            "canonical_ready": False,
+            "exploratory_ready": False,
+            "reasons": ["source_candidate_confirmation_required", "spec_not_generated"],
+        }
+        next_state["suggested_actions"] = ["confirm_source_candidate"]
+        next_state["proposal_patch"] = {
+            **(next_state.get("proposal_patch") or {}),
+            "source_mode": "agent_led",
+            "user_question": user_goal,
+            "candidate_source_table": source,
+            "candidate_table": source,
+            "table": source_table,
+            "database": source_database,
+            "schema": source_schema,
+            "source_id": modeling_source.get("source_id"),
+            "source_kind": str(modeling_source.get("source_kind") or "physical_table"),
+            **({"asset_ref": deepcopy(modeling_source["asset_ref"])} if isinstance(modeling_source.get("asset_ref"), dict) else {}),
+            **({"evidence_bundle": deepcopy(modeling_source["evidence_bundle"])} if isinstance(modeling_source.get("evidence_bundle"), dict) else {}),
+            "grain": context.get("grain"),
+            "candidate_id": context.get("candidate_id"),
+            "project_id": context.get("project_id"),
+            "target": "semantic_center",
+        }
+        next_state["advanced_refs"] = {
+            **(next_state.get("advanced_refs") or {}),
+            "proposal_id": None,
+            "spec_available": False,
+            "source_candidates_available": True,
+            "candidate_source_table": source,
+            "workbench_context": context,
+            "trace_available": True,
+        }
+        return next_state
+
+    @staticmethod
+    def _split_source_name(source: str) -> tuple[Optional[str], str]:
+        parts = [part.strip() for part in source.split(".") if part.strip()]
+        if len(parts) >= 2:
+            return ".".join(parts[:-1]), parts[-1]
+        return None, source
+
+    @staticmethod
+    def _is_duplicate_user_turn(session: AgentSession, message: str) -> bool:
+        if not session.conversation:
+            return False
+        last = session.conversation[-1]
+        return last.role == "user" and last.content.strip() == message.strip()
+
     def _infer_entry_type(self, payload: Dict[str, Any]) -> str:
         if payload.get("miss_trace_id"):
             return "semantic_gap"
@@ -1795,7 +2030,7 @@ class SemanticModelingCopilotService:
             {
                 "id": "sandbox_preview",
                 "title": "沙盒预演",
-                "description": "在草稿态验证 Data Agent 可消费性",
+                "description": "在草稿态验证发布快照候选，不写入语义中心。",
                 "proposal_id": proposal_id,
             },
             {
@@ -1962,7 +2197,7 @@ class SemanticModelingCopilotService:
             "title": title,
             "technical_name": technical_name,
             "operation": "create",
-            "reason": detail or "Copilot 根据业务问题和候选语义生成。",
+            "reason": detail or "AI 建模助手根据业务问题和候选语义生成。",
             "impact": "进入 Proposal 后会参与语义校验、治理审核和发布。",
             "risk": "发布前需要确认口径、绑定和权限策略。",
         }
@@ -2189,7 +2424,7 @@ class SemanticModelingCopilotService:
                 "type": "audit",
                 "title": "发布审计",
                 "status": "completed",
-                "summary": "正式 Data Agent 可消费",
+                "summary": "语义中心发布快照已生成",
             })
         return {"events": events}
 
@@ -2209,7 +2444,7 @@ class SemanticModelingCopilotService:
         label = {
             "published": "发布门禁已通过",
             "blocked": "发布门禁阻塞",
-            "ready_to_publish": "发布前检查通过",
+            "ready_to_publish": "发布材料已就绪",
             "ready_to_save": "草稿可保存",
         }.get(gate_state, status_label)
         return {
@@ -2235,10 +2470,14 @@ class SemanticModelingCopilotService:
                     "description": "草稿预演已通过。" if sandbox_ok or published else "建议发布前运行草稿态预演。",
                 },
                 {
-                    "id": "runtime",
-                    "label": "正式 runtime",
+                    "id": "consumer_validation",
+                    "label": "消费者验证",
                     "status": "passed" if published else "pending",
-                    "description": "Data Agent 可消费。" if published else "发布成功后才进入正式 runtime。",
+                    "description": (
+                        "消费者可基于语义中心发布快照继续验证。"
+                        if published
+                        else "发布成功后进入语义中心发布快照。"
+                    ),
                 },
             ],
         }
@@ -2258,14 +2497,14 @@ class SemanticModelingCopilotService:
                 "label": "样例问答验收通过",
                 "sample_question": sample_question,
                 "runtime_route": route,
-                "result_summary": f"正式 Data Agent 已能命中 {route}。",
+                "result_summary": "语义中心发布快照已生成，消费者可继续验证。",
             }
         return {
             "status": "not_run",
             "label": "发布后验收待运行",
             "sample_question": sample_question,
             "runtime_route": None,
-            "result_summary": "语义资产发布后再运行正式 Data Agent 验收。",
+            "result_summary": "语义资产发布后，消费者可基于语义中心发布快照验证。",
         }
 
     def _review_consumption_state(
@@ -2275,12 +2514,12 @@ class SemanticModelingCopilotService:
         blockers: list[Dict[str, Any]],
     ) -> Dict[str, Any]:
         if published:
-            return {"state": "available", "label": "正式 Data Agent 可消费", "reasons": []}
+            return {"state": "available", "label": "语义中心已发布", "reasons": []}
         if not has_spec:
-            return {"state": "unavailable", "label": "正式 Data Agent 暂不可消费", "reasons": ["SPEC_REQUIRED"]}
+            return {"state": "unavailable", "label": "消费者暂不可验证", "reasons": ["SPEC_REQUIRED"]}
         if blockers:
-            return {"state": "draft_only", "label": "正式 Data Agent 暂不可消费", "reasons": [b["id"] for b in blockers]}
-        return {"state": "ready_after_publish", "label": "发布后 Data Agent 可消费", "reasons": []}
+            return {"state": "draft_only", "label": "消费者暂不可验证", "reasons": [b["id"] for b in blockers]}
+        return {"state": "ready_after_publish", "label": "发布后消费者可验证", "reasons": []}
 
     def _review_primary_action(
         self,
@@ -2310,20 +2549,20 @@ class SemanticModelingCopilotService:
         has_blockers: bool,
     ) -> tuple[str, str]:
         if published:
-            return "published", "已发布 · Data Agent 可消费"
+            return "published", "已发布到语义中心"
         if not has_spec:
             return "drafting", "等待生成 spec"
         if not has_proposal:
             return ("blocked", "当前只能保存草稿") if has_blockers else ("ready_to_save", "草稿可保存")
-        return ("blocked", "发布前还有阻塞") if has_blockers else ("ready_to_publish", "发布前检查通过，等待确认发布")
+        return ("blocked", "发布前还有阻塞") if has_blockers else ("ready_to_publish", "待发布资产已保存，等待发布预演与确认")
 
     def _review_status_label(self, status: str) -> str:
         return {
             "drafting": "等待生成 spec",
             "blocked": "当前只能保存草稿",
             "ready_to_save": "草稿可保存",
-            "ready_to_publish": "发布前检查通过，等待确认发布",
-            "published": "已发布 · Data Agent 可消费",
+            "ready_to_publish": "待发布资产已保存，等待发布预演与确认",
+            "published": "已发布到语义中心",
         }.get(status, status)
 
     def _has_reviewable_spec(self, raw_spec: Any) -> bool:

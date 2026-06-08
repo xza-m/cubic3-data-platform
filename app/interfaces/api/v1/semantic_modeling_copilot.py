@@ -258,6 +258,18 @@ def create_semantic_modeling_copilot_blueprint(copilot_service: Any):
         except Exception as exc:
             return _copilot_error("保存建模 Proposal", exc)
 
+    @bp.route("/sessions/<session_id>/release-preview", methods=["POST"])
+    @_require_identity_unless_testing
+    def preview_release(session_id: str):
+        try:
+            return success(data=copilot_service.preview_release(
+                session_id,
+                _body(),
+                principal_id=_principal_id(),
+            ))
+        except Exception as exc:
+            return _copilot_error("生成建模发布预演", exc)
+
     @bp.route("/sessions/<session_id>/publish", methods=["POST"])
     @_require_identity_unless_testing
     def publish_proposal(session_id: str):

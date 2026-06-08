@@ -1,6 +1,8 @@
 import json
 from copy import deepcopy
 
+import pytest
+
 from app.application.semantic.modeling_copilot_runtime import (
     LLMRequiredError,
     OpenAICompatibleLLMAdapter,
@@ -218,7 +220,15 @@ class _Tools:
                 "summary": "已生成学生评论 spec",
                 "spec": {
                     "spec_version": "v1",
-                    "source": {"source_kind": "physical_table", "table": table},
+                    "source": {
+                        "source_kind": arguments.get("source_kind") or "physical_table",
+                        "source_id": arguments.get("source_id"),
+                        "database": arguments.get("database"),
+                        "schema": arguments.get("schema"),
+                        "table": table,
+                        **({"asset_ref": deepcopy(arguments["asset_ref"])} if isinstance(arguments.get("asset_ref"), dict) else {}),
+                        **({"evidence_bundle": deepcopy(arguments["evidence_bundle"])} if isinstance(arguments.get("evidence_bundle"), dict) else {}),
+                    },
                     "business": {"subject": "学生评论", "sensitivity_level": "restricted"},
                     "cube": {"name": "student_comment_cube", "source": table, "dimensions": {}, "measures": {}},
                     "ontology": {"object": {"name": "student_comment", "title": "学生评论"}, "metrics": []},
@@ -330,7 +340,46 @@ class _PublishValidationBlockedProposalService(_ProposalService):
         }
 
 
-def _service(proposal_service=None):
+class _ReleasePreviewService:
+    def __init__(self, *, mutate_inputs=False):
+        self.calls = []
+        self.mutate_inputs = mutate_inputs
+
+    def preview(
+        self,
+        *,
+        session_id,
+        namespace,
+        spec,
+        previous_spec=None,
+        sample_questions=None,
+        viewer_roles=None,
+    ):
+        if self.mutate_inputs:
+            spec.setdefault("cube", {})["name"] = "mutated_by_preview"
+            if isinstance(previous_spec, dict):
+                previous_spec.setdefault("cube", {})["name"] = "mutated_previous"
+        self.calls.append({
+            "session_id": session_id,
+            "namespace": namespace,
+            "spec": deepcopy(spec),
+            "previous_spec": deepcopy(previous_spec) if isinstance(previous_spec, dict) else None,
+            "sample_questions": list(sample_questions or []),
+            "viewer_roles": list(viewer_roles or []),
+        })
+        return {
+            "session_id": session_id,
+            "namespace": namespace,
+            "target": "semantic_center",
+            "compiled_sql": "",
+            "release_diff": {"added": ["cube.learning_behavior_cube"], "changed": [], "removed": []},
+            "impact_summary": {"affected_assets": ["cube.learning_behavior_cube"], "risk_level": "low"},
+            "gateway_validation": {"status": "not_configured"},
+            "consumer_validation": {"status": "pending"},
+        }
+
+
+def _service(proposal_service=None, release_preview_service=None):
     repo = _SessionRepository()
     runtime = _Runtime()
     tools = _Tools()
@@ -340,10 +389,11 @@ def _service(proposal_service=None):
         agent_app=runtime,
         tools=tools,
         proposal_service=proposal_service,
+        release_preview_service=release_preview_service,
     ), repo, runtime, proposal_service
 
 
-def _service_with_agent_app(agent_app, proposal_service=None):
+def _service_with_agent_app(agent_app, proposal_service=None, release_preview_service=None):
     repo = _SessionRepository()
     tools = _Tools()
     proposal_service = proposal_service or _ProposalService()
@@ -352,6 +402,7 @@ def _service_with_agent_app(agent_app, proposal_service=None):
         agent_app=agent_app,
         tools=tools,
         proposal_service=proposal_service,
+        release_preview_service=release_preview_service,
     ), repo, agent_app, proposal_service
 
 
@@ -1193,7 +1244,7 @@ def test_copilot_sandbox_preview_is_draft_only():
     preview = service.sandbox(created["id"])
 
     assert preview["workbench_state"]["sandbox_preview"]["pollutes_official_route"] is False
-    assert preview["workbench_state"]["agent_message"] == "已完成草稿态沙盒预演，不会污染正式 Data Agent runtime。"
+    assert preview["workbench_state"]["agent_message"] == "已完成草稿态沙盒预演，不会写入语义中心发布快照。"
 
 
 def test_llm_adapter_raises_llm_required_when_api_key_missing(monkeypatch):
@@ -1456,6 +1507,158 @@ def test_update_spec_full_replace_when_spec_key_provided():
     assert raw_spec["ontology"]["metrics"][0]["binding_status"] == "approved"
 
 
+def test_preview_release_uses_session_spec_and_records_preview():
+    preview_service = _ReleasePreviewService()
+    service, repo, runtime, proposal_service = _service(release_preview_service=preview_service)
+    service.create_session({"user_goal": "预演学习行为语义发布", "id": "session_1"})
+    service.update_spec(
+        "session_1",
+        {
+            "spec": {
+                "spec_version": "v1",
+                "cube": {
+                    "name": "learning_behavior_cube",
+                    "table": "dws_learning_behavior_df",
+                    "measures": {
+                        "learning_event_count": {
+                            "type": "count",
+                            "sql": "event_id",
+                        }
+                    },
+                },
+                "ontology": {"object": {"name": "learning_behavior", "title": "学习行为"}},
+            }
+        },
+    )
+
+    payload = service.preview_release(
+        "session_1",
+        {
+            "namespace": "default",
+            "sample_questions": ["昨天学习行为数是多少？"],
+            "viewer_roles": ["ops_readonly", "ops_readonly", "data_agent_test"],
+        },
+    )
+
+    release_preview = payload["workbench_state"]["release_preview"]
+    assert release_preview["target"] == "semantic_center"
+    assert release_preview["compiled_sql"] == ""
+    assert len(preview_service.calls) == 1
+    call = preview_service.calls[0]
+    assert call["session_id"] == "session_1"
+    assert call["namespace"] == "default"
+    assert call["sample_questions"] == ["昨天学习行为数是多少？"]
+    assert call["viewer_roles"] == ["ops_readonly", "data_agent_test"]
+    assert call["spec"]["cube"]["name"] == "learning_behavior_cube"
+    stored = repo.get("session_1")
+    assert stored.workbench_state["release_preview"]["gateway_validation"]["status"] == "not_configured"
+    event = stored.event_log[-1]
+    assert event["action"] == "preview_release"
+    assert event["payload"] == {"namespace": "default", "gateway_status": "not_configured"}
+    assert runtime.calls == []
+    assert proposal_service.calls == []
+
+
+def test_preview_release_does_not_allow_preview_service_to_mutate_session_or_payload():
+    preview_service = _ReleasePreviewService(mutate_inputs=True)
+    service, repo, _, _ = _service(release_preview_service=preview_service)
+    service.create_session({"user_goal": "预演学习行为语义发布", "id": "session_1"})
+    service.update_spec(
+        "session_1",
+        {
+            "spec": {
+                "spec_version": "v1",
+                "cube": {"name": "learning_behavior_cube"},
+            }
+        },
+    )
+    payload = {
+        "namespace": "default",
+        "previous_spec": {"spec_version": "v1", "cube": {"name": "previous_cube"}},
+        "sample_questions": "昨天学习行为数是多少？",
+    }
+
+    service.preview_release("session_1", payload)
+
+    stored = repo.get("session_1")
+    assert stored.workbench_state["raw_spec"]["cube"]["name"] == "learning_behavior_cube"
+    assert payload["previous_spec"]["cube"]["name"] == "previous_cube"
+    assert preview_service.calls[0]["spec"]["cube"]["name"] == "mutated_by_preview"
+    assert preview_service.calls[0]["previous_spec"]["cube"]["name"] == "mutated_previous"
+    assert preview_service.calls[0]["sample_questions"] == ["昨天学习行为数是多少？"]
+
+
+def test_preview_release_ignores_non_sequence_sample_questions():
+    preview_service = _ReleasePreviewService()
+    service, _, _, _ = _service(release_preview_service=preview_service)
+    service.create_session({"user_goal": "预演学习行为语义发布", "id": "session_1"})
+    service.update_spec(
+        "session_1",
+        {
+            "spec": {
+                "spec_version": "v1",
+                "cube": {"name": "learning_behavior_cube"},
+            }
+        },
+    )
+
+    service.preview_release("session_1", {"sample_questions": {"q": "不要迭代 dict key"}})
+
+    assert preview_service.calls[0]["sample_questions"] == []
+
+
+def test_preview_release_enforces_session_owner_before_preview_service():
+    preview_service = _ReleasePreviewService()
+    service, _, _, _ = _service(release_preview_service=preview_service)
+    service.create_session(
+        {"user_goal": "预演学习行为语义发布", "id": "session_1", "principal_id": "alice"}
+    )
+
+    with pytest.raises(PermissionError, match="属于其他用户"):
+        service.preview_release("session_1", {"namespace": "default"}, principal_id="bob")
+
+    assert preview_service.calls == []
+
+
+def test_preview_release_requires_raw_spec_before_preview_service():
+    preview_service = _ReleasePreviewService()
+    service, _, _, _ = _service(release_preview_service=preview_service)
+    service.create_session({"user_goal": "预演学习行为语义发布", "id": "session_1"})
+
+    with pytest.raises(ValueError, match="缺少可校验的语义 Spec"):
+        service.preview_release("session_1", {"namespace": "default"})
+
+    assert preview_service.calls == []
+
+
+def test_preview_release_requires_reviewable_spec_before_preview_service():
+    preview_service = _ReleasePreviewService()
+    service, repo, _, _ = _service(release_preview_service=preview_service)
+    service.create_session({"user_goal": "预演学习行为语义发布", "id": "session_1"})
+    session = repo.get("session_1")
+    session.workbench_state = {
+        **session.workbench_state,
+        "raw_spec": {"foo": "bar"},
+    }
+
+    with pytest.raises(ValueError, match="缺少可校验的语义 Spec"):
+        service.preview_release("session_1", {"namespace": "default"})
+
+    assert preview_service.calls == []
+
+
+def test_preview_release_requires_configured_preview_service():
+    service, _, _, _ = _service()
+    service.create_session({"user_goal": "预演学习行为语义发布", "id": "session_1"})
+    service.update_spec(
+        "session_1",
+        {"spec": {"spec_version": "v1", "cube": {"name": "learning_behavior_cube"}}},
+    )
+
+    with pytest.raises(ValueError, match="release preview service 未配置"):
+        service.preview_release("session_1", {"namespace": "default"})
+
+
 def test_confirm_source_candidate_generates_spec_without_runtime():
     service, repo, runtime, _ = _service()
     created = service.create_session({"user_goal": "Data Agent 没听懂班级活跃度，帮我补语义"})
@@ -1504,6 +1707,95 @@ def test_confirm_source_candidate_generates_spec_without_runtime():
     assert updated["workbench_state"]["proposal_patch"]["table"] == "dwd_class_activity_df"
     assert updated["workbench_state"]["readiness"]["reasons"] == ["ready_to_save"]
     assert updated["workbench_state"]["raw_spec"]["spec_version"] == "v1"
+
+
+def test_workbench_context_preserves_candidate_source_and_dedupes_initial_message():
+    service, repo, runtime, _ = _service()
+    goal = "基于 dwd_learning_activity_df 建设学习行为事实主题"
+    created = service.create_session(
+        {
+            "user_goal": goal,
+            "workbench_context": {
+                "workbenchMode": "batch",
+                "projectId": "build-learning",
+                "candidateId": "build-learning:fact:dwd-learning-activity-df",
+                "candidateTitle": "学情分析事实主题候选",
+                "target": "semantic_center",
+                "source": "dwd_learning_activity_df",
+                "grain": "一条学习行为事件",
+                "risk": "low",
+                "evidence": ["表画像显示行为时间字段完整。"],
+                "modeling_source": {
+                    "source_kind": "physical_table",
+                    "source_id": 1,
+                    "database": "dw",
+                    "schema": None,
+                    "table": "dwd_learning_activity_df",
+                    "title": "学情分析事实主题候选",
+                    "asset_ref": {
+                        "kind": "physical_table",
+                        "source_id": 1,
+                        "database": "dw",
+                        "schema": None,
+                        "table": "dwd_learning_activity_df",
+                    },
+                    "evidence_bundle": {
+                        "schema_snapshot": {
+                            "table": "dwd_learning_activity_df",
+                            "columns": [{"name": "student_id", "type": "string"}],
+                            "partitions": ["ds"],
+                        }
+                    },
+                },
+            },
+        }
+    )
+
+    assert created["entry_type"] == "table_known"
+    assert created["workbench_state"]["source_candidates"][0]["name"] == "dwd_learning_activity_df"
+    assert created["workbench_state"]["source_candidates"][0]["source_id"] == 1
+    assert created["workbench_state"]["source_candidates"][0]["database"] == "dw"
+    assert created["workbench_state"]["source_candidates"][0]["evidence_bundle"]["schema_snapshot"]["partitions"] == ["ds"]
+    assert created["workbench_state"]["advanced_refs"]["candidate_source_table"] == "dwd_learning_activity_df"
+
+    recalled = service.send_message(created["id"], {"message": goal})
+
+    assert runtime.calls == []
+    assert [item["role"] for item in recalled["conversation"]] == ["user", "assistant"]
+    assert recalled["workbench_state"]["source_candidates"][0]["name"] == "dwd_learning_activity_df"
+    assert recalled["tool_traces"][-2]["tool"] == "rank_candidate_assets"
+    assert recalled["tool_traces"][-2]["status"] == "skipped"
+
+    confirmed = service.send_message(
+        created["id"],
+        {
+            "message": "使用这个来源：dwd_learning_activity_df",
+            "action": "confirm_source_candidate",
+            "candidate_id": "workbench:build-learning:fact:dwd-learning-activity-df",
+        },
+    )
+
+    patch = confirmed["workbench_state"]["proposal_patch"]
+    raw_source = confirmed["workbench_state"]["raw_spec"]["source"]
+    raw_cube = confirmed["workbench_state"]["raw_spec"]["cube"]
+    raw_metric = confirmed["workbench_state"]["raw_spec"]["ontology"]["metrics"][0]
+    assert patch["source_mode"] == "agent_led"
+    assert patch["source_id"] == 1
+    assert patch["database"] == "dw"
+    assert patch["asset_ref"]["table"] == "dwd_learning_activity_df"
+    assert patch["evidence_bundle"]["schema_snapshot"]["partitions"] == ["ds"]
+    assert raw_source["table"] == "dwd_learning_activity_df"
+    assert raw_source["source_id"] == 1
+    assert raw_source["database"] == "dw"
+    assert raw_source["evidence_bundle"]["schema_snapshot"]["columns"][0]["name"] == "student_id"
+    assert raw_cube["dimensions"]["ds"]["type"] == "time"
+    assert raw_metric["time_dimension"] == "ds"
+    assert confirmed["workbench_state"]["advanced_refs"]["candidate_source_table"] == "dwd_learning_activity_df"
+    assert confirmed["workbench_state"]["readiness"]["reasons"] == ["ready_to_save"]
+    assert service._tools.calls[-1][0] == "generate_semantic_draft"
+    assert service._tools.calls[-1][1]["source_id"] == 1
+    assert service._tools.calls[-1][1]["database"] == "dw"
+    assert service._tools.calls[-1][1]["evidence_bundle"]["schema_snapshot"]["partitions"] == ["ds"]
 
 
 def test_confirm_source_candidate_preserves_data_asset_evidence_in_proposal_patch():
@@ -1845,6 +2137,51 @@ def test_publish_proposal_chains_approve_apply_publish_after_save():
     assert published["workbench_state"]["readiness"]["reasons"] == []
     # 用户能看到 active 资产指示
     assert published["workbench_state"]["publish_result"]["details"]["cube"]["status"] == "active"
+
+
+def test_published_review_copy_targets_semantic_center_not_data_agent():
+    service, _, _, _ = _service()
+    session = service.create_session({
+        "user_goal": "建设评论数语义资产",
+        "entry_type": "business_question",
+        "principal_id": "alice",
+    })
+    updated = service.update_spec(
+        session["id"],
+        {
+            "cube": {"name": "student_comment_cube", "source": "public.dwd_student_comment"},
+            "ontology": {
+                "object": {"name": "student_comment", "title": "学生评论"},
+                "metrics": [
+                    {
+                        "name": "student_comment_count",
+                        "measure_refs": ["student_comment_cube.comment_count"],
+                    }
+                ],
+            },
+        },
+        principal_id="alice",
+    )
+    accepted = service.accept_cube_draft(updated["id"], {}, principal_id="alice")
+    saved = service.save_proposal(accepted["id"], {}, principal_id="alice")
+    published = service.publish_proposal(saved["id"], {}, principal_id="alice")
+    review = service.get_review(published["id"], principal_id="alice")
+
+    assert published["workbench_state"]["agent_message"].startswith("语义 proposal_1 已发布到语义中心")
+    assert review["status_label"] == "已发布到语义中心"
+    assert review["data_agent_consumption"]["label"] == "语义中心已发布"
+    assert review["publish_gate"]["steps"][-1]["label"] == "消费者验证"
+    assert review["post_publish_validation"]["result_summary"] == "语义中心发布快照已生成，消费者可继续验证。"
+
+    text = json.dumps({"published": published, "review": review}, ensure_ascii=False)
+    forbidden = [
+        "正式 Data Agent runtime",
+        "正式 Data Agent 可消费",
+        "已发布 · Data Agent 可消费",
+        "Data Agent 可消费",
+    ]
+    for phrase in forbidden:
+        assert phrase not in text
 
 
 def test_publish_proposal_recovers_legacy_draft_by_validating_before_approve():

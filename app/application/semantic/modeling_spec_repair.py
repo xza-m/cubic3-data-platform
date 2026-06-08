@@ -52,6 +52,8 @@ def repair_modeling_spec(
     cube_name = str(cube.get("name") or cube.get("table") or "semantic_cube")
     cube["name"] = cube_name
     dimensions = _ensure_dimensions(cube, user_goal)
+    _ensure_cube_partition_from_evidence(repaired, cube)
+    _ensure_partition_time_dimension(cube, dimensions)
     measure_name = _ensure_measure(cube, dimensions, user_goal)
 
     ontology = repaired.setdefault("ontology", {})
@@ -148,6 +150,71 @@ def _ensure_dimensions(cube: Dict[str, Any], user_goal: str) -> Dict[str, Dict[s
         )
     cube["dimensions"] = dimensions
     return dimensions
+
+
+def _ensure_partition_time_dimension(cube: Dict[str, Any], dimensions: Dict[str, Dict[str, Any]]) -> None:
+    """将物理分区字段补成 Cube 时间维度，避免维表冷启动缺默认时间口径。"""
+    partition = cube.get("partition")
+    if not isinstance(partition, dict):
+        return
+    field = str(partition.get("field") or "").strip()
+    if not field or field in dimensions:
+        return
+    dimensions[field] = {
+        "title": partition.get("title") or field.upper(),
+        "type": "time" if str(partition.get("type") or "").lower() in {"date", "time", "datetime"} else "date",
+        "sql": f"`{field}`",
+        "description": "由源表分区字段自动补齐的默认时间维度。",
+        "primary_key": False,
+        "source_data_type": partition.get("source_data_type") or partition.get("type") or "date",
+    }
+    cube["dimensions"] = dimensions
+
+
+def _ensure_cube_partition_from_evidence(spec: Dict[str, Any], cube: Dict[str, Any]) -> None:
+    if isinstance(cube.get("partition"), dict) and cube["partition"].get("field"):
+        return
+    schema_snapshot = _schema_snapshot_from_spec(spec, cube)
+    if not schema_snapshot:
+        return
+    field = _partition_field_from_schema(schema_snapshot)
+    if not field:
+        return
+    cube["partition"] = {
+        "type": "date",
+        "field": field,
+        "format": "yyyyMMdd",
+    }
+
+
+def _schema_snapshot_from_spec(spec: Dict[str, Any], cube: Dict[str, Any]) -> Dict[str, Any]:
+    source = spec.get("source") if isinstance(spec.get("source"), dict) else {}
+    for holder in (
+        source.get("evidence_bundle") if isinstance(source.get("evidence_bundle"), dict) else {},
+        cube.get("asset_evidence") if isinstance(cube.get("asset_evidence"), dict) else {},
+    ):
+        snapshot = holder.get("schema_snapshot") if isinstance(holder, dict) else None
+        if isinstance(snapshot, dict):
+            return snapshot
+    return {}
+
+
+def _partition_field_from_schema(schema_snapshot: Dict[str, Any]) -> str:
+    partitions = schema_snapshot.get("partitions")
+    if isinstance(partitions, list):
+        for item in partitions:
+            field = str(item or "").strip()
+            if field:
+                return field
+    columns = schema_snapshot.get("columns")
+    if isinstance(columns, list):
+        for column in columns:
+            if not isinstance(column, dict) or not column.get("is_partition"):
+                continue
+            field = str(column.get("name") or "").strip()
+            if field:
+                return field
+    return ""
 
 
 def _ensure_measure(cube: Dict[str, Any], dimensions: Dict[str, Dict[str, Any]], user_goal: str) -> str:
