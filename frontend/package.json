@@ -30,7 +30,7 @@
     "e2e:data-assets-smoke": "node ./scripts/run-semantic-smoke.mjs tests/e2e/data_asset_foundation_smoke.py",
     "e2e:modeling-agent-smoke": "playwright test --config tests/e2e-v2/playwright.config.ts p34-modeling-agent-smoke.spec.ts",
     "e2e:modeling-agent-smoke:live": "P34_LIVE_API=1 playwright test --config tests/e2e-v2/playwright.config.ts p34-modeling-agent-live.spec.ts --workers=1",
-    "ci:pre-push": "npm run lint && npm run test:unit && npm run build:v2",
+    "ci:pre-push": "npm run lint && npm run test:unit -- --maxWorkers=1 && npm run build:v2",
     "prepare": "node -e \"try{require('child_process').execSync('git config core.hooksPath .husky',{cwd:'..',stdio:'ignore'})}catch(e){}\""
   },
   "lint-staged": {
