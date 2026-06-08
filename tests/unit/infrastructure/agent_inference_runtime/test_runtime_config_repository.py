@@ -85,13 +85,41 @@ def test_runtime_audit_log_records_management_action(db_session):
     repo = SqlRuntimeConfigRepository(db_session)
 
     audit = repo.record_audit_event(
-        runtime_name="codex_app_server",
-        action="start",
+        runtime_name="codex_sdk",
+        action="test",
         principal_id="alice",
         status="accepted",
-        metadata={"profile": "local-codex-app-server"},
+        metadata={"provider": "codex-sdk"},
     )
 
-    assert audit.runtime_name == "codex_app_server"
-    assert audit.action == "start"
+    assert audit.runtime_name == "codex_sdk"
+    assert audit.action == "test"
     assert audit.status == "accepted"
+
+
+def test_runtime_config_repository_returns_latest_audit_event_by_action(db_session):
+    repo = SqlRuntimeConfigRepository(db_session)
+
+    repo.record_audit_event(
+        runtime_name="codex_sdk",
+        action="start",
+        principal_id="alice",
+        status="failed",
+        metadata={"provider_status": "unavailable"},
+    )
+    repo.record_audit_event(
+        runtime_name="codex_sdk",
+        action="test",
+        principal_id="alice",
+        status="succeeded",
+        metadata={"provider_status": "ready"},
+    )
+    latest = repo.record_audit_event(
+        runtime_name="codex_sdk",
+        action="test",
+        principal_id="alice",
+        status="succeeded",
+        metadata={"provider_status": "ready", "health_status": "ready"},
+    )
+
+    assert repo.get_latest_audit_event("codex_sdk", action="test") == latest

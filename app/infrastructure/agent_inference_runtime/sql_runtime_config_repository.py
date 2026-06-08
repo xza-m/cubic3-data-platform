@@ -70,6 +70,23 @@ class SqlRuntimeConfigRepository:
         self.session.commit()
         return self._audit_from_row(row)
 
+    def get_latest_audit_event(
+        self,
+        runtime_name: RuntimeName,
+        *,
+        action: str | None = None,
+    ) -> RuntimeManagementAuditEvent | None:
+        query = self.session.query(AgentRuntimeAuditLogORM).filter(
+            AgentRuntimeAuditLogORM.runtime_name == runtime_name,
+        )
+        if action:
+            query = query.filter(AgentRuntimeAuditLogORM.action == action)
+        row = query.order_by(
+            AgentRuntimeAuditLogORM.created_at.desc(),
+            AgentRuntimeAuditLogORM.id.desc(),
+        ).first()
+        return self._audit_from_row(row) if row is not None else None
+
     def _config_from_row(
         self,
         row: AgentRuntimeProviderConfigORM,

@@ -5,6 +5,7 @@ from typing import Any, Mapping
 
 from app.domain.agent_inference_runtime.ports import RuntimeConfigRepositoryPort
 from app.domain.agent_inference_runtime.types import (
+    RuntimeManagementAuditEvent,
     RuntimeName,
     RuntimeProviderConfigSnapshot,
     RuntimeProviderConfigUpdate,
@@ -14,8 +15,9 @@ from app.domain.agent_inference_runtime.types import (
 class RuntimeConfigService:
     """合并环境/bootstrap 配置与数据库覆盖项。
 
-    DB 配置只覆盖 provider 自身的启用、endpoint、model 与密钥引用；
-    `ui_managed`、`server_managed` 等管理面 fail-closed 开关仍以环境配置为准。
+    DB 配置只覆盖 provider 自身的启用、endpoint/base_url、model、密钥引用
+    与少量运行调优项；Codex SDK 的项目根和运行根只来自当前服务环境配置。
+    `ui_managed` 等管理面 fail-closed 开关仍以环境配置为准。
     """
 
     def __init__(
@@ -43,7 +45,7 @@ class RuntimeConfigService:
             endpoint=override.endpoint if override.endpoint is not None else base.endpoint,
             model=override.model if override.model is not None else base.model,
             secret_ref=override.secret_ref if override.secret_ref is not None else base.secret_ref,
-            extra={**base.extra, **override.extra},
+            extra={**base.extra, **_runtime_extra(runtime_name, override.extra)},
             updated_by=override.updated_by,
             updated_at=override.updated_at,
         )
@@ -70,19 +72,24 @@ class RuntimeConfigService:
                 "timeout": self._openai_config.get("timeout"),
                 "extra": snapshot.extra,
             }
-        if runtime_name == "codex_app_server":
+        if runtime_name == "codex_sdk":
             env_enabled = _as_bool(self._codex_config.get("enabled"))
             extra = dict(snapshot.extra)
-            directory_config = {
+            tuning_config = {
                 key: extra[key]
-                for key in ("project_root", "runtime_root", "runtime_workspace_roots", "timeout_seconds")
+                for key in (
+                    "timeout_seconds",
+                    "sandbox",
+                    "codex_path",
+                    "max_concurrency",
+                )
                 if extra.get(key) is not None
             }
             return {
                 **dict(self._codex_config),
-                **directory_config,
+                **tuning_config,
                 "enabled": env_enabled and snapshot.enabled,
-                "endpoint": snapshot.endpoint or self._codex_config.get("endpoint"),
+                "base_url": snapshot.endpoint or extra.get("base_url") or self._codex_config.get("base_url"),
                 "model": snapshot.model or self._codex_config.get("model"),
                 "provider_extra": extra,
             }
@@ -112,6 +119,16 @@ class RuntimeConfigService:
             metadata=metadata,
         )
 
+    def latest_audit_event(
+        self,
+        runtime_name: RuntimeName,
+        *,
+        action: str | None = None,
+    ) -> RuntimeManagementAuditEvent | None:
+        if self._repository is None:
+            return None
+        return self._repository.get_latest_audit_event(runtime_name, action=action)
+
     def _get_override(
         self,
         runtime_name: RuntimeName,
@@ -134,12 +151,12 @@ class RuntimeConfigService:
                 updated_by=None,
                 updated_at=None,
             )
-        if runtime_name == "codex_app_server":
-            endpoint = str(self._codex_config.get("endpoint") or "").strip()
+        if runtime_name == "codex_sdk":
+            base_url = str(self._codex_config.get("base_url") or "").strip()
             return RuntimeProviderConfigSnapshot(
                 runtime_name=runtime_name,
                 enabled=_as_bool(self._codex_config.get("enabled")),
-                endpoint=endpoint or None,
+                endpoint=base_url or None,
                 model=str(self._codex_config.get("model") or "").strip() or None,
                 secret_ref=None,
                 extra={},
@@ -155,3 +172,24 @@ def _as_bool(value: Any) -> bool:
     if value is None:
         return False
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+_CODEX_ENV_BOUND_EXTRA_KEYS = {
+    "project_root",
+    "runtime_root",
+    "runtime_workspace_roots",
+    "allowed_project_roots",
+    "allowed_workspace_roots",
+    "runtime_env_id",
+    "env_id",
+}
+
+
+def _runtime_extra(runtime_name: RuntimeName, extra: Mapping[str, Any]) -> dict[str, Any]:
+    if runtime_name != "codex_sdk":
+        return dict(extra)
+    return {
+        key: value
+        for key, value in dict(extra).items()
+        if key not in _CODEX_ENV_BOUND_EXTRA_KEYS
+    }

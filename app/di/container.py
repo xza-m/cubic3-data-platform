@@ -80,26 +80,24 @@ def _modeling_proposal_repository(store: str, session, proposals_dir: str):
     raise ValueError(f"unsupported semantic modeling copilot store: {store}")
 
 
-def _codex_ws_client_from_config(config):
-    """按管理配置即时创建 Codex WS client，避免联通测试使用旧配置。"""
+def _codex_sdk_client_from_config(config, *, registry):
+    """按管理配置获取 Codex SDK client，保证 run lifecycle 状态可被轮询。"""
 
-    provider_extra = config.get("provider_extra")
-    if not isinstance(provider_extra, dict):
-        provider_extra = {}
-    project_root = str(provider_extra.get("project_root") or config.get("project_root") or os.getcwd())
-    return CodexAppServerWebSocketClient(
-        endpoint=str(config.get("endpoint") or ""),
-        project_root=project_root,
-        runtime_workspace_roots=_codex_workspace_roots(config, provider_extra, project_root),
-        timeout_seconds=_parse_positive_int(
-            provider_extra.get("timeout_seconds", config.get("timeout_seconds")),
-            default=10,
-        ),
-    )
+    project_root = str(config.get("project_root") or os.getcwd())
+    merged = dict(config)
+    merged["project_root"] = project_root
+    merged["runtime_workspace_roots"] = _codex_workspace_roots(config, project_root)
+    return registry.client_for_config(merged)
 
 
-def _codex_workspace_roots(config, provider_extra, project_root: str) -> list[str]:
-    raw_roots = provider_extra.get("runtime_workspace_roots") or config.get("runtime_workspace_roots")
+def _codex_sdk_client_factory_from_registry(registry):
+    """生成管理服务 / run service 共用的 Codex SDK client factory。"""
+
+    return lambda config: _codex_sdk_client_from_config(config, registry=registry)
+
+
+def _codex_workspace_roots(config, project_root: str) -> list[str]:
+    raw_roots = config.get("runtime_workspace_roots")
     if raw_roots is None:
         roots = [project_root]
     elif isinstance(raw_roots, (list, tuple, set)):
@@ -119,12 +117,12 @@ def _openai_runtime_adapter_from_config_service(config_service_provider):
     )
 
 
-def _codex_run_service_from_config_service(repository, config_service_provider):
-    """让 Codex run 每次提交/轮询前读取当前 WebSocket 配置。"""
+def _codex_run_service_from_config_service(repository, config_service_provider, codex_client_factory):
+    """让 Codex run 每次提交/轮询前读取当前 SDK 配置。"""
 
     return CodexRunService(
-        client_provider=lambda: _codex_ws_client_from_config(
-            config_service_provider().management_config("codex_app_server")
+        client_provider=lambda: codex_client_factory(
+            config_service_provider().management_config("codex_sdk")
         ),
         repository=repository,
     )
@@ -202,7 +200,7 @@ from app.infrastructure.adapters.llm.openai_compatible import OpenAICompatibleAd
 from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import (
     OpenAICompatibleRuntimeAdapter,
 )
-from app.infrastructure.agent_inference_runtime.codex_ws_client import CodexAppServerWebSocketClient
+from app.infrastructure.agent_inference_runtime.codex_sdk_client import CodexSdkClientRegistry
 from app.infrastructure.agent_inference_runtime.sql_repository import (
     SqlAgentInferenceRuntimeRepository,
 )
@@ -478,15 +476,12 @@ class Container(containers.DeclarativeContainer):
         router=agent_inference_runtime_router,
     )
 
-    agent_codex_ws_client = providers.Factory(
-        CodexAppServerWebSocketClient,
-        endpoint=config.agent_codex.endpoint,
-        project_root=config.agent_codex.project_root,
-        runtime_workspace_roots=providers.List(config.agent_codex.project_root),
-        timeout_seconds=config.agent_codex.timeout_seconds,
-    )
+    agent_codex_sdk_client_registry = providers.Singleton(CodexSdkClientRegistry)
 
-    agent_codex_ws_client_factory = providers.Object(_codex_ws_client_from_config)
+    agent_codex_sdk_client_factory = providers.Singleton(
+        _codex_sdk_client_factory_from_registry,
+        registry=agent_codex_sdk_client_registry,
+    )
 
     agent_runtime_management_service = providers.Factory(
         AgentRuntimeManagementService,
@@ -494,7 +489,7 @@ class Container(containers.DeclarativeContainer):
         codex_config=config.agent_codex,
         action_bindings=agent_runtime_action_bindings,
         runtime_config_service=agent_runtime_config_service,
-        codex_ws_client_factory=agent_codex_ws_client_factory,
+        codex_client_factory=agent_codex_sdk_client_factory,
     )
 
     agent_inference_runtime_repository = providers.Factory(
@@ -505,6 +500,7 @@ class Container(containers.DeclarativeContainer):
     codex_run_service = providers.Factory(
         _codex_run_service_from_config_service,
         config_service_provider=agent_runtime_config_service.provider,
+        codex_client_factory=agent_codex_sdk_client_factory,
         repository=agent_inference_runtime_repository,
     )
     
@@ -1533,14 +1529,12 @@ def init_container(app: Flask) -> Container:
         'agent_codex': {
             'enabled': _parse_bool(os.getenv('AGENT_CODEX_ENABLED', app.config.get('AGENT_CODEX_ENABLED', False))),
             'ui_managed': _parse_bool(os.getenv('AGENT_CODEX_UI_MANAGED', app.config.get('AGENT_CODEX_UI_MANAGED', False))),
-            'server_managed': _parse_bool(os.getenv('AGENT_CODEX_SERVER_MANAGED', app.config.get('AGENT_CODEX_SERVER_MANAGED', False))),
-            'command_profile': os.getenv('AGENT_CODEX_COMMAND_PROFILE', app.config.get('AGENT_CODEX_COMMAND_PROFILE', 'local-codex-app-server')),
-            'allowed_project_roots': os.getenv('AGENT_CODEX_ALLOWED_PROJECT_ROOTS', app.config.get('AGENT_CODEX_ALLOWED_PROJECT_ROOTS', '')),
             'project_id': os.getenv('AGENT_CODEX_PROJECT_ID', app.config.get('AGENT_CODEX_PROJECT_ID', 'cubic3-data-platform')),
             'project_root': os.getenv('AGENT_CODEX_PROJECT_ROOT', app.config.get('AGENT_CODEX_PROJECT_ROOT', os.getcwd())),
             'runtime_root': os.getenv('AGENT_CODEX_RUNTIME_ROOT', app.config.get('AGENT_CODEX_RUNTIME_ROOT', '.cubic3/agent-codex')),
-            'transport': os.getenv('AGENT_CODEX_TRANSPORT', app.config.get('AGENT_CODEX_TRANSPORT', 'ws')),
-            'endpoint': os.getenv('AGENT_CODEX_ENDPOINT', app.config.get('AGENT_CODEX_ENDPOINT', '')),
+            'sandbox': os.getenv('AGENT_CODEX_SANDBOX', app.config.get('AGENT_CODEX_SANDBOX', 'read-only')),
+            'codex_path': os.getenv('AGENT_CODEX_PATH', app.config.get('AGENT_CODEX_PATH', '')),
+            'base_url': os.getenv('AGENT_CODEX_BASE_URL', app.config.get('AGENT_CODEX_BASE_URL', '')),
             'timeout_seconds': _parse_positive_int(
                 os.getenv(
                     'AGENT_CODEX_TIMEOUT_SECONDS',

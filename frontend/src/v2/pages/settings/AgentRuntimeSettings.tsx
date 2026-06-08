@@ -6,28 +6,25 @@ import { useRef, useState } from 'react'
 import { Button, Card, CardBody, CardHead, Chip } from '@v2/components/ui'
 import type {
   AgentRuntimeName,
-  AgentRuntimeOperationResult,
   AgentRuntimeProviderStatus,
 } from '@v2/api/agent-runtime'
 import {
   useAgentRuntimeStatus,
-  useRestartAgentRuntimeProvider,
-  useStartAgentRuntimeProvider,
   useTestAgentRuntimeProvider,
 } from '@v2/hooks/agent-runtime'
 
-type RuntimeOperation = 'test' | 'start' | 'restart'
+type RuntimeOperation = 'test'
 
 interface OperationFeedback {
   tone: 'success' | 'danger'
   message: string
 }
 
-const PROVIDER_ORDER: AgentRuntimeName[] = ['openai_compatible', 'codex_app_server']
+const PROVIDER_ORDER: AgentRuntimeName[] = ['openai_compatible', 'codex_sdk']
 
 const RUNTIME_FALLBACK_LABELS: Record<string, string> = {
   openai_compatible: 'OpenAI SDK / LLM API provider',
-  codex_app_server: 'Codex app-server provider',
+  codex_sdk: 'Codex SDK provider',
 }
 
 function providerLabel(provider: AgentRuntimeProviderStatus): string {
@@ -50,12 +47,30 @@ function hasOperation(provider: AgentRuntimeProviderStatus, operation: RuntimeOp
 function statusTone(provider: AgentRuntimeProviderStatus) {
   if (provider.available) return 'success'
   if (!provider.configured) return 'warning'
+  if (provider.status === 'not_verified') return 'warning'
   if (provider.status === 'disabled' || provider.status === 'unavailable') return 'danger'
   return 'neutral'
 }
 
 function formatBoolean(value: boolean): string {
   return value ? '是' : '否'
+}
+
+function statusLabel(provider: AgentRuntimeProviderStatus): string {
+  if (provider.available || provider.status === 'ready') return 'ready'
+  if (provider.status === 'not_verified' && provider.configured) return '待连接测试'
+  if (provider.status === 'missing_config') return '缺少配置'
+  if (provider.status === 'disabled') return '已禁用'
+  if (provider.status === 'unavailable') return '不可用'
+  return provider.status
+}
+
+function availabilityLabel(provider: AgentRuntimeProviderStatus): string {
+  if (provider.available) return '可调用'
+  if (provider.status === 'not_verified' && provider.configured) return '待连接测试'
+  if (!provider.configured) return '未配置'
+  if (provider.status === 'disabled') return '已禁用'
+  return '不可用'
 }
 
 function errorMessage(error: unknown): string {
@@ -70,14 +85,11 @@ function providerOperations(provider: AgentRuntimeProviderStatus): string[] {
 export default function AgentRuntimeSettings() {
   const statusQ = useAgentRuntimeStatus()
   const testProvider = useTestAgentRuntimeProvider()
-  const startProvider = useStartAgentRuntimeProvider()
-  const restartProvider = useRestartAgentRuntimeProvider()
   const [feedback, setFeedback] = useState<Record<string, OperationFeedback>>({})
   const [pendingKey, setPendingKey] = useState<string | null>(null)
   const operationLock = useRef(false)
   const canManageRuntime = statusQ.data?.can_manage === true
-  const operationInFlight =
-    Boolean(pendingKey) || testProvider.isPending || startProvider.isPending || restartProvider.isPending
+  const operationInFlight = Boolean(pendingKey) || testProvider.isPending
 
   const providers = (Array.isArray(statusQ.data?.providers) ? [...statusQ.data.providers] : []).sort((a, b) => {
     const aIndex = PROVIDER_ORDER.indexOf(a.runtime_name)
@@ -97,17 +109,12 @@ export default function AgentRuntimeSettings() {
       return next
     })
     try {
-      const result =
-        operation === 'test'
-          ? await testProvider.mutateAsync(provider.runtime_name)
-          : operation === 'start'
-            ? await startProvider.mutateAsync(provider.runtime_name)
-            : await restartProvider.mutateAsync(provider.runtime_name)
+      const result = await testProvider.mutateAsync(provider.runtime_name)
       setFeedback((prev) => ({
         ...prev,
         [provider.runtime_name]: {
           tone: 'success',
-          message: successMessage(provider.runtime_name, operation, result),
+          message: successMessage(result),
         },
       }))
     } catch (err) {
@@ -126,7 +133,7 @@ export default function AgentRuntimeSettings() {
       <div>
         <h2 className="text-[15px] font-semibold text-1">AI Runtime</h2>
         <p className="mt-1 text-[12px] text-3">
-          平台统一管理 OpenAI SDK / LLM API provider 与 Codex app-server provider。
+          平台统一管理 OpenAI SDK / LLM API provider 与 Codex SDK 后台任务 provider。
         </p>
       </div>
 
@@ -147,7 +154,7 @@ export default function AgentRuntimeSettings() {
       {!statusQ.isLoading && !statusQ.isError && !canManageRuntime ? (
         <Card>
           <CardBody className="text-[12px] text-3">
-            仅平台管理员可执行连接测试、启动或重启操作。
+            仅平台管理员可执行连接测试和运行态诊断。
           </CardBody>
         </Card>
       ) : null}
@@ -167,15 +174,15 @@ export default function AgentRuntimeSettings() {
             <CardHead
               title={providerLabel(provider)}
               subtitle={providerDescription(provider)}
-              actions={<Chip tone={statusTone(provider)}>{provider.status}</Chip>}
+              actions={<Chip tone={statusTone(provider)}>{statusLabel(provider)}</Chip>}
             />
             <CardBody className="flex flex-col gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <RuntimeField label="Configured" value={formatBoolean(provider.configured)} />
-                <RuntimeField label="Available" value={formatBoolean(provider.available)} />
-                <RuntimeField label="Status" value={provider.status} />
+                <RuntimeField label="配置状态" value={provider.configured ? '已配置' : '未配置'} />
+                <RuntimeField label="可调用状态" value={availabilityLabel(provider)} />
+                <RuntimeField label="Provider 状态" value={statusLabel(provider)} />
                 <RuntimeField
-                  label="Operations"
+                  label="操作"
                   value={operations.length > 0 ? operations.join(' / ') : '无'}
                 />
               </div>
@@ -193,27 +200,6 @@ export default function AgentRuntimeSettings() {
                     onClick={() => runOperation(provider, 'test')}
                   >
                     测试连接
-                  </Button>
-                ) : null}
-                {provider.runtime_name === 'codex_app_server' && hasOperation(provider, 'start') ? (
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    loading={pendingKey === `${provider.runtime_name}:start`}
-                    disabled={operationsDisabled}
-                    onClick={() => runOperation(provider, 'start')}
-                  >
-                    启动 Codex
-                  </Button>
-                ) : null}
-                {provider.runtime_name === 'codex_app_server' && hasOperation(provider, 'restart') ? (
-                  <Button
-                    size="sm"
-                    loading={pendingKey === `${provider.runtime_name}:restart`}
-                    disabled={operationsDisabled}
-                    onClick={() => runOperation(provider, 'restart')}
-                  >
-                    重启
                   </Button>
                 ) : null}
               </div>
@@ -260,7 +246,7 @@ export default function AgentRuntimeSettings() {
 
 function RuntimeDetails({ provider }: { provider: AgentRuntimeProviderStatus }) {
   const details = provider.details && typeof provider.details === 'object' ? provider.details : {}
-  const rows = ['transport', 'endpoint', 'project_root', 'runtime_root']
+  const rows = ['provider', 'sdk_package', 'transport', 'project_root', 'runtime_root', 'sandbox']
     .map((key) => [key, formatRuntimeDetailValue(details[key])] as const)
     .filter(([, value]) => value.length > 0)
   if (!rows.length) return null
@@ -289,14 +275,7 @@ function formatRuntimeDetailValue(value: unknown): string {
   return ''
 }
 
-function successMessage(
-  runtimeName: AgentRuntimeName,
-  operation: RuntimeOperation,
-  result: AgentRuntimeProviderStatus | AgentRuntimeOperationResult,
-): string {
+function successMessage(result: AgentRuntimeProviderStatus): string {
   if ('message' in result && result.message) return result.message
-  if (runtimeName === 'codex_app_server' && operation === 'start') return '已提交 Codex 启动请求'
-  if (operation === 'test') return '连接测试已完成'
-  if (operation === 'restart') return '重启请求已提交'
-  return '操作已提交'
+  return '连接测试已完成'
 }

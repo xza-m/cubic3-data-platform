@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Mapping, Optional
 
-RuntimeName = Literal["openai_agents_sdk", "openai_compatible", "codex_app_server", "fake"]
+RuntimeName = Literal["openai_agents_sdk", "openai_compatible", "codex_sdk", "fake"]
 ExecutionMode = Literal["sync", "async"]
 RunStatus = Literal["queued", "running", "succeeded", "failed", "cancelled", "timeout"]
 RuntimeProviderStatusName = Literal["ready", "disabled", "missing_config", "not_verified", "unavailable"]

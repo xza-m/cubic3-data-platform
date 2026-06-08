@@ -64,6 +64,7 @@ docker compose up --build -d
 - `nginx` 镜像会在构建阶段自动执行前端 `npm ci && npm run build`
 - `docker compose up --build` 会同时拿到最新前端静态资源和当前 `nginx` 配置
 - Docker 模式下 `backend` 与 `rq_worker` 固定连接 compose 内置 PostgreSQL：`postgresql://postgres:postgres@postgres:5432/cubic3_data_platform`，避免宿主机 `DATABASE_URL` 污染本地验证环境
+- 后端镜像会安装 Linux Codex CLI；compose 会透传 `AGENT_CODEX_*`，默认 `AGENT_CODEX_ENABLED=false`
 - Web 进程会在启动时初始化 `APScheduler`
 - 长耗时目录同步、数据集同步等任务由 `rq_worker` 执行
 

@@ -1,4 +1,4 @@
-"""Codex app-server Agent 推理 Runtime 适配器。"""
+"""Codex SDK Agent 推理 Runtime 适配器。"""
 from __future__ import annotations
 
 from dataclasses import asdict, replace
@@ -14,20 +14,20 @@ from app.domain.agent_inference_runtime.types import (
     RuntimePolicy,
     SemanticRuntimePin,
 )
-from app.infrastructure.agent_inference_runtime.codex_client import CodexAppServerClient
+from app.infrastructure.agent_inference_runtime.codex_client import CodexSdkProviderClient
 from app.infrastructure.agent_inference_runtime.codex_workspace import CodexWorkspaceStore
 
 
-class CodexAppServerRuntimeAdapter:
-    """通过 Codex app-server client 协议执行异步 Agent 推理。"""
+class CodexSdkRuntimeAdapter:
+    """通过 Codex SDK client 协议执行异步 Agent 推理。"""
 
-    runtime_name = "codex_app_server"
+    runtime_name = "codex_sdk"
     _KNOWN_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled", "timeout"}
 
     def __init__(
         self,
         *,
-        client: CodexAppServerClient,
+        client: CodexSdkProviderClient,
         workspace_store: CodexWorkspaceStore,
     ) -> None:
         self._client = client
@@ -58,7 +58,7 @@ class CodexAppServerRuntimeAdapter:
             raise
         except Exception as exc:
             raise AgentInferenceRuntimeError(
-                "Codex app-server runtime provider 调用失败。",
+                "Codex SDK runtime provider 调用失败。",
                 code="RUNTIME_PROVIDER_ERROR",
                 details={"runtime_name": self.runtime_name},
             ) from exc
@@ -156,7 +156,7 @@ def _result_status(status_payload: dict[str, Any]) -> str:
     raw_status = status_payload.get("status")
     if raw_status == "error":
         return "failed"
-    if raw_status in CodexAppServerRuntimeAdapter._KNOWN_STATUSES:
+    if raw_status in CodexSdkRuntimeAdapter._KNOWN_STATUSES:
         return raw_status
     return "failed"
 
@@ -171,7 +171,7 @@ def _result_error(status: str, status_payload: dict[str, Any]) -> dict[str, Any]
         provider_status = status_payload.get("status", "failed")
         return {
             "code": "RUNTIME_PROVIDER_FAILED",
-            "message": f"Codex app-server run ended with status={provider_status}",
+            "message": f"Codex SDK run ended with status={provider_status}",
         }
     return None
 
@@ -182,17 +182,17 @@ def _dict_payload(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
     raise AgentInferenceRuntimeError(
-        "Codex app-server runtime 返回的结构化字段不是对象。",
+        "Codex SDK runtime 返回的结构化字段不是对象。",
         code="RUNTIME_INVALID_OUTPUT",
-        details={"runtime_name": CodexAppServerRuntimeAdapter.runtime_name},
+        details={"runtime_name": CodexSdkRuntimeAdapter.runtime_name},
     )
 
 
 def _invalid_provider_payload(message: str) -> AgentInferenceRuntimeError:
     return AgentInferenceRuntimeError(
-        f"Codex app-server runtime provider 返回非法 payload：{message}。",
+        f"Codex SDK runtime provider 返回非法 payload：{message}。",
         code="RUNTIME_INVALID_OUTPUT",
-        details={"runtime_name": CodexAppServerRuntimeAdapter.runtime_name},
+        details={"runtime_name": CodexSdkRuntimeAdapter.runtime_name},
     )
 
 

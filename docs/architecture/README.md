@@ -35,7 +35,7 @@ last_reviewed: 2026-06-03
 8. [source-candidate-recall-scoring.md](source-candidate-recall-scoring.md)：建模 Copilot 从业务问题召回候选数据源的本地元数据打分、解释和门槛
 9. [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)：数据资产底座作为元数据事实层，通过 `AssetRef + EvidenceBundle` 桥接 Cube、本体、投影与语义治理，并复用现有 Schema drift 链路
 10. [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)：拟采纳设计；物理表 / Dataset / 数据资产证据进入 Cube 与本体建模前，统一经过字段候选层做类型映射、角色判断、指标语义推断与 Review
-11. [agent-runtime-platform.md](agent-runtime-platform.md)：平台级 Agent 推理 Runtime 当前基线与目标设计；OpenAI-compatible 已接入，Codex app-server 当前是 workspace / client / adapter skeleton 和 opt-in live smoke
+11. [agent-runtime-platform.md](agent-runtime-platform.md)：平台级 Agent 推理 Runtime 当前基线与目标设计；OpenAI-compatible 已接入，Codex SDK 当前是 workspace / client / adapter、异步 run lifecycle 和 opt-in live smoke
 12. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
 13. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
 
@@ -56,7 +56,7 @@ last_reviewed: 2026-06-03
 - [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)
   - 拟采纳设计；字段候选层作为数据资产证据到 Cube / Ontology 草案之间的中间抽象，统一物理类型映射、字段角色判断、指标聚合与可加性推断；Cube 草案应从 `FieldCandidateSet` 生成，不能让物理字段或 Dataset 字段直接成为正式语义真相
 - [agent-runtime-platform.md](agent-runtime-platform.md)
-  - 当前基线与目标设计；Agent 推理 Runtime 上提为平台级能力层，通过统一 `AgentInferenceRuntimeService / AgentInferenceRuntimeRouter / Context Pack / ToolSpec Adapter / Runtime Policy / Trace` 对接 OpenAI-compatible LLM 和 Codex app-server；OpenAI-compatible 已接入低延迟主链，语义建模 Copilot 是首个消费者，Codex 当前保持 workspace / client / adapter skeleton、fake tests 和显式 opt-in live smoke
+  - 当前基线与目标设计；Agent 推理 Runtime 上提为平台级能力层，通过统一 `AgentInferenceRuntimeService / AgentInferenceRuntimeRouter / Context Pack / ToolSpec Adapter / Runtime Policy / Trace` 对接 OpenAI-compatible LLM 和 Codex SDK；OpenAI-compatible 已接入低延迟主链，语义建模 Copilot 是首个消费者，Codex SDK 当前保持 workspace / client / adapter、fake tests 和显式 opt-in live smoke
 - [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)
   - 当前 Agent-ready 语义规划主链、飞书 SSO 作为身份事实来源、轻量 `Principal` 投影、`PrincipalContext` 兼容、两阶段 `PolicyDecision`、M3/raw 拦截、`TicketPreview / ExecutionTicket`、`ExecutionProfile` 与 gateway / MaxCompute RAM 适配边界
   - 具体 gateway -> MaxCompute RAM User 与 Project Role 方案见 [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)

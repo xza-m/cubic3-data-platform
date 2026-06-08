@@ -107,7 +107,7 @@ class SemanticModelingAgentApp:
         principal_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> Dict[str, Any]:
-        """提交 Proposal Review 到 Codex app-server 异步生命周期。"""
+        """提交 Proposal Review 到 Codex SDK 异步生命周期。"""
         run_service = self._require_run_service()
         normalized_proposal_id = str(proposal_id or "").strip()
         effective_principal_id = session.principal_id or principal_id
@@ -142,7 +142,7 @@ class SemanticModelingAgentApp:
             ),
             output_schema="semantic.modeling.review_proposal.output.v1",
             runtime_policy=RuntimePolicy(max_runtime_seconds=900, allow_network=False),
-            preferred_runtime="codex_app_server",
+            preferred_runtime="codex_sdk",
             execution_mode="async",
             semantic_runtime_pin=None,
             asset_revision_refs=[],
@@ -156,7 +156,7 @@ class SemanticModelingAgentApp:
         principal_id: str | None = None,
         idempotency_key: str | None = None,
     ) -> Dict[str, Any]:
-        """提交 validation failure repair 到 Codex app-server 异步生命周期。"""
+        """提交 validation failure repair 到 Codex SDK 异步生命周期。"""
         run_service = self._require_run_service()
         state = session.workbench_state or {}
         raw_spec = _sanitize_value(_safe_dict(state.get("raw_spec")))
@@ -195,7 +195,7 @@ class SemanticModelingAgentApp:
             ),
             output_schema="semantic.modeling.repair_validation_failure.output.v1",
             runtime_policy=RuntimePolicy(max_runtime_seconds=900, allow_network=False),
-            preferred_runtime="codex_app_server",
+            preferred_runtime="codex_sdk",
             execution_mode="async",
             semantic_runtime_pin=None,
             asset_revision_refs=[],
@@ -205,9 +205,9 @@ class SemanticModelingAgentApp:
     def _require_run_service(self) -> _CodexRunService:
         if self._run_service is None:
             raise AgentInferenceRuntimeError(
-                "Codex run service is not configured",
+                "Codex SDK run service is not configured",
                 code="RUNTIME_NOT_CONFIGURED",
-                details={"runtime_name": "codex_app_server"},
+                details={"runtime_name": "codex_sdk"},
             )
         if hasattr(self._run_service, "submit"):
             return self._run_service
@@ -216,9 +216,9 @@ class SemanticModelingAgentApp:
             if hasattr(resolved, "submit"):
                 return resolved
         raise AgentInferenceRuntimeError(
-            "Codex run service is not configured",
+            "Codex SDK run service is not configured",
             code="RUNTIME_NOT_CONFIGURED",
-            details={"runtime_name": "codex_app_server"},
+            details={"runtime_name": "codex_sdk"},
         )
 
     def _build_codex_action_context_pack(

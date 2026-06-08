@@ -165,14 +165,14 @@ function browserE2eFixtureData(method: string, path: string, body: Record<string
           details: { model: 'fixture-model' },
         },
         {
-          runtime_name: 'codex_app_server',
-          label: 'Codex App Server',
+          runtime_name: 'codex_sdk',
+          label: 'Codex SDK',
           configured: false,
           available: false,
           status: 'disabled',
-          message: 'Codex app-server 未启用。',
+          message: 'Codex SDK 未启用。',
           operations: [],
-          details: { ui_managed: false },
+          details: { provider: 'codex-sdk', transport: 'sdk', ui_managed: false },
         },
       ],
       action_bindings: [
@@ -187,31 +187,22 @@ function browserE2eFixtureData(method: string, path: string, body: Record<string
       ],
     }
   }
-  if (method === 'POST' && path === '/agent-runtime/providers/codex_app_server/start') {
+  if (method === 'GET' && path === '/agent-runtime/providers/codex_sdk/logs') {
     return {
-      runtime_name: 'codex_app_server',
-      operation: 'start',
-      status: 'succeeded',
-      message: '已提交 Codex app-server 启动。',
-      details: { pid: 4321 },
-    }
-  }
-  if (method === 'GET' && path === '/agent-runtime/providers/codex_app_server/logs') {
-    return {
-      runtime_name: 'codex_app_server',
-      log_path: '.cubic3/agent-codex/logs/codex-app-server.log',
+      runtime_name: 'codex_sdk',
+      log_path: '.cubic3/agent-codex/logs/codex-sdk.log',
       lines: [],
       truncated: false,
     }
   }
-  if (method === 'GET' && path === '/agent-runtime/providers/codex_app_server/capabilities') {
+  if (method === 'GET' && path === '/agent-runtime/providers/codex_sdk/capabilities') {
     return {
-      runtime_name: 'codex_app_server',
+      runtime_name: 'codex_sdk',
       available: false,
       actions: ['review', 'repair', 'audit'],
-      artifacts: ['model_patch'],
+      artifacts: ['codex_final_response', 'codex_thread_items'],
       events: ['run.started', 'run.succeeded'],
-      details: {},
+      details: { provider: 'codex-sdk', transport: 'sdk' },
     }
   }
   if (method === 'GET' && path === '/semantic/cubes') {

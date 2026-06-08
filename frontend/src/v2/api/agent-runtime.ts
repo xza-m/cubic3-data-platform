@@ -17,7 +17,7 @@ const get = <T>(url: string): Promise<T> =>
 const post = <T>(url: string, body?: unknown): Promise<T> =>
   apiClient.post<Envelope<T>>(url, body).then((r) => r.data.data)
 
-export type AgentRuntimeName = 'openai_compatible' | 'codex_app_server' | string
+export type AgentRuntimeName = 'openai_compatible' | 'codex_sdk' | string
 export type AgentRuntimeOperationName =
   | 'test'
   | 'test_connection'

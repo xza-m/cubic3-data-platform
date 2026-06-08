@@ -3,7 +3,7 @@ doc_type: validation
 status: current
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-05-26
+last_reviewed: 2026-06-07
 ---
 
 # 2026-05-26 上线前 Review 与回归记录
@@ -53,7 +53,7 @@ last_reviewed: 2026-05-26
 ## 剩余风险
 
 - `docker compose config` 仍提示 OSS 相关环境变量未设置。本地验证不覆盖 OSS 文件交付；上线环境需要按部署配置补齐。
-- Codex live smoke 仍是 opt-in：未配置 Codex app-server endpoint/socket 时，相关 live 用例按设计跳过。
+- Codex live smoke 仍是 opt-in：当前基线已切到 Codex SDK；未设置 `AGENT_CODEX_LIVE=1` 时，SDK live smoke 按设计跳过。
 
 ## 工程原则复盘
 

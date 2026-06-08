@@ -16,7 +16,7 @@ from app.domain.agent_inference_runtime.types import (
     RuntimePolicy,
 )
 from app.infrastructure.agent_inference_runtime.codex_adapter import (
-    CodexAppServerRuntimeAdapter,
+    CodexSdkRuntimeAdapter,
 )
 from app.infrastructure.agent_inference_runtime.codex_client import (
     ProviderRunRef,
@@ -118,7 +118,7 @@ def _request() -> AgentInferenceRuntimeRequest:
             allow_network=False,
             command_policy={"network": "disabled"},
         ),
-        preferred_runtime="codex_app_server",
+        preferred_runtime="codex_sdk",
         execution_mode="async",
         semantic_runtime_pin=None,
         asset_revision_refs=[],
@@ -127,7 +127,7 @@ def _request() -> AgentInferenceRuntimeRequest:
 
 def test_codex_adapter_submits_run_and_returns_structured_output(tmp_path: Path):
     client = _Client()
-    adapter = CodexAppServerRuntimeAdapter(
+    adapter = CodexSdkRuntimeAdapter(
         client=client,
         workspace_store=CodexWorkspaceStore(runtime_root=tmp_path),
     )
@@ -135,7 +135,7 @@ def test_codex_adapter_submits_run_and_returns_structured_output(tmp_path: Path)
     result = adapter.invoke(_request())
 
     assert result.status == "succeeded"
-    assert result.runtime_name == "codex_app_server"
+    assert result.runtime_name == "codex_sdk"
     assert result.action == "semantic.modeling.review_proposal"
     assert result.structured_output == {"message": "复审通过", "findings": []}
     assert result.usage == {"total_tokens": 11}
@@ -191,7 +191,7 @@ def test_codex_adapter_submits_run_and_returns_structured_output(tmp_path: Path)
 
 
 def test_codex_adapter_can_handle_async_codex_requests_only(tmp_path: Path):
-    adapter = CodexAppServerRuntimeAdapter(
+    adapter = CodexSdkRuntimeAdapter(
         client=_Client(),
         workspace_store=CodexWorkspaceStore(runtime_root=tmp_path),
     )
@@ -212,7 +212,7 @@ def test_codex_adapter_maps_failed_provider_status_to_result_error(tmp_path: Pat
             "error": {"code": "PROVIDER_ERROR", "message": "provider failed"},
         }
     )
-    adapter = CodexAppServerRuntimeAdapter(
+    adapter = CodexSdkRuntimeAdapter(
         client=client,
         workspace_store=CodexWorkspaceStore(runtime_root=tmp_path),
     )
@@ -252,7 +252,7 @@ def test_codex_adapter_rejects_invalid_provider_payloads(
     tmp_path: Path,
     client_kwargs: dict,
 ):
-    adapter = CodexAppServerRuntimeAdapter(
+    adapter = CodexSdkRuntimeAdapter(
         client=_Client(**client_kwargs),
         workspace_store=CodexWorkspaceStore(runtime_root=tmp_path),
     )
@@ -268,8 +268,9 @@ def test_container_reads_agent_codex_config_without_router_enablement(monkeypatc
     monkeypatch.setenv("AGENT_CODEX_PROJECT_ID", "project_x")
     monkeypatch.setenv("AGENT_CODEX_PROJECT_ROOT", "/repo/project_x")
     monkeypatch.setenv("AGENT_CODEX_RUNTIME_ROOT", "/tmp/codex-runtime")
-    monkeypatch.setenv("AGENT_CODEX_TRANSPORT", "ws")
-    monkeypatch.setenv("AGENT_CODEX_ENDPOINT", "ws://127.0.0.1:8799")
+    monkeypatch.setenv("AGENT_CODEX_SANDBOX", "read-only")
+    monkeypatch.setenv("AGENT_CODEX_PATH", "/usr/local/bin/codex")
+    monkeypatch.setenv("AGENT_CODEX_BASE_URL", "https://api.openai.test")
     monkeypatch.setenv("AGENT_CODEX_MAX_CONCURRENCY", "5")
 
     app = Flask(__name__)
@@ -284,8 +285,9 @@ def test_container_reads_agent_codex_config_without_router_enablement(monkeypatc
     assert container.config.agent_codex.project_id() == "project_x"
     assert container.config.agent_codex.project_root() == "/repo/project_x"
     assert container.config.agent_codex.runtime_root() == "/tmp/codex-runtime"
-    assert container.config.agent_codex.transport() == "ws"
-    assert container.config.agent_codex.endpoint() == "ws://127.0.0.1:8799"
+    assert container.config.agent_codex.sandbox() == "read-only"
+    assert container.config.agent_codex.codex_path() == "/usr/local/bin/codex"
+    assert container.config.agent_codex.base_url() == "https://api.openai.test"
     assert container.config.agent_codex.max_concurrency() == 5
     router = container.agent_inference_runtime_router()
     assert [adapter.runtime_name for adapter in router._adapters] == ["openai_compatible"]

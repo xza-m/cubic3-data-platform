@@ -102,16 +102,17 @@ describe('Settings page', () => {
             operations: ['test_connection'],
           },
           {
-            runtime_name: 'codex_app_server',
-            label: 'Codex app-server',
+            runtime_name: 'codex_sdk',
+            label: 'Codex SDK',
             configured: true,
             available: false,
             status: 'not_verified',
-            message: 'Codex app-server 等待联通测试。',
-            operations: ['test_connection', 'start', 'restart'],
+            message: 'Codex SDK 等待联通测试。',
+            operations: ['test_connection', 'capabilities'],
             details: {
-              transport: 'ws',
-              endpoint: 'ws://127.0.0.1:8799',
+              provider: 'codex-sdk',
+              transport: 'sdk',
+              sandbox: 'read-only',
               project_root: '/tmp/cubic3',
               runtime_root: '/tmp/cubic3/.cubic3/agent-codex',
             },
@@ -120,8 +121,8 @@ describe('Settings page', () => {
         action_bindings: [
           {
             action: 'semantic.modeling.review_proposal',
-            default_runtime: 'codex_app_server',
-            allowed_runtimes: ['codex_app_server'],
+            default_runtime: 'codex_sdk',
+            allowed_runtimes: ['codex_sdk'],
             expose_selector: false,
             requires_connection: true,
             reason: '语义 Proposal 复审固定走 Codex runtime。',
@@ -234,13 +235,16 @@ describe('Settings page', () => {
     expect(screen.getByRole('button', { name: '保存偏好' })).toBeDisabled()
   })
 
-  it('shows platform agent runtime management tab and codex start action', async () => {
+  it('shows platform agent runtime management tab and codex sdk test action', async () => {
     const user = userEvent.setup()
-    startRuntimeProvider.mockResolvedValue({
-      runtime_name: 'codex_app_server',
-      operation: 'start',
-      status: 'succeeded',
-      message: '已提交 Codex 启动请求',
+    testRuntimeProvider.mockResolvedValue({
+      runtime_name: 'codex_sdk',
+      label: 'Codex SDK',
+      configured: true,
+      available: true,
+      status: 'ready',
+      message: 'Codex SDK 联通测试通过。',
+      operations: ['test_connection', 'capabilities'],
     })
     mockUsePrefs.mockReturnValue({ data: DEFAULT_PREFS, isLoading: false })
     mockUseUpdate.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
@@ -251,16 +255,20 @@ describe('Settings page', () => {
     expect(screen.getByRole('tab', { name: 'AI Runtime' })).toBeInTheDocument()
     expect(screen.getByRole('tabpanel', { name: 'AI Runtime' })).toBeInTheDocument()
     expect(screen.getByText('OpenAI SDK / LLM API')).toBeInTheDocument()
-    expect(screen.getByText('Codex app-server')).toBeInTheDocument()
+    expect(screen.getByText('Codex SDK')).toBeInTheDocument()
+    expect(screen.getAllByText('待连接测试').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('可调用状态').length).toBeGreaterThan(0)
+    expect(screen.getByText('provider')).toBeInTheDocument()
+    expect(screen.getByText('codex-sdk')).toBeInTheDocument()
     expect(screen.getByText('transport')).toBeInTheDocument()
-    expect(screen.getByText('ws')).toBeInTheDocument()
-    expect(screen.getByText('endpoint')).toBeInTheDocument()
-    expect(screen.getByText('ws://127.0.0.1:8799')).toBeInTheDocument()
+    expect(screen.getByText('sdk')).toBeInTheDocument()
+    expect(screen.queryByText('endpoint')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '启动 Codex' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '启动 Codex' }))
+    await user.click(screen.getAllByRole('button', { name: '测试连接' })[1])
 
-    expect(startRuntimeProvider).toHaveBeenCalledWith('codex_app_server')
-    expect(await screen.findByText('已提交 Codex 启动请求')).toBeInTheDocument()
+    expect(testRuntimeProvider).toHaveBeenCalledWith('codex_sdk')
+    expect(await screen.findByText('Codex SDK 联通测试通过。')).toBeInTheDocument()
   })
 
   it('disables runtime management operations for non-admin users', () => {
@@ -269,13 +277,13 @@ describe('Settings page', () => {
         can_manage: false,
         providers: [
           {
-            runtime_name: 'codex_app_server',
-            label: 'Codex app-server',
+            runtime_name: 'codex_sdk',
+            label: 'Codex SDK',
             configured: true,
             available: false,
             status: 'not_verified',
-            message: 'Codex app-server 等待联通测试。',
-            operations: ['test_connection', 'start', 'restart'],
+            message: 'Codex SDK 等待联通测试。',
+            operations: ['test_connection'],
           },
         ],
         action_bindings: [],
@@ -289,8 +297,8 @@ describe('Settings page', () => {
 
     renderAgentRuntimeSettings()
 
-    expect(screen.getByRole('button', { name: '启动 Codex' })).toBeDisabled()
-    expect(screen.getByText('仅平台管理员可执行连接测试、启动或重启操作。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '测试连接' })).toBeDisabled()
+    expect(screen.getByText('仅平台管理员可执行连接测试和运行态诊断。')).toBeInTheDocument()
   })
 
   it('keeps runtime tab usable while general preferences are loading', () => {
@@ -300,7 +308,7 @@ describe('Settings page', () => {
     renderAgentRuntimeSettings()
 
     expect(screen.getByRole('tab', { name: 'AI Runtime' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText('Codex app-server')).toBeInTheDocument()
+    expect(screen.getByText('Codex SDK')).toBeInTheDocument()
   })
 
   it('does not render the empty state when runtime status fails', () => {

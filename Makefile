@@ -356,7 +356,7 @@ test-platform-agent-runtime:
 			tests/unit/interfaces/api/v1/test_semantic_assets_api.py \
 			tests/unit/di/test_container_wiring.py \
 			tests/integration/test_agent_runtime_api.py \
-			tests/integration/agent_inference_runtime/test_codex_ws_live_smoke.py
+			tests/integration/agent_inference_runtime/test_codex_sdk_live_smoke.py
 
 preflight-agent-runtime:
 	@printf '%s\n' '[preflight][agent-runtime] 检查真实环境 active Ontology + active Cube 资产绑定'

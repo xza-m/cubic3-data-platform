@@ -83,6 +83,7 @@ docker compose up --build -d
 - `docker compose up --build` 会生成并内置最新的前端静态资源
 - Nginx 不再依赖宿主机的 `frontend/dist`
 - Docker 模式下 `backend` 与 `rq_worker` 固定连接 compose 内置 PostgreSQL：`postgresql://postgres:postgres@postgres:5432/cubic3_data_platform`，不读取宿主机 `DATABASE_URL`
+- 后端镜像会安装 Linux Codex CLI；compose 会透传 `AGENT_CODEX_*`，默认 `AGENT_CODEX_ENABLED=false`
 - 当前交付口径是“容器可支撑联调与验证”，并具备更接近生产的可重复部署行为
 
 验证：

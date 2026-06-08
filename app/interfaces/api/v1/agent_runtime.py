@@ -11,13 +11,11 @@ from urllib.parse import quote
 
 from flask import Blueprint, current_app, g, request, send_file
 
-from app.application.agent_inference_runtime.codex_process_manager import (
-    CodexProcessManagerError,
-)
+from app.application.agent_inference_runtime.errors import RuntimeProviderOperationError
 from app.application.agent_inference_runtime.codex_run_service import CodexRunNotFoundError
 from app.domain.agent_inference_runtime.types import RuntimeProviderConfigUpdate
 from app.infrastructure.agent_inference_runtime.codex_client import (
-    CodexAppServerClientError,
+    CodexSdkClientError,
 )
 
 RUNTIME_MANAGE_ROLES = {"platform_admin", "governance_admin", "admin"}
@@ -163,6 +161,24 @@ def _invalid_provider_config_payload(field: str):
         status=400,
         details={"code": "RUNTIME_PROVIDER_CONFIG_INVALID", "field": field},
     )
+
+
+def _blocked_provider_extra_key(runtime_name: str, extra: Mapping[str, Any]) -> str | None:
+    if runtime_name != "codex_sdk":
+        return None
+    env_bound_keys = {
+        "project_root",
+        "runtime_root",
+        "runtime_workspace_roots",
+        "allowed_project_roots",
+        "allowed_workspace_roots",
+        "runtime_env_id",
+        "env_id",
+    }
+    for key in env_bound_keys:
+        if key in extra:
+            return key
+    return None
 
 
 def _not_found():
@@ -344,6 +360,9 @@ def create_agent_runtime_blueprint(
         extra_payload = payload.get("extra") or {}
         if not isinstance(extra_payload, Mapping):
             return _invalid_provider_config_payload("extra")
+        blocked_extra = _blocked_provider_extra_key(runtime_name, extra_payload)
+        if blocked_extra is not None:
+            return _invalid_provider_config_payload(f"extra.{blocked_extra}")
         for field in ("endpoint", "model", "api_key"):
             value = payload.get(field)
             if value is not None and not isinstance(value, str):
@@ -435,7 +454,7 @@ def _codex_run_operation(codex_run_service_provider: Any, operation: Callable[[A
         result = operation(service)
     except CodexRunNotFoundError:
         return _not_found()
-    except CodexAppServerClientError as exc:
+    except CodexSdkClientError as exc:
         return error(
             str(exc),
             status=exc.status_code,
@@ -455,13 +474,13 @@ def _runtime_management_operation(runtime_management_provider: Any, operation: C
             status=404,
             details={"code": "RUNTIME_PROVIDER_NOT_FOUND", "runtime_name": runtime_name},
         )
-    except CodexProcessManagerError as exc:
+    except RuntimeProviderOperationError as exc:
         return error(
             str(exc),
             status=exc.status_code,
             details={"code": exc.code, **exc.details},
         )
-    except CodexAppServerClientError as exc:
+    except CodexSdkClientError as exc:
         return error(
             str(exc),
             status=exc.status_code,
