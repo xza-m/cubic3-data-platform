@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, X } from 'lucide-react'
 
 import { Button } from '@v2/components/ui'
@@ -13,6 +13,7 @@ import { createWorkbenchCandidateTarget } from './workbenchContext'
 export default function BatchModelingAgent() {
   const [selectedItem, setSelectedItem] = useState<SemanticAssetPackage | null>(null)
   const confirmationRef = useRef<HTMLElement | null>(null)
+  const navigate = useNavigate()
   const confirmationTitleId = 'batch-modeling-agent-confirmation-title'
   const workbenchTarget = useMemo(
     () =>
@@ -30,9 +31,21 @@ export default function BatchModelingAgent() {
     confirmationRef.current?.focus()
   }, [selectedItem])
 
+  function handleOpenBuilder(item: SemanticAssetPackage) {
+    const target = createWorkbenchCandidateTarget(toWorkbenchQueueItem(item), {
+      projectId: item.project_id,
+      mode: 'batch',
+    })
+    if (canOpenDirectly(item)) {
+      navigate(target.pathname, { state: target.state })
+      return
+    }
+    setSelectedItem(item)
+  }
+
   return (
     <div className="relative min-h-full">
-      <BatchModelingWorkbench onOpenBuilder={setSelectedItem} />
+      <BatchModelingWorkbench onOpenBuilder={handleOpenBuilder} />
 
       {selectedItem && workbenchTarget ? (
         <aside
@@ -84,6 +97,10 @@ export default function BatchModelingAgent() {
       ) : null}
     </div>
   )
+}
+
+function canOpenDirectly(item: SemanticAssetPackage): boolean {
+  return item.risk === 'low' && item.status === 'ready_for_review' && item.primary_action === 'open_builder'
 }
 
 function toWorkbenchQueueItem(item: SemanticAssetPackage): BatchModelingQueueItem {

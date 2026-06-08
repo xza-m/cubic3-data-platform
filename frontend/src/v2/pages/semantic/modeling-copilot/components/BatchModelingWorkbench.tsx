@@ -108,8 +108,8 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
       <header className="border-b px-6 py-5" style={{ borderColor: 'var(--border)' }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-[12px] font-semibold uppercase text-3">AI 建模助手</p>
-            <h1 className="m-0 mt-1 text-[22px] font-semibold leading-tight">批量语义建设</h1>
+            <p className="text-[12px] font-semibold uppercase text-3">语义建设工作台</p>
+            <h2 className="m-0 mt-1 text-[22px] font-semibold leading-tight">批量语义建设</h2>
             <p className="m-0 mt-2 max-w-[760px] text-[13px] leading-6 text-2">
               按业务域生成待审阅候选队列，再逐个进入资产建设画布收敛字段证据、Cube 口径、本体锚定和发布门禁。
             </p>
@@ -225,8 +225,11 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
           {submitError ? <p className="m-0 mt-3 text-[12px] leading-5 text-danger">{submitError}</p> : null}
         </section>
 
-        <section className="min-w-0 space-y-4">
-          <section className="rounded-[8px] border bg-[var(--bg-surface)] p-4" style={{ borderColor: 'var(--border)' }}>
+        <section className="flex min-w-0 flex-col gap-4">
+          <section
+            className={['rounded-[8px] border bg-[var(--bg-surface)] p-4', hasGenerated ? 'order-2' : 'order-1'].join(' ')}
+            style={{ borderColor: 'var(--border)' }}
+          >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -247,7 +250,10 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
             </ul>
           </section>
 
-          <section className="rounded-[8px] border bg-[var(--bg-surface)] p-4" style={{ borderColor: 'var(--border)' }}>
+          <section
+            className={['rounded-[8px] border bg-[var(--bg-surface)] p-4', hasGenerated ? 'order-1' : 'order-2'].join(' ')}
+            style={{ borderColor: 'var(--border)' }}
+          >
             <div className="flex items-center justify-between gap-3">
               <h2 className="m-0 text-[16px] font-semibold">候选资产队列</h2>
               <span className="text-[12px] text-3">
@@ -329,7 +335,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
             )}
           </section>
 
-          <section className="rounded-[8px] border bg-[var(--bg-surface)] p-4" style={{ borderColor: 'var(--border)' }}>
+          <section className="order-3 rounded-[8px] border bg-[var(--bg-surface)] p-4" style={{ borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-3" aria-hidden />
               <h2 className="m-0 text-[15px] font-semibold">批量模式边界</h2>

@@ -90,7 +90,7 @@ export function dumpCubeYaml(value: Record<string, unknown>): string {
 export function entryTypeLabel(value?: string | null): string {
   switch (value) {
     case 'table_known':
-      return '已知事实表'
+      return '已知数仓表'
     case 'semantic_gap':
       return '未命中 Trace'
     case 'business_question':

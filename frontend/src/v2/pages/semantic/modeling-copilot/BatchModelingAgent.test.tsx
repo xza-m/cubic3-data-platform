@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -68,7 +68,7 @@ describe('BatchModelingAgent', () => {
     })
   })
 
-  it('选择 API 候选资产包后展示确认浮层并保留真实项目上下文', async () => {
+  it('低风险 API 候选资产包直接进入建设画布并保留真实项目上下文', async () => {
     render(
       <MemoryRouter>
         <Routes>
@@ -84,24 +84,9 @@ describe('BatchModelingAgent', () => {
     fireEvent.click(screen.getByRole('button', { name: '生成批量建设队列' }))
     fireEvent.click(await screen.findByRole('button', { name: '进入资产建设画布' }))
 
-    const confirmation = screen.getByRole('dialog', { name: '学情分析事实主题候选' })
+    expect(screen.queryByRole('dialog', { name: '学情分析事实主题候选' })).not.toBeInTheDocument()
 
-    expect(within(confirmation).getByText('已选择批量候选资产')).toBeInTheDocument()
-    expect(within(confirmation).getByText('学情分析事实主题候选')).toBeInTheDocument()
-    expect(
-      within(confirmation).getByText('进入语义建设工作台后继续完成字段候选、口径确认、沙盒校验和发布门禁。'),
-    ).toBeInTheDocument()
-
-    const link = within(confirmation).getByRole('link', { name: '打开语义建设工作台' })
-    expect(link).toHaveAttribute(
-      'href',
-      '/semantic/modeling-workbench/build-learning/candidate/build-learning%3Afact%3Adwd-learning-activity-df',
-    )
-    expect(confirmation).toHaveFocus()
-
-    fireEvent.click(link)
-
-    expect(JSON.parse(screen.getByTestId('workbench-state').textContent || '{}')).toEqual(
+    expect(JSON.parse((await screen.findByTestId('workbench-state')).textContent || '{}')).toEqual(
       expect.objectContaining({
         workbenchMode: 'batch',
         projectId: 'build-learning',

@@ -38,7 +38,7 @@ describe('inferEntryType', () => {
 describe('entryTypeLabel', () => {
   it('返回三种入口类型的中文标签', () => {
     expect(entryTypeLabel('business_question')).toBe('业务问题')
-    expect(entryTypeLabel('table_known')).toBe('已知事实表')
+    expect(entryTypeLabel('table_known')).toBe('已知数仓表')
     expect(entryTypeLabel('semantic_gap')).toBe('未命中 Trace')
     expect(entryTypeLabel(undefined)).toBe('业务问题')
   })

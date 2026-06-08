@@ -175,10 +175,19 @@ type CubeDraftAcceptanceMode = "explicit" | "candidate_locked";
 
 function buildWorkbenchInitialGoal(context: WorkbenchCandidateState | null): string {
   if (!context) return "";
-  const title = context.candidateTitle || "语义资产候选";
-  const source = context.source || "待确认源表";
-  const grain = context.grain || "待确认粒度";
-  return `基于 ${source} 建设「${title}」，粒度为${grain}，先确认来源证据、字段候选和 Cube/本体口径，再发布到语义中心。`;
+  const title =
+    context.candidateTitle ||
+    t("semantic.modelingWorkbench.initialGoal.candidate", "语义资产候选");
+  const source =
+    context.source ||
+    t("semantic.modelingWorkbench.initialGoal.source", "待确认源表");
+  const grain =
+    context.grain ||
+    t("semantic.modelingWorkbench.initialGoal.grain", "待确认粒度");
+  return t(
+    "semantic.modelingWorkbench.initialGoal.template",
+    `基于 ${source} 建设「${title}」，粒度为${grain}，先确认来源证据、字段候选和 Cube/本体口径，再发布到语义中心。`,
+  );
 }
 
 function toCopilotWorkbenchContext(context: WorkbenchCandidateState): Record<string, unknown> {
@@ -849,16 +858,16 @@ export default function ModelingAgent({
       ) : null}
 
       {/* 主区：topbar + 建设主流程 + 右侧 Artifact Panel */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <CopilotTopbar
           session={session}
           runtimeSnapshot={runtimeStatusQ.data}
           runtimeLoading={runtimeStatusQ.isLoading}
         />
 
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <main
-            className="flex min-w-0 flex-1 flex-col"
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
             data-testid="chat-workspace"
           >
             {session ? (
@@ -877,11 +886,14 @@ export default function ModelingAgent({
               />
             ) : null}
             <div
-              className="min-h-0 flex-1 overflow-y-auto scroll-thin"
+              className="min-h-0 flex-1 overflow-y-auto scroll-pb-40 scroll-pt-24 scroll-thin"
               ref={threadRef}
             >
               {!session ? (
-                <EmptyState onPickExample={(text) => setDraft(text)} />
+                <EmptyState
+                  workbenchContext={workbenchContext}
+                  onPickExample={(text) => setDraft(text)}
+                />
               ) : (
                 <>
                   <Thread
@@ -974,10 +986,18 @@ export default function ModelingAgent({
               canSend={canSend}
               isSending={createSession.isPending || sendMessage.isPending}
               totalAssets={totalAssets}
-              remainingConfirmations={remainingConfirmations}
               hasSession={!!session}
               entryType={session?.entry_type}
-              cubeDraftPending={cubeDraftPending}
+              progressLabel={
+                session
+                  ? composerProgressLabel({
+                      session,
+                      totalAssets,
+                      remainingConfirmations,
+                      cubeDraftPending,
+                    })
+                  : ""
+              }
               localError={localError}
             />
           </main>
@@ -1303,7 +1323,7 @@ function RuntimeStatusChip({
     );
   }
   const openai = runtimeProvider(snapshot, "openai_compatible");
-  const codex = runtimeProvider(snapshot, "codex_app_server");
+  const codex = runtimeProvider(snapshot, "codex_sdk");
   if (openai?.available) {
     return (
       <Chip
@@ -1579,7 +1599,7 @@ function CodexReviewRuntimeNotice({
   );
   if (!session.current_proposal_id || !binding?.requires_connection)
     return null;
-  const codex = runtimeProvider(snapshot, "codex_app_server");
+  const codex = runtimeProvider(snapshot, "codex_sdk");
   if (codex?.available) return null;
   return (
     <div
@@ -1670,7 +1690,7 @@ function fieldCandidateItemsForSession(
 ): FieldCandidateReviewItem[] {
   const trace = fieldCandidateTraceForReview(session, undefined);
   const candidates = Array.isArray(trace?.candidates) ? trace.candidates : [];
-  return candidates.filter(isRecord).map((item, index) => {
+  const tracedCandidates = candidates.filter(isRecord).map((item, index) => {
     const field =
       stringValue(item.field) ||
       stringValue(item.name) ||
@@ -1691,6 +1711,9 @@ function fieldCandidateItemsForSession(
       risk: stringValue(item.risk) || stringValue(item.risk_level),
     };
   });
+  return tracedCandidates.length > 0
+    ? tracedCandidates
+    : fieldCandidateItemsFromCurrentDraft(session);
 }
 
 function fieldCandidateItemId(
@@ -1709,6 +1732,169 @@ function asFieldCandidateTrace(value: unknown): FieldCandidateTrace | null {
   return isRecord(value) && stringValue(value.candidate_set_id)
     ? (value as FieldCandidateTrace)
     : null;
+}
+
+function fieldCandidateItemsFromCurrentDraft(
+  session: SemanticModelingCopilotSession,
+): FieldCandidateReviewItem[] {
+  const cube = firstCubeWithSemanticFields(session);
+  if (!cube) return [];
+  const cubeName = stringValue(cube.name) || "current_cube";
+  const dimensions = candidateRecordsFromCollection(cube.dimensions);
+  const measures = candidateRecordsFromCollection(cube.measures);
+  return [
+    ...dimensions.map((item, index) =>
+      semanticDraftFieldCandidate({
+        item,
+        index,
+        role: "dimension",
+        cubeName,
+        session,
+      }),
+    ),
+    ...measures.map((item, index) =>
+      semanticDraftFieldCandidate({
+        item,
+        index,
+        role: "measure",
+        cubeName,
+        session,
+      }),
+    ),
+  ];
+}
+
+function firstCubeWithSemanticFields(
+  session: SemanticModelingCopilotSession,
+): Record<string, unknown> | null {
+  const state = session.workbench_state || {};
+  const rawSpec = isRecord(state.raw_spec) ? state.raw_spec : {};
+  const cubes = Array.isArray(rawSpec.cubes) ? rawSpec.cubes : [];
+  const candidates = [
+    rawSpec.cube,
+    cubes.find(isRecord),
+    state.cube,
+    state.cube_draft,
+    extractCubeDraft(state),
+  ];
+  return (
+    candidates.find(
+      (candidate): candidate is Record<string, unknown> =>
+        isRecord(candidate) &&
+        (collectionCount(candidate.dimensions) > 0 ||
+          collectionCount(candidate.measures) > 0),
+    ) || null
+  );
+}
+
+function candidateRecordsFromCollection(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item): Record<string, unknown> | null => {
+        if (isRecord(item)) return item;
+        if (typeof item === "string" && item.trim()) return { name: item };
+        return null;
+      })
+      .filter((item): item is Record<string, unknown> => item !== null);
+  }
+  if (!isRecord(value)) return [];
+  return Object.entries(value).map(([name, item]) =>
+    isRecord(item) ? { name, ...item } : { name },
+  );
+}
+
+function semanticDraftFieldCandidate({
+  item,
+  index,
+  role,
+  cubeName,
+  session,
+}: {
+  item: Record<string, unknown>;
+  index: number;
+  role: "dimension" | "measure";
+  cubeName: string;
+  session: SemanticModelingCopilotSession;
+}): FieldCandidateReviewItem {
+  const name = stringValue(item.name) || `${role}_${index + 1}`;
+  const field =
+    stringValue(item.expr) ||
+    stringValue(item.field) ||
+    stringValue(item.column) ||
+    stringValue(item.sql) ||
+    name;
+  const sourceField = sourceFieldEvidenceForDraft(session, field, name);
+  const label =
+    stringValue(item.title) || stringValue(item.label) || sourceField?.title || name;
+  const aggregation =
+    role === "measure"
+      ? stringValue(item.aggregation) ||
+        stringValue(item.agg) ||
+        stringValue(item.type) ||
+        stringValue(item.sql)
+      : undefined;
+  return {
+    id: `draft_${role}_${name}`,
+    field,
+    label,
+    role,
+    aggregation,
+    semanticType: stringValue(item.type) || sourceField?.type,
+    cubeBindingLabel: `${cubeName}.${name}`,
+    ontologyBindingLabel:
+      role === "measure" ? ontologyBindingLabelForMeasure(session, name) : undefined,
+    confidence: 0.8,
+    evidence:
+      sourceField?.evidence ||
+      t(
+        "semantic.modelingWorkbench.fieldCandidate.draftEvidence",
+        "来自当前语义草案的字段定义；后端字段候选 trace 缺失时先保留为可审阅候选。",
+      ),
+    risk: "low",
+  };
+}
+
+function sourceFieldEvidenceForDraft(
+  session: SemanticModelingCopilotSession,
+  field: string,
+  semanticName: string,
+): { title?: string; type?: string; evidence?: string } | null {
+  const evidence = session.workbench_state?.source_evidence;
+  const fields = isRecord(evidence) && Array.isArray(evidence.fields) ? evidence.fields : [];
+  const normalizedField = normalizeIdentifier(field);
+  const normalizedName = normalizeIdentifier(semanticName);
+  const matched = fields
+    .filter(isRecord)
+    .find((item) => {
+      const name = normalizeIdentifier(stringValue(item.name));
+      return name === normalizedField || name === normalizedName;
+    });
+  if (!matched) return null;
+  return {
+    title: stringValue(matched.title) || undefined,
+    type: stringValue(matched.type) || undefined,
+    evidence: stringValue(matched.evidence) || undefined,
+  };
+}
+
+function ontologyBindingLabelForMeasure(
+  session: SemanticModelingCopilotSession,
+  measureName: string,
+): string | undefined {
+  const state = session.workbench_state || {};
+  const rawSpec = isRecord(state.raw_spec) ? state.raw_spec : {};
+  const ontology = isRecord(rawSpec.ontology) ? rawSpec.ontology : {};
+  const metrics = Array.isArray(ontology.metrics) ? ontology.metrics : [];
+  const normalizedMeasure = normalizeIdentifier(measureName);
+  const metric = metrics.filter(isRecord).find((item) => {
+    const refs = Array.isArray(item.measure_refs) ? item.measure_refs : [];
+    return refs.some((ref) =>
+      normalizeIdentifier(String(ref)).endsWith(`.${normalizedMeasure}`),
+    );
+  });
+  return metric
+    ? stringValue(metric.title) || stringValue(metric.name) || undefined
+    : undefined;
 }
 
 function fieldCandidateCount(
@@ -3121,10 +3307,156 @@ function releasePreviewSampleQuestions(
   const questions = Array.isArray(rawQuestions)
     ? rawQuestions
         .map((item) => String(item || "").trim())
-        .filter((item) => item.length > 0)
+        .filter((item) => item.length > 0 && !isGenericSampleQuestion(item))
     : [];
   if (questions.length > 0) return questions;
+  if (session.entry_type === "business_question" && session.user_goal) {
+    return [session.user_goal];
+  }
+  const semanticQuestions = semanticDraftSampleQuestions(session);
+  if (semanticQuestions.length > 0) return semanticQuestions;
   return session.user_goal ? [session.user_goal] : [];
+}
+
+function semanticDraftSampleQuestions(
+  session: SemanticModelingCopilotSession,
+): string[] {
+  const cube = firstCubeWithSemanticFields(session);
+  if (!cube) return [];
+  const cubeText = [
+    stringValue(cube.name),
+    stringValue(cube.title),
+    stringValue(cube.source),
+    session.user_goal,
+  ]
+    .join(" ")
+    .toLowerCase();
+  const dimensions = candidateRecordsFromCollection(cube.dimensions);
+  const measures = candidateRecordsFromCollection(cube.measures);
+  if (cubeText.includes("dim_school") || cubeText.includes("school")) {
+    const hasProvince = dimensions.some((item) =>
+      normalizeIdentifier(stringValue(item.name) || stringValue(item.expr)).includes(
+        "province",
+      ),
+    );
+    const hasCity = dimensions.some((item) =>
+      normalizeIdentifier(stringValue(item.name) || stringValue(item.expr)).includes(
+        "city",
+      ),
+    );
+    const questions = [
+      hasProvince
+        ? t(
+            "semantic.modelingWorkbench.sample.schoolByProvince",
+            "按省份统计学校数",
+          )
+        : "",
+      hasCity
+        ? t(
+            "semantic.modelingWorkbench.sample.schoolByCity",
+            "按城市统计学校数",
+          )
+        : "",
+      t(
+        "semantic.modelingWorkbench.sample.schoolCoverage",
+        "学校维度资产当前覆盖哪些学校",
+      ),
+    ].filter((item): item is string => item.length > 0);
+    return questions.slice(0, 3);
+  }
+  const measureTitle = displayNameFromSemanticRecord(
+    measures[0],
+    t("semantic.modelingWorkbench.sample.measureFallback", "核心指标"),
+  );
+  const dimensionTitle = displayNameFromSemanticRecord(
+    dimensions.find((item) =>
+      normalizeIdentifier(stringValue(item.name) || stringValue(item.expr)).includes(
+        "school",
+      ),
+    ) || dimensions[0],
+    t("semantic.modelingWorkbench.sample.dimensionFallback", "维度"),
+  );
+  if (measureTitle && dimensionTitle) {
+    return [
+      `按${dimensionTitle}查看${measureTitle}`,
+      `最近 7 天${measureTitle}趋势`,
+    ];
+  }
+  if (measureTitle) return [`查看${measureTitle}`, `最近 7 天${measureTitle}趋势`];
+  return [];
+}
+
+function isGenericSampleQuestion(question: string): boolean {
+  const normalized = question.replace(/\s+/g, "");
+  return [/业务对象/u, /核心指标/u, /新增指标/u, /示例问题/u].some(
+    (pattern) => pattern.test(normalized),
+  );
+}
+
+function displayNameFromSemanticRecord(
+  item: Record<string, unknown> | undefined,
+  fallback: string,
+): string {
+  if (!item) return fallback;
+  const explicit = stringValue(item.title) || stringValue(item.label);
+  if (explicit) return explicit;
+  return humanizeSemanticName(
+    stringValue(item.name) || stringValue(item.expr) || stringValue(item.field),
+  );
+}
+
+function composerProgressLabel({
+  session,
+  totalAssets,
+  remainingConfirmations,
+  cubeDraftPending,
+}: {
+  session: SemanticModelingCopilotSession;
+  totalAssets: number;
+  remainingConfirmations: number;
+  cubeDraftPending: boolean;
+}): string {
+  if (remainingConfirmations > 0) return `${remainingConfirmations} 项待确认`;
+  if (session.current_proposal_id)
+    return t(
+      "semantic.modelingWorkbench.progress.saved",
+      "待发布资产已保存",
+    );
+  const reasons = readinessReasonsForSession(session);
+  if (reasons.some((item) => item.includes("source_candidate")))
+    return t(
+      "semantic.modelingWorkbench.progress.confirmSource",
+      "等待确认数据来源",
+    );
+  if (reasons.some((item) => item.includes("need_source")))
+    return t(
+      "semantic.modelingWorkbench.progress.needSource",
+      "等待补充数据来源",
+    );
+  if (reasons.some((item) => item.includes("spec_not_generated")))
+    return t(
+      "semantic.modelingWorkbench.progress.generateDraft",
+      "等待生成语义草案",
+    );
+  if (cubeDraftPending || hasReleasePreviewableSpec(session))
+    return t(
+      "semantic.modelingWorkbench.progress.generateAsset",
+      "等待生成语义资产",
+    );
+  if (totalAssets > 0)
+    return t(
+      "semantic.modelingWorkbench.progress.reviewAssets",
+      "语义资产待审阅",
+    );
+  return t("semantic.modelingWorkbench.progress.continue", "等待继续建设");
+}
+
+function readinessReasonsForSession(
+  session: SemanticModelingCopilotSession,
+): string[] {
+  const readiness = session.workbench_state?.readiness;
+  if (!isRecord(readiness) || !Array.isArray(readiness.reasons)) return [];
+  return readiness.reasons.map(String);
 }
 
 interface SemanticCenterPublishGuard {
@@ -4370,6 +4702,24 @@ function stringValue(value: unknown): string {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function normalizeIdentifier(value: string): string {
+  return value
+    .trim()
+    .replace(/[`"'[\]()]/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+}
+
+function humanizeSemanticName(value: string): string {
+  const normalized = stringValue(value);
+  if (!normalized)
+    return t("semantic.modelingWorkbench.sample.measureFallback", "核心指标");
+  return normalized
+    .replace(/^(dwd|dim|ods|ads)_/i, "")
+    .replace(/_df$/i, "")
+    .replace(/_/g, " ");
+}
+
 function isRecentSession(
   session: SemanticModelingCopilotSession,
   days: number,
@@ -4666,9 +5016,11 @@ function Turn({
         {isUser ? "我" : "C³"}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="mb-1 text-[12px] font-semibold text-1">
-          {isUser ? "我" : "AI 建模助手"}
-        </div>
+        {!isUser ? (
+          <div className="mb-1 text-[12px] font-semibold text-1">
+            AI 建模助手
+          </div>
+        ) : null}
         <div className="whitespace-pre-wrap text-[14px] leading-6 text-1">
           {turn.content}
         </div>
@@ -5439,6 +5791,7 @@ function SavedCard({
     hasProposal: Boolean(proposalId),
     published: published || isPublished,
   });
+  const releasePreview = extractReleasePreview(workbenchState);
   const needsReleasePreview =
     !publishGuard.canPublish && publishGuard.reason.includes("发布预演");
 
@@ -5515,6 +5868,7 @@ function SavedCard({
             <code>{specYaml || "（语义配置为空）"}</code>
           </pre>
         ) : null}
+        {releasePreview ? <ReleasePreviewPanel preview={releasePreview} /> : null}
         <div className="flex items-center gap-2 pt-1">
           {needsReleasePreview ? (
             <Button
@@ -5744,10 +6098,15 @@ function EvidenceRow({ item }: { item: CopilotEvidenceItem }) {
 // ── 空态：图标 + 标题 + 3 个示例 ──────────────────────────────────────────
 
 function EmptyState({
+  workbenchContext,
   onPickExample,
 }: {
+  workbenchContext?: WorkbenchCandidateState | null;
   onPickExample: (text: string) => void;
 }) {
+  const examples = workbenchContext
+    ? examplesForWorkbenchContext(workbenchContext)
+    : EXAMPLES;
   return (
     <div className="flex h-full flex-col items-center justify-center px-5 text-center">
       <div
@@ -5765,7 +6124,7 @@ function EmptyState({
         {BUILDER_EMPTY_STATE.subtitle}
       </p>
       <div className="mt-6 flex w-full max-w-[520px] flex-col gap-2">
-        {EXAMPLES.map((ex) => (
+        {examples.map((ex) => (
           <button
             key={ex.title}
             type="button"
@@ -5794,6 +6153,52 @@ function EmptyState({
       </div>
     </div>
   );
+}
+
+function examplesForWorkbenchContext(
+  context: WorkbenchCandidateState,
+): Array<{ icon: ElementType; title: string; sub: string }> {
+  const title =
+    context.candidateTitle ||
+    t("semantic.modelingWorkbench.empty.candidate", "候选语义资产");
+  const source =
+    context.source ||
+    t("semantic.modelingWorkbench.empty.source", "待确认源表");
+  const grain =
+    context.grain ||
+    t("semantic.modelingWorkbench.empty.grain", "待确认粒度");
+  return [
+    {
+      icon: Table2,
+      title: t(
+        "semantic.modelingWorkbench.empty.sourceEvidence",
+        `确认 ${source} 的字段证据`,
+      ),
+      sub: `${title} · ${grain}`,
+    },
+    {
+      icon: Layers3,
+      title: t(
+        "semantic.modelingWorkbench.empty.generateDraft",
+        `生成 ${title} 的 Cube 与本体草案`,
+      ),
+      sub: t(
+        "semantic.modelingWorkbench.empty.fromPackage",
+        "从候选资产包进入语义建设",
+      ),
+    },
+    {
+      icon: ShieldCheck,
+      title: t(
+        "semantic.modelingWorkbench.empty.releaseGate",
+        `检查 ${title} 的发布门禁`,
+      ),
+      sub: t(
+        "semantic.modelingWorkbench.empty.semanticCenter",
+        "发布目标是语义中心，不直接发布给单一消费者",
+      ),
+    },
+  ];
 }
 
 // ── 建设主流程动作：预演 / 应用只跟随主链路出现 ─────────────────────────────
@@ -5983,10 +6388,9 @@ function Composer({
   canSend,
   isSending,
   totalAssets,
-  remainingConfirmations,
   hasSession,
   entryType,
-  cubeDraftPending,
+  progressLabel,
   localError,
 }: {
   inputRef?: RefObject<HTMLTextAreaElement | null>;
@@ -5996,10 +6400,9 @@ function Composer({
   canSend: boolean;
   isSending: boolean;
   totalAssets: number;
-  remainingConfirmations: number;
   hasSession: boolean;
   entryType?: string;
-  cubeDraftPending: boolean;
+  progressLabel: string;
   localError?: string;
 }) {
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -6022,13 +6425,7 @@ function Composer({
             <span className="h-1 w-1 rounded-full bg-[color:var(--text-4)]" />
             <span>{totalAssets} 项资产</span>
             <span className="h-1 w-1 rounded-full bg-[color:var(--text-4)]" />
-            <span>
-              {remainingConfirmations === 0
-                ? cubeDraftPending
-                  ? "语义草稿待应用"
-                  : "所有口径已就绪"
-                : `${remainingConfirmations} 项待确认`}
-            </span>
+            <span>{progressLabel}</span>
           </div>
         ) : null}
         <div

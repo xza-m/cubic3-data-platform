@@ -41,7 +41,10 @@ export default function SemanticModelingWorkbench() {
 
   if (!isQuickMode && !hasCandidateRoute) {
     return (
-      <div className="min-h-full bg-[var(--bg-app)] text-1">
+      <div
+        className="h-full min-h-0 overflow-y-auto bg-[var(--bg-app)] text-1 scroll-thin"
+        data-testid="semantic-modeling-workbench"
+      >
         <h1 className="sr-only">{t('semantic.modelingWorkbench.title', '语义建设工作台')}</h1>
         <BatchModelingAgent />
       </div>
@@ -49,7 +52,10 @@ export default function SemanticModelingWorkbench() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-[var(--bg-app)] text-1">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-y-auto bg-[var(--bg-app)] text-1 scroll-thin"
+      data-testid="semantic-modeling-workbench"
+    >
       <header className="border-b bg-[var(--bg-surface)] px-6 py-4" style={{ borderColor: 'var(--border)' }}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -67,7 +73,7 @@ export default function SemanticModelingWorkbench() {
       <main className="flex min-h-0 flex-1 flex-col gap-3 p-4">
         <CandidateContextSummary context={context} isQuickMode={isQuickMode} />
 
-        <section className="min-h-0 flex-1 overflow-hidden rounded-[8px] border bg-[var(--bg-surface)]" style={{ borderColor: 'var(--border)' }}>
+        <section className="flex min-h-[680px] flex-1 flex-col overflow-hidden rounded-[8px] border bg-[var(--bg-surface)]" style={{ borderColor: 'var(--border)' }}>
           <div className="border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-2 text-[13px] font-semibold text-1">
               <Database size={15} aria-hidden />

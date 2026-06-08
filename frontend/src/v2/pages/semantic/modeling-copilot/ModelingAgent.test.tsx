@@ -312,14 +312,14 @@ const RUNTIME_SNAPSHOT: AgentRuntimeManagementSnapshot = {
       details: { model: "gpt-4o-mini" },
     },
     {
-      runtime_name: "codex_app_server",
-      label: "Codex App Server",
+      runtime_name: "codex_sdk",
+      label: "Codex SDK",
       configured: false,
       available: false,
       status: "disabled",
-      message: "Codex app-server 未启用。",
+      message: "Codex SDK 未启用。",
       operations: [],
-      details: { ui_managed: false },
+      details: { provider: "codex-sdk", ui_managed: false },
     },
   ],
   action_bindings: [
@@ -333,8 +333,8 @@ const RUNTIME_SNAPSHOT: AgentRuntimeManagementSnapshot = {
     },
     {
       action: "semantic.modeling.review_proposal",
-      default_runtime: "codex_app_server",
-      allowed_runtimes: ["codex_app_server"],
+      default_runtime: "codex_sdk",
+      allowed_runtimes: ["codex_sdk"],
       expose_selector: false,
       requires_connection: true,
       reason: "fixed_codex_workspace",
@@ -345,15 +345,15 @@ const RUNTIME_SNAPSHOT: AgentRuntimeManagementSnapshot = {
 const CODEX_MANAGED_RUNTIME_SNAPSHOT: AgentRuntimeManagementSnapshot = {
   ...RUNTIME_SNAPSHOT,
   providers: RUNTIME_SNAPSHOT.providers.map((provider) =>
-    provider.runtime_name === "codex_app_server"
+    provider.runtime_name === "codex_sdk"
       ? {
           ...provider,
           configured: true,
           available: false,
           status: "not_verified",
-          message: "Codex app-server 已配置，等待真实联通测试。",
-          operations: ["test_connection", "start", "logs", "capabilities"],
-          details: { ui_managed: true },
+          message: "Codex SDK 已配置，等待真实联通测试。",
+          operations: ["test_connection", "capabilities"],
+          details: { provider: "codex-sdk", ui_managed: true },
         }
       : provider,
   ),
@@ -679,6 +679,12 @@ describe("ModelingAgent · 语义建设工作台", () => {
     const composer = screen.getByLabelText("建模目标") as HTMLTextAreaElement;
     expect(composer.value).toContain("dwd_learning_activity_df");
     expect(composer.value).toContain("学情分析事实主题候选");
+    expect(
+      screen.getByText("确认 dwd_learning_activity_df 的字段证据"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("基于学生评论事实表建设评论数语义资产"),
+    ).not.toBeInTheDocument();
     const expectedGoal = composer.value;
 
     fireEvent.click(screen.getByRole("button", { name: /发送/ }));
@@ -774,10 +780,11 @@ describe("ModelingAgent · 语义建设工作台", () => {
     renderAt("/semantic/modeling-copilot/session_1");
 
     expect(screen.getByText("已发现的语义资产")).toBeInTheDocument();
-    expect(screen.getByText("学生评论总数")).toBeInTheDocument();
+    expect(screen.getAllByText("学生评论总数").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("dwd_interaction_comment_reports_df.total_count"),
-    ).toBeInTheDocument();
+      screen.getAllByText("dwd_interaction_comment_reports_df.total_count")
+        .length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("需要你确认")).toBeInTheDocument();
     expect(screen.getByText("学校维度")).toBeInTheDocument();
     // 顶栏 readiness chip 用业务文案而不是英文
@@ -1336,6 +1343,14 @@ describe("ModelingAgent · 语义建设工作台", () => {
     );
   });
 
+  it("来源候选待确认时底部状态不误报所有口径已就绪", () => {
+    activeSessionFixture = SOURCE_CANDIDATE_SESSION;
+    renderAt("/semantic/modeling-copilot/session_source_candidate");
+
+    expect(screen.getByText("等待确认数据来源")).toBeInTheDocument();
+    expect(screen.queryByText("所有口径已就绪")).not.toBeInTheDocument();
+  });
+
   it("批量候选已有语义草稿时，推荐来源卡片降为只读状态", () => {
     const context: WorkbenchCandidateState = {
       workbenchMode: "batch",
@@ -1776,6 +1791,11 @@ describe("ModelingAgent · 语义建设工作台", () => {
     renderAt("/semantic/modeling-copilot/session_1");
 
     expect(screen.getByText("语义已应用 · 待发布")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("chat-workspace")).getByTestId(
+        "release-preview-panel",
+      ),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /发布到语义中心/ }));
     await waitFor(() =>
       expect(publishProposal).toHaveBeenCalledWith({ sessionId: "session_1" }),
@@ -1814,6 +1834,59 @@ describe("ModelingAgent · 语义建设工作台", () => {
       }),
     );
     expect(publishProposal).not.toHaveBeenCalled();
+  });
+
+  it("维度资产发布预演使用当前资产字段生成消费者样例", async () => {
+    activeSessionFixture = {
+      ...ANALYZED_SESSION,
+      user_goal: "基于 dim_school_df 建设学校维度语义资产",
+      entry_type: "table_known",
+      current_proposal_id: "proposal_dim_school",
+      workbench_state: {
+        ...ANALYZED_SESSION.workbench_state,
+        required_confirmations: [],
+        readiness: {
+          canonical_ready: false,
+          exploratory_ready: true,
+          reasons: ["ready_to_publish"],
+        },
+        proposal_summary: { id: "proposal_dim_school", status: "validated" },
+        sandbox_preview: {
+          status: "ready",
+          sample_questions: ["查询业务对象的核心指标"],
+        },
+        raw_spec: {
+          cube: {
+            name: "dim_school",
+            title: "学校维度",
+            source: "df_cb_258187.dim_school_df",
+            dimensions: [
+              { name: "school_name", title: "学校名称", expr: "school_name" },
+              { name: "province_name", title: "省份", expr: "province_name" },
+              { name: "city_name", title: "城市", expr: "city_name" },
+            ],
+            measures: [],
+          },
+        },
+        release_preview: undefined,
+      },
+    };
+    renderAt("/semantic/modeling-copilot/session_1");
+
+    fireEvent.click(screen.getByTestId("saved-card-release-preview"));
+
+    await waitFor(() =>
+      expect(previewRelease).toHaveBeenCalledWith({
+        sessionId: "session_1",
+        body: {
+          sample_questions: [
+            "按省份统计学校数",
+            "按城市统计学校数",
+            "学校维度资产当前覆盖哪些学校",
+          ],
+        },
+      }),
+    );
   });
 
   it("来源或语义草案仍阻塞时禁用「发布到语义中心」", () => {
@@ -2122,6 +2195,25 @@ describe("ModelingAgent · 语义建设工作台", () => {
     expect(within(review).getByText("评论数")).toBeInTheDocument();
     expect(within(review).getByText("comment_id")).toBeInTheDocument();
     expect(within(review).getByText("92%")).toBeInTheDocument();
+  });
+
+  it("字段候选 trace 缺失时从当前语义草案派生候选明细", () => {
+    activeSessionFixture = {
+      ...ANALYZED_SESSION,
+      workbench_state: {
+        ...ANALYZED_SESSION.workbench_state,
+        raw_spec: ANALYZED_SESSION.workbench_state.raw_spec,
+      },
+    };
+    renderAt("/semantic/modeling-copilot/session_1");
+
+    const canvas = screen.getByTestId("field-candidate-main-canvas");
+    const review = within(canvas).getByTestId("field-candidate-review");
+    expect(within(canvas).getByText("3 个候选")).toBeInTheDocument();
+    expect(within(review).getByText("学校名称")).toBeInTheDocument();
+    expect(within(review).getByText("comment_school_name")).toBeInTheDocument();
+    expect(within(review).getByText("total_count")).toBeInTheDocument();
+    expect(within(review).queryByText("等待字段候选")).not.toBeInTheDocument();
   });
 
   it("字段候选主画布忽略异常候选并兼容 selected_role 与字符串置信度", () => {

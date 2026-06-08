@@ -149,7 +149,9 @@ def normalize_build_project_id(value: str | None) -> str:
     slug = "-".join(part for part in slug.split() if part)
     slug = "".join(ch if ch.isalnum() or ch == "-" else "-" for ch in slug)
     slug = "-".join(part for part in slug.split("-") if part).lower()
-    return f"build-{slug}" if slug else "build-project"
+    if not slug:
+        return "build-project"
+    return slug if slug.startswith("build-") else f"build-{slug}"
 
 
 def create_asset_package_id(project_id: str, source: str, package_type: str) -> str:

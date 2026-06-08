@@ -3,10 +3,39 @@
 // P34 - 语义建设工作台快速模式最小闭环 smoke。
 // 业务问题 -> 启动 session -> 处理阻断 -> 审阅字段候选 -> 编辑语义草案 -> 生成语义资产 -> 发布到语义中心。
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { envelope, gotoV2, installApiCatchAll, prepareV2Page } from "./helpers";
 
 const QUESTION = "查询最近7天学生评论数，按学校汇总";
+
+async function expectWorkbenchPageCanScroll(page: Page) {
+  const layout = await page.evaluate(() => {
+    const workbench = document.querySelector(
+      '[data-testid="semantic-modeling-workbench"]',
+    );
+    const workspace = document.querySelector('[data-testid="chat-workspace"]');
+    if (!workbench || !workspace) {
+      throw new Error("缺少工作台布局容器");
+    }
+    const workspaceRect = workspace.getBoundingClientRect();
+    const beforeScrollTop = workbench.scrollTop;
+    workbench.scrollTop = beforeScrollTop + 120;
+    const afterScrollTop = workbench.scrollTop;
+    workbench.scrollTop = beforeScrollTop;
+    return {
+      afterScrollTop,
+      beforeScrollTop,
+      clientHeight: workbench.clientHeight,
+      overflowY: getComputedStyle(workbench).overflowY,
+      scrollHeight: workbench.scrollHeight,
+      workspaceBottom: Math.round(workspaceRect.bottom),
+    };
+  });
+  expect(layout.overflowY).toMatch(/auto|scroll/);
+  expect(layout.scrollHeight).toBeGreaterThan(layout.clientHeight);
+  expect(layout.afterScrollTop).toBeGreaterThan(layout.beforeScrollTop);
+  expect(layout.workspaceBottom).toBeGreaterThan(layout.clientHeight);
+}
 
 type FlowPhase =
   | "created"
@@ -1352,13 +1381,6 @@ test("P1 Build Project 批量语义建设生成真实候选队列 @smoke @p34", 
     .getByRole("button", { name: "进入资产建设画布" })
     .first()
     .click();
-  await expect(page.getByText("已选择批量候选资产")).toBeVisible();
-  const workbenchLink = page.getByRole("link", { name: "打开语义建设工作台" });
-  await expect(workbenchLink).toHaveAttribute(
-    "href",
-    "/semantic/modeling-workbench/build-learning/candidate/build-learning%3Afact%3Adwd-learning-activity-df",
-  );
-  await workbenchLink.click();
 
   await expect(page).toHaveURL(
     /\/semantic\/modeling-workbench\/build-learning\/candidate\/build-learning%3Afact%3Adwd-learning-activity-df$/,
@@ -1374,6 +1396,7 @@ test("P1 Build Project 批量语义建设生成真实候选队列 @smoke @p34", 
   await expect(page.getByText("dwd_learning_activity_df").first()).toBeVisible();
   await expect(page.getByText("一条学习行为事件").first()).toBeVisible();
   await expect(page.getByText("表画像显示行为时间字段完整。")).toBeVisible();
+  await expectWorkbenchPageCanScroll(page);
   await expect(page.getByLabel("建模目标")).toHaveValue(
     /dwd_learning_activity_df/,
   );

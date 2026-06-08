@@ -58,15 +58,26 @@ class ModelingBuildProjectService:
         name = self._required_text(payload, "name", fallback=payload.get("business_domain"))
         business_domain = self._required_text(payload, "business_domain", fallback=name)
         scope = dict(payload.get("scope") or {})
-        project_id = normalize_build_project_id(str(payload.get("id") or name))
+        explicit_project_id = bool(str(payload.get("id") or "").strip())
+        base_project_id = normalize_build_project_id(str(payload.get("id") or name))
         batch_run_id = self._normalize_batch_run_id(scope.get("batch_run_id"))
-        if batch_run_id and not payload.get("id"):
-            project_id = f"{project_id}-{batch_run_id}"
-        existing = self.repository.get_project(project_id)
-        if existing is not None:
-            if existing.created_by and existing.created_by != principal_id:
+        project_id = base_project_id
+        for candidate_id in self._project_id_candidates(
+            base_project_id,
+            explicit_project_id=explicit_project_id,
+            batch_run_id=batch_run_id,
+            principal_id=principal_id,
+        ):
+            existing = self.repository.get_project(candidate_id)
+            if existing is None:
+                project_id = candidate_id
+                break
+            if not existing.created_by or existing.created_by == principal_id:
+                return self._dump_project(existing)
+            if explicit_project_id:
                 raise PermissionError("Build Project ID 已被其他用户占用")
-            return self._dump_project(existing)
+        else:
+            raise PermissionError("Build Project ID 已被其他用户占用")
         project = ModelingBuildProject(
             id=project_id,
             name=name,
@@ -619,6 +630,27 @@ class ModelingBuildProjectService:
         if normalized.startswith("build-"):
             normalized = normalized[len("build-") :]
         return normalized[:64] or None
+
+    def _project_id_candidates(
+        self,
+        base_project_id: str,
+        *,
+        explicit_project_id: bool,
+        batch_run_id: str | None,
+        principal_id: str | None,
+    ) -> list[str]:
+        if explicit_project_id:
+            return [base_project_id]
+        primary_id = f"{base_project_id}-{batch_run_id}" if batch_run_id else base_project_id
+        owner_scoped_id = f"{base_project_id}-{self._project_owner_suffix(principal_id)}"
+        if batch_run_id:
+            owner_scoped_id = f"{owner_scoped_id}-{batch_run_id}"
+        return list(dict.fromkeys([primary_id, owner_scoped_id]))
+
+    def _project_owner_suffix(self, principal_id: str | None) -> str:
+        owner = str(principal_id or "anonymous").strip() or "anonymous"
+        digest = hashlib.sha256(owner.encode("utf-8")).hexdigest()[:8]
+        return f"u-{digest}"
 
 
 def _field_group_fingerprint(field_ids: set[str]) -> str:

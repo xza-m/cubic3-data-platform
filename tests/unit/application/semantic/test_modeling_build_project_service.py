@@ -14,6 +14,7 @@ def test_normalize_build_project_id_is_stable():
     assert normalize_build_project_id(" 学情 分析 ") == "build-xue-qing-fen-xi"
     assert normalize_build_project_id("") == "build-project"
     assert normalize_build_project_id("batch_2026") == "build-batch-2026"
+    assert normalize_build_project_id("build-xue-qing-fen-xi") == "build-xue-qing-fen-xi"
 
 
 def test_build_project_defaults_to_semantic_center_target():
@@ -339,7 +340,7 @@ def test_build_project_service_rejects_cross_user_access():
         service.get_project(project["id"], principal_id="bob")
 
 
-def test_build_project_service_does_not_overwrite_duplicate_project_owner():
+def test_build_project_service_isolates_auto_generated_project_id_when_base_owned_by_other_user():
     from app.application.semantic.modeling_build_project_service import (
         ModelingBuildProjectService,
     )
@@ -358,9 +359,33 @@ def test_build_project_service_does_not_overwrite_duplicate_project_owner():
     assert same_owner["id"] == first["id"]
     assert repo.get_project(first["id"]).created_by == "alice"
 
+    cross_owner = service.create_project(
+        {"name": "学情分析", "business_domain": "学情分析"},
+        principal_id="bob",
+    )
+
+    assert cross_owner["id"] != first["id"]
+    assert cross_owner["id"].startswith("build-xue-qing-fen-xi-u-")
+    assert repo.get_project(cross_owner["id"]).created_by == "bob"
+    assert repo.get_project(first["id"]).created_by == "alice"
+    assert repo.get_project(first["id"]).business_domain == "学情分析"
+
+
+def test_build_project_service_rejects_explicit_cross_user_project_id():
+    from app.application.semantic.modeling_build_project_service import (
+        ModelingBuildProjectService,
+    )
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)
+    first = service.create_project(
+        {"name": "学情分析", "business_domain": "学情分析"},
+        principal_id="alice",
+    )
+
     with pytest.raises(PermissionError, match="Build Project ID 已被其他用户占用"):
         service.create_project(
-            {"name": "学情分析", "business_domain": "其他域"},
+            {"id": first["id"], "name": "学情分析", "business_domain": "其他域"},
             principal_id="bob",
         )
     assert repo.get_project(first["id"]).created_by == "alice"
