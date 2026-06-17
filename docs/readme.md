@@ -28,6 +28,8 @@ last_reviewed: 2026-05-13
 - [v2 路由与 API 契约审计](quality/frontend-v2-route-api-audit.md)：v2 cutover 后的路由、API 承接关系与已知缺口
 - [评审规则](quality/review.md)：测试通过后，哪些情况下仍不应合并
 - [本地开发运行手册](runbooks/local-dev.md)：本地联调、专项验证与环境就绪要求
+- [cubic3-dp CLI 使用手册](runbooks/cubic3-dp-cli.md)：CLI 安装、构建、验证与轻量分层边界
+- [生产验收手册](runbooks/production-acceptance.md)：Phase 4/5/6 外设联调与单机 Docker 全栈验收清单
 - [文档对齐报告](DOC_ALIGNMENT_REPORT.md)：哪些文档可信、哪些只是历史记录
 - [语义中心验证流程](semantic_verification.md)：语义中心固定验证流程
 - [语义层统一术语表](semantic-glossary.md)：团队统一术语、页面与需求沟通默认口径
@@ -51,9 +53,11 @@ last_reviewed: 2026-05-13
 - 查看前端 v2 路由/API 对齐情况：[quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 - 查看评审拒绝条件：[quality/review.md](quality/review.md)
 - 查看本地联调与专项运行前提：[runbooks/local-dev.md](runbooks/local-dev.md)
+- 使用或发布 `cubic3-dp` CLI：[runbooks/cubic3-dp-cli.md](runbooks/cubic3-dp-cli.md)
+- 执行生产验收与外设联调：[runbooks/production-acceptance.md](runbooks/production-acceptance.md)
 - 执行日常知识库维护：[KNOWLEDGE_BASE_MAINTENANCE_SOP.md](KNOWLEDGE_BASE_MAINTENANCE_SOP.md)
 - 查看语义中心专项验证：[semantic_verification.md](semantic_verification.md)
-- 语义建模 Copilot（后端事实）：唯一 Copilot 会话 API 是 `/api/v1/semantic/modeling-copilot/sessions/*`，旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路不再作为新的建模助手产品入口或公开会话 API；迁移期 Proposal API client、types、hooks 和 `SemanticModelingAgentSpec` 构建期类型可继续作为兼容面存在；候选来源优先使用数据资产底座提供的 `AssetRef + EvidenceBundle`，spec 生成优先读取 `schema_snapshot`，缺失时才走 datasource adapter fallback；`business_question` 入口下若 `candidate_table` / `table` 为 `project.table` 全限定名，会规范为 `physical_table` 并补默认 MaxCompute `source_id`，再由内部 `SemanticModelDraftBuilder` 确定性生成和校验草案；学生评论等高置信场景首轮走确定性 fast path 直接生成 spec，不依赖 LLM 才能进入审阅；学生评论候选来源会优先锁定 `df_cb_258187.dwd_interaction_comment_reports_df`，`view_student_answer_analysis` 等答题分析视图只可作为低优先级噪声，不应保存为最终 Proposal 源；Copilot 在保存 / 校验前会补齐 measure、grain、time_dimension、additivity、binding_status、policy 和最小证据包；Chat 内"使用推荐 / 接受 Cube 草稿 / 解释阻塞项"是确定性动作，不触发 LLM；工具注册须使用 `SemanticModelDraftBuilder`，勿误绑仅含校验矩阵的 Builder。
+- 语义建模 Copilot（后端事实）：唯一 Copilot 会话 API 是 `/api/v1/semantic/modeling-copilot/sessions/*`，旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路不再作为新的建模助手产品入口或公开会话 API；旧 `/semantic/modeling-agent/proposals/*` 前端直连 client / hooks 已清理，构建期 `SemanticModelingAgentSpec` 类型仅作为 Copilot session 的 raw spec 契约存在；候选来源优先使用数据资产底座提供的 `AssetRef + EvidenceBundle`，spec 生成优先读取 `schema_snapshot`，缺失时才走 datasource adapter fallback；`business_question` 入口下若 `candidate_table` / `table` 为 `project.table` 全限定名，会规范为 `physical_table` 并补默认 MaxCompute `source_id`，再由内部 `SemanticModelDraftBuilder` 确定性生成和校验草案；学生评论等高置信场景首轮走确定性 fast path 直接生成 spec，不依赖 LLM 才能进入审阅；学生评论候选来源会优先锁定 `df_cb_258187.dwd_interaction_comment_reports_df`，`view_student_answer_analysis` 等答题分析视图只可作为低优先级噪声，不应保存为最终 Proposal 源；Copilot 在保存 / 校验前会补齐 measure、grain、time_dimension、additivity、binding_status、policy 和最小证据包；Chat 内"使用推荐 / 接受 Cube 草稿 / 解释阻塞项"是确定性动作，不触发 LLM；工具注册须使用 `SemanticModelDraftBuilder`，勿误绑仅含校验矩阵的 Builder。
 - 查看语义层术语与统一口径：[semantic-glossary.md](semantic-glossary.md)
 - 查看产品范围与需求背景：[PRD 目录](prd/README.md)
 - 查看设计参考与工作草案：[reference-design/README.md](reference-design/README.md)
@@ -79,6 +83,7 @@ last_reviewed: 2026-05-13
 - [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 - [quality/review.md](quality/review.md)
 - [runbooks/local-dev.md](runbooks/local-dev.md)
+- [runbooks/cubic3-dp-cli.md](runbooks/cubic3-dp-cli.md)
 - [DOC_ALIGNMENT_REPORT.md](DOC_ALIGNMENT_REPORT.md)
 - [semantic_verification.md](semantic_verification.md)
 - [KNOWLEDGE_BASE_GOVERNANCE.md](KNOWLEDGE_BASE_GOVERNANCE.md)
@@ -143,7 +148,8 @@ last_reviewed: 2026-05-13
 11. [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 12. [quality/review.md](quality/review.md)
 13. [runbooks/local-dev.md](runbooks/local-dev.md)
-14. [frontend/README.md](../frontend/README.md)
+14. [runbooks/cubic3-dp-cli.md](runbooks/cubic3-dp-cli.md)
+15. [frontend/README.md](../frontend/README.md)
 
 ## 6. 维护规则
 

@@ -26,6 +26,12 @@ last_reviewed: 2026-05-06
 - Superset
 - 阿里云 OSS
 
+飞书权限方案 B 启动时建议提前准备：
+
+- `FEISHU_ADMIN_OPEN_IDS`：首批权限管理员。
+- `FEISHU_M2_READER_OPEN_IDS`：默认获得 M2 查询权限的飞书白名单，支持 `open_id`、`union_id` 或 `principal_id`。
+- `FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST`：默认 `true`，复用 CUBIC3 智能问数 `allowed_user_ids` 作为默认 M2 白名单。
+
 建议首次进入仓库先执行：
 
 ```bash
@@ -58,7 +64,7 @@ Phase 1 当前验证通过的主链路基线为：
 说明：
 
 - `/queries/editor` 等旧查询子页只保留兼容重定向
-- `/semantic/tools`、`/semantic/overview` 等旧语义入口只保留兼容重定向
+- 语义中心以 `/semantic/modeling-workbench`、`/semantic/assets`、`/semantic/cubes`、`/semantic/ontology`、`/semantic/relations`、`/semantic/domains`、`/semantic/workbench` 为当前入口；`/semantic/tools`、`/semantic/overview` 等旧语义入口不再注册兼容重定向
 
 ## 3. 启动模式
 

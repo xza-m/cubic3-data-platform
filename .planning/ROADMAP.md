@@ -25,11 +25,16 @@
 
 ## Current Position
 
-- Phase 1 已于 2026-03-25 完成执行，4 个 plan 均已生成 summary 并附验证记录。
-- Phase 2 已于 2026-03-26 完成执行，4 个 plan 均已生成 summary，并已通过定向 pytest、语义专项前端单测、Playwright 回归、前端 typecheck 与文档影响检查。
-- 仓库级 `make verify-semantic` 仍受当前脏工作区中无关页面的前端 lint 错误阻塞，需在 Phase 外单独清理。
-- Phase 3 已于 2026-03-26 完成 discuss 与 plan，`03-CONTEXT.md`、`03-RESEARCH.md`、`03-VALIDATION.md` 与 4 个 `PLAN.md` 已生成。
-- 当前下一步是执行 Phase 3，围绕 `DevTools` 调试闭环、查询可信证据包、历史回放，以及物化 / 漂移摘要收敛落地实现。
+> 对齐时间：2026-06-10（Phase 3-6 收尾方案执行后更新）。2026-03 之后大量能力通过 roadmap 外主线（语义建设工作台 / Modeling Copilot、semantic release 治理、权限中心、query gateway、架构优化六阶段）落地。
+
+- Phase 1 / Phase 2：已完成（2026-03-25 / 2026-03-26），结论不变。
+- Phase 3（语义运行闭环与查询可信）：**已达成（D-09 口径修订）**。compile/query 返回 `definition_hash` + 稳定 `error_code` 分类（dsl_validate / compile / datasource_binding / sql_syntax / permission / timeout / schema_mismatch 等 + hint）；`DiagnoseRun` 记录定义版本（migration 0010）；DevTools 新增「查询执行」Tab 展示标准证据包（SQL / 主关联对象 / 结果样本 / 行数 / 耗时 / 错误分类 / 定义版本）；CompilePanel 传完整 JSON DSL；诊断历史一键回放（前端回填）；URL 深链 `?tab=query&object=<cube>`。**D-09 裁剪决策**：不把物化动作硬搬进 DevTools——ViewDetail「触发物化」保留为运营动作，CubeDetail / ViewDetail 增加「去 DevTools 调试」深链承担调试与证据职责；即"DevTools 是唯一调试与证据入口，但不是唯一运营动作入口"，取代原 D-01"唯一正式运行入口"表述。
+- Phase 4（应用模板与实例消费）：**代码侧完成，外设验收基本通过（2026-06-11 更新）**。env.sample 补 `AGENT_CODEX_*` 段；compose 透传 `SUPERSET_*`；订阅 trigger → delivery → channel 合约测试落地（失败写 `SubscriptionDeliveryLog`）。真实联调（见 `docs/runbooks/production-acceptance.md`）：飞书渠道真实送达 + 交付日志 ✅；schema_drift_check 复跑 ✅；anomaly_monitor 真实业务监控实例（举报量阈值告警）触发并送达飞书 ✅（修复 executor `context.instance` 属性错误）；bi_dashboard_push ✅（2026-06-11 下午：Superset db 账号可用，executor 重构为真实 API 合约——原实现调用不存在的 screenshot 端点；截图因部署侧未开 `EnableDashboardScreenshotEndpoints`/`THUMBNAILS` 降级为链接推送，订阅送达飞书成功）。
+- Phase 5（受控智能问数验证）：**代码侧完成，主链路真实出数已打通并经正式建模链路复现（2026-06-11）**。三层回退（semantic router → agent → legacy LLM）统一写 `Message.source` 与 `via_semantic_layer`（migration 0010）；legacy 回答前置「未经语义层验证」标注；三层全部补写 `agent_query_log`；DataChat 来源徽标 + semantic plan trace。真实联调：2026-06-10 本地 gateway 首跑 `total_count=434249`；2026-06-11 Modeling Copilot 正式链路发布（Release 11）后经远程线上 gateway（10.1.20.87）复现 `total_count=435910`（instance `20260611064350701g48ay1685s1`）。累计修复 6 个真实缺陷（policy decision_id 回写、published cube 状态强制 active、execute 端 principal 解析对齐、measure 聚合不再双重包裹、runtime catalog 不识别单数 `ontology.object`、ontology 资产 draft 状态未提升 active）；飞书 P2P 一问一答已于 2026-06-11 傍晚真人联调通过（Agent Loop 降级 SQL 直查 MaxCompute 出数，交互卡片送达，`agent_query_log` 落库）。
+- Phase 6（DataAgent 验证与生产收敛）：**验收通过（2026-06-11）**。`docker compose up` 全栈（nginx/backend/rq_worker×2/postgres/redis）启动健康，migration 0010 head，核心链路 smoke（登录 → 数据源 → 语义 compile/query 证据包 → 订阅交付）通过；镜像内 Codex CLI 0.133.0 可用；codex_sdk 真实 run 通过（review_proposal run succeeded，复审输出为真实语义判断而非 mock）。
+- 本轮验收发现并修复两个真实缺陷：① `QueryCompiler` 硬编码反引号别名导致 PostgreSQL 源 SQL 非法（新增 `SQLDialect.quote_identifier`）；② Cube 定义更新后查询服务 compiler/JoinGraph 缓存不失效（`_after_save` 同步失效查询缓存）。
+- Roadmap 外已完成主线（2026-03 后）：语义建设工作台 / Modeling Copilot（含批量建模）、semantic release 治理与发布预览、轻量权限中心（ADR-013，access + governance）、dw-query-gateway 对接、架构与交互优化六阶段（2026-06，后端 ≈8.5 / 前端 ≈9.0，含错误处理统一、copilot 服务拆分、ConfirmDialog、i18n 中文单语收敛、ModelingAgent 拆分、IA/权限门控/全局搜索）。
+- 剩余阻塞项（2026-06-11 傍晚最终更新，见 `docs/runbooks/production-acceptance.md` §6）：Codex run ✅、anomaly_monitor ✅、正式建模链路重发布 ✅、bi_dashboard_push ✅、飞书 P2P 问数 ✅ 全部解除，**单机 Docker 生产验收关账**。可选改进：旧 YAML cube `source_id` 失效绑定清理、Superset 截图 feature flag、cubic3 独立飞书应用（与 hermes 共存）。
 
 ## Phase Success Criteria
 

@@ -216,7 +216,7 @@ app/
 - `语义建设工作台会话 API（内部 Copilot 命名）`
   - 语义建设工作台位于 `/semantic/modeling-workbench`，是语义中心的建设入口；内部历史 API 仍使用 `/api/v1/semantic/modeling-copilot/sessions/*` 作为迁移期会话契约，不代表产品主名。旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路已下线，不再作为新的建模助手产品入口或公开会话 API
   - `/api/v1/semantic/modeling-workbench/projects/*` 是 Build Project / Asset Package API，只负责冷启动建设项目和候选资产队列；不持久化正式语义资产，不执行 SQL，不替代 `/api/v1/semantic/modeling-copilot/sessions/*` 的单资产会话链路
-  - 迁移期 Proposal 兼容面仍可保留为内部 / 前端兼容 client、types、hooks，例如 Proposal API 与 `SemanticModelingAgentSpec` 构建期类型；这些兼容面不代表新的产品入口或公开会话契约
+  - 旧 `/semantic/modeling-agent/proposals/*` 前端直连 client / hooks 已清理；`SemanticModelingAgentSpec` 构建期类型仅保留为 Copilot session raw spec 契约，不代表新的产品入口或公开会话契约
   - 应用层内部 `SemanticModelDraftBuilder` 继续承接确定性 spec 生成、候选资产确认、校验、保存 Proposal 和发布门禁材料组装
   - 数据资产底座只向 Copilot 提供元数据事实、`AssetRef` 与 `EvidenceBundle`；草案生成优先使用 `schema_snapshot`，缺失时才走 datasource adapter fallback
   - 发布前门禁用于构建页沙盒确认 Cube 已可执行、Ontology 已发布且业务指标能绑定真实 Cube Measure；它不替代正式 `/api/v1/agent/semantic/plan`
@@ -233,7 +233,7 @@ app/
 
 当前前端已把这条主链收口到顶层构建任务流与两个工作台的最小联动：
 
-- `语义建设工作台` 位于 `/semantic/modeling-workbench`、`/semantic/modeling-workbench/quick` 与 `/semantic/modeling-workbench/:projectId/candidate/:candidateId`，作为语义中心建设入口；内部历史 API 仍使用 `/api/v1/semantic/modeling-copilot/sessions/*` 作为迁移期会话契约，不代表产品主名。旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 仅保留兼容重定向，不再作为产品主入口
+- `语义建设工作台` 位于 `/semantic/modeling-workbench`、`/semantic/modeling-workbench/quick` 与 `/semantic/modeling-workbench/:projectId/candidate/:candidateId`，作为语义中心建设入口；内部历史 API 仍使用 `/api/v1/semantic/modeling-copilot/sessions/*` 作为迁移期会话契约，不代表产品主名。旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 不再注册兼容重定向，不作为产品入口
 - `业务语义工作台` 可从对象投影视图直接跳到 `语义工作台 / Cube 管理`
 - `语义工作台` 可从 Cube 标题区回看来源业务对象
 - stale / impact 告警已在 `业务语义工作台` 收口为可定位的实体提示
@@ -284,7 +284,7 @@ frontend/src/
 
 - `/dashboard`
 - `/data-center/*`
-- `/extraction/*`
+- `/data-center/sync/*`
 - `/queries`
 - `/queries/*`
 - `/data-chat`（当前 v2 占位）
@@ -303,16 +303,16 @@ frontend/src/
 
 - 首页工作台不再由前端拼装多组统计请求，统一消费 `/api/v1/dashboard/overview`
 - 查询中心旧入口 `/queries/editor`、`/queries/templates` 只保留兼容重定向；`/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是当前有效子路由
-- 语义中心当前以 `/semantic/modeling-workbench` 作为语义建设冷启动主入口，以 `/semantic/ontology` 作为业务语义主入口，覆盖对象、指标、关系、治理和工作台总览；`/semantic/workbench` 当前承接语义诊断 / DevTools；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 只保留兼容重定向
+- 语义中心当前以 `/semantic/modeling-workbench` 作为语义建设冷启动主入口，以 `/semantic/ontology` 作为业务语义主入口，覆盖对象、指标、关系、治理和工作台总览；`/semantic/workbench` 当前承接语义诊断 / DevTools；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 不再注册兼容重定向
 - `/semantic/cubes`、`/semantic/domains`、`/semantic/views/:name` 继续作为物理语义资产、业务上下文资产画布与 View 入口
-- `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 当前保留为真实 v2 页面；`/semantic/tools`、`/semantic/overview` 等旧别名会重定向到当前入口
+- `/semantic/cubes/new`、`/semantic/cubes/:name/edit` 当前保留为真实 v2 页面；`/semantic/tools`、`/semantic/overview` 等旧别名不再注册兼容重定向
 - v2 路由/API 详细审计见 [quality/frontend-v2-route-api-audit.md](quality/frontend-v2-route-api-audit.md)
 
 其中数据中心当前基线为：
 
-- 数据源：`PostgreSQL`、`MaxCompute`
-- 数据集注册：`physical / virtual / file`
-- 文件数据集：`CSV / XLS / XLSX`
+- 连接类型：`PostgreSQL`、`MaxCompute`
+- 资产登记类型：库表 / 虚拟 SQL / 文件
+- 文件资产：`CSV / XLS / XLSX`
 
 ## 6. 当前接口分区
 
@@ -346,7 +346,8 @@ frontend/src/
 需要特别注意：
 
 - `/api/docs/openapi.json` 是当前唯一 OpenAPI 输出入口：由 Flask `url_map` 扫描生成路径，再通过轻量显式元数据补充核心接口的 request / response schema、Agent 风险字段和权限语义；不通过 FastAPI 或重新注册路由生成第二套契约。
-- 第一阶段 Agent-ready 契约强制覆盖数据源元数据读取、语义路由预演、执行编译预览、治理审计查询和 `/api/v1/agent/semantic/plan` official Runtime 主入口。
+- 第一阶段 Agent-ready / CLI-ready 契约强制覆盖数据源元数据读取、数据资产 radar / tables / fields / evidence / sync-runs、语义路由预演、执行编译预览、语义 Runtime health、治理审计查询和 `/api/v1/agent/semantic/plan` official Runtime 主入口；`POST /api/v1/semantic/assets/sync-runs` 标记为 `write + requires_confirmation`，只应在明确人工确认或运维脚本上下文中触发。
+- OpenAPI schema 以 3.0.3 兼容为准：可空字段使用 `nullable: true`，多类型结构使用 `oneOf`，不使用 JSON Schema 风格的数组型 `type`；`make typecheck-contracts` 会阻断这类漂移。
 - Agent 自动调用准入以 OpenAPI 扩展字段为准：只有 `x-side-effect=none`、`x-requires-confirmation=false` 且权限范围明确的接口可作为自动调用候选；预览、执行、发布、写入、删除类接口即使可读 schema，也必须由 Agent 按风险字段走确认或仅生成计划。
 - 健康检查路径是 `/health`，不是 `/api/v1/health`
 - 数据中心 API 使用 `/api/v1/data-center/*`
@@ -360,7 +361,7 @@ frontend/src/
   - `/api/v1/execution-compiler/*`：统一的 SQL / Retrieval / Tool 执行预览、计划预览与最小运行时执行
   - `/api/v1/agent/semantic/plan`：Agent-first official Runtime 主入口，返回 `runtime_mode / business_intent / projection_result / resolved_bindings / compiled_targets / policy_decision / semantic_trace` 与 preview-only ticket
   - `/api/v1/agent/semantic/execute`：Agent-first 查询执行入口，提交受治理查询到 `dw-query-gateway`，返回 gateway query id/status
-- `/api/v1/semantic/modeling-copilot/sessions/*`：语义建设工作台的唯一公开 session API，负责对话状态、候选资产确认、Proposal Review、保存、只读 release-preview 和发布门禁投影；其中 `/release-preview` 只生成发布预演材料，不执行真实查询、不 apply、不 publish。发布预演必须先把候选 Spec 投影为临时 runtime manifest，并在语义中心统一编译模块完成 Spec 到物理 SQL 的编译，再由 gateway 校验物理 SQL；gateway 不承接语义 Spec 或业务语义 Query Plan。内部 spec 生成与校验继续由 `SemanticModelDraftBuilder` 承接；旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路已下线，不再作为新的建模助手产品入口或公开会话 API。迁移期 Proposal API client、types、hooks 和 `SemanticModelingAgentSpec` 构建期类型可继续作为兼容面存在，但不代表新的公开会话契约
+- `/api/v1/semantic/modeling-copilot/sessions/*`：语义建设工作台的唯一公开 session API，负责对话状态、候选资产确认、Proposal Review、保存、只读 release-preview 和发布门禁投影；其中 `/release-preview` 只生成发布预演材料，不执行真实查询、不 apply、不 publish。发布预演必须先把候选 Spec 投影为临时 runtime manifest，并在语义中心统一编译模块完成 Spec 到物理 SQL 的编译，再由 gateway 校验物理 SQL；gateway 不承接语义 Spec 或业务语义 Query Plan。内部 spec 生成与校验继续由 `SemanticModelDraftBuilder` 承接；旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路已下线，不再作为新的建模助手产品入口或公开会话 API。旧 `/semantic/modeling-agent/proposals/*` 前端直连 client / hooks 已清理，`SemanticModelingAgentSpec` 构建期类型仅保留为 Copilot session raw spec 契约
 - `/api/v1/semantic/domains/<domain_id>/context-preview`：Domain 业务上下文预览接口，只返回候选范围和 Agent 沙盒提示，不作为执行时 Join 或指标真相源
 - `/semantic/ontology`：业务语义工作台前端首期版本，已覆盖对象、属性、关系、动作、业务指标、术语、语义权限的最小建模与投影预览
 

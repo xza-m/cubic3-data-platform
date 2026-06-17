@@ -87,10 +87,10 @@ Build Project
 
 旧入口处理：
 
-- `/semantic/modeling-copilot/new` 不再作为产品主入口，首期已兼容重定向到 `/semantic/modeling-workbench/quick`。
-- `/semantic/modeling-copilot/batch` 不再作为独立产品主入口，首期已兼容重定向到 `/semantic/modeling-workbench` 的批量项目视图。
-- `/semantic/modeling-copilot/:sessionId` 不再作为独立会话页，首期已兼容重定向到 `/semantic/modeling-workbench/quick?sessionId=:sessionId`，会话只作为工作台内部状态。
-- 当前 P2 MVP 的稳定验证入口已收敛到 `/semantic/modeling-workbench`，旧 Copilot 路由仅保留兼容跳转，不代表长期导航结构。
+- `/semantic/modeling-copilot/new` 不再作为产品主入口，不注册兼容重定向。
+- `/semantic/modeling-copilot/batch` 不再作为独立产品主入口，不注册兼容重定向。
+- `/semantic/modeling-copilot/:sessionId` 不再作为独立会话页，不注册兼容重定向；会话只作为工作台内部状态。
+- 当前 P2 MVP 的稳定验证入口已收敛到 `/semantic/modeling-workbench` 与 `/semantic/modeling-workbench/quick`，旧 Copilot UI 路由直接下线，避免同一能力存在多套入口心智。
 
 ## 6. 页面结构
 
@@ -224,9 +224,9 @@ gateway SQL dry-run 已配置并返回 `passed` 时的契约示例：
 
 当前已落地：
 
-- `/semantic/modeling-workbench` 前端批量建设范围 intake，旧 `/semantic/modeling-copilot/batch` 兼容重定向到该入口。
+- `/semantic/modeling-workbench` 前端批量建设范围 intake，旧 `/semantic/modeling-copilot/batch` 不再注册。
 - 扫描计划预览、候选资产队列和资产建设画布接续入口。
-- 快速单资产模式 `/semantic/modeling-workbench/quick`，旧 `/semantic/modeling-copilot/new` 兼容重定向到该入口。
+- 快速单资产模式 `/semantic/modeling-workbench/quick`，旧 `/semantic/modeling-copilot/new` 不再注册。
 
 主要偏离：
 

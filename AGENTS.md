@@ -52,6 +52,7 @@
 - `AGENTS.md` 只定义验证原则、完成标准和统一入口引用，不维护路径匹配、规则表或执行脚本细节；具体验证规则见 `docs/quality/testing.md`，自动路由由 `scripts/checks/changed_validation.py` 读取规则表执行。
 - 四层校验语义固定如下：`make lint` 只负责静态检查，`make typecheck` 只负责类型与接口检查，`make test` 只负责自动化测试，`make smoke` 只负责运行验证；不要把不同层的逻辑重新混回一个黑箱脚本。
 - 不要把仓库工作流绑定到特定 agent 框架；需要规划流程时，把设计说明落到 `docs/prd/`、`docs/architecture/` 或对应专题文档。
+- 后端新实体禁止继承 `db.Model`：领域行为放 `app/domain/entities/`（纯 Python），ORM 列定义放 `app/infrastructure/models/`；示范模块见 `app/domain/entities/datasource_behavior.py` 与 `app/infrastructure/models/datasource.py`。
 
 ## 4. 完成标准
 

@@ -123,7 +123,7 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 
 - 默认前端 smoke：`make smoke-frontend`，底层为 `npm run e2e:smoke`，覆盖 v2 cutover 的低副作用关键路径。
 - 语义专项 smoke：`make smoke-semantic`，覆盖领域创建、领域发布、治理问题、数据资产底座四条真实后端链路，以及 P34 Modeling Copilot 对话闭环。
-- 语义建设工作台专项：`make test-modeling-agent`，覆盖内部 `SemanticModelDraftBuilder`、Copilot session API、候选资产确认、spec 生成、保存 Proposal、发布门禁、`Domain context-preview` 上下文预览，以及 `/semantic/modeling-workbench` / `/semantic/modeling-workbench/quick` 顶层任务流与旧 Copilot 入口兼容重定向。
+- 语义建设工作台专项：`make test-modeling-agent`，覆盖内部 `SemanticModelDraftBuilder`、Copilot session API、候选资产确认、spec 生成、保存 Proposal、发布门禁、`Domain context-preview` 上下文预览，以及 `/semantic/modeling-workbench` / `/semantic/modeling-workbench/quick` 顶层任务流；旧 Copilot UI 入口不再注册兼容重定向。
 - Agent-first Runtime 专项：后端单测覆盖 `/api/v1/agent/semantic/plan` 固定 `runtime_mode=official`、official 必须命中 active SQL runtime snapshot，且 router / mapper / compiler 直接从 snapshot manifest 的 published `spec` 还原语义 catalog；active Ontology、Glossary canonical entity 必须 active，YAML 同名资产不得 fallback，stale measure 与非 active Cube 编译阻断；学生评论真实资产回归覆盖 `Ontology -> Binding -> QueryDSL -> SQL`，要求“最近 N 天”时间过滤和“按学校汇总”维度分组进入最终 SQL。
 - Gateway 边界专项：覆盖 `/api/v1/agent/semantic/execute` 提交 gateway、OpenAPI 不暴露本仓内部执行面、查询工作台继续走 DataSource Adapter SPI，确保正式查询不会回落到本仓本地执行链路。
 - Modeling Copilot 后端回归：
@@ -138,8 +138,8 @@ Round 4 D+21 后，legacy `make test-regression-semantic` 与 `make semantic-lay
 - `p24-cube-browse-smoke.spec.ts`：Cube 管理首屏。
 - `p25-domain-catalog-smoke.spec.ts`：Domain 目录首屏。
 - `p26-ontology-workbench-smoke.spec.ts`：`/semantic/ontology` 工作台结构。
-- `p29-legacy-redirect-smoke.spec.ts`：语义旧入口重定向。
-- `p34-modeling-agent-smoke.spec.ts`：语义建设工作台从业务问题到口径确认、Spec 编辑、应用语义、确认发布的闭环；同时覆盖批量候选审阅、旧 Copilot 入口兼容重定向，以及没有可复用 Cube 时的候选来源确认 -> 确定性生成 Spec 分支。
+- `p29-legacy-redirect-smoke.spec.ts`：查询旧深链重定向，以及旧语义入口不再注册的路由边界。
+- `p34-modeling-agent-smoke.spec.ts`：语义建设工作台从业务问题到口径确认、Spec 编辑、应用语义、确认发布的闭环；同时覆盖批量候选审阅、旧 Copilot UI 入口不再注册，以及没有可复用 Cube 时的候选来源确认 -> 确定性生成 Spec 分支。
 
 底层 `make smoke-semantic` 会继续执行：
 

@@ -1,14 +1,16 @@
 ---
 doc_type: architecture
-status: proposed
-source_of_truth: secondary
+status: current
+source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-29
+last_reviewed: 2026-06-09
 ---
 
 # 访问网关与 MaxCompute RAM 权限闭环
 
 本文档记录 `data-platform` 与独立 `dw-query-gateway` 到 MaxCompute 的权限路径方案。当前阶段 `data-platform` 只实现治理面和管理 UI，不在平台内实现 gateway runtime，也不保存真实 MaxCompute RAM 凭据。
+
+本方案已由 [ADR-013 固定轻量权限中心与网关执行闭环](decisions/ADR-013-lightweight-access-governance.md) 采纳为当前权限体系边界。
 
 ## 1. 目标边界
 
@@ -245,9 +247,7 @@ Metrics 最小集合：
 
 | data-platform BFF | gateway 来源 | 用途 |
 | --- | --- | --- |
-| `/api/v1/governance/gateway/summary` | `/api/v1/telemetry/gateway/summary` | 规整 query count、稳定性、队列、等待耗时、timeout、export、spool 等运行态指标；真实 gateway 返回的 `runtime` 嵌套字段需要展开给前端 |
-| `/api/v1/governance/gateway/query-runs` | `/api/v1/telemetry/gateway/query-runs` | 展示最近查询、trace、principal、data level、执行画像、状态和物理拒绝 |
-| `/api/v1/governance/gateway/alerts` | `summary + /readyz` | 对控制台做基础告警评价，不替代 gateway 侧诊断和外部告警投递 |
+| `/api/v1/governance/gateway/observability` | `/api/v1/telemetry/gateway/overview`、`/timeseries`、`/breakdowns`、`/contract-completeness`、`/result-export-storage`、`/security`、`/workers`、`/query-runs` | 新版看板主入口：一次性返回 overview、小时级趋势、维度分布、契约完整度、结果/导出/存储、安全、Worker 和最近执行记录；data-platform 只做 BFF 聚合与字段规整 |
 
 基础告警规则：
 
@@ -257,6 +257,8 @@ Metrics 最小集合：
 - `max_current_queue_wait_ms > 0`：预警；`>= 300000ms`：严重告警。
 - `avg_queue_wait_ms >= 60000ms`：预警；`>= 300000ms`：严重告警。
 - `timeout_count / rejected_count / export_failure_count / publish_conflict_count >= 1`：预警。
+- `invalid_token_count / missing_token_count / credential_missing_count / credential_invalid_count >= 1`：预警。
+- `worker_capacity > 0` 且 `live_worker_count <= 0`：严重告警。
 
 部署配置：
 
@@ -271,10 +273,10 @@ Metrics 最小集合：
 | 二级菜单 | 类别 | 目标 | 内容 |
 | --- | --- | --- | --- |
 | 权限管理 | 权限 | 管理“谁能访问什么” | 成员权限、机器人接入、数据访问规则 |
-| 权限审计 | 权限 | 查看权限审批、策略判定和治理要求 | 审批记录、最近权限判定、拦截记录 |
+| 权限审计 | 权限 | 查看策略判定、治理要求和访问拦截记录 | 治理要求记录、最近权限判定、拦截记录 |
 | 网关观测 | 网关 | 查看真实执行面的健康度 | 告警总览、查询次数、查询量日趋势、DAU、执行记录、SQL guard、MaxCompute 物理拒绝、稳定性 |
 
-管理员默认先进入“权限管理”。“网关观测”只展示 `dw-query-gateway` 遥测和基于该遥测的基础告警评价。查询量日趋势和 DAU 当前基于最近 query-runs 窗口聚合，不在 data-platform 落第二套统计表；后续如 gateway 提供按日聚合 telemetry API，可替换为 gateway 服务端聚合结果。不混入权限审批记录，不暴露 AK/SK，不把 `CredentialBinding` 作为普通管理员编辑入口。
+管理员默认先进入“权限管理”。“网关观测”只展示 `dw-query-gateway` 遥测和基于该遥测的基础告警评价。查询量趋势使用 gateway `timeseries` 服务端聚合；契约完整度使用 `contract-completeness`；最近执行记录只作为明细列表和 trace 入口，不再由前端样本推导主指标。不混入治理要求记录，不暴露 AK/SK，不把 `CredentialBinding` 作为普通管理员编辑入口。
 
 ## 8. Smoke 验收
 

@@ -58,11 +58,10 @@ last_reviewed: 2026-04-22
 
 - `src/pages/Login.tsx`
 - `src/pages/Dashboard.tsx`
-- `src/pages/Datasources.tsx`
+- `src/v2/pages/data/DataCenter.tsx`（数据中心：连接、资产、同步、影响）
 - `src/pages/DatasetDetail.tsx`
 - `src/pages/DatasetRegister.tsx`
 - `src/pages/FileDatasetRegister.tsx`
-- `src/pages/Datasets.tsx`
 - `src/pages/DataChat.tsx`
 - `src/pages/AppCenter/AppMarket.tsx`
 - `src/pages/AppCenter/ExecutionMonitor.tsx`

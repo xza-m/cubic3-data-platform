@@ -18,6 +18,7 @@
 
 - 后端主分层是 `app/application`、`app/domain`、`app/infrastructure`、`app/interfaces`
 - `app/domain` 只放实体、领域服务、端口和领域事件，不直接依赖 Flask、SQLAlchemy 适配器或外部服务实现
+- 新实体禁止继承 `db.Model`：领域行为写成纯 Python 类放 `app/domain/entities/`，ORM 列定义放 `app/infrastructure/models/`（示范见 `datasource_behavior.py` + `infrastructure/models/datasource.py`）；存量 ORM 实体按需逐步迁移，不强制一次性翻新
 - `app/application` 负责命令、查询、处理器和编排，通常只依赖领域端口和基础设施接口
 - `app/infrastructure` 放仓储实现、缓存、队列、LLM 适配器、事件总线、语义 YAML 仓库等实现细节
 - `app/interfaces/api/v1/` 只负责 HTTP 暴露和路由组装，推荐保持薄控制器风格

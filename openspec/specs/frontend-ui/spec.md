@@ -276,7 +276,7 @@ Semantic center page copy SHALL describe function, current state, or available a
 - **AND** 页面 SHALL NOT 在首屏同时展示当前领域编辑大表单和新建另一个领域的大表单
 
 ### Requirement: Semantic Center Design Pages SHALL Focus On Editing And Publishing
-语义中心中的设计页 SHALL 只承担对象定义、关系编排和发布职责，且 SHALL NOT 在首屏混入目录台账、对象浏览台账或消费验证能力。
+语义中心中的设计页 SHALL 只承担对象定义、关系编排和发布到语义中心 Release 的职责，且 SHALL NOT 在首屏混入目录台账、对象浏览台账、消费者发布或消费验证能力。
 
 #### Scenario: Edit a cube in Cube 设计
 - **WHEN** 用户进入 `Cube 设计`
@@ -285,7 +285,7 @@ Semantic center page copy SHALL describe function, current state, or available a
 
 #### Scenario: Model a domain in 领域设计
 - **WHEN** 用户进入 `领域设计`
-- **THEN** 页面 SHALL 围绕 Cube 库、画布、Inspector 和发布动作组织
+- **THEN** 页面 SHALL 围绕 Cube 库、画布、Inspector 和语义中心 Release 发布动作组织
 - **AND** 页面 SHALL NOT 混入目录长列表、查询器或 YAML 编辑器
 
 ### Requirement: Semantic Center Pages SHALL Keep A Single Primary Task On First Screen
@@ -418,4 +418,3 @@ in parallel and switch between them without losing context.
 - **WHEN** a user clicks a row in the ontology objects list
 - **THEN** the system MUST NOT render a PeekPanel side drawer for that
   object; preview is delegated to the tab opened in the AppShell tab strip
-

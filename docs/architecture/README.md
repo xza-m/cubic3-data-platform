@@ -3,7 +3,7 @@ doc_type: architecture-index
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-09
 ---
 
 # 架构设计目录
@@ -32,12 +32,14 @@ last_reviewed: 2026-06-03
 5. [decisions/ADR-012-dataset-data-asset-and-query-boundary.md](decisions/ADR-012-dataset-data-asset-and-query-boundary.md)：固定 `Dataset`、数据资产底座、平台交互式查询和 `dw-query-gateway` 生产执行事实源边界
 6. [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)：Agent 语义规划、飞书 SSO Principal、两阶段权限、ExecutionProfile、ticket 与 gateway / MaxCompute RAM 适配边界
 7. [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)：访问网关到 MaxCompute 的 RAM User、Project Role、CredentialBinding、观测和 smoke 方案
-8. [source-candidate-recall-scoring.md](source-candidate-recall-scoring.md)：建模 Copilot 从业务问题召回候选数据源的本地元数据打分、解释和门槛
-9. [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)：数据资产底座作为元数据事实层，通过 `AssetRef + EvidenceBundle` 桥接 Cube、本体、投影与语义治理，并复用现有 Schema drift 链路
-10. [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)：拟采纳设计；物理表 / Dataset / 数据资产证据进入 Cube 与本体建模前，统一经过字段候选层做类型映射、角色判断、指标语义推断与 Review
-11. [agent-runtime-platform.md](agent-runtime-platform.md)：平台级 Agent 推理 Runtime 当前基线与目标设计；OpenAI-compatible 已接入，Codex SDK 当前是 workspace / client / adapter、异步 run lifecycle 和 opt-in live smoke
-12. 双层语义架构约束：优先阅读 ADR-007 ~ ADR-009
-13. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
+8. [decisions/ADR-013-lightweight-access-governance.md](decisions/ADR-013-lightweight-access-governance.md)：固定轻量权限中心、M2 白名单、gateway 执行上下文和 MaxCompute 物理兜底边界
+9. [source-candidate-recall-scoring.md](source-candidate-recall-scoring.md)：建模 Copilot 从业务问题召回候选数据源的本地元数据打分、解释和门槛
+10. [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)：数据资产底座作为元数据事实层，通过 `AssetRef + EvidenceBundle` 桥接 Cube、本体、投影与语义治理，并复用现有 Schema drift 链路
+11. [semantic-field-candidate-layer.md](semantic-field-candidate-layer.md)：拟采纳设计；物理表 / Dataset / 数据资产证据进入 Cube 与本体建模前，统一经过字段候选层做类型映射、角色判断、指标语义推断与 Review
+12. [agent-runtime-platform.md](agent-runtime-platform.md)：平台级 Agent 推理 Runtime 当前基线与目标设计；OpenAI-compatible 已接入，Codex SDK 当前是 workspace / client / adapter、异步 run lifecycle 和 opt-in live smoke
+13. 双层语义架构约束：优先阅读 [decisions/ADR-014-dual-facade-single-spine-semantics.md](decisions/ADR-014-dual-facade-single-spine-semantics.md)（并行双门面 + 单一编译脊柱的对外服务形态与收口纪律），再读其配套落地设计 [semantic-binding-and-rls.md](semantic-binding-and-rls.md)（显式绑定 Schema、发布校验矩阵、运行时收口、RLS 五构件），最后读 ADR-007 ~ ADR-010
+14. 如果正在推进业务指标与分析指标的联邦追踪，优先对照 `README.md` 和 `TECH_STACK_AND_ARCHITECTURE.md` 中的 Phase 2 描述
+15. [decisions/ADR-015-modeling-assistant-agent-copilot.md](decisions/ADR-015-modeling-assistant-agent-copilot.md)：建模助手「Agent 广度 + Copilot 深度」产品形态，批量冷启动接真实表缓存扫描 + 分诊，发布权在人、无 LLM 可降级
 
 ## 当前文件
 
@@ -49,6 +51,8 @@ last_reviewed: 2026-06-03
   - React SPA 路由结构、页面域、共享壳层与校验策略
 - [decisions/README.md](decisions/README.md)
   - ADR 索引与维护规则
+- [decisions/ADR-013-lightweight-access-governance.md](decisions/ADR-013-lightweight-access-governance.md)
+  - 固定轻量权限中心、M2 白名单、profile-level RAM 和 gateway 执行闭环
 - [decisions/ADR-012-dataset-data-asset-and-query-boundary.md](decisions/ADR-012-dataset-data-asset-and-query-boundary.md)
   - 固定 `DataSource`、平台应用层 `Dataset`、数据资产底座、语义资产、平台交互式查询历史和 `dw-query-gateway` 查询遥测的职责边界；新增聚合统计和页面文案的事实源约束
 - [semantic-data-asset-foundation.md](semantic-data-asset-foundation.md)
@@ -57,6 +61,8 @@ last_reviewed: 2026-06-03
   - 拟采纳设计；字段候选层作为数据资产证据到 Cube / Ontology 草案之间的中间抽象，统一物理类型映射、字段角色判断、指标聚合与可加性推断；Cube 草案应从 `FieldCandidateSet` 生成，不能让物理字段或 Dataset 字段直接成为正式语义真相
 - [agent-runtime-platform.md](agent-runtime-platform.md)
   - 当前基线与目标设计；Agent 推理 Runtime 上提为平台级能力层，通过统一 `AgentInferenceRuntimeService / AgentInferenceRuntimeRouter / Context Pack / ToolSpec Adapter / Runtime Policy / Trace` 对接 OpenAI-compatible LLM 和 Codex SDK；OpenAI-compatible 已接入低延迟主链，语义建模 Copilot 是首个消费者，Codex SDK 当前保持 workspace / client / adapter、fake tests 和显式 opt-in live smoke
+- [semantic-binding-and-rls.md](semantic-binding-and-rls.md)
+  - ADR-014 配套落地设计；Cube↔Ontology 显式绑定 Schema（`cube_bindings` / `measure_refs[primary]`）、发布期断链校验矩阵、运行时 catalog 收口、Copilot 草稿即绑定，以及 RLS 五构件（DataPolicy.row_scope 模板、PrincipalDataScope、post_compile 求值、GatewayAccessContext.v2 合约、双 hash 审计）
 - [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)
   - 当前 Agent-ready 语义规划主链、飞书 SSO 作为身份事实来源、轻量 `Principal` 投影、`PrincipalContext` 兼容、两阶段 `PolicyDecision`、M3/raw 拦截、`TicketPreview / ExecutionTicket`、`ExecutionProfile` 与 gateway / MaxCompute RAM 适配边界
   - 具体 gateway -> MaxCompute RAM User 与 Project Role 方案见 [access-gateway-maxcompute-ram.md](access-gateway-maxcompute-ram.md)
@@ -100,13 +106,14 @@ last_reviewed: 2026-06-03
     - `Semantic Mapper` 输出稳定 `projection_result / resolved_bindings / binding_status / binding_issues`，`Execution Compiler` 输出 `query_dsl / logical_sql / resource_set / sql_hash / data_level / ticket_material / bindings / traceability`；`QueryDSL v1` 是运行时唯一 SQL 生成输入，restricted 字段显式引用会被编译阻断
     - `/api/v1/semantic-router/execute-plan` 与 `/api/v1/execution-compiler/execute` 命中 `M3/raw/ods` 时返回 `require_approval`，不真实执行
     - 治理审计默认写入 PostgreSQL `governance_audit_traces`，支持按 `principal_id / semantic_plan_id / sql_hash / decision / policy` 过滤
-    - `/api/docs/openapi.json` 作为唯一 OpenAPI 输出入口，当前已为第一批只读 / 预览 / 审计接口补入 Agent 风险扩展和字段级 `data` schema；`make typecheck-contracts` 负责阻断核心契约缺失、重复 `operationId` 与非法 Agent 扩展字段
+    - `/api/docs/openapi.json` 作为唯一 OpenAPI 输出入口，当前已为第一批只读 / 预览 / 审计接口补入 Agent 风险扩展和字段级 `data` schema；`cubic3-dp` CLI 首版依赖的数据源列表、语义资产 radar / tables / fields / evidence / sync-runs、语义 Runtime health、Agent semantic plan / execute 与治理 audit-traces 已进入 stable public contract；`make typecheck-contracts` 负责阻断核心契约缺失、重复 `operationId`、非法 Agent 扩展字段和 OpenAPI 3.0 不兼容 schema
   - 当前建模助手统一收敛为语义建设工作台契约：
-    - `/semantic/modeling-workbench`、`/semantic/modeling-workbench/quick` 与候选详情路由是语义中心顶层冷启动产品入口，不归入 `/semantic/cubes/new` 层级；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 仅保留兼容重定向
+    - `/semantic/modeling-workbench`、`/semantic/modeling-workbench/quick` 与候选详情路由是语义中心顶层冷启动产品入口，不归入 `/semantic/cubes/new` 层级；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 不再注册兼容重定向
     - `/api/v1/semantic/modeling-copilot/sessions/*` 是唯一 Copilot 会话 API；旧 spec 草稿 / 校验 / 发布直连后端公开 route 与产品主链路已下线，不再作为新的建模助手产品入口或公开会话 API
-    - 迁移期 Proposal 兼容面仍可保留为内部 / 前端兼容 client、types、hooks，例如 Proposal API 与 `SemanticModelingAgentSpec` 构建期类型；这些兼容面不代表新的产品入口或公开会话契约
+    - 旧 `/semantic/modeling-agent/proposals/*` 前端直连 client / hooks 已清理；`SemanticModelingAgentSpec` 构建期类型仅保留为 Copilot session raw spec 契约，不代表新的产品入口或公开会话契约
     - 内部 `SemanticModelDraftBuilder` 继续承接确定性 spec 生成、校验、候选资产确认、Proposal 保存和发布门禁材料组装；它是应用层构建器，不是公开 API 名称
     - 数据资产底座只提供元数据事实、`AssetRef` 与 `EvidenceBundle`，不直接生成语义真相；Copilot 草案优先使用证据包里的 `schema_snapshot`，缺失时才走 datasource adapter fallback
+    - 批量冷启动按 ADR-015 收敛为「Agent 广度 + Copilot 深度」：`ModelingSourceScanner`（确定性、无 LLM 可降级）读 `TableCacheService` 真实表缓存→命名分层→`FieldCandidateService`→`ModelingAssetPackage`（带列快照）+ 置信度/风险/状态分诊，只产待审队列；`scan_project` 按 `scope.source_id+database` 走真实扫描，无坐标/未注入 scanner 时降级演示兜底（零回归），发布权仍在人
     - `/semantic/modeling-workbench/quick` 的单资产体验采用建设主流程结构：中间主画布承载业务问题、字段候选、口径确认和语义草案，右侧 Artifact 面板按需展示 `Review / Spec / Source / Preview / Trace`，生成的 Proposal Review 不阻断建设流；当前五个 artifact 均已接入产品化主链路
     - `/api/v1/semantic/modeling-copilot/sessions/<session_id>/review` 是建模助手的只读 artifact 投影，用于展示候选变更、阻塞项、原因解释、源表证据、Trace 回放、Publish Gate 和发布后验收；它不引入第二套语义资产模型，正式真相仍是已发布 Cube、Ontology、Binding 与 Policy
     - Modeling Copilot session / Proposal 是构建期协作状态，生产默认通过 `SEMANTIC_MODELING_COPILOT_STORE=sql` 写入 PostgreSQL；YAML 仓储只保留为 local / fixture adapter

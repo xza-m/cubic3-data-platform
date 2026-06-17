@@ -50,7 +50,7 @@ Agent / 应用
 ## 可观测边界
 
 - `dw-query-gateway` 是执行运行态指标的事实源，负责产出 Worker 心跳、队列积压、运行中查询、等待耗时、执行耗时、SQL guard 拦截、MaxCompute timeout / access denied、export 成功失败和 query events。
-- `cubic3-data-platform` 可以提供“网关观测”页面，作为薄展示层或 BFF，消费 `dw-query-gateway` 的 telemetry / readyz / query events API，并与平台侧 `semantic_trace`、`policy_decision`、`principal_id`、`data_level` 和 `sql_hash` 做关联。当前 BFF 端点包括 `/api/v1/governance/gateway/summary`、`/api/v1/governance/gateway/query-runs` 和 `/api/v1/governance/gateway/alerts`。
+- `cubic3-data-platform` 可以提供“网关观测”页面，作为薄展示层或 BFF，消费 `dw-query-gateway` 的 telemetry / readyz / query events API，并与平台侧 `semantic_trace`、`policy_decision`、`principal_id`、`data_level` 和 `sql_hash` 做关联。当前 BFF 端点为 `/api/v1/governance/gateway/observability`，内部聚合 gateway 的新版 overview、timeseries、breakdowns、contract-completeness、result/export/storage、security、workers 和 query-runs 指标。
 - `cubic3-data-platform` 可以对 gateway telemetry / readyz 做基础告警评价，用于控制台可视化：稳定性低于阈值、readyz 非健康、等待队列积压、排队等待过长、timeout / rejected / export failure / publish conflict 等。但告警输入仍以 gateway 返回为准，平台不生成第二套 Worker 或 query counter。
 - `cubic3-data-platform` 不应复制 `dw-query-gateway` 的 Worker 状态、query_events 或 runtime counters 作为第二套事实源。若为前端体验做缓存，必须标明来源和刷新时间，且不得替代 gateway 侧诊断。
 

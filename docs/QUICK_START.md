@@ -50,6 +50,7 @@ cp env.sample .env
 
 - 智能问数：`LLM_API_KEY`
 - 飞书集成：`FEISHU_APP_ID`、`FEISHU_APP_SECRET`
+- 飞书权限启动：`FEISHU_ADMIN_OPEN_IDS`；方案 B 默认 M2 白名单使用 `FEISHU_M2_READER_OPEN_IDS`，并默认复用 CUBIC3 智能问数 `allowed_user_ids`
 - Superset 截图：`SUPERSET_*`
 - OSS 文件交付：`OSS_*`
 

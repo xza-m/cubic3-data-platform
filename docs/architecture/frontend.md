@@ -24,7 +24,7 @@ v2 Provider 装配位于 `frontend/src/v2/App.tsx`，路由总入口位于 `fron
 
 - `/dashboard`
 - `/data-center/*`
-- `/extraction/*`
+- `/data-center/sync/*`
 - `/data-chat`
 - `/queries/*`
 - `/apps/*`
@@ -33,6 +33,13 @@ v2 Provider 装配位于 `frontend/src/v2/App.tsx`，路由总入口位于 `fron
 - `/semantic/*`
 
 这与后端 `api/v1` 的能力边界大体对应，有利于前后端在概念上保持一致。
+
+IA 决策（两条正式约定）：
+
+- 数据中心（`/data-center/*`）采用页内一级 Tab 组织二级语义（连接 / 资产 / 同步 / 影响），不开启二级侧栏；Tab 定义集中在 `frontend/src/v2/pages/data/_shared/data-center-tabs.ts`。
+- `/config/*` 收敛为统一「配置中心」模块（导航 id 为 `config`），权限管理 / 权限审计 / 网关观测 / 渠道 / 订阅共享同一个二级侧栏壳，按 section 分组展示；不再为渠道、订阅、访问网关各注册一个一级模块。模块定义见 `frontend/src/v2/layout/navigation.ts`。
+
+全局搜索：CommandPalette 输入 300ms 防抖后调用后端 `GET /api/v1/search?q=&types=cube,domain,metric` 聚合搜索（蓝图见 `app/interfaces/api/v1/search.py`），不再在客户端整列表拉取后过滤。
 
 ## 3. 页面组织
 
@@ -57,7 +64,7 @@ v2 Provider 装配位于 `frontend/src/v2/App.tsx`，路由总入口位于 `fron
 
 当前主路由中，`/semantic/ontology`、`/semantic/cubes`、`/semantic/domains`、`/semantic/domains/:id`、`/semantic/views/:name`、`/semantic/relations` 与 `/semantic/workbench` 构成在线 IA。
 其中 `/semantic/ontology` 是业务语义工作台主入口，`/semantic/workbench` 当前是语义诊断 / DevTools 页面；`/semantic/cubes/new` 与 `/semantic/cubes/:name/edit` 是真实 v2 页面，不再统一回流到旧工作台。
-旧 `Overview`、`Playground`、`Canvas`、`VisualModel` 等路径只保留兼容重定向。
+语义中心以当前 IA 路由为准；旧 `Overview`、`Playground`、`Canvas`、`VisualModel` 等路径不再注册兼容重定向。
 
 这套页面模型已经稳定为“按任务类型组织”，而不是只按资源对象组织；其中业务对象、指标、关系和治理都收口在 `/semantic/ontology` 的对象中心 IA。
 
