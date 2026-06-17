@@ -112,14 +112,18 @@ class SchemaBrowserService:
             raise ApplicationException(f"获取表列表失败: {exc}") from exc
 
         # 统一字段名（不同 adapter 命名可能不同）
-        tables = [
-            {
-                "table_name": t.get("table_name") or t.get("name", ""),
-                "comment": t.get("comment") or t.get("description") or "",
-                "row_count": t.get("row_count") or t.get("row_count_estimate"),
-            }
-            for t in (raw_tables if isinstance(raw_tables, list) else [])
-        ]
+        tables = []
+        for t in (raw_tables if isinstance(raw_tables, list) else []):
+            row_count = t.get("row_count")
+            if row_count is None:
+                row_count = t.get("row_count_estimate")
+            tables.append(
+                {
+                    "table_name": t.get("table_name") or t.get("name", ""),
+                    "comment": t.get("comment") or t.get("description") or "",
+                    "row_count": row_count,
+                }
+            )
         result = {
             "datasource_id": datasource_id,
             "database": database,
@@ -159,12 +163,16 @@ class SchemaBrowserService:
             }
             for col in (raw.get("columns") or [])
         ]
+        row_count_estimate = raw.get("row_count")
+        if row_count_estimate is None:
+            row_count_estimate = raw.get("row_count_estimate")
+
         result = {
             "datasource_id": datasource_id,
             "database": database,
             "table": table,
             "columns": columns,
-            "row_count_estimate": raw.get("row_count"),
+            "row_count_estimate": row_count_estimate,
             "fetched_at": _now_iso(),
         }
         self._cache.set(cache_key, result)

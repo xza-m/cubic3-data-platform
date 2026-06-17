@@ -11,6 +11,7 @@ from app.infrastructure.access.models import (
     AccessDelegationEventORM,
     AccessPrincipalAliasORM,
     AccessPrincipalORM,
+    AccessPrincipalScopeORM,
     AccessRoleBindingORM,
     AccessServicePrincipalORM,
 )
@@ -303,6 +304,18 @@ class SqlAccessRepository:
             .all()
         )
 
+    def list_active_principal_role_bindings_by_role(self, role_code: str) -> list[AccessRoleBindingORM]:
+        return (
+            self.session.query(AccessRoleBindingORM)
+            .filter(
+                AccessRoleBindingORM.subject_type == "principal",
+                AccessRoleBindingORM.role_code == role_code,
+                AccessRoleBindingORM.status == "active",
+            )
+            .order_by(AccessRoleBindingORM.created_at.desc(), AccessRoleBindingORM.id.asc())
+            .all()
+        )
+
     def ensure_role_binding(
         self,
         *,
@@ -342,6 +355,68 @@ class SqlAccessRepository:
             row.created_by = created_by or row.created_by
         self.session.flush()
         return row
+
+    # ------------------------------------------------------------------
+    # Principal data scope（RLS row_scope 取值来源）
+    # ------------------------------------------------------------------
+
+    def list_principal_scopes(self, principal_id: str) -> list[AccessPrincipalScopeORM]:
+        return (
+            self.session.query(AccessPrincipalScopeORM)
+            .filter(AccessPrincipalScopeORM.principal_id == principal_id)
+            .order_by(AccessPrincipalScopeORM.attribute.asc(), AccessPrincipalScopeORM.source.asc())
+            .all()
+        )
+
+    def replace_principal_scopes(
+        self,
+        *,
+        principal_id: str,
+        source: str,
+        scopes: Iterable[dict[str, Any]],
+        created_by: str | None = None,
+        synced_at=None,
+    ) -> list[AccessPrincipalScopeORM]:
+        """整体替换某 principal 在指定 source 下的 scope 配置。"""
+
+        self.session.query(AccessPrincipalScopeORM).filter(
+            AccessPrincipalScopeORM.principal_id == principal_id,
+            AccessPrincipalScopeORM.source == source,
+        ).delete()
+        rows: list[AccessPrincipalScopeORM] = []
+        for item in scopes:
+            attribute = str(item.get("attribute") or "").strip()
+            if not attribute:
+                continue
+            values = [
+                str(value).strip()
+                for value in (item.get("values") or [])
+                if str(value or "").strip()
+            ]
+            row = AccessPrincipalScopeORM(
+                principal_id=principal_id,
+                attribute=attribute,
+                values=values,
+                source=source,
+                synced_at=synced_at or utcnow(),
+                created_by=created_by,
+            )
+            rows.append(row)
+            self.session.add(row)
+        self.session.flush()
+        return rows
+
+    def resolve_principal_data_scopes(self, principal_id: str) -> dict[str, list[str]]:
+        """合并各来源的 scope，返回 attribute → 去重值列表。"""
+
+        merged: dict[str, list[str]] = {}
+        for row in self.list_principal_scopes(principal_id):
+            bucket = merged.setdefault(row.attribute, [])
+            for value in row.values or []:
+                item = str(value or "").strip()
+                if item and item not in bucket:
+                    bucket.append(item)
+        return merged
 
     def add_delegation_event(
         self,

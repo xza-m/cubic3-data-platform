@@ -10,6 +10,14 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 from flask import Flask
 
 
+def _make_access_repository():
+    """Access 仓储工厂：请求主路径统一走 Flask-SQLAlchemy 的 scoped session。"""
+    from app.extensions import db
+    from app.infrastructure.access.repositories import SqlAccessRepository
+
+    return SqlAccessRepository(db.session)
+
+
 def _default_semantic_source_id():
     from app.domain.entities.data_source import DataSource
     from app.extensions import db
@@ -140,6 +148,16 @@ def _semantic_release_gateway_sql_dry_run(gateway_client_factory, platform_servi
     return _dry_run
 
 
+def _data_agent_pin_config():
+    """读取 data_agent 实例 config 的 semantic_pin（§6.1 pinned 消费方落点）。"""
+
+    from app.application.agent.agent_factory import get_data_agent_config
+
+    config = get_data_agent_config() or {}
+    pin = config.get("semantic_pin")
+    return {"semantic_pin": pin} if isinstance(pin, dict) else {}
+
+
 # Infrastructure
 from app.infrastructure.repositories.datasource_repository import DatasourceRepository
 from app.infrastructure.repositories.dataset_repository import DatasetRepository
@@ -217,8 +235,10 @@ from app.application.agent_inference_runtime.service import AgentInferenceRuntim
 # Application - Agent
 from app.application.agent.services.knowledge_service import KnowledgeService
 from app.application.agent.services.prompt_builder import PromptBuilder
+from app.application.agent.services.runtime_semantic_tool_service import RuntimeSemanticToolService
 from app.application.agent.services.tool_registry import ToolRegistry
 from app.application.agent.services.agent_loop_service import AgentLoopService
+from app.application.agent.services.free_sql_guard import FreeSqlGuard
 from app.application.agent.handlers.agent_plan_handler import AgentPlanHandler
 from app.application.services.dashboard.overview_service import DashboardOverviewService
 
@@ -233,6 +253,7 @@ from app.application.semantic.domain_canvas_service import DomainCanvasService
 from app.application.semantic.domain_modeling_service import DomainModelingService
 from app.application.semantic.field_candidates import FieldCandidateService
 from app.application.semantic.modeling_build_project_service import ModelingBuildProjectService
+from app.application.semantic.modeling_source_scanner import ModelingSourceScanner
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_proposal_service import ModelingProposalService
@@ -260,6 +281,8 @@ from app.application.semantic_router.preview_service import SemanticRouterPrevie
 from app.application.execution_compiler.preview_service import ExecutionCompilerPreviewService
 from app.application.execution_compiler.runtime_service import ExecutionCompilerRuntimeService
 from app.application.governance.access import AccessPolicyDecisionService, PrincipalResolver
+from app.application.governance.metadata_visibility import SemanticMetadataVisibilityService
+from app.application.access.identity import AccessIdentityService
 from app.infrastructure.semantic.yaml_catalog_repository import YamlCatalogRepository
 from app.infrastructure.semantic.yaml_cube_repository import YamlCubeRepository
 from app.infrastructure.semantic.yaml_domain_repository import YamlDomainRepository
@@ -347,20 +370,20 @@ from app.application.query.handlers.template_handlers import (
 class Container(containers.DeclarativeContainer):
     """
     应用依赖注入容器
-    
+
     配置所有依赖的生命周期和注入关系
     """
-    
+
     # ========================================================================
     # 配置提供者
     # ========================================================================
-    
+
     config = providers.Configuration()
-    
+
     # ========================================================================
     # 基础设施 - 数据库
     # ========================================================================
-    
+
     db_engine = providers.Singleton(
         _create_engine_smart,
         config.database_url,
@@ -370,7 +393,7 @@ class Container(containers.DeclarativeContainer):
         pool_recycle=3600,
         pool_pre_ping=True,
     )
-    
+
     db_session_factory = providers.Singleton(
         sessionmaker,
         bind=db_engine
@@ -380,48 +403,65 @@ class Container(containers.DeclarativeContainer):
         scoped_session,
         db_session_factory,
     )
-    
+
     db_session = providers.Factory(
         lambda scoped: scoped(),
         scoped=db_scoped_session,
     )
-    
+    # 会话边界说明：
+    # - Web 请求主路径优先 Flask-SQLAlchemy db.session（与 scoped_session 同线程绑定）。
+    # - 容器 db_session 供非 Flask 上下文（worker/脚本）与显式 DI 注入；勿在同一请求混用两套未同步 session。
+
+    # ========================================================================
+    # Access Identity（统一身份治理）
+    # 绑定 Flask-SQLAlchemy db.session（请求主路径事务边界），而非容器独立 engine，
+    # 保证与同一请求内其他写入可见性一致。
+    # ========================================================================
+
+    sql_access_repository = providers.Factory(
+        _make_access_repository,
+    )
+    access_identity_service = providers.Factory(
+        AccessIdentityService,
+        repository=sql_access_repository,
+    )
+
     # ========================================================================
     # 基础设施 - 缓存
     # ========================================================================
-    
+
     redis_client = providers.Singleton(
         RedisClient,
         redis_url=config.redis_url
     )
-    
+
     table_cache_service = providers.Factory(
         TableCacheService,
         session=db_session
     )
-    
+
     # ========================================================================
     # 基础设施 - 任务队列
     # ========================================================================
-    
+
     task_queue = providers.Singleton(
         TaskQueue,
         redis_url=config.redis_url
     )
-    
+
     # ========================================================================
     # 基础设施 - 事件总线
     # ========================================================================
-    
+
     event_bus = providers.Singleton(
         EventBus,
         task_queue=task_queue
     )
-    
+
     # ========================================================================
     # 基础设施 - LLM 服务
     # ========================================================================
-    
+
     llm_service = providers.Singleton(
         OpenAIService,
         api_key=config.llm.api_key,
@@ -429,11 +469,11 @@ class Container(containers.DeclarativeContainer):
         model=config.llm.model,
         timeout=config.llm.timeout
     )
-    
+
     # ========================================================================
     # 基础设施 - Agent LLM 适配器（ILLMPort 实现）
     # ========================================================================
-    
+
     agent_llm_adapter = providers.Singleton(
         OpenAICompatibleAdapter,
         api_key=config.llm.api_key,
@@ -503,18 +543,18 @@ class Container(containers.DeclarativeContainer):
         codex_client_factory=agent_codex_sdk_client_factory,
         repository=agent_inference_runtime_repository,
     )
-    
+
     # ========================================================================
     # 应用层 - Agent 核心服务
     # ========================================================================
-    
+
     knowledge_service = providers.Singleton(KnowledgeService)
-    
+
     prompt_builder = providers.Singleton(
         PromptBuilder,
         knowledge_service=knowledge_service
     )
-    
+
     # Semantic Layer
     import os as _os
     _semantic_base = _os.path.join(
@@ -530,12 +570,12 @@ class Container(containers.DeclarativeContainer):
         YamlCubeRepository,
         cubes_dir=_os.path.join(_semantic_base, "cubes"),
     )
-    
+
     view_repository = providers.Singleton(
         YamlViewRepository,
         views_dir=_os.path.join(_semantic_base, "views"),
     )
-    
+
     recipe_repository = providers.Singleton(
         YamlRecipeRepository,
         recipes_dir=_os.path.join(_semantic_base, "recipes"),
@@ -636,7 +676,7 @@ class Container(containers.DeclarativeContainer):
     # ========================================================================
     # 仓储
     # ========================================================================
-    
+
     datasource_repository = providers.Factory(
         DatasourceRepository,
         session=db_session
@@ -652,62 +692,62 @@ class Container(containers.DeclarativeContainer):
         DataAssetAgentApp,
         runtime_service=agent_inference_runtime_service,
     )
-    
+
     dataset_repository = providers.Factory(
         DatasetRepository,
         session=db_session
     )
-    
+
     extraction_repository = providers.Factory(
         ExtractionRepository,
         session=db_session
     )
-    
+
     conversation_repository = providers.Factory(
         ConversationRepository,
         session=db_session
     )
-    
+
     message_repository = providers.Factory(
         MessageRepository,
         session=db_session
     )
-    
+
     query_repository = providers.Factory(
         QueryRepository,
         session=db_session
     )
-    
+
     sql_query_repository = providers.Factory(
         SQLQueryRepository,
         session=db_session
     )
-    
+
     feishu_chat_repository = providers.Factory(
         FeishuChatRepository,
         session=db_session
     )
-    
+
     app_definition_repository = providers.Factory(
         AppDefinitionRepository,
         session=db_session
     )
-    
+
     app_instance_repository = providers.Factory(
         AppInstanceRepository,
         session=db_session
     )
-    
+
     app_execution_repository = providers.Factory(
         AppExecutionRepository,
         session=db_session
     )
-    
+
     subscription_repository = providers.Factory(
         SubscriptionRepository,
         session=db_session
     )
-    
+
     channel_repository = providers.Factory(
         ChannelRepository,
         session=db_session
@@ -748,6 +788,7 @@ class Container(containers.DeclarativeContainer):
         registry_repo=semantic_registry_repository,
         metric_repository=ontology_metric_repository,
         field_candidate_service=semantic_field_candidate_service,
+        query_service=semantic_query_service,
     )
 
     cube_modeling_source_service = providers.Singleton(
@@ -813,6 +854,7 @@ class Container(containers.DeclarativeContainer):
     access_policy_service = providers.Singleton(
         AccessPolicyDecisionService,
         policy_repository=access_governance_repository,
+        rls_enforcement_mode=config.rls_enforcement_mode,
     )
 
     semantic_mapper_preview_service = providers.Singleton(
@@ -854,21 +896,44 @@ class Container(containers.DeclarativeContainer):
         audit_repository=ontology_audit_trace_repository,
     )
 
+    # Agent 语义工具运行时门面：cube 定义来自 active manifest catalog（无 YAML 旁路），
+    # 执行经 runtime binding service 解析真实数据源；
+    # pin_config_provider 读取 data_agent 实例 config 的 semantic_pin（§6.1 pinned 消费方）
+    runtime_semantic_tool_service = providers.Singleton(
+        RuntimeSemanticToolService,
+        runtime_snapshot_service=runtime_snapshot_service,
+        runtime_binding_service=semantic_runtime_binding_service,
+        pin_config_provider=_data_agent_pin_config,
+    )
+
+    free_sql_guard = providers.Singleton(
+        FreeSqlGuard,
+        policy_service=access_policy_service,
+    )
+
+    # §6.2 metadata visibility：semantic.discover/describe 裁决 + 物理细节脱敏
+    metadata_visibility_service = providers.Singleton(
+        SemanticMetadataVisibilityService,
+        policy_repository=access_governance_repository,
+    )
+
     tool_registry = providers.Singleton(
         ToolRegistry,
         knowledge_service=knowledge_service,
-        semantic_service=semantic_service,
+        semantic_service=runtime_semantic_tool_service,
+        free_sql_guard=free_sql_guard,
+        metadata_visibility_service=metadata_visibility_service,
     )
 
     agent_loop_service = providers.Singleton(
         AgentLoopService,
         llm=agent_llm_adapter
     )
-    
+
     # ========================================================================
     # Query 模块 - Handlers
     # ========================================================================
-    
+
     execute_query_handler = providers.Factory(
         ExecuteQueryHandler,
         query_repository=query_repository,
@@ -959,9 +1024,17 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
     )
 
+    modeling_source_scanner = providers.Singleton(
+        ModelingSourceScanner,
+        table_cache_service=table_cache_service,
+        runtime_binding_service=semantic_runtime_binding_service,
+        field_candidate_service=semantic_field_candidate_service,
+    )
+
     semantic_modeling_workbench_service = providers.Singleton(
         ModelingBuildProjectService,
         repository=semantic_modeling_workbench_repository,
+        scanner=modeling_source_scanner,
     )
 
     semantic_modeling_proposal_service = providers.Singleton(
@@ -1007,52 +1080,52 @@ class Container(containers.DeclarativeContainer):
         proposal_service=semantic_modeling_proposal_service,
         release_preview_service=semantic_release_validation_preview_service,
     )
-    
+
     execute_sql_preview_handler = providers.Factory(
         ExecuteSQLPreviewHandler,
         datasource_repository=datasource_repository
     )
-    
+
     create_query_handler = providers.Factory(
         CreateQueryHandler,
         query_repository=query_repository
     )
-    
+
     update_query_handler = providers.Factory(
         UpdateQueryHandler,
         query_repository=query_repository
     )
-    
+
     delete_query_handler = providers.Factory(
         DeleteQueryHandler,
         query_repository=query_repository
     )
-    
+
     list_queries_handler = providers.Factory(
         ListQueriesHandler,
         query_repository=query_repository
     )
-    
+
     get_query_handler = providers.Factory(
         GetQueryHandler,
         query_repository=query_repository
     )
-    
+
     toggle_favorite_handler = providers.Factory(
         ToggleFavoriteHandler,
         query_repository=query_repository
     )
-    
+
     list_folders_handler = providers.Factory(
         ListFoldersHandler,
         query_repository=query_repository
     )
-    
+
     create_folder_handler = providers.Factory(
         CreateFolderHandler,
         query_repository=query_repository
     )
-    
+
     list_histories_handler = providers.Factory(
         ListHistoriesHandler,
         query_repository=query_repository
@@ -1071,58 +1144,58 @@ class Container(containers.DeclarativeContainer):
     # ========================================================================
     # Query 模块 - Template Repository & Handlers
     # ========================================================================
-    
+
     from app.infrastructure.repositories.query_template_repository import QueryTemplateRepository
-    
+
     query_template_repository = providers.Factory(
         QueryTemplateRepository,
         session=db_session
     )
-    
+
     list_templates_handler = providers.Factory(
         ListTemplatesHandler,
         query_template_repository=query_template_repository
     )
-    
+
     create_template_handler = providers.Factory(
         CreateTemplateHandler,
         query_template_repository=query_template_repository
     )
-    
+
     get_template_handler = providers.Factory(
         GetTemplateHandler,
         query_template_repository=query_template_repository
     )
-    
+
     update_template_handler = providers.Factory(
         UpdateTemplateHandler,
         query_template_repository=query_template_repository
     )
-    
+
     delete_template_handler = providers.Factory(
         DeleteTemplateHandler,
         query_template_repository=query_template_repository
     )
-    
+
     use_template_handler = providers.Factory(
         UseTemplateHandler,
         query_template_repository=query_template_repository
     )
-    
+
     # ========================================================================
     # SQL Query Async Handlers
     # ========================================================================
-    
+
     submit_async_query_handler = providers.Factory(
         SubmitAsyncQueryHandler,
         sql_query_repository=sql_query_repository
     )
-    
+
     get_query_status_handler = providers.Factory(
         GetQueryStatusHandler,
         sql_query_repository=sql_query_repository
     )
-    
+
     get_query_result_handler = providers.Factory(
         GetQueryResultHandler,
         sql_query_repository=sql_query_repository
@@ -1163,93 +1236,93 @@ class Container(containers.DeclarativeContainer):
         CancelExportHandler,
         export_service=query_export_service,
     )
-    
+
     # ========================================================================
     # Feishu 模块 - Handlers
     # ========================================================================
-    
+
     list_chats_handler = providers.Factory(
         ListChatsHandler,
         feishu_chat_repository=feishu_chat_repository
     )
-    
+
     update_chat_handler = providers.Factory(
         UpdateChatHandler,
         feishu_chat_repository=feishu_chat_repository
     )
-    
+
     # ========================================================================
     # Datasource 模块 - Handlers
     # ========================================================================
-    
+
     # Commands
     create_datasource_handler = providers.Factory(
         CreateDatasourceHandler,
         repository=datasource_repository,
         event_bus=event_bus
     )
-    
+
     update_datasource_handler = providers.Factory(
         UpdateDatasourceHandler,
         repository=datasource_repository
     )
-    
+
     delete_datasource_handler = providers.Factory(
         DeleteDatasourceHandler,
         repository=datasource_repository,
         event_bus=event_bus
     )
-    
+
     # Queries
     list_datasources_handler = providers.Factory(
         ListDatasourcesHandler,
         engine=db_engine
     )
-    
+
     get_datasource_handler = providers.Factory(
         GetDatasourceHandler,
         repository=datasource_repository
     )
-    
+
     test_connection_handler = providers.Factory(
         TestConnectionHandler,
         repository=datasource_repository
     )
-    
+
     get_databases_handler = providers.Factory(
         GetDatabasesHandler,
         repository=datasource_repository
     )
-    
+
     get_tables_handler = providers.Factory(
         GetTablesHandler,
         repository=datasource_repository
     )
-    
+
     preview_table_data_handler = providers.Factory(
         PreviewTableDataHandler,
         datasource_repository=datasource_repository
     )
-    
+
     get_schemas_handler = providers.Factory(
         GetSchemasHandler,
         repository=datasource_repository
     )
-    
+
     get_table_schema_handler = providers.Factory(
         GetTableSchemaHandler,
         repository=datasource_repository
     )
-    
+
     get_datasource_statistics_handler = providers.Factory(
         GetDatasourceStatisticsHandler,
         engine=db_engine
     )
-    
+
     # ========================================================================
     # Dataset 模块 - Handlers
     # ========================================================================
-    
+
     # Commands
     create_dataset_handler = providers.Factory(
         CreateDatasetHandler,
@@ -1265,41 +1338,42 @@ class Container(containers.DeclarativeContainer):
         dataset_handler=create_dataset_handler,
         default_source_id_getter=_default_semantic_source_id,
         registry_repo=semantic_registry_repository,
+        runtime_snapshot_service=runtime_snapshot_service,
     )
-    
+
     update_dataset_handler = providers.Factory(
         UpdateDatasetHandler,
         repository=dataset_repository
     )
-    
+
     delete_dataset_handler = providers.Factory(
         DeleteDatasetHandler,
         repository=dataset_repository,
         event_bus=event_bus
     )
-    
+
     # Queries
     list_datasets_handler = providers.Factory(
         ListDatasetsHandler,
         engine=db_engine
     )
-    
+
     get_dataset_handler = providers.Factory(
         GetDatasetHandler,
         repository=dataset_repository
     )
-    
+
     preview_dataset_handler = providers.Factory(
         PreviewDatasetHandler,
         datasource_repository=datasource_repository
     )
-    
+
     sync_schema_handler = providers.Factory(
         SyncSchemaHandler,
         dataset_repository=dataset_repository,
         task_queue=task_queue,
     )
-    
+
     get_dataset_statistics_handler = providers.Factory(
         GetDatasetStatisticsHandler,
         engine=db_engine
@@ -1316,21 +1390,21 @@ class Container(containers.DeclarativeContainer):
         session=db_session,
         semantic_definition_service=semantic_definition_service,
     )
-    
+
     # ========================================================================
     # 领域服务（无状态，Singleton）
     # ========================================================================
-    
+
     from app.domain.services.sql_generator import SQLGeneratorService
     from app.domain.services.permission_checker import PermissionCheckerService
-    
+
     sql_generator_service = providers.Singleton(SQLGeneratorService)
     permission_checker_service = providers.Singleton(PermissionCheckerService)
-    
+
     # ========================================================================
     # Extraction 模块 - Handlers
     # ========================================================================
-    
+
     # Commands
     create_task_handler = providers.Factory(
         CreateTaskHandler,
@@ -1340,7 +1414,7 @@ class Container(containers.DeclarativeContainer):
         sql_generator=sql_generator_service,
         permission_checker=permission_checker_service
     )
-    
+
     update_task_handler = providers.Factory(
         UpdateTaskHandler,
         extraction_repository=extraction_repository,
@@ -1349,44 +1423,44 @@ class Container(containers.DeclarativeContainer):
         sql_generator=sql_generator_service,
         permission_checker=permission_checker_service
     )
-    
+
     delete_task_handler = providers.Factory(
         DeleteTaskHandler,
         extraction_repository=extraction_repository,
         event_bus=event_bus
     )
-    
+
     execute_task_handler = providers.Factory(
         ExecuteTaskHandler,
         extraction_repository=extraction_repository,
         task_queue_manager=task_queue,
         event_bus=event_bus
     )
-    
+
     # Queries
     list_tasks_handler = providers.Factory(
         ListTasksHandler,
         db_engine=db_engine
     )
-    
+
     preview_data_handler = providers.Factory(
         PreviewDataHandler,
         dataset_repository=dataset_repository,
         sql_generator=sql_generator_service,
         permission_checker=permission_checker_service
     )
-    
+
     # ========================================================================
     # Conversation 模块 - Handlers
     # ========================================================================
-    
+
     # Commands
     create_conversation_handler = providers.Factory(
         CreateConversationHandler,
         conversation_repository=conversation_repository,
         dataset_repository=dataset_repository
     )
-    
+
     send_message_handler = providers.Factory(
         SendMessageHandler,
         conversation_repository=conversation_repository,
@@ -1395,72 +1469,72 @@ class Container(containers.DeclarativeContainer):
         llm_service=llm_service,
         semantic_router_service=semantic_router_preview_service,
     )
-    
+
     # Queries
     get_conversation_handler = providers.Factory(
         GetConversationHandler,
         conversation_repository=conversation_repository,
         message_repository=message_repository
     )
-    
+
     list_conversations_handler = providers.Factory(
         ListConversationsHandler,
         conversation_repository=conversation_repository
     )
-    
+
     # ========================================================================
     # App Center 模块 - Services
     # ========================================================================
-    
+
     from app.application.services.app_center.app_definition_service import AppDefinitionService
     from app.application.services.app_center.app_instance_service import AppInstanceService
     from app.application.services.app_center.execution_service import ExecutionService
     from app.application.services.app_center.scheduler_service import SchedulerService
-    
+
     app_definition_service = providers.Factory(
         AppDefinitionService,
         app_definition_repository=app_definition_repository
     )
-    
+
     scheduler_service = providers.Factory(
         SchedulerService,
         app_instance_repository=app_instance_repository
     )
-    
+
     app_instance_service = providers.Factory(
         AppInstanceService,
         app_instance_repository=app_instance_repository,
         app_definition_repository=app_definition_repository,
         scheduler_service=scheduler_service
     )
-    
+
     execution_service = providers.Factory(
         ExecutionService,
         app_execution_repository=app_execution_repository,
         app_instance_repository=app_instance_repository,
         event_bus=event_bus
     )
-    
+
     # ========================================================================
     # Config Center 模块 - Services
     # ========================================================================
-    
+
     from app.application.services.config.channel_service import ChannelService
     from app.application.services.config.subscription_service import SubscriptionService
     from app.application.services.config.delivery_service import DeliveryService
-    
+
     channel_service = providers.Factory(
         ChannelService,
         channel_repository=channel_repository
     )
-    
+
     subscription_service = providers.Factory(
         SubscriptionService,
         subscription_repository=subscription_repository,
         app_instance_repository=app_instance_repository,
         channel_repository=channel_repository
     )
-    
+
     delivery_service = providers.Factory(
         DeliveryService,
         subscription_service=subscription_service,
@@ -1470,36 +1544,36 @@ class Container(containers.DeclarativeContainer):
 def init_container(app: Flask) -> Container:
     """
     初始化依赖注入容器
-    
+
     使用 Pydantic 验证配置，确保所有必需的配置项都已正确设置
-    
+
     Args:
         app: Flask 应用实例
-    
+
     Returns:
         配置完成的容器实例
-    
+
     Raises:
         ValueError: 配置验证失败
     """
     from app.shared.utils.logger import get_logger
-    
+
     logger = get_logger(__name__)
     container = Container()
-    
+
     # 验证配置（可选，如果需要严格验证）
     try:
         from app.config_schema import AppConfig
-        
+
         # 尝试从环境变量加载并验证配置
         validated_config = AppConfig.from_env()
-        logger.info("配置验证成功", 
+        logger.info("配置验证成功",
                    database_uri=validated_config.database.uri[:30] + "...",
                    redis_url=validated_config.redis.url,
                    log_level=validated_config.log_level)
     except Exception as e:
         logger.warning(f"配置验证失败（使用默认配置）: {e}")
-    
+
     # 从 Flask 配置加载配置项
     container.config.from_dict({
         'database_url': app.config.get('SQLALCHEMY_DATABASE_URI'),
@@ -1564,9 +1638,10 @@ def init_container(app: Flask) -> Container:
         },
         'semantic_modeling': {
             'copilot_store': app.config.get('SEMANTIC_MODELING_COPILOT_STORE', 'sql'),
-        }
+        },
+        'rls_enforcement_mode': app.config.get('RLS_ENFORCEMENT_MODE', 'observe'),
     })
-    
+
     return container
 
 

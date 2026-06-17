@@ -81,7 +81,7 @@ class DataChatChannel(ChannelAdapter):
                 {
                     "physical_name": f.physical_name,
                     "data_type": f.data_type,
-                    "description": f.description or "",
+                    "description": f.comment or "",
                 }
                 for f in fields
             ],
@@ -127,9 +127,14 @@ class DataChatChannel(ChannelAdapter):
         ai_content = response.text or "已为您生成查询并执行。"
         query_result = None
         if response.data and response.columns:
+            # 适配器可能返回 [{'name','type'}] 结构化列定义，统一归一化为列名列表
+            column_names = [
+                col.get("name") if isinstance(col, dict) else col
+                for col in response.columns
+            ]
             query_result = {
-                "columns": response.columns,
-                "data": [dict(zip(response.columns, row)) for row in response.data],
+                "columns": column_names,
+                "data": [dict(zip(column_names, row)) for row in response.data],
                 "row_count": len(response.data),
             }
 
@@ -140,6 +145,7 @@ class DataChatChannel(ChannelAdapter):
             generated_sql=response.sql,
             query_result=query_result,
             visualization_config={},
+            source="agent",
             created_at=utcnow(),
         )
         if response.error:

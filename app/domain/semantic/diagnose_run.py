@@ -24,6 +24,8 @@ class DiagnoseRun(db.Model):
     sql_text = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
     duration_ms = Column(Integer, nullable=True)
+    # 诊断时刻语义定义集的版本标识，用于回放时检测定义是否已漂移
+    definition_hash = Column(String(128), nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     def to_dict(self) -> dict:
@@ -37,5 +39,6 @@ class DiagnoseRun(db.Model):
             "sql_text": self.sql_text,
             "error": self.error,
             "duration_ms": self.duration_ms,
+            "definition_hash": self.definition_hash,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

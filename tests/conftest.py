@@ -20,9 +20,13 @@ def _register_all_models():
     同时在整个测试 session 期间设置 FLASK_TESTING=1，阻止
     create_app() 内部启动 APScheduler 和 seed 逻辑。
     """
-    # 这两个环境变量在 create_app() 读取配置之前生效
+    # 这些环境变量在 create_app() 读取配置之前生效
     os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
     os.environ['FLASK_TESTING'] = '1'
+    # 固定 JWT 密钥并清掉外部凭证，保证测试不被本地 .env / shell 环境污染
+    os.environ['JWT_SECRET'] = 'your-secret-key'
+    for _key in ('FEISHU_APP_ID', 'FEISHU_APP_SECRET'):
+        os.environ.pop(_key, None)
 
     from app.domain.entities.feishu_chat_ref import FeishuChatRef           # noqa
     from app.domain.entities.table_cache import DataSourceTableCache         # noqa
@@ -228,8 +232,12 @@ def _make_jwt(*, user_id: str, user_name: str, roles: list[str]) -> str:
 
     payload = {
         "user_id": user_id,
+        "principal_id": user_id,
         "user_name": user_name,
         "roles": roles,
+        "token_use": "access",
+        "sid": "test-session",
+        "jti": "test-access-token",
         "iat": datetime.utcnow(),
         "exp": datetime.utcnow() + timedelta(hours=24),
     }
@@ -265,7 +273,7 @@ def no_auth_headers():
     return {}
 
 
-def install_default_admin_auth(test_client, *, roles=("admin",)) -> "test_client":
+def install_default_admin_auth(test_client, *, roles=("admin",)):
     """在 Flask test client 上安装默认的 Bearer Token（admin 角色）。
 
     适用于"测试自建 Flask app + 已开启 require_auth"的集成测试夹具：

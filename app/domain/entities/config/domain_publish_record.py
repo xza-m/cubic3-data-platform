@@ -1,44 +1,9 @@
 """
-语义域发布记录实体（B-6）
+语义域发布记录实体（兼容入口）
+
+B5 增量重构：ORM 模型已迁至 ``app/infrastructure/models/domain_publish_record.py``。
+本模块仅保留旧导入路径；新代码请从 infrastructure 层导入。
 """
-from __future__ import annotations
+from app.infrastructure.models.domain_publish_record import DomainPublishRecord
 
-from typing import Any, Dict, Optional
-
-from sqlalchemy import BigInteger, Column, DateTime, Index, String, Text
-
-from app.extensions import db
-from app.shared.db_types import JsonType
-from app.shared.utils.time import utcnow
-
-
-class DomainPublishRecord(db.Model):
-    """领域发布记录（每次 publish_domain 追加一条）"""
-
-    __tablename__ = 'domain_publish_records'
-    __table_args__ = (
-        Index('idx_domain_pub_records_domain_id', 'domain_id'),
-        Index('idx_domain_pub_records_published_at', 'published_at'),
-        {'extend_existing': True},
-    )
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    domain_id = Column(String(128), nullable=False)
-    domain_code = Column(String(128), nullable=True)
-    version = Column(String(32), nullable=False)
-    status = Column(String(16), nullable=False, default='success')
-    published_by = Column(String(128), nullable=True)
-    diff_summary = Column(Text, nullable=True)
-    note = Column(Text, nullable=True)
-    snapshot = Column(JsonType, nullable=True)
-    published_at = Column(DateTime, nullable=False, default=utcnow)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'version': self.version,
-            'published_at': self.published_at.isoformat() if self.published_at else None,
-            'published_by': self.published_by or '',
-            'status': self.status,
-            'diff_summary': self.diff_summary,
-            'note': self.note,
-        }
+__all__ = ['DomainPublishRecord']

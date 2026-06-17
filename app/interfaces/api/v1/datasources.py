@@ -4,6 +4,7 @@
 
 from flask import Blueprint, request, g
 from pydantic import ValidationError as PydanticValidationError
+from app.application.access.display_names import PrincipalDisplayNameResolver
 from app.application.datasource.commands.create_datasource import CreateDatasourceCommand
 from app.application.datasource.commands.update_datasource import UpdateDatasourceCommand
 from app.application.datasource.commands.delete_datasource import DeleteDatasourceCommand
@@ -20,6 +21,8 @@ from app.application.datasource.schemas.datasource_schemas import (
     CreateDatasourceRequest,
     UpdateDatasourceRequest
 )
+from app.extensions import db
+from app.infrastructure.access.repositories import SqlAccessRepository
 from app.interfaces.api.middleware.auth import require_auth
 from app.shared.response import success, created, bad_request
 from app.shared.utils.logger import get_logger
@@ -58,6 +61,34 @@ def _get_datasource_or_raise(datasource_id: int):
     container = get_app_container()
     handler = container.get_datasource_handler()
     return handler.handle(GetDatasourceQuery(datasource_id=datasource_id))
+
+
+def _access_repo() -> SqlAccessRepository:
+    return SqlAccessRepository(db.session)
+
+
+def _decorate_created_by_display_names(items: list[dict]) -> list[dict]:
+    """补充创建人展示名，避免业务页面裸显 Feishu 技术主键。"""
+    created_by_values = [
+        str(item.get('created_by') or '').strip()
+        for item in items
+        if str(item.get('created_by') or '').strip()
+    ]
+    names = PrincipalDisplayNameResolver(_access_repo()).resolve_many(created_by_values)
+
+    current_principal_id = getattr(g, 'principal_id', None) or getattr(g, 'user_id', None)
+    current_display_name = getattr(g, 'user_name', None)
+    if current_principal_id and current_display_name:
+        names.setdefault(str(current_principal_id), str(current_display_name))
+
+    for item in items:
+        created_by_value = str(item.get('created_by') or '').strip()
+        item['created_by_display_name'] = names.get(created_by_value) if created_by_value else None
+    return items
+
+
+def _datasource_payload(datasource, *, mask_sensitive: bool = True) -> dict:
+    return _decorate_created_by_display_names([datasource.to_dict(mask_sensitive=mask_sensitive)])[0]
 
 
 # ============================================================================
@@ -106,7 +137,7 @@ def list_datasources():
     result = handler.handle(query)
     
     # 5. 序列化响应
-    items = [ds.to_dict(mask_sensitive=True) for ds in result['items']]
+    items = _decorate_created_by_display_names([ds.to_dict(mask_sensitive=True) for ds in result['items']])
     
     return success(data={
         'items': items,
@@ -131,7 +162,7 @@ def get_datasource(datasource_id):
     # 3. 执行查询
     datasource = handler.handle(query)
     
-    return success(data=datasource.to_dict(mask_sensitive=True))
+    return success(data=_datasource_payload(datasource, mask_sensitive=True))
 
 
 @bp.route('', methods=['POST'])
@@ -182,7 +213,7 @@ def create_datasource():
     if _should_auto_sync_catalog(datasource.source_type):
         job_id = _enqueue_catalog_sync(datasource.id)
 
-    payload = datasource.to_dict(mask_sensitive=True)
+    payload = _datasource_payload(datasource, mask_sensitive=True)
     if job_id:
         payload['catalog_sync_job'] = {'job_id': job_id, 'status': 'queued'}
 
@@ -217,7 +248,7 @@ def update_datasource(datasource_id):
     # 4. 执行命令
     datasource = handler.handle(command)
     
-    return success(data=datasource.to_dict(mask_sensitive=True), message='数据源更新成功')
+    return success(data=_datasource_payload(datasource, mask_sensitive=True), message='数据源更新成功')
 
 
 @bp.route('/<int:datasource_id>', methods=['DELETE'])

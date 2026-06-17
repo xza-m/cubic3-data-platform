@@ -663,6 +663,8 @@ class TestCompileEndpoint:
         data = resp.get_json()["data"]
         assert "sql" in data
         assert "SELECT" in data["sql"]
+        # Phase 3 证据包：编译响应必须带定义版本标识字段（mock 服务下为 None）
+        assert "definition_hash" in data
 
     def test_compile_missing_dsl_field(self, semantic_client):
         resp = semantic_client.post(
@@ -683,6 +685,21 @@ class TestCompileEndpoint:
         )
         data = resp.get_json()
         assert data["code"] != 0 or resp.status_code != 200
+        assert data["details"]["error_code"] == "internal_error"
+
+    def test_compile_compilation_error_returns_compile_error_code(
+        self, semantic_client, mock_semantic_service
+    ):
+        from app.domain.semantic.compiler import CompilationError
+
+        mock_semantic_service.compile_query.side_effect = CompilationError("unknown cube")
+        resp = semantic_client.post(
+            "/api/v1/semantic/compile",
+            json={"dsl": {"measures": ["ghost.count"]}},
+        )
+        data = resp.get_json()
+        assert data["code"] != 0
+        assert data["details"]["error_code"] == "compile_error"
 
 
 class TestQueryEndpoint:

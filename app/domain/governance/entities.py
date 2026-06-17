@@ -57,6 +57,8 @@ class DataPolicy:
     resource_scope: dict[str, Any] = field(default_factory=dict)
     actions: list[str] = field(default_factory=lambda: ["query"])
     effect: str = "allow"
+    # 行级谓词模板列表；不参与 matches()，求值发生在 post_compile（见架构设计 §3）。
+    row_scope: list[dict[str, Any]] = field(default_factory=list)
     execution_profile_code: str | None = None
     reason: str | None = None
     policy_version: str = "v1"
@@ -95,6 +97,7 @@ class DataPolicy:
             "resource_scope": dict(self.resource_scope or {}),
             "actions": list(self.actions or []),
             "effect": self.effect,
+            "row_scope": [dict(item) for item in (self.row_scope or [])],
             "execution_profile_code": self.execution_profile_code,
             "reason": self.reason,
             "policy_version": self.policy_version,

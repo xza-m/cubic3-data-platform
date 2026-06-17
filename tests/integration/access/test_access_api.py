@@ -48,6 +48,14 @@ def test_access_api_does_not_trust_jwt_role_claims(app):
     assert resp.status_code == 403
 
 
+def test_viewer_cannot_read_access_management(app):
+    client = install_default_admin_auth(app.test_client(), roles=("viewer",))
+
+    resp = client.get("/api/v1/access/principals")
+
+    assert resp.status_code == 403
+
+
 def test_require_admin_uses_access_role_bindings(app):
     from app.interfaces.api.middleware.auth import require_admin
     from app.shared.response import success
@@ -189,3 +197,47 @@ def test_permission_package_api_assigns_simplified_admin_product_model(app, db_s
     payload = detail.get_json()["data"]
     assert payload["platform_roles"] == ["semantic_modeler"]
     assert payload["data_roles"] == ["data_m0_reader", "data_m1_reader", "data_m2_detail_reader"]
+
+
+def test_m2_allowlist_api_explains_config_matches_and_current_grants(app, db_session):
+    app.config["FEISHU_M2_READER_OPEN_IDS"] = "ou_m2_user,ou_not_seen"
+    app.config["FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST"] = False
+
+    access_service = AccessIdentityService(SqlAccessRepository(db_session))
+    principal = access_service.upsert_feishu_principal(
+        tenant_key="tenant_a",
+        open_id="ou_m2_user",
+        union_id="on_m2_user",
+        display_name="默认 M2 用户",
+    )
+    access_service.ensure_principal_role_bindings(
+        principal_id=principal.principal_id,
+        roles=["data_m0_reader", "data_m1_reader", "data_m2_detail_reader"],
+        source="feishu_m2_allowlist",
+        created_by="system",
+    )
+    client = install_default_admin_auth(app.test_client(), roles=("governance_admin",))
+
+    resp = client.get("/api/v1/access/m2-allowlist")
+
+    assert resp.status_code == 200
+    payload = resp.get_json()["data"]
+    assert payload["summary"] == {
+        "configured_count": 2,
+        "matched_count": 1,
+        "unmatched_count": 1,
+        "current_m2_count": 1,
+        "sync_cubic3_allowlist": False,
+    }
+    by_identifier = {item["identifier"]: item for item in payload["items"]}
+    assert by_identifier["ou_m2_user"]["match_status"] == "matched"
+    assert by_identifier["ou_m2_user"]["principal_id"] == principal.principal_id
+    assert by_identifier["ou_m2_user"]["grant_status"] == "granted"
+    assert by_identifier["ou_not_seen"]["match_status"] == "unmatched"
+    assert by_identifier["ou_not_seen"]["grant_status"] == "pending_login"
+
+    current = payload["current_principals"]
+    assert len(current) == 1
+    assert current[0]["principal_id"] == principal.principal_id
+    assert current[0]["source"] == "feishu_m2_allowlist"
+    assert current[0]["in_configured_allowlist"] is True

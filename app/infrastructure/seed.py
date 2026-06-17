@@ -625,6 +625,16 @@ def seed_access_governance_defaults():
                 },
                 "actions": ["query"],
                 "effect": "allow",
+                # row_scope 模板示例：主体配置 school_ids 数据范围后按学校过滤；
+                # 未配置时 on_missing=unrestricted 维持基线行为（管理员可改为 deny 收紧）。
+                "row_scope": [
+                    {
+                        "dimension_ref": "comment_reports.school_id",
+                        "operator": "in",
+                        "attribute": "school_ids",
+                        "on_missing": "unrestricted",
+                    }
+                ],
                 "execution_profile_code": "mc_m2_detail_reader",
                 "policy_version": "v1",
             },

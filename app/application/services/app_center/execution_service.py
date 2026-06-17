@@ -157,9 +157,9 @@ class ExecutionService:
         except Exception as e:
             execution.complete_failure(error_message=str(e))
             self.app_execution_repository.commit()
-            
-            # 发布收集的事件
-            self._publish_domain_events(execution)
+
+        # 发布收集的事件（成功与失败路径都要发布，订阅交付依赖 completed/failed 事件）
+        self._publish_domain_events(execution)
     
     def get_execution(self, execution_id: int) -> Optional[Dict[str, Any]]:
         """获取执行记录详情"""

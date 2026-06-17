@@ -58,7 +58,7 @@ class SQLQuery(db.Model):
     error_stack = Column(Text, nullable=True)
     
     # 用户信息
-    created_by = Column(String(50), nullable=True)
+    created_by = Column(String(191), nullable=True)
     
     # RQ Job ID（用于任务追踪）
     job_id = Column(String(100), nullable=True)

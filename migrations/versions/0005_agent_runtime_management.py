@@ -51,7 +51,7 @@ def upgrade() -> None:
             sa.Column("model", sa.String(length=255), nullable=True),
             sa.Column("secret_ref", sa.String(length=255), nullable=True),
             sa.Column("extra_json", db_types.JsonType(), nullable=False),
-            sa.Column("updated_by", sa.String(length=128), nullable=True),
+            sa.Column("updated_by", sa.String(length=191), nullable=True),
             sa.Column("updated_at", sa.DateTime(), nullable=False),
             sa.PrimaryKeyConstraint("runtime_name"),
         )
@@ -63,7 +63,7 @@ def upgrade() -> None:
             sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
             sa.Column("runtime_name", sa.String(length=64), nullable=False),
             sa.Column("action", sa.String(length=64), nullable=False),
-            sa.Column("principal_id", sa.String(length=128), nullable=True),
+            sa.Column("principal_id", sa.String(length=191), nullable=True),
             sa.Column("status", sa.String(length=32), nullable=False),
             sa.Column("metadata_json", db_types.JsonType(), nullable=False),
             sa.Column("created_at", sa.DateTime(), nullable=False),

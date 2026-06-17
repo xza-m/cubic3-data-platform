@@ -18,6 +18,10 @@ class SQLDialect(ABC):
     @abstractmethod
     def default_limit(self) -> int: ...
 
+    def quote_identifier(self, name: str) -> str:
+        """别名/标识符引用，默认 MaxCompute/MySQL 风格反引号。"""
+        return f"`{name}`"
+
 
 class MaxComputeDialect(SQLDialect):
     """MaxCompute SQL 方言 — 封装 DATETRUNC/WEEKOFYEAR/MAX_PT 等专用函数"""
@@ -56,6 +60,9 @@ class MaxComputeDialect(SQLDialect):
 
 
 class PostgreSQLDialect(SQLDialect):
+    def quote_identifier(self, name: str) -> str:
+        return f'"{name}"'
+
     def apply_granularity(self, col: str, granularity: str, col_type: str) -> str:
         if col_type == "string":
             if granularity == "day":

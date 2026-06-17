@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import io
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlparse
 from unittest.mock import MagicMock
 
 import jwt
-import pytest
 from flask import Flask, g
 
 from app.domain.entities.sql_query import SQLQueryStatus
@@ -55,8 +55,12 @@ def _install_admin_auth(client):
     token = jwt.encode(
         {
             'user_id': 'test_admin',
+            'principal_id': 'test_admin',
             'user_name': 'Test Admin',
             'roles': ['admin', 'tester'],
+            'token_use': 'access',
+            'sid': 'test-session',
+            'jti': 'test-access-token',
             'exp': datetime.now(timezone.utc) + timedelta(hours=1),
         },
         secret,
@@ -75,8 +79,12 @@ def auth_headers(user_id: str = 'tester', roles: list[str] | None = None) -> dic
     token = jwt.encode(
         {
             'user_id': user_id,
+            'principal_id': user_id,
             'user_name': 'Test User',
             'roles': roles if roles is not None else ['admin', 'tester'],
+            'token_use': 'access',
+            'sid': 'test-session',
+            'jti': 'test-access-token',
             'exp': datetime.now(timezone.utc) + timedelta(hours=1),
         },
         'test-secret',
@@ -98,6 +106,9 @@ def auth_headers_with_principal(
             'principal_id': principal_id,
             'user_name': 'Test User',
             'roles': roles if roles is not None else ['admin', 'tester'],
+            'token_use': 'access',
+            'sid': 'test-session',
+            'jti': 'test-access-token',
             'exp': datetime.now(timezone.utc) + timedelta(hours=1),
         },
         'test-secret',
@@ -645,8 +656,22 @@ def test_datasources_routes_cover_success_and_validation_paths(monkeypatch):
     container = MagicMock()
     monkeypatch.setattr(datasources_api, 'get_app_container', lambda: container)
 
+    class FakePrincipalDisplayNameResolver:
+        def __init__(self, _repo):
+            pass
+
+        def resolve_many(self, identities):
+            return {'feishu:tenant:on_admin': '轩志昂'}
+
+    monkeypatch.setattr(datasources_api, '_access_repo', lambda: object())
+    monkeypatch.setattr(datasources_api, 'PrincipalDisplayNameResolver', FakePrincipalDisplayNameResolver)
+
     datasource_obj = MagicMock()
-    datasource_obj.to_dict.return_value = {'id': 1, 'name': 'Warehouse'}
+    datasource_obj.to_dict.return_value = {
+        'id': 1,
+        'name': 'Warehouse',
+        'created_by': 'feishu:tenant:on_admin',
+    }
     attach_handler(
         container,
         'list_datasources_handler',
@@ -673,6 +698,7 @@ def test_datasources_routes_cover_success_and_validation_paths(monkeypatch):
         headers=headers,
     )
     assert list_resp.status_code == 200
+    assert list_resp.get_json()['data']['items'][0]['created_by_display_name'] == '轩志昂'
     query = container.list_datasources_handler.return_value.handle.call_args.args[0]
     assert query.source_type == 'postgresql'
     assert query.is_active is True
@@ -681,6 +707,7 @@ def test_datasources_routes_cover_success_and_validation_paths(monkeypatch):
 
     get_resp = client.get('/api/v1/data-center/datasources/1', headers=headers)
     assert get_resp.status_code == 200
+    assert get_resp.get_json()['data']['created_by_display_name'] == '轩志昂'
 
     invalid_create_resp = client.post(
         '/api/v1/data-center/datasources',
@@ -902,7 +929,7 @@ def test_sql_lab_routes_cover_sync_async_and_result_paths(monkeypatch):
     monkeypatch.setattr(sql_lab_api, 'get_app_container', lambda: container)
     preview_handler = attach_handler(container, 'execute_sql_preview_handler', result={'columns': ['id'], 'data': [[1]]})
     submit_handler = attach_handler(container, 'submit_async_query_handler', result=SimpleNamespace(id=7, status=SQLQueryStatus.PENDING))
-    status_handler = attach_handler(container, 'get_query_status_handler', result={'id': 7, 'status': SQLQueryStatus.RUNNING})
+    attach_handler(container, 'get_query_status_handler', result={'id': 7, 'status': SQLQueryStatus.RUNNING})
     result_handler = attach_handler(container, 'get_query_result_handler', result=FakeAsyncQuery(status=SQLQueryStatus.COMPLETED, result={'rows': [[1]]}))
 
     class FakeTaskQueue:
@@ -995,8 +1022,34 @@ def test_sql_lab_async_queue_failure_marks_query_failed(monkeypatch):
 
 
 def test_auth_routes_cover_login_sso_and_me(monkeypatch):
-    monkeypatch.setattr(auth_api, 'generate_token', lambda **kwargs: f"token-for-{kwargs['user_id']}")
     monkeypatch.setattr(auth_api, '_ensure_internal_principal', lambda username, roles: username)
+
+    class FakeTokenPair:
+        def __init__(self, principal_id):
+            self.principal_id = principal_id
+
+        def to_dict(self):
+            return {
+                'access_token': f"access-for-{self.principal_id}",
+                'refresh_token': f"refresh-for-{self.principal_id}",
+                'token_type': 'Bearer',
+                'expires_in': 3600,
+                'refresh_expires_in': 2592000,
+                'access_expires_at': '2026-06-16T01:00:00+00:00',
+                'refresh_expires_at': '2026-07-16T00:00:00+00:00',
+            }
+
+    monkeypatch.setattr(
+        auth_api,
+        '_issue_token_pair',
+        lambda principal_id, **kwargs: FakeTokenPair(principal_id),
+    )
+
+    class FakeTokenPairService:
+        def issue_authorization_code(self, *, principal_id, user_name, roles, client_type='web'):
+            return SimpleNamespace(code=f"code-for-{principal_id}", expires_in=300)
+
+    monkeypatch.setattr(auth_api, '_token_pair_service', lambda: FakeTokenPairService())
 
     class FakeAccessService:
         def upsert_feishu_principal(self, **kwargs):
@@ -1032,7 +1085,8 @@ def test_auth_routes_cover_login_sso_and_me(monkeypatch):
 
     login_resp = client.post('/api/v1/auth/login', json={'username': 'admin', 'password': 'secret'})
     assert login_resp.status_code == 200
-    assert login_resp.get_json()['data']['token'] == 'token-for-admin'
+    assert login_resp.get_json()['data']['access_token'] == 'access-for-admin'
+    assert login_resp.get_json()['data']['refresh_token'] == 'refresh-for-admin'
 
     authorize_resp = client.get('/api/v1/auth/feishu/authorize')
     assert authorize_resp.status_code == 302
@@ -1052,9 +1106,13 @@ def test_auth_routes_cover_login_sso_and_me(monkeypatch):
             return {'open_id': 'ou_admin', 'name': 'Feishu Admin'}
 
     monkeypatch.setattr('app.infrastructure.adapters.feishu.auth_client.FeishuAuthClient', FakeFeishuAuthClient)
-    callback_resp = client.get('/api/v1/auth/feishu/callback?code=auth-code')
+    state = parse_qs(urlparse(authorize_resp.location).query)['state'][0]
+    client.set_cookie(auth_api._OAUTH_STATE_COOKIE, state, path='/api/v1/auth/feishu')
+    callback_resp = client.get(f'/api/v1/auth/feishu/callback?code=auth-code&state={state}')
     assert callback_resp.status_code == 302
-    assert 'token=token-for-ou_admin' in callback_resp.location
+    assert 'code=code-for-ou_admin' in callback_resp.location
+    assert 'access_token=' not in callback_resp.location
+    assert 'refresh_token=' not in callback_resp.location
 
     class BrokenFeishuAuthClient:
         def get_user_access_token(self, code):
@@ -2099,7 +2157,9 @@ def test_feishu_routes_cover_events_p2p_admin_and_card_actions(monkeypatch):
     container.update_chat_handler.return_value = update_handler
     container.redis_client.return_value = MagicMock()
 
-    rate_limit_stub = lambda *args, **kwargs: (True, {'current': 1, 'retry_after': 0})
+    def rate_limit_stub(*args, **kwargs):
+        return True, {'current': 1, 'retry_after': 0}
+
     monkeypatch.setattr('app.shared.utils.rate_limiter.check_rate_limit', rate_limit_stub)
 
     memory = MagicMock()
@@ -2251,7 +2311,12 @@ def _prepare_feishu_agent_runtime(monkeypatch, *, agent_service):
 
 
 def test_feishu_run_agent_covers_success_path(monkeypatch):
-    response = SimpleNamespace(text='查询结果', sql='SELECT 1', usage={'tokens': 3})
+    response = SimpleNamespace(
+        text='查询结果',
+        sql='SELECT 1',
+        usage={'tokens': 3},
+        tool_trace_evidence=lambda: {'trace': [], 'degradation': None},
+    )
     agent_service = MagicMock()
 
     def _run(request, on_progress=None):

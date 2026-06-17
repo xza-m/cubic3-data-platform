@@ -8,7 +8,7 @@ from app.domain.events.base import DomainEvent
 from app.extensions import configure_logging
 from app.infrastructure.database.session import close_db_session, get_db_engine, get_db_session, init_db_session
 from app.infrastructure.llm.base_llm import BaseLLMService
-from app.interfaces.api.docs import _get_paths
+from app.interfaces.api.docs import _get_schemas
 from app.interfaces.api.middleware.error_handler import register_error_handlers
 from app.shared.exceptions import (
     ApplicationException,
@@ -184,4 +184,4 @@ class TestDomainEventAndBaseLlm:
         service = _ConcreteLLM()
         assert service.chat_completion([]) is None
         assert service.generate_sql("question", {}) is None
-        assert "/api/v1/data-center/datasources" in _get_paths()
+        assert "ApiResponse" in _get_schemas()

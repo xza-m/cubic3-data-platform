@@ -78,8 +78,12 @@ def _build_client(preview_service: MagicMock, runtime_service=None):
 def _viewer_token() -> str:
     payload = {
         "user_id": "viewer1",
+        "principal_id": "viewer1",
         "user_name": "viewer",
         "roles": ["user"],
+        "token_use": "access",
+        "sid": "test-session",
+        "jti": "test-access-token",
         "iat": datetime.now(tz=timezone.utc),
         "exp": datetime.now(tz=timezone.utc) + timedelta(hours=1),
     }

@@ -31,6 +31,14 @@ def test_seed_access_governance_defaults_creates_idempotent_baseline(app, db_ses
     assert policies["m1_aggregate_read"].subject_roles == ["data_m1_reader"]
     assert policies["m1_aggregate_read"].resource_scope["table_layers"] == ["dws"]
     assert policies["m2_detail_read"].execution_profile_code == "mc_m2_detail_reader"
+    assert policies["m2_detail_read"].row_scope == [
+        {
+            "dimension_ref": "comment_reports.school_id",
+            "operator": "in",
+            "attribute": "school_ids",
+            "on_missing": "unrestricted",
+        }
+    ]
     assert policies["m3_raw_block"].effect == "deny"
     assert policies["m3_raw_block"].execution_profile_code is None
     assert db_session.query(AccessDataPolicyORM).count() == 4

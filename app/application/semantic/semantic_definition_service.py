@@ -59,6 +59,11 @@ class SemanticDefinitionService:
     def invalidate_cache(self) -> None:
         self._enum_cache.clear()
         self._graph = None
+        # YAML 仓储持有文件级缓存，文件写入后必须一并重载，否则读到旧定义
+        for repo in (self._cube_repo, self._view_repo, self._recipe_repo):
+            reload = getattr(repo, "reload", None)
+            if callable(reload):
+                reload()
 
     def list_cubes(self) -> List[Dict[str, Any]]:
         cubes = self._cube_repo.list_all()

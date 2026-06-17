@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List
+from app.domain.ontology.entities import measure_ref_strings
 
 
 class ValidationMatrixBuilder:
@@ -43,7 +44,7 @@ class ValidationMatrixBuilder:
             if metric.get("sql") or metric.get("execution_sql"):
                 blockers.append(self._blocker("generated_sql_bypasses_cube", f"BusinessMetric {metric_name} 不允许携带直拼 SQL", f"ontology.metrics.{metric_name}.sql"))
             active_ref = active_bindings.get(metric_name)
-            refs = metric.get("measure_refs") or []
+            refs = measure_ref_strings(metric.get("measure_refs"))
             if active_ref and refs and active_ref not in refs:
                 blockers.append(self._blocker("active_binding_conflict", f"BusinessMetric {metric_name} 与已有 active binding 冲突", f"ontology.metrics.{metric_name}.measure_refs"))
         return blockers

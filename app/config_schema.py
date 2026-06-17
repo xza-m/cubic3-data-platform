@@ -3,7 +3,7 @@
 使用 Pydantic 进行配置验证和类型检查
 """
 from typing import Optional, Set
-from pydantic import BaseModel, Field, HttpUrl, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import os
 
 
@@ -169,10 +169,14 @@ class AppConfig(BaseModel):
     
     # 认证配置
     jwt_secret: str = Field(default="your-secret-key", description="JWT 签名密钥")
-    jwt_expiration_hours: int = Field(default=24, ge=1, le=720, description="JWT 过期时间（小时）")
+    auth_access_token_ttl_seconds: int = Field(default=3600, ge=60, le=86400, description="平台 Access Token 有效期（秒）")
+    auth_refresh_token_ttl_seconds: int = Field(default=2592000, ge=3600, le=31536000, description="平台 Refresh Token 有效期（秒）")
+    auth_authorization_code_ttl_seconds: int = Field(default=300, ge=60, le=3600, description="SSO 一次性授权码有效期（秒）")
     admin_username: str = Field(default="", description="管理员用户名")
     admin_password: str = Field(default="", description="管理员密码")
     feishu_admin_open_ids: str = Field(default="", description="飞书管理员 open_id 列表（逗号分隔）")
+    feishu_m2_reader_open_ids: str = Field(default="", description="飞书默认 M2 查询白名单，支持 open_id / union_id / principal_id，逗号分隔")
+    feishu_m2_reader_sync_cubic3_allowlist: bool = Field(default=True, description="是否复用 CUBIC3 智能问数 allowed_user_ids 作为默认 M2 白名单")
 
     # 应用配置
     app_base_url: str = Field(default="http://localhost:5000", description="应用基础 URL")
@@ -187,7 +191,27 @@ class AppConfig(BaseModel):
     health_unhealthy_seconds: int = Field(
         default=180, ge=1, description="超过此秒数未收到心跳则标记为 unhealthy"
     )
-    
+
+    # RLS 行级安全执行模式（过渡开关，§6.3）：
+    #   off      — 完全跳过 row_scope 求值，纯语义闭环，对网关零影响
+    #   observe  — 求值并写审计但不阻断（默认过渡态），网关仍收 v1、零感知
+    #   deny     — 命中 row_scope 的 SQL/free SQL 一律 fail closed（gateway 注入未就绪）
+    #   enforce  — 预留：gateway apply_scope 就绪后真正注入（当前等价 deny）
+    rls_enforcement_mode: str = Field(
+        default="observe",
+        description="RLS 执行模式：off / observe / deny / enforce",
+    )
+
+    @field_validator('rls_enforcement_mode')
+    @classmethod
+    def validate_rls_enforcement_mode(cls, v: str) -> str:
+        """校验 RLS 执行模式。"""
+        value = (v or "observe").strip().lower()
+        allowed = {"off", "observe", "deny", "enforce"}
+        if value not in allowed:
+            raise ValueError(f"RLS_ENFORCEMENT_MODE 仅支持 {sorted(allowed)}")
+        return value
+
     @field_validator('log_level')
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -265,16 +289,24 @@ class AppConfig(BaseModel):
                 extraction_result_dir=os.getenv('EXTRACTION_RESULT_DIR', 'instance/extraction_results')
             ),
             jwt_secret=os.getenv('JWT_SECRET', 'your-secret-key'),
-            jwt_expiration_hours=int(os.getenv('JWT_EXPIRATION_HOURS', '24')),
+            auth_access_token_ttl_seconds=int(os.getenv('AUTH_ACCESS_TOKEN_TTL_SECONDS', '3600')),
+            auth_refresh_token_ttl_seconds=int(os.getenv('AUTH_REFRESH_TOKEN_TTL_SECONDS', '2592000')),
+            auth_authorization_code_ttl_seconds=int(os.getenv('AUTH_AUTHORIZATION_CODE_TTL_SECONDS', '300')),
             admin_username=os.getenv('ADMIN_USERNAME', ''),
             admin_password=os.getenv('ADMIN_PASSWORD', ''),
             feishu_admin_open_ids=os.getenv('FEISHU_ADMIN_OPEN_IDS', ''),
+            feishu_m2_reader_open_ids=os.getenv('FEISHU_M2_READER_OPEN_IDS', ''),
+            feishu_m2_reader_sync_cubic3_allowlist=os.getenv(
+                'FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST',
+                'true',
+            ).lower() in {'1', 'true', 'yes', 'on'},
             app_base_url=os.getenv('APP_BASE_URL', 'http://localhost:5000'),
             log_level=os.getenv('LOG_LEVEL', 'INFO'),
             scheduler_api_enabled=os.getenv('SCHEDULER_API_ENABLED', 'true').lower() == 'true',
             enable_scheduler_jobs=os.getenv('ENABLE_SCHEDULER_JOBS', 'true').lower() == 'true',
             health_degraded_seconds=int(os.getenv('HEALTH_DEGRADED_SECONDS', '60')),
             health_unhealthy_seconds=int(os.getenv('HEALTH_UNHEALTHY_SECONDS', '180')),
+            rls_enforcement_mode=os.getenv('RLS_ENFORCEMENT_MODE', 'observe'),
         )
     
     def to_flask_config(self) -> dict:
@@ -341,10 +373,14 @@ class AppConfig(BaseModel):
             
             # 认证
             'JWT_SECRET': self.jwt_secret,
-            'JWT_EXPIRATION_HOURS': self.jwt_expiration_hours,
+            'AUTH_ACCESS_TOKEN_TTL_SECONDS': self.auth_access_token_ttl_seconds,
+            'AUTH_REFRESH_TOKEN_TTL_SECONDS': self.auth_refresh_token_ttl_seconds,
+            'AUTH_AUTHORIZATION_CODE_TTL_SECONDS': self.auth_authorization_code_ttl_seconds,
             'ADMIN_USERNAME': self.admin_username,
             'ADMIN_PASSWORD': self.admin_password,
             'FEISHU_ADMIN_OPEN_IDS': self.feishu_admin_open_ids,
+            'FEISHU_M2_READER_OPEN_IDS': self.feishu_m2_reader_open_ids,
+            'FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST': self.feishu_m2_reader_sync_cubic3_allowlist,
 
             # 应用
             'APP_BASE_URL': self.app_base_url,
@@ -354,4 +390,6 @@ class AppConfig(BaseModel):
             # B-back-2
             'HEALTH_DEGRADED_SECONDS': self.health_degraded_seconds,
             'HEALTH_UNHEALTHY_SECONDS': self.health_unhealthy_seconds,
+            # RLS 行级安全执行模式
+            'RLS_ENFORCEMENT_MODE': self.rls_enforcement_mode,
         }

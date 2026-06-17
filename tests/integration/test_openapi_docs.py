@@ -13,7 +13,7 @@ def test_openapi_json_exposes_agent_ready_contracts(client):
     assert response.status_code == 200
     spec = response.get_json()
     assert spec["openapi"] == "3.0.3"
-    assert spec["info"]["title"] == "CUBIC3 API"
+    assert spec["info"]["title"] == "CUBIC3 Data Platform API"
     assert "bearerAuth" in spec["components"]["securitySchemes"]
 
     core_operations = {
@@ -65,6 +65,56 @@ def test_openapi_json_exposes_agent_ready_contracts(client):
     compile_preview = spec["paths"]["/api/v1/execution-compiler/compile-preview"]["post"]
     assert "不会真实执行 SQL" in compile_preview["description"]
     assert "不会投递异步任务" in compile_preview["description"]
+
+
+def test_openapi_exposes_cubic3_dp_cli_public_contracts(client):
+    response = client.get("/api/docs/openapi.json")
+
+    assert response.status_code == 200
+    spec = response.get_json()
+
+    public_operations = {
+        ("/api/v1/semantic/assets/radar", "get"): "SemanticAssetsRadarGet",
+        ("/api/v1/semantic/assets/tables", "get"): "SemanticAssetsTablesList",
+        ("/api/v1/semantic/assets/tables/{table_id}", "get"): "SemanticAssetsTableGet",
+        ("/api/v1/semantic/assets/tables/{table_id}/fields", "get"): "SemanticAssetsTableFieldsList",
+        ("/api/v1/semantic/assets/tables/{table_id}/evidence", "get"): "SemanticAssetsTableEvidenceGet",
+        ("/api/v1/semantic/assets/sync-runs", "get"): "SemanticAssetsSyncRunsList",
+        ("/api/v1/semantic/assets/sync-runs", "post"): "SemanticAssetsSyncRunCreate",
+        ("/api/v1/semantic/assets/sync-runs/{sync_run_id}", "get"): "SemanticAssetsSyncRunGet",
+        ("/api/v1/governance/audit-traces/{trace_id}", "get"): "GovernanceAuditTraceGet",
+    }
+
+    for (path, method), operation_id in public_operations.items():
+        operation = spec["paths"][path][method]
+        assert operation["operationId"] == operation_id
+        assert operation["x-agent-contract-status"] == "stable"
+        assert operation["x-permission-scope"]
+        data_schema = _response_data_schema(operation, "201" if method == "post" else "200")
+        assert data_schema["type"] == "object"
+        assert data_schema.get("properties")
+
+    sync_create = spec["paths"]["/api/v1/semantic/assets/sync-runs"]["post"]
+    assert sync_create["x-side-effect"] == "write"
+    assert sync_create["x-requires-confirmation"] is True
+
+
+def test_openapi_schema_uses_openapi30_nullable_not_json_schema_type_arrays(client):
+    response = client.get("/api/docs/openapi.json")
+
+    assert response.status_code == 200
+    spec = response.get_json()
+
+    def walk(node, path="root"):
+        if isinstance(node, dict):
+            assert not isinstance(node.get("type"), list), path
+            for key, value in node.items():
+                walk(value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                walk(value, f"{path}[{index}]")
+
+    walk(spec)
 
 
 def test_openapi_agent_plan_is_stable_official_runtime_contract(client):

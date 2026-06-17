@@ -3,10 +3,6 @@ from copy import deepcopy
 
 import pytest
 
-from app.application.semantic.modeling_copilot_runtime import (
-    LLMRequiredError,
-    OpenAICompatibleLLMAdapter,
-)
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.semantic_modeling_agent_app import SemanticModelingChatOutput
 from app.domain.semantic.modeling_agent_session import AgentSession
@@ -1247,240 +1243,6 @@ def test_copilot_sandbox_preview_is_draft_only():
     assert preview["workbench_state"]["agent_message"] == "已完成草稿态沙盒预演，不会写入语义中心发布快照。"
 
 
-def test_llm_adapter_raises_llm_required_when_api_key_missing(monkeypatch):
-    """新版彻底删除 deterministic fallback：未配 LLM_API_KEY 时直接抛 LLMRequiredError，
-    前端可据此引导用户去配置 LLM。"""
-    import pytest
-
-    monkeypatch.delenv("LLM_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
-    session = AgentSession(id="session_1", user_goal="查询最近7天学生评论数，按学校汇总")
-
-    class _UnusedTools:
-        def execute(self, *args, **kwargs):
-            raise AssertionError("LLM 未配置时不应触发任何工具调用")
-
-    adapter = OpenAICompatibleLLMAdapter()
-    with pytest.raises(LLMRequiredError) as exc_info:
-        adapter.run(
-            session=session,
-            user_message="查询最近7天学生评论数，按学校汇总",
-            tools=_UnusedTools(),
-        )
-    assert exc_info.value.reason == "missing_api_key"
-    assert exc_info.value.code == "LLM_REQUIRED"
-
-
-def test_llm_adapter_uses_fast_path_for_student_comment_without_llm(monkeypatch):
-    """学生评论主场景已有候选表时，应直接生成 spec，避免首轮 LLM 超时。"""
-
-    monkeypatch.setenv("LLM_API_KEY", "stub-key")
-
-    class _Tools:
-        def __init__(self):
-            self.calls = []
-
-        def execute(self, name, args, ctx):
-            self.calls.append((name, args))
-            if name == "search_ontology":
-                return {"summary": "ontology", "objects": [], "metrics": []}
-            if name == "search_cube":
-                return {
-                    "summary": "cubes",
-                    "candidates": [
-                        {"asset_type": "cube", "name": "student_comment_cube", "score": 0.82},
-                        {
-                            "asset_type": "table",
-                            "name": "df_cb_258187.dwd_interaction_comment_reports_df",
-                            "score": 0.78,
-                        },
-                    ],
-                }
-            if name == "build_evidence_pack":
-                return {"summary": "evidence", "items": [{"id": "p1", "trust_level": "P1"}]}
-            if name == "generate_semantic_draft":
-                return {
-                    "summary": "spec drafted",
-                    "spec": {
-                        "spec_version": "v1",
-                        "cube": {"name": "student_comment_cube", "source": args.get("candidate_table")},
-                        "ontology": {"object": {"name": "student_comment", "title": "学生评论"}},
-                    },
-                    "next_actions": {"default_publish_target": "cube_only"},
-                }
-            return {"summary": "noop"}
-
-    class _ShouldNotCallOpenAI:
-        def __init__(self, **_kw):
-            raise AssertionError("fast path 不应调用 LLM")
-
-    import openai
-
-    monkeypatch.setattr(openai, "OpenAI", _ShouldNotCallOpenAI)
-
-    session = AgentSession(id="s_fast", user_goal="查询最近 7 天学生评论数，按学校汇总")
-    tools = _Tools()
-    result = OpenAICompatibleLLMAdapter().run(session=session, user_message=session.user_goal, tools=tools)
-
-    tool_names = [item[0] for item in tools.calls]
-    assert tool_names == [
-        "search_ontology",
-        "search_cube",
-        "build_evidence_pack",
-        "generate_semantic_draft",
-    ]
-    assert tools.calls[-1][1]["candidate_table"] == "df_cb_258187.dwd_interaction_comment_reports_df"
-    assert result.workbench_state_patch["raw_spec"]["cube"]["name"] == "student_comment_cube"
-    assert result.workbench_state_patch["readiness"]["reasons"] == ["ready_to_save"]
-    assert result.suggested_actions == ["run_validation", "save_proposal"]
-    assert "llm.chat" not in [item.get("tool") for item in result.tool_traces]
-
-
-def test_llm_adapter_invokes_deterministic_tools_then_calls_llm(monkeypatch):
-    """LLM 配上后：先跑 search_ontology / search_cube / build_evidence_pack，
-    再调 LLM；LLM 抽到 candidate_source_table 后再调 generate_semantic_draft。"""
-
-    monkeypatch.setenv("LLM_API_KEY", "stub-key")
-    monkeypatch.setenv("LLM_MODEL", "stub-model")
-
-    class _Tools:
-        def __init__(self):
-            self.calls = []
-
-        def execute(self, name, args, ctx):
-            self.calls.append((name, args.get("table") or args.get("query")))
-            if name == "search_ontology":
-                return {"summary": "ontology", "objects": [], "metrics": []}
-            if name == "search_cube":
-                return {"summary": "cubes", "candidates": [{"name": "order_refund_cube", "score": 0.4}]}
-            if name == "build_evidence_pack":
-                return {"summary": "evidence", "items": []}
-            if name == "generate_semantic_draft":
-                return {
-                    "summary": "spec drafted",
-                    "spec": {
-                        "spec_version": "v1",
-                        "cube": {"name": "student_comment_cube", "source": args.get("table")},
-                        "ontology": {"objects": [{"name": "student_comment", "title": "学生评论"}]},
-                    },
-                    "next_actions": {"default_publish_target": "cube_only"},
-                }
-            return {"summary": "noop"}
-
-    captured: dict = {}
-
-    class _FakeChoice:
-        def __init__(self, payload):
-            self.message = type("M", (), {"content": json.dumps(payload, ensure_ascii=False)})()
-
-    class _FakeCompletion:
-        def __init__(self, payload):
-            self.choices = [_FakeChoice(payload)]
-
-    class _FakeChatNs:
-        def __init__(self, payload):
-            self._payload = payload
-
-        def create(self, **kw):
-            captured["request"] = kw
-            return _FakeCompletion(self._payload)
-
-    class _FakeClient:
-        def __init__(self, payload):
-            self.chat = type("ChatNs", (), {})()
-            self.chat.completions = _FakeChatNs(payload)
-
-    payload = {
-        "message": "我已识别建模目标。",
-        "intent_summary": "学生评论数 × 学校",
-        "candidate_source_table": "df.dwd_xxx",
-        "need_source_table": False,
-        "candidate_metrics": [
-            {"name": "comment_count", "title": "学生评论数", "measure_ref_hint": "student_comment_cube.comment_count"},
-        ],
-        "candidate_dimensions": [{"name": "school_id", "title": "学校", "type": "string"}],
-        "candidate_objects": [{"name": "student_comment", "title": "学生评论"}],
-        "required_confirmations": [
-            {"id": "confirm_school", "title": "学校字段", "recommended_value": "school_id", "blocking": True}
-        ],
-    }
-
-    import openai
-
-    monkeypatch.setattr(openai, "OpenAI", lambda **kw: _FakeClient(payload))
-
-    session = AgentSession(id="s_test", user_goal="查询订单退款率")
-    tools = _Tools()
-    result = OpenAICompatibleLLMAdapter().run(session=session, user_message="先帮我看看", tools=tools)
-
-    assert result.message == "我已识别建模目标。"
-    # 工具调用顺序：search_ontology → search_cube → build_evidence_pack → generate_semantic_draft
-    tool_names = [c[0] for c in tools.calls]
-    assert tool_names == [
-        "search_ontology",
-        "search_cube",
-        "build_evidence_pack",
-        "generate_semantic_draft",
-    ]
-    # spec 已生成
-    assert result.workbench_state_patch["raw_spec"]["cube"]["source"] == "df.dwd_xxx"
-    # candidate_source_table 写到 advanced_refs 与 proposal_patch
-    assert result.workbench_state_patch["advanced_refs"]["candidate_source_table"] == "df.dwd_xxx"
-    assert result.proposal_patch["candidate_table"] == "df.dwd_xxx"
-    # required_confirmations 透传
-    assert result.required_confirmations[0]["id"] == "confirm_school"
-
-
-def test_llm_adapter_skips_cube_generation_when_need_source_table(monkeypatch):
-    """LLM 没识别到表名时，generate_semantic_draft 应被跳过，readiness 给 need_source_table 原因。"""
-
-    monkeypatch.setenv("LLM_API_KEY", "stub-key")
-
-    class _Tools:
-        def __init__(self):
-            self.calls = []
-
-        def execute(self, name, args, ctx):
-            self.calls.append(name)
-            if name in {"search_ontology", "search_cube", "build_evidence_pack"}:
-                return {"summary": name, "items": [], "candidates": [], "objects": [], "metrics": []}
-            if name == "generate_semantic_draft":
-                raise AssertionError("need_source_table=true 时不应触发 generate_semantic_draft")
-            return {}
-
-    payload = {
-        "message": "请告诉我用哪张业务表",
-        "intent_summary": "学生评论统计",
-        "candidate_source_table": None,
-        "need_source_table": True,
-        "clarifying_question": "请告诉我用哪张业务表",
-        "candidate_metrics": [],
-        "candidate_dimensions": [],
-        "candidate_objects": [],
-        "required_confirmations": [],
-    }
-
-    class _Stub:
-        def __init__(self, payload):
-            self.chat = type("X", (), {})()
-            self.chat.completions = type("Y", (), {"create": lambda *_a, **_k: type(
-                "Z", (), {"choices": [type("C", (), {"message": type("M", (), {"content": json.dumps(payload, ensure_ascii=False)})()})]}
-            )()})
-
-    import openai
-
-    monkeypatch.setattr(openai, "OpenAI", lambda **kw: _Stub(payload))
-
-    session = AgentSession(id="s_test_2", user_goal="学生评论数统计")
-    result = OpenAICompatibleLLMAdapter().run(session=session, user_message="g", tools=_Tools())
-
-    assert "generate_semantic_draft" not in [c for c in (result.tool_traces[i].get("status") for i in range(len(result.tool_traces)))]
-    assert result.workbench_state_patch["readiness"]["reasons"] == ["spec_not_generated", "need_source_table"]
-    assert result.workbench_state_patch["advanced_refs"]["need_source_table"] is True
-    assert result.suggested_actions == ["provide_source_table"]
-
-
 def test_update_spec_replaces_raw_spec_and_recomputes_readiness():
     service, repo, _, _ = _service()
     created = service.create_session({"user_goal": "g"})
@@ -1792,10 +1554,12 @@ def test_workbench_context_preserves_candidate_source_and_dedupes_initial_messag
     assert raw_metric["time_dimension"] == "ds"
     assert confirmed["workbench_state"]["advanced_refs"]["candidate_source_table"] == "dwd_learning_activity_df"
     assert confirmed["workbench_state"]["readiness"]["reasons"] == ["ready_to_save"]
-    assert service._tools.calls[-1][0] == "generate_semantic_draft"
-    assert service._tools.calls[-1][1]["source_id"] == 1
-    assert service._tools.calls[-1][1]["database"] == "dw"
-    assert service._tools.calls[-1][1]["evidence_bundle"]["schema_snapshot"]["partitions"] == ["ds"]
+    draft_call = next(
+        call for call in reversed(service._tools.calls) if call[0] == "generate_semantic_draft"
+    )
+    assert draft_call[1]["source_id"] == 1
+    assert draft_call[1]["database"] == "dw"
+    assert draft_call[1]["evidence_bundle"]["schema_snapshot"]["partitions"] == ["ds"]
 
 
 def test_confirm_source_candidate_preserves_data_asset_evidence_in_proposal_patch():
@@ -1974,7 +1738,7 @@ def test_student_comment_source_confirmation_repairs_latest_answer_view_regressi
     assert spec["cube"]["name"] == "dwd_interaction_comment_reports_df"
     assert spec["cube"]["table"] == "dwd_interaction_comment_reports_df"
     assert spec["ontology"]["metrics"][0]["measure_refs"] == [
-        "dwd_interaction_comment_reports_df.total_count"
+        {"ref": "dwd_interaction_comment_reports_df.total_count", "role": "primary"}
     ]
     assert "view_student_answer_analysis" not in json.dumps(
         proposals.payloads[0]["embedded_spec"], ensure_ascii=False

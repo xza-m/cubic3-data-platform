@@ -150,7 +150,7 @@ class AnomalyMonitorExecutor(AppExecutor):
                 
                 # 元信息
                 'timestamp': datetime.now().isoformat(),
-                'instance_name': context.instance.name if context.instance else None
+                'instance_name': context.instance_name
             }
             result.add_log("✓ 异常监控完成，告警数据已准备好供订阅分发")
             

@@ -1,5 +1,7 @@
 # app/application/semantic/diagnose_run_service.py
 """DiagnoseRun 应用服务（B-back-9）"""
+import hashlib
+import json
 import logging
 import time
 from typing import Any, Optional
@@ -63,6 +65,7 @@ class DiagnoseRunService:
                 "sql_text": sql_text,
                 "error": error,
                 "duration_ms": duration_ms,
+                "definition_hash": self._current_definition_hash(),
             }
         )
         return run.to_dict()
@@ -77,6 +80,26 @@ class DiagnoseRunService:
         if run is None:
             raise EntityNotFoundError(f"DiagnoseRun {run_id} 不存在")
         return run.to_dict()
+
+    # ── 内部：定义版本标识 ────────────────────────────────────────────────────
+
+    def _current_definition_hash(self) -> Optional[str]:
+        """对当前语义定义集（全部 Cube）计算版本标识，回放时用于漂移检测。"""
+        svc = self._semantic_service
+        cube_repo = getattr(svc, "_cube_repo", None) if svc is not None else None
+        if cube_repo is None:
+            return None
+        try:
+            payload = {
+                cube.name: cube.model_dump(mode="json")
+                for cube in cube_repo.list_all()
+            }
+            return hashlib.sha256(
+                json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+            ).hexdigest()
+        except Exception:
+            logger.warning("diagnose definition hash failed", exc_info=True)
+            return None
 
     # ── 内部：实际诊断逻辑 ────────────────────────────────────────────────────
 

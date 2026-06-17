@@ -138,6 +138,11 @@ class TestSendMessageHandlerLegacyLlm:
         msg_repo.create.assert_called()
         llm_service.generate_sql.assert_called_once()
 
+        # Phase 5 可信标注：legacy 路径 AI 消息标注 source 并前置未验证提示
+        ai_message_entity = msg_repo.create.call_args_list[1][0][0]
+        assert ai_message_entity.source == "legacy_llm"
+        assert ai_message_entity.content.startswith(SendMessageHandler.LEGACY_DISCLAIMER)
+
     def test_legacy_llm_dataset_not_found_raises(self, handler, command, mock_repos):
         """数据集不存在时抛出"""
         conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
@@ -251,6 +256,60 @@ class TestSendMessageHandlerAgent:
         semantic_router_service.execute_plan.assert_called_once()
         llm_service.generate_sql.assert_not_called()
 
+        # Phase 5 可信标注：semantic 路径 AI 消息标注 source='semantic'
+        ai_message_entity = msg_repo.create.call_args_list[1][0][0]
+        assert ai_message_entity.source == "semantic"
+
+    def test_semantic_router_path_records_agent_query_log(self, mock_repos):
+        """Phase 5：semantic 路径补写 AgentQueryLog，llm_provider=semantic_router。"""
+        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
+        semantic_router_service = MagicMock()
+        handler = SendMessageHandler(
+            conversation_repository=conv_repo,
+            message_repository=msg_repo,
+            dataset_repository=dataset_repo,
+            llm_service=llm_service,
+            semantic_router_service=semantic_router_service,
+        )
+
+        conversation = MagicMock()
+        conversation.id = 1
+        conversation.user_id = "user_123"
+        conversation.dataset_id = 10
+        conv_repo.find_by_id.return_value = conversation
+
+        user_message = MagicMock()
+        user_message.to_dict.return_value = {"id": 1}
+        ai_message = MagicMock()
+        ai_message.to_dict.return_value = {"id": 2}
+        msg_repo.create.side_effect = [user_message, ai_message]
+
+        semantic_router_service.execute_plan.return_value = {
+            "route": {"route_type": "cube"},
+            "execution_results": [
+                {
+                    "status": "executed",
+                    "target_type": "sql",
+                    "execution_request": {"sql_query": "SELECT 1"},
+                    "result": {"columns": [], "data": [], "row_count": 0},
+                    "traceability": {},
+                }
+            ],
+            "traceability": {},
+        }
+
+        log_entry = MagicMock()
+        mock_db = SimpleNamespace(session=MagicMock())
+        with patch("app.domain.entities.agent_query_log.AgentQueryLog", return_value=log_entry) as log_cls:
+            with patch("app.extensions.db", mock_db):
+                handler.handle(SendMessageCommand(conversation_id=1, user_id="user_123", content="查询销售额"))
+
+        log_kwargs = log_cls.call_args.kwargs
+        assert log_kwargs["llm_provider"] == "semantic_router"
+        assert log_kwargs["status"] == "success"
+        assert log_kwargs["sql_executed"] == "SELECT 1"
+        mock_db.session.add.assert_called_once_with(log_entry)
+
     def test_agent_success_returns_channel_response(self, handler, command, mock_repos):
         conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
 
@@ -270,7 +329,12 @@ class TestSendMessageHandlerAgent:
         channel_instance.to_agent_request.return_value = ("req", {"table": "sales"}, adapter)
         channel_instance.deliver_response.return_value = {"mode": "agent", "ok": True}
         agent_service = MagicMock()
-        agent_service.run.return_value = SimpleNamespace(text="答复", sql="SELECT 1", usage={"tokens": 3})
+        agent_service.run.return_value = SimpleNamespace(
+            text="答复",
+            sql="SELECT 1",
+            usage={"tokens": 3},
+            tool_trace_evidence=lambda: {"trace": [], "degradation": None},
+        )
         log_entry = MagicMock()
         mock_db = SimpleNamespace(session=MagicMock())
 
@@ -287,6 +351,8 @@ class TestSendMessageHandlerAgent:
         log_entry.mark_success.assert_called_once()
         adapter.close.assert_called_once()
         llm_service.generate_sql.assert_not_called()
+        # 消息写入走容器 scoped_session，handler 返回前必须在同一 session 提交
+        conv_repo.commit.assert_called_once()
 
     def test_agent_failure_falls_back_to_legacy_llm(self, handler, command, mock_repos):
         conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
@@ -333,7 +399,8 @@ class TestSendMessageHandlerAgent:
                 with patch("app.interfaces.channels.datachat_channel.DataChatChannel", return_value=channel_instance):
                     with patch("app.domain.entities.agent_query_log.AgentQueryLog", return_value=log_entry):
                         with patch("app.extensions.db", mock_db):
-                            with patch("time.monotonic", side_effect=[2.0, 2.4]):
+                            # agent 路径 2 次 + legacy 路径（t0 / duration）2 次
+                            with patch("time.monotonic", side_effect=[2.0, 2.4, 3.0, 3.5]):
                                 with patch("app.application.conversation.handlers.send_message_handler.logger") as mock_logger:
                                     with patch(
                                         "app.infrastructure.adapters.datasources.factory.AdapterFactory.create_adapter",

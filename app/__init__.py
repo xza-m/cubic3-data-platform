@@ -149,8 +149,11 @@ def create_app(role: str = "web") -> Flask:
         AccessDelegationEventORM,
         AccessPrincipalAliasORM,
         AccessPrincipalORM,
+        AccessPrincipalScopeORM,
         AccessRoleBindingORM,
         AccessServicePrincipalORM,
+        AuthAuthorizationCodeORM,
+        AuthRefreshSessionORM,
         PrincipalPreferencesORM,
     )
     from .infrastructure.governance.models import (  # noqa
@@ -229,6 +232,8 @@ def create_app(role: str = "web") -> Flask:
             dataset_handler=container.create_dataset_handler(),
             registry_repo=container.semantic_registry_repository(),
             runtime_snapshot_service=container.runtime_snapshot_service(),
+            mapper_service=container.semantic_mapper_preview_service(),
+            field_candidate_service=container.semantic_field_candidate_service(),
         ))
         app.register_blueprint(create_semantic_assets_blueprint(
             container.data_asset_service,
@@ -246,6 +251,13 @@ def create_app(role: str = "web") -> Flask:
             container.semantic_mapper_preview_service(),
             container.ontology_audit_trace_repository(),
             container.ontology_workbench_read_service(),
+        ))
+        from .interfaces.api.v1.search import create_search_blueprint
+        app.register_blueprint(create_search_blueprint(
+            container.semantic_service(),
+            container.domain_modeling_service(),
+            container.ontology_definition_service(),
+            metadata_visibility_service=container.metadata_visibility_service(),
         ))
         app.register_blueprint(create_semantic_mapper_blueprint(
             container.semantic_mapper_preview_service(),
@@ -268,6 +280,7 @@ def create_app(role: str = "web") -> Flask:
         ))
         app.register_blueprint(create_governance_blueprint(
             container.ontology_audit_trace_repository(),
+            policy_metadata_repository=container.ontology_policy_repository(),
         ))
         app.register_blueprint(scheduled_queries_v1_bp)
 
@@ -320,13 +333,20 @@ def create_app(role: str = "web") -> Flask:
             seed_system_instances()
             seed_access_governance_defaults()
 
-            init_jobs()
-            logging.getLogger(__name__).info("Scheduler initialized with app-center schedules")
-            try:
-                from app.infrastructure.queries.scheduled_query_runner import reload_all_scheduled_queries
-                reload_all_scheduled_queries()
-            except Exception as _e:
-                logging.getLogger(__name__).warning("Failed to reload scheduled query jobs: %s", _e)
+            # B8 约束：APScheduler 在 web 进程内运行，定时任务注册只能存在于
+            # 单个进程（docker-compose 已固定 GUNICORN_WORKERS=1）。
+            # 多 worker 部署时必须仅在一个进程开启 ENABLE_SCHEDULER_JOBS，
+            # 否则 cron 任务会重复触发。
+            if app.config.get('ENABLE_SCHEDULER_JOBS', True):
+                init_jobs()
+                logging.getLogger(__name__).info("Scheduler initialized with app-center schedules")
+                try:
+                    from app.infrastructure.queries.scheduled_query_runner import reload_all_scheduled_queries
+                    reload_all_scheduled_queries()
+                except Exception as _e:
+                    logging.getLogger(__name__).warning("Failed to reload scheduled query jobs: %s", _e)
+            else:
+                logging.getLogger(__name__).info("ENABLE_SCHEDULER_JOBS=false，跳过 APScheduler 定时任务注册")
 
         # 事件处理器（worker 执行任务时也可能触发事件）
         try:
@@ -341,7 +361,8 @@ def create_app(role: str = "web") -> Flask:
     # 飞书长连接（仅 Web 角色）
     # ================================================================
 
-    if role == "web":
+    # 测试环境不建立真实外部长连接，避免单测被本地 .env 凭证污染
+    if role == "web" and not _testing:
         try:
             from app.infrastructure.adapters.feishu.ws_event_handler import start_feishu_ws
             start_feishu_ws(app)

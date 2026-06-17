@@ -880,6 +880,89 @@ def test_router_execute_plan_runs_targets_and_returns_results(tmp_path):
     assert result["execution_results"][0]["result"]["row_count"] == 1
 
 
+def test_router_execute_plan_passes_runtime_mode_manifest_and_analysis_intent(tmp_path, monkeypatch):
+    """official 模式下 execute_plan 必须把 runtime_mode/manifest/analysis_intent 透传到运行时执行，
+    否则二次编译会落回 YAML 路径（错误 source_id）且丢失时间窗（全表扫描）。"""
+    from unittest.mock import MagicMock
+
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+
+    runtime = MagicMock()
+    runtime.execute.return_value = {"status": "executed"}
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=MagicMock(),
+        compiler_preview_service=MagicMock(),
+        runtime_service=runtime,
+    )
+
+    fake_manifest = {"ok": True, "release": {"id": "rel_x"}}
+    monkeypatch.setattr(service, "_load_runtime_manifest", lambda mode: fake_manifest)
+    monkeypatch.setattr(
+        service,
+        "plan",
+        lambda **kwargs: {
+            "semantic_plan_id": "sp_test",
+            "route": {"route_type": "cube"},
+            "execution_targets": [
+                {
+                    "target_type": "sql",
+                    "metric_name": "gmv",
+                    "analysis_intent": {"time_window": {"type": "last_n_days", "n": 7}},
+                }
+            ],
+        },
+    )
+
+    result = service.execute_plan(question="统计最近7天GMV", runtime_mode="official")
+
+    assert result["execution_results"][0]["status"] == "executed"
+    call_kwargs = runtime.execute.call_args.kwargs
+    assert call_kwargs["runtime_mode"] == "official"
+    assert call_kwargs["runtime_manifest"] is fake_manifest
+    assert call_kwargs["analysis_intent"] == {"time_window": {"type": "last_n_days", "n": 7}}
+
+
+def test_runtime_service_execute_forwards_runtime_context_to_compile_preview():
+    """ExecutionCompilerRuntimeService.execute 必须把 runtime 上下文透传到 compile_preview。"""
+    from unittest.mock import MagicMock
+
+    preview_service = MagicMock()
+    preview_service.compile_preview.return_value = {
+        "status": "blocked",
+        "target_type": "sql",
+        "reason": "for-test",
+        "traceability": {},
+    }
+    runtime = ExecutionCompilerRuntimeService(
+        preview_service=preview_service,
+        execute_query_handler_factory=lambda: MagicMock(),
+    )
+
+    fake_manifest = {"ok": True}
+    runtime.execute(
+        target_type="sql",
+        metric_name="gmv",
+        analysis_intent={"time_window": {"type": "last_n_days", "n": 7}},
+        runtime_mode="official",
+        runtime_manifest=fake_manifest,
+    )
+
+    compile_kwargs = preview_service.compile_preview.call_args.kwargs
+    assert compile_kwargs["runtime_mode"] == "official"
+    assert compile_kwargs["runtime_manifest"] is fake_manifest
+    assert compile_kwargs["analysis_intent"] == {"time_window": {"type": "last_n_days", "n": 7}}
+
+
 def test_router_plan_returns_stable_structure_for_frontend_consumption(tmp_path):
     cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
     _save_sample_cube(cube_repo)

@@ -23,12 +23,13 @@ class _AgentGatewayExecuteServiceStub:
         return self.result
 
 
-def _build_client(execute_service):
+def _build_client(execute_service, gateway_token: str = "test-gateway-token"):
     app = Flask(__name__)
     app.config.update(
         TESTING=True,
         SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN=gateway_token,
     )
     db.init_app(app)
     app.register_blueprint(create_agent_blueprint(_AgentPlanHandlerStub(), execute_service))
@@ -58,6 +59,38 @@ def test_agent_semantic_execute_submits_to_gateway_contract():
     assert "query_execution_job_id" not in payload
     assert "query_id" not in payload
     assert service.calls[0]["idempotency_key"] == "idem-1"
+
+
+def test_agent_semantic_execute_returns_structured_503_when_token_missing():
+    """Phase 5：token 未配置时 503 payload 结构化为 {error_code, hint}，前端可给出配置指引。"""
+    service = _AgentGatewayExecuteServiceStub({"status": "submitted"})
+    client = _build_client(service, gateway_token="")
+
+    response = client.post("/api/v1/agent/semantic/execute", json={"question": "查看昨日 GMV"})
+
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload["details"]["error_code"] == "gateway_token_missing"
+    assert "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN" in payload["details"]["hint"]
+    assert service.calls == []
+
+
+def test_agent_semantic_execute_returns_structured_503_when_gateway_unavailable():
+    """gateway 不可达时 503 payload 携带 error_code=gateway_unavailable 与 hint。"""
+    from app.infrastructure.gateway.telemetry_client import GatewayQueryError
+
+    class _FailingService:
+        def execute(self, **kwargs):
+            raise GatewayQueryError("gateway query failed: 502")
+
+    client = _build_client(_FailingService())
+
+    response = client.post("/api/v1/agent/semantic/execute", json={"question": "查看昨日 GMV"})
+
+    assert response.status_code == 503
+    payload = response.get_json()
+    assert payload["details"]["error_code"] == "gateway_unavailable"
+    assert "dw-query-gateway" in payload["details"]["hint"]
 
 
 def test_agent_semantic_execute_denied_policy_does_not_create_local_job():

@@ -267,6 +267,7 @@ class ReleaseValidationPreviewService:
     ) -> dict[str, Any]:
         semantic_spec = deepcopy(spec)
         release_diff = self._build_release_diff(semantic_spec, previous_spec)
+        binding_validation = self._run_binding_validation(semantic_spec)
         semantic_compile = self._run_semantic_compile(
             session_id=session_id,
             namespace=namespace,
@@ -288,11 +289,28 @@ class ReleaseValidationPreviewService:
             "target": "semantic_center",
             "semantic_spec": semantic_spec,
             "semantic_compile": semantic_compile,
+            "binding_validation": binding_validation,
             "compiled_sql": compiled_sql,
             "release_diff": release_diff,
             "impact_summary": self._build_impact_summary(release_diff),
             "gateway_validation": gateway_validation,
             "consumer_validation": self._build_consumer_validation(sample_questions),
+        }
+
+    def _run_binding_validation(self, semantic_spec: dict[str, Any]) -> dict[str, Any]:
+        """§1.3 断链校验矩阵预演：断链作为 blocking reason 提供给 ArtifactPanel。"""
+        from app.application.semantic.publish_gate_service import check_binding_matrix
+
+        try:
+            matrix = check_binding_matrix([deepcopy(semantic_spec)])
+        except Exception as exc:
+            return {"status": "failed", "message": f"绑定校验预演失败：{exc}", "blockers": []}
+        if matrix["ok"]:
+            return {"status": "passed", "message": "Cube ↔ Ontology 绑定校验通过。", "blockers": []}
+        return {
+            "status": "failed",
+            "message": "存在断链绑定，发布将被 gate 阻断。",
+            "blockers": matrix["blockers"],
         }
 
     def _run_semantic_compile(

@@ -1,9 +1,12 @@
 """Runtime manifest 到只读语义 Catalog 的适配。"""
 from __future__ import annotations
 
+import logging
 from typing import Any, Generic, Iterable, TypeVar
 
 from pydantic import BaseModel, ValidationError
+
+logger = logging.getLogger(__name__)
 
 from app.domain.ontology.entities import (
     BusinessAction,
@@ -160,22 +163,72 @@ class RuntimeSemanticCatalog:
         actions: list[BusinessAction],
         cubes: list[CubeDefinition],
     ) -> None:
-        cls._append_one(objects, BusinessObject, spec.get("object"))
-        cls._append_one(metrics, BusinessMetric, spec.get("metric"))
+        cls._append_one(objects, BusinessObject, cls._activate_asset_spec(spec.get("object")))
+        cls._append_one(metrics, BusinessMetric, cls._activate_asset_spec(spec.get("metric")))
         cls._append_one(glossary, GlossaryEntry, spec.get("glossary"))
         cls._append_one(relations, BusinessRelation, spec.get("relation"))
         cls._append_one(actions, BusinessAction, spec.get("action"))
-        cls._append_one(cubes, CubeDefinition, spec.get("cube"))
+        cls._append_one(cubes, CubeDefinition, cls._activate_cube_spec(spec.get("cube")))
 
         ontology = spec.get("ontology") or {}
-        cls._append_many(objects, BusinessObject, ontology.get("objects"))
-        cls._append_many(metrics, BusinessMetric, ontology.get("metrics"))
+        # Modeling Copilot 发布的 spec 用单数 object/metric；旧格式用复数列表，两者都要兼容。
+        cls._append_many(
+            objects,
+            BusinessObject,
+            [cls._activate_asset_spec(item) for item in cls._as_list(ontology.get("objects") or ontology.get("object"))],
+        )
+        cls._append_many(
+            metrics,
+            BusinessMetric,
+            [cls._activate_asset_spec(item) for item in cls._as_list(ontology.get("metrics") or ontology.get("metric"))],
+        )
         cls._append_many(glossary, GlossaryEntry, ontology.get("glossary") or ontology.get("glossary_entries"))
         cls._append_many(relations, BusinessRelation, ontology.get("relations"))
         cls._append_many(actions, BusinessAction, ontology.get("actions"))
 
         if spec.get("name") and spec.get("dimensions") and spec.get("measures"):
-            cls._append_one(cubes, CubeDefinition, spec)
+            cls._append_one(cubes, CubeDefinition, cls._activate_cube_spec(spec))
+
+    @staticmethod
+    def _as_list(value: Any) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        return [value]
+
+    @staticmethod
+    def _activate_asset_spec(value: Any) -> Any:
+        """过渡期兜底：发布链路已在 release service 落 active 状态（根因修复）；
+        旧 manifest 中残留的 draft 状态在此提升并记录告警。"""
+        if isinstance(value, dict) and value.get("status") != "active":
+            RuntimeSemanticCatalog._warn_status_promotion(value.get("name"), value.get("status"))
+            return {**value, "status": "active"}
+        if isinstance(value, BaseModel) and getattr(value, "status", "active") != "active":
+            RuntimeSemanticCatalog._warn_status_promotion(getattr(value, "name", None), getattr(value, "status", None))
+            return value.model_copy(update={"status": "active"})
+        return value
+
+    @staticmethod
+    def _activate_cube_spec(value: Any) -> Any:
+        """过渡期兜底：同 `_activate_asset_spec`，针对 cube spec。"""
+        if isinstance(value, dict):
+            if value.get("status") not in (None, "active"):
+                RuntimeSemanticCatalog._warn_status_promotion(value.get("name"), value.get("status"))
+            return {**value, "status": "active"}
+        if isinstance(value, CubeDefinition) and value.status != "active":
+            RuntimeSemanticCatalog._warn_status_promotion(value.name, value.status)
+            return value.model_copy(update={"status": "active"})
+        return value
+
+    @staticmethod
+    def _warn_status_promotion(asset_name: Any, status: Any) -> None:
+        logger.warning(
+            "runtime_manifest_status_promoted: 资产 %s 在 published manifest 内状态为 %s，"
+            "已在加载期提升为 active；该 manifest 由旧发布链路产出，建议重新发布。",
+            asset_name,
+            status,
+        )
 
     @staticmethod
     def _append_many(container: list[T], model: type[T], values: Any) -> None:

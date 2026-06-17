@@ -23,7 +23,7 @@ class QueryFolder(db.Model):
     parent_id = Column(BigInteger, ForeignKey('query_folders.id', ondelete='CASCADE'), nullable=True, index=True)
     
     # 审计字段
-    created_by = Column(String(100), nullable=False, index=True)
+    created_by = Column(String(191), nullable=False, index=True)
     created_at = Column(DateTime, default=utcnow, nullable=False)
     
     def __repr__(self):

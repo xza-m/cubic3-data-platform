@@ -127,7 +127,77 @@ class AccessApiKeyORM(db.Model):
     last_rotated_at = Column(DateTime, nullable=True)
     usage_count = Column(Integer, nullable=False, default=0, server_default="0")
     status = Column(String(32), nullable=False, default="active", server_default="active")
+    # 语义 release pin：{"pin_policy": "pinned"|"track_active", "release_id": "..."}（§6.1）
+    semantic_pin = Column(JsonType, nullable=True)
     created_by = Column(String(191), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+
+
+class AuthRefreshSessionORM(db.Model):
+    """平台 Refresh Token 会话。
+
+    Refresh Token 使用不透明随机串，数据库只保存哈希；每次刷新都会轮换会话，
+    旧会话立即作废，用于撤销与重复使用检测。
+    """
+
+    __tablename__ = "auth_refresh_sessions"
+    __table_args__ = (
+        Index("idx_auth_refresh_sessions_principal", "principal_id"),
+        Index("idx_auth_refresh_sessions_family", "token_family_id"),
+        Index("idx_auth_refresh_sessions_hash", "refresh_token_hash"),
+        Index("idx_auth_refresh_sessions_status", "revoked_at", "expires_at"),
+        {"extend_existing": True},
+    )
+
+    session_id = Column(String(64), primary_key=True)
+    token_family_id = Column(String(64), nullable=False)
+    principal_id = Column(
+        String(191),
+        ForeignKey("access_principals.principal_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_name = Column(String(128), nullable=True)
+    roles = Column(JsonType, nullable=False, default=list)
+    refresh_token_hash = Column(String(128), nullable=False, unique=True)
+    auth_method = Column(String(32), nullable=False)
+    client_type = Column(String(32), nullable=False, default="web", server_default="web")
+    user_agent = Column(String(255), nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    revoke_reason = Column(String(64), nullable=True)
+    replaced_by_session_id = Column(String(64), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class AuthAuthorizationCodeORM(db.Model):
+    """飞书 SSO 一次性授权码。
+
+    授权码只在浏览器重定向 URL 中出现，真实 Token Pair 只能通过后端交换接口获取。
+    """
+
+    __tablename__ = "auth_authorization_codes"
+    __table_args__ = (
+        Index("idx_auth_authorization_codes_hash", "code_hash"),
+        Index("idx_auth_authorization_codes_principal", "principal_id"),
+        Index("idx_auth_authorization_codes_expires", "expires_at"),
+        {"extend_existing": True},
+    )
+
+    code_id = Column(String(64), primary_key=True)
+    code_hash = Column(String(128), nullable=False, unique=True)
+    principal_id = Column(
+        String(191),
+        ForeignKey("access_principals.principal_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_name = Column(String(128), nullable=True)
+    roles = Column(JsonType, nullable=False, default=list)
+    client_type = Column(String(32), nullable=False, default="web", server_default="web")
+    expires_at = Column(DateTime, nullable=False)
+    consumed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=utcnow)
 
 
@@ -182,6 +252,37 @@ class AccessDelegationEventORM(db.Model):
     decision = Column(String(32), nullable=False)
     reason = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False, default=utcnow)
+
+
+class AccessPrincipalScopeORM(db.Model):
+    """Principal 数据范围属性（RLS row_scope 求值取值来源）。"""
+
+    __tablename__ = "access_principal_scopes"
+    __table_args__ = (
+        UniqueConstraint(
+            "principal_id",
+            "attribute",
+            "source",
+            name="uq_access_principal_scopes_attr_source",
+        ),
+        Index("idx_access_principal_scopes_principal", "principal_id"),
+        Index("idx_access_principal_scopes_attribute", "attribute"),
+        {"extend_existing": True},
+    )
+
+    id = Column(_BIG_PK, primary_key=True, autoincrement=True)
+    principal_id = Column(
+        String(191),
+        ForeignKey("access_principals.principal_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    attribute = Column(String(128), nullable=False)
+    values = Column(JsonType, nullable=False, default=list)
+    source = Column(String(32), nullable=False, default="manual", server_default="manual")
+    synced_at = Column(DateTime, nullable=True)
+    created_by = Column(String(191), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=utcnow)
+    updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
 class PrincipalPreferencesORM(db.Model):

@@ -580,6 +580,8 @@ class SemanticRouterPreviewService:
             principal_context=principal_context,
             runtime_mode=runtime_mode,
         )
+        normalized_runtime_mode = self._normalize_runtime_mode(runtime_mode)
+        runtime_manifest = self._load_runtime_manifest(normalized_runtime_mode)
         viewer_roles = self._resolve_roles(viewer_roles=viewer_roles, principal_context=principal_context)
         execution_results: List[Dict[str, Any]] = []
         for target in plan.get("execution_targets", []):
@@ -591,11 +593,14 @@ class SemanticRouterPreviewService:
                     retrieval_sources=target.get("retrieval_sources"),
                     tool_name=target.get("tool_name"),
                     tool_arguments=target.get("tool_arguments"),
+                    analysis_intent=target.get("analysis_intent"),
                     viewer_roles=viewer_roles or [],
                     principal_context=principal_context,
                     route_type=plan.get("route", {}).get("route_type"),
                     approval_id=(runtime_options or {}).get("approval_id"),
                     semantic_plan_id=plan.get("semantic_plan_id"),
+                    runtime_mode=normalized_runtime_mode,
+                    runtime_manifest=runtime_manifest,
                 )
             )
         return {

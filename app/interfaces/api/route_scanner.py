@@ -108,8 +108,22 @@ def _parse_docstring(docstring: str, default_summary: str) -> tuple[str, str]:
 def _get_tag_for_path(path: str) -> str:
     """根据路径确定 API 标签（使用中文）"""
     tag_mapping = {
+        '/data-center/datasources': "数据源管理",
         '/datasources': "数据源管理",
+        '/data-center/datasets': "数据集管理",
         '/datasets': "数据集管理",
+        '/semantic/assets': "语义资产",
+        '/semantic/modeling-copilot': "语义建模",
+        '/semantic/modeling-workbench': "语义建模",
+        '/semantic-router': "语义路由",
+        '/semantic-mapper': "业务语义",
+        '/semantic/health': "语义 Runtime",
+        '/semantic/releases': "语义 Runtime",
+        '/execution-compiler': "执行编译",
+        '/agent/semantic': "Agent Runtime",
+        '/agent-runtime': "Agent Runtime",
+        '/governance': "治理与审计",
+        '/ontology': "业务语义",
         '/extraction': "提取任务",
         '/conversations': "对话中心",
         '/queries': "查询中心",

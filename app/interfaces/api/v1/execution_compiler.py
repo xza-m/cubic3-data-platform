@@ -77,6 +77,7 @@ def create_execution_compiler_blueprint(preview_service, runtime_service=None):
                 viewer_roles=None,
                 principal_context=principal_context,
                 approval_id=(body.get("runtime_options") or {}).get("approval_id"),
+                runtime_mode=(body.get("runtime_options") or {}).get("runtime_mode"),
             )
         except Exception as exc:
             return error(f"执行请求失败: {exc}")

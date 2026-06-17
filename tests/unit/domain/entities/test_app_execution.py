@@ -58,6 +58,23 @@ class TestAppExecution:
         assert d['id'] == 42
         assert d['status'] == 'pending'
 
+    def test_complete_success_with_naive_started_at(self):
+        """回归：DB 回读的 started_at 是 naive，complete_* 不应抛 TypeError 卡死 running。"""
+        ex = self._make_execution(status='running')
+        ex.started_at = utcnow().replace(tzinfo=None)
+        ex.instance = MagicMock(app_code='test_app')
+        ex.complete_success(output={'ok': True})
+        assert ex.status == 'success'
+        assert ex.duration_ms is not None and ex.duration_ms >= 0
+
+    def test_complete_failure_with_naive_started_at(self):
+        ex = self._make_execution(status='running')
+        ex.started_at = utcnow().replace(tzinfo=None)
+        ex.instance = MagicMock(app_code='test_app')
+        ex.complete_failure(error_message='boom')
+        assert ex.status == 'failed'
+        assert ex.duration_ms is not None and ex.duration_ms >= 0
+
     def test_complete_failure_without_start(self):
         ex = self._make_execution(status='running')
         ex.instance = MagicMock(app_code='test_app')

@@ -27,7 +27,7 @@ def upgrade() -> None:
         op.create_table(
             "semantic_modeling_build_projects",
             sa.Column("id", sa.String(length=128), nullable=False),
-            sa.Column("created_by", sa.String(length=128), nullable=True),
+            sa.Column("created_by", sa.String(length=191), nullable=True),
             sa.Column("status", sa.String(length=32), nullable=False),
             sa.Column("payload_json", db_types.JsonType(), nullable=False),
             sa.Column("version", sa.Integer(), nullable=False),

@@ -14,6 +14,7 @@ from app.domain.entities.config.channel import Channel, ChannelType
 from app.domain.entities.config.subscription_delivery_log import SubscriptionDeliveryLog
 from app.application.services.config.subscription_service import SubscriptionService
 from app.infrastructure.repositories.subscription_repository import SubscriptionRepository
+from app.shared.exceptions import NotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,12 @@ class DeliveryService:
         duration_ms: Optional[int],
     ) -> None:
         """追加分发日志（幂等：无 repository 则静默跳过）"""
-        if self.subscription_repository is None:
+        repository = self.subscription_repository or getattr(
+            self.subscription_service,
+            'subscription_repository',
+            None,
+        )
+        if repository is None:
             return
         try:
             log = SubscriptionDeliveryLog(
@@ -51,7 +57,7 @@ class DeliveryService:
                 duration_ms=duration_ms,
                 trigger_at=utcnow(),
             )
-            self.subscription_repository.add_delivery_log(log)
+            repository.add_delivery_log(log)
         except Exception as exc:  # 日志写入失败不能影响主链路
             logger.warning(f"写入订阅分发日志失败: subscription_id={subscription.id}, err={exc}")
     
@@ -150,6 +156,78 @@ class DeliveryService:
                 })
 
         return results
+
+    def trigger_subscription(
+        self,
+        subscription_id: int,
+        event_type: Optional[str] = None,
+        event_data: Optional[Dict[str, Any]] = None,
+        triggered_by: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """手动触发单个订阅。
+
+        该方法不走全量事件匹配，避免手动触发一个订阅时误投递同事件的其它订阅。
+        """
+        repository = self.subscription_repository or self.subscription_service.subscription_repository
+        subscription = repository.find_by_id_with_relations(subscription_id)
+        if not subscription:
+            raise NotFoundError(f"订阅 {subscription_id} 不存在")
+        if not subscription.enabled:
+            raise ValidationError("订阅已停用，无法手动触发")
+
+        selected_event_type = event_type or (subscription.event_types[0] if subscription.event_types else None)
+        if not selected_event_type:
+            raise ValidationError("订阅未配置事件类型，无法手动触发")
+        if selected_event_type not in subscription.event_types:
+            raise ValidationError(f"事件类型 {selected_event_type} 不属于该订阅")
+
+        payload = {
+            "instance_id": subscription.app_instance_id,
+            "manual_trigger": True,
+        }
+        if triggered_by:
+            payload["triggered_by"] = triggered_by
+        if event_data:
+            payload.update(event_data)
+
+        started_at = time.perf_counter()
+        delivery_result = self._deliver_to_channel(
+            subscription=subscription,
+            event_type=selected_event_type,
+            event_data=payload,
+        )
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        success = bool(delivery_result.get("success"))
+        status = "success" if success else "failed"
+        log_message = (
+            delivery_result.get("detail")
+            or delivery_result.get("error")
+            or ("手动触发成功" if success else "手动触发失败")
+        )
+
+        self._record_log(
+            subscription=subscription,
+            event_type=selected_event_type,
+            status=status,
+            message=log_message,
+            duration_ms=duration_ms,
+        )
+
+        return {
+            "event_type": selected_event_type,
+            "total_subscriptions": 1,
+            "successful": 1 if success else 0,
+            "failed": 0 if success else 1,
+            "details": [
+                {
+                    "subscription_id": subscription.id,
+                    "subscription_name": subscription.name,
+                    "channel_id": subscription.channel_id,
+                    "duration_ms": duration_ms,
+                    **delivery_result,
+                }
+            ],
+        }
     
     def _deliver_to_channel(
         self,

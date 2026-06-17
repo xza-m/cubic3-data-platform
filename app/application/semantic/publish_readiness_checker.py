@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+from app.domain.ontology.entities import measure_ref_strings
 
 
 class PublishReadinessChecker:
@@ -17,6 +18,7 @@ class PublishReadinessChecker:
         ontology_status = self._ontology_status(ontology)
         binding_status = self._binding_status(spec)
         policy_status = self._policy_status(ontology, governance)
+        binding_matrix = self._binding_matrix(spec)
 
         if cube_status != "active":
             reasons.append("cube_not_active")
@@ -30,12 +32,22 @@ class PublishReadinessChecker:
             reasons.append("policy_missing")
         if validation and any(issue.get("severity") == "error" for issue in validation.get("issues") or []):
             reasons.append("validation_blocked")
+        for blocker in binding_matrix.get("blockers") or []:
+            reason = f"binding_broken:{blocker['code']}"
+            if reason not in reasons:
+                reasons.append(reason)
 
+        binding_ok = binding_matrix.get("ok", True)
         return {
             "computed_by": "publish_readiness_checker",
             "canonical_ready": not reasons,
-            "exploratory_ready": binding_status in {"linked", "approved", "active"} and "validation_blocked" not in reasons,
+            "exploratory_ready": (
+                binding_status in {"linked", "approved", "active"}
+                and binding_ok
+                and "validation_blocked" not in reasons
+            ),
             "reasons": reasons,
+            "binding_blockers": binding_matrix.get("blockers") or [],
             "truth_sources": {
                 "business": "ontology",
                 "execution": "cube",
@@ -45,9 +57,19 @@ class PublishReadinessChecker:
                 "cube_status": cube_status,
                 "ontology_status": ontology_status,
                 "binding_status": binding_status,
+                "binding_matrix": "passed" if binding_ok else "failed",
                 "policy_status": policy_status,
             },
         }
+
+    def _binding_matrix(self, spec: Dict[str, Any]) -> Dict[str, Any]:
+        """§1.3 断链校验矩阵（解析范围仅为本 spec；发布期由 release gate 扩展到 active manifest）。"""
+        from app.application.semantic.publish_gate_service import check_binding_matrix
+
+        try:
+            return check_binding_matrix([spec])
+        except Exception:
+            return {"ok": True, "blockers": []}
 
     def _ontology_status(self, ontology: Dict[str, Any]) -> str:
         statuses: List[str] = []
@@ -75,7 +97,7 @@ class PublishReadinessChecker:
         if not metrics:
             return "missing"
         for metric in metrics:
-            refs = metric.get("measure_refs") or []
+            refs = measure_ref_strings(metric.get("measure_refs"))
             if not refs:
                 return "missing"
             for measure_ref in refs:

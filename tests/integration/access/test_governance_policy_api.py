@@ -117,6 +117,97 @@ def test_governance_policy_profile_and_decision_api(app, db_session):
     assert payload["items"][0]["policy_epoch"] == created_policy_payload["policy_epoch"]
 
 
+def test_governance_data_policy_row_scope_roundtrip_and_validation(app, db_session):
+    client = install_default_admin_auth(app.test_client(), roles=("governance_admin",))
+
+    created = client.post(
+        "/api/v1/governance/data-policies",
+        json={
+            "policy_code": "m2_detail_rls",
+            "name": "M2 明细行级权限",
+            "subject_roles": ["data_m2_detail_reader"],
+            "resource_scope": {"data_levels": ["M2"]},
+            "actions": ["query"],
+            "effect": "allow",
+            "row_scope": [
+                {"dimension_ref": "comment_reports.school_id", "attribute": "school_ids"}
+            ],
+        },
+    )
+    assert created.status_code == 201
+    payload = created.get_json()["data"]
+    assert payload["row_scope"] == [
+        {
+            "dimension_ref": "comment_reports.school_id",
+            "operator": "in",
+            "attribute": "school_ids",
+            "on_missing": "deny",
+        }
+    ]
+
+    listed = client.get("/api/v1/governance/data-policies")
+    items = listed.get_json()["data"]["items"]
+    target = next(item for item in items if item["policy_code"] == "m2_detail_rls")
+    assert target["row_scope"][0]["attribute"] == "school_ids"
+
+    rejected = client.post(
+        "/api/v1/governance/data-policies",
+        json={
+            "policy_code": "bad_rls",
+            "name": "非法模板",
+            "row_scope": [{"dimension_ref": "no_dot", "attribute": "x"}],
+        },
+    )
+    assert rejected.status_code == 400
+    assert "dimension_ref" in rejected.get_json()["message"]
+
+    # column_scope 仍然封禁
+    rejected_column = client.post(
+        "/api/v1/governance/data-policies",
+        json={
+            "policy_code": "bad_column",
+            "name": "列级未开放",
+            "column_scope": {"mask": ["phone"]},
+        },
+    )
+    assert rejected_column.status_code == 400
+
+
+def test_access_principal_scopes_api_roundtrip(app, db_session):
+    access_service = AccessIdentityService(SqlAccessRepository(db_session))
+    principal = access_service.upsert_feishu_principal(
+        tenant_key="tenant_a",
+        open_id="ou_scope_api",
+        union_id="on_scope_api",
+        display_name="范围用户",
+    )
+    client = install_default_admin_auth(app.test_client(), roles=("governance_admin",))
+
+    put_resp = client.put(
+        f"/api/v1/access/principals/{principal.principal_id}/scopes",
+        json={
+            "source": "manual",
+            "scopes": [{"attribute": "school_ids", "values": ["s_001", "s_002"]}],
+        },
+    )
+    assert put_resp.status_code == 200
+    put_payload = put_resp.get_json()["data"]
+    assert put_payload["total"] == 1
+    assert put_payload["items"][0]["attribute"] == "school_ids"
+    assert put_payload["items"][0]["values"] == ["s_001", "s_002"]
+    assert put_payload["items"][0]["source"] == "manual"
+
+    get_resp = client.get(f"/api/v1/access/principals/{principal.principal_id}/scopes")
+    assert get_resp.status_code == 200
+    assert get_resp.get_json()["data"]["total"] == 1
+
+    bad_resp = client.put(
+        f"/api/v1/access/principals/{principal.principal_id}/scopes",
+        json={"source": "manual", "scopes": [{"values": ["x"]}]},
+    )
+    assert bad_resp.status_code == 400
+
+
 def test_governance_audit_traces_require_governance_read_role(app):
     token = _make_jwt(
         user_id="jwt_only_viewer",

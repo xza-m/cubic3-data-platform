@@ -495,7 +495,7 @@ def test_execution_compiler_preview_covers_error_and_source_sql_paths(tmp_path):
 
     no_binding_preview = service.compile_metric_preview("no_binding")
     assert no_binding_preview["status"] == "blocked"
-    assert no_binding_preview["reason"] == "业务指标尚未绑定可执行 Measure"
+    assert no_binding_preview["reason"] == "业务指标尚未绑定可执行的 primary Measure 引用"
 
     missing_measure_preview = service.compile_metric_preview("missing_measure")
     assert missing_measure_preview["status"] == "blocked"
@@ -658,6 +658,137 @@ def test_execution_compiler_runtime_covers_validation_fallback_and_tool_paths(tm
 
     assert ExecutionCompilerRuntimeService._fallback_retrieval_queries("   ") == []
     assert ExecutionCompilerRuntimeService._fallback_retrieval_queries("解释订单趋势") == ["订单", "解释订单趋势"]
+
+
+def test_execution_compiler_runtime_fail_closed_on_effective_row_scope(tmp_path):
+    """§6.3 过渡硬规则：非空 effective_row_scope 在注入能力就绪前一律阻断。"""
+    from app.application.governance.access import PolicyDecisionResult
+
+    audit_repo = YamlGovernanceAuditTraceRepository(str(tmp_path / "audit"))
+
+    class _PreviewStub:
+        def compile_preview(self, **_kwargs):
+            return {
+                "status": "ready",
+                "target_type": "sql",
+                "execution_request": {"source_id": 1, "sql_query": "SELECT 1"},
+                "bindings": {},
+                "policy": {"status": "allow"},
+                "traceability": {},
+            }
+
+    def _decision(credential_mode: str) -> PolicyDecisionResult:
+        return PolicyDecisionResult(
+            decision="allow",
+            reason="命中数据访问权限与默认访问规则",
+            effective_data_level="M2",
+            reason_code="data_policy_allowed",
+            message="allow",
+            execution_profile={"profile_code": "p1", "credential_mode": credential_mode},
+            effective_row_scope={
+                "version": "v1",
+                "entries": [
+                    {"table": "dwd_comment_reports", "column": "school_id", "operator": "in", "values": ["s_001"]}
+                ],
+            },
+        )
+
+    class _PolicyStub:
+        def __init__(self, credential_mode):
+            self._credential_mode = credential_mode
+
+        def post_compile(self, **_kwargs):
+            return _decision(self._credential_mode)
+
+    class _Handler:
+        def handle(self, command):
+            raise AssertionError("行级策略未注入时不应执行 SQL")
+
+    for credential_mode, expected_code in (
+        ("gateway_binding", "scope_injection_unsupported"),
+        ("ram_role", "row_scope_engine_unsupported"),
+    ):
+        runtime = ExecutionCompilerRuntimeService(
+            preview_service=_PreviewStub(),
+            execute_query_handler_factory=lambda: _Handler(),
+            audit_trace_repository=audit_repo,
+            access_policy_service=_PolicyStub(credential_mode),
+        )
+        result = runtime.execute(target_type="sql", metric_name="gmv", viewer_roles=["analyst"])
+        assert result["status"] == "blocked"
+        assert result["reason_code"] == expected_code
+        assert result["policy_decision"]["decision"] == "deny"
+        assert result["audit_trace_id"] is not None
+
+
+def test_preview_service_dimension_resolver_falls_back_to_registry_cube_repo(tmp_path):
+    """非 official 路径：dimension_resolver 回落 registry cube_repository（与编译同源）。"""
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    _save_sample_cube(cube_repo)
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    preview_service = ExecutionCompilerPreviewService(
+        metric_repository=metric_repo,
+        cube_repository=cube_repo,
+    )
+    # 无 runtime_mode（即非 official）也能拿到解析器，而不是 None。
+    resolver = preview_service.dimension_resolver()
+    assert resolver is not None
+
+
+def test_execution_compiler_runtime_observe_mode_does_not_block_row_scope(tmp_path):
+    """observe：effective_row_scope 为 advisory，runtime 不阻断，照常执行。"""
+    from app.application.governance.access import PolicyDecisionResult
+
+    audit_repo = YamlGovernanceAuditTraceRepository(str(tmp_path / "audit"))
+
+    class _PreviewStub:
+        def compile_preview(self, **_kwargs):
+            return {
+                "status": "ready",
+                "target_type": "sql",
+                "execution_request": {"source_id": 1, "sql_query": "SELECT 1"},
+                "bindings": {},
+                "policy": {"status": "allow"},
+                "traceability": {},
+            }
+
+    class _PolicyStub:
+        def post_compile(self, **_kwargs):
+            return PolicyDecisionResult(
+                decision="allow",
+                reason="命中数据访问权限与默认访问规则",
+                effective_data_level="M2",
+                reason_code="data_policy_allowed",
+                message="allow",
+                execution_profile={"profile_code": "p1", "credential_mode": "gateway_binding"},
+                effective_row_scope={
+                    "version": "v1",
+                    "entries": [
+                        {"table": "dwd_comment_reports", "column": "school_id", "operator": "in", "values": ["s_001"]}
+                    ],
+                },
+                rls_enforcement_mode="observe",
+            )
+
+    class _Handler:
+        def handle(self, command):
+            return {
+                "columns": ["c"],
+                "data": [{"c": 1}],
+                "row_count": 1,
+                "execution_time_ms": 5,
+                "status": "success",
+            }
+
+    runtime = ExecutionCompilerRuntimeService(
+        preview_service=_PreviewStub(),
+        execute_query_handler_factory=lambda: _Handler(),
+        audit_trace_repository=audit_repo,
+        access_policy_service=_PolicyStub(),
+    )
+    result = runtime.execute(target_type="sql", metric_name="gmv", viewer_roles=["analyst"])
+    assert result["status"] == "executed"
+    assert result.get("reason_code") != "scope_injection_unsupported"
 
 
 def test_mapper_preview_covers_warning_pending_and_orphan_paths(tmp_path):

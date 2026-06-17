@@ -15,7 +15,9 @@ from tests.support.semantic_fixture_manager import SemanticTestFixtureManager
 
 
 def test_postgresql_concurrent_publish_serializes_release_numbers_and_active_snapshot():
-    database_url = os.environ.get("DATABASE_URL")
+    # tests/conftest.py 会把通用 DATABASE_URL 覆盖为 SQLite 内存库；
+    # 生产补证入口通过 SEMANTIC_POSTGRES_DATABASE_URL 保留真实 PostgreSQL URL。
+    database_url = os.environ.get("SEMANTIC_POSTGRES_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not database_url:
         pytest.skip("set DATABASE_URL to run PostgreSQL concurrency verification")
     if not (database_url.startswith("postgresql://") or database_url.startswith("postgresql+")):
@@ -88,13 +90,19 @@ def test_postgresql_concurrent_publish_serializes_release_numbers_and_active_sna
                 verify_session.query(SemanticReleaseORM)
                 .filter(
                     SemanticReleaseORM.namespace == namespace,
-                    SemanticReleaseORM.status == "published",
+                    SemanticReleaseORM.status.in_(("published", "superseded")),
                 )
                 .order_by(SemanticReleaseORM.release_no.asc())
                 .all()
             )
             assert [row.release_no for row in rows] == [1, 2, 3, 4]
             assert {release.id for release in releases} == {row.id for row in rows}
+            assert [row.status for row in rows] == [
+                "superseded",
+                "superseded",
+                "superseded",
+                "published",
+            ]
             assert [row.previous_release_id for row in rows] == [
                 None,
                 rows[0].id,

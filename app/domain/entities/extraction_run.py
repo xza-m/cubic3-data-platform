@@ -31,7 +31,7 @@ class ExtractionRun(db.Model):
     
     # 执行信息
     run_type = Column(String(20))
-    triggered_by = Column(String(50))
+    triggered_by = Column(String(191))
     
     # 执行参数
     execution_params = Column(JsonType)

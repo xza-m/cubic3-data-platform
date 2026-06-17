@@ -2,7 +2,7 @@ name: dwd_interaction_comment_reports_df
 title: 学生评论
 description: 互动域-学生笔记/评论举报事实表
 table: dwd_interaction_comment_reports_df
-source_id: 1
+source_id: 4
 source_database: df_cb_258187
 data_source: maxcompute
 status: active

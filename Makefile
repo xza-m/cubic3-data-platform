@@ -3,8 +3,12 @@
 SHELL := /bin/bash
 
 PYTHON ?= python
+PYTHON_BIN ?= python3
 NPM ?= npm
 FRONTEND_DIR := frontend
+CLI_DIST_DIR ?= dist/cli
+CLI_NPM_DIR := packages/cubic3-cli
+CLI_NPM_REGISTRY ?= https://verdaccio.xiaoluxue.cn/
 DOMAIN_SMOKE_BASE_URL ?= http://127.0.0.1:3102
 VERIFY_FILES ?=
 VERIFY_BASE ?=
@@ -68,10 +72,13 @@ SEMANTIC_PROD_LIVE ?= 0
 	typecheck-frontend \
 	typecheck-backend \
 	typecheck-contracts \
+	build-cli \
+	build-cli-npm \
 	build-frontend \
 	test-unit \
 	test-unit-backend \
 	test-unit-frontend \
+	test-cli \
 	test-integration \
 	test-integration-backend \
 	test-integration-frontend \
@@ -84,7 +91,9 @@ SEMANTIC_PROD_LIVE ?= 0
 	coverage-frontend \
 	coverage-report \
 	local-ci \
-	local-smoke
+	local-smoke \
+	publish-cli-npm \
+	verify-cli
 
 help:
 	@printf '%s\n' '可用目标:'
@@ -110,6 +119,11 @@ help:
 	@printf '  %-26s %s\n' 'make test-semantic-postgres-concurrency' '真实 PostgreSQL 发布并发与 active snapshot 约束测试（设置 DATABASE_URL 后执行）'
 	@printf '  %-26s %s\n' 'make test-agent-runtime' 'Agent-first Runtime official 链路测试'
 	@printf '  %-26s %s\n' 'make test-platform-agent-runtime' '平台 Agent 推理 Runtime 适配器、仓储、API 与 Codex opt-in smoke 测试'
+	@printf '  %-26s %s\n' 'make test-cli' 'cubic3-dp CLI 单元测试'
+	@printf '  %-26s %s\n' 'make build-cli' '构建 cubic3-dp CLI wheel 到 CLI_DIST_DIR（默认 dist/cli）'
+	@printf '  %-26s %s\n' 'make build-cli-npm' '构建检查 @cubic3/dp-cli npm 私仓包'
+	@printf '  %-26s %s\n' 'make publish-cli-npm' '发布 @cubic3/dp-cli 到 CLI_NPM_REGISTRY'
+	@printf '  %-26s %s\n' 'make verify-cli' 'CLI 交付入口（test-cli + build-cli）'
 	@printf '  %-26s %s\n' 'make preflight-agent-runtime' '真实环境 Agent Runtime 语义资产预检（不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make live-agent-runtime' '真实 MaxCompute 执行验收（opt-in，不并入默认 verify）'
 	@printf '  %-26s %s\n' 'make test-modeling-agent' '建模助手 Copilot 与 Domain 上下文最小链路测试'
@@ -179,8 +193,9 @@ check-tokens-frontend:
 	cd $(FRONTEND_DIR) && $(NPM) run check:v2-tokens
 
 check-i18n-frontend:
-	@printf '%s\n' '[layer1][i18n] 校验 v2 i18n 覆盖率'
+	@printf '%s\n' '[layer1][i18n] 校验 v2 i18n 覆盖率与 key 存在性'
 	cd $(FRONTEND_DIR) && $(NPM) run i18n:coverage
+	cd $(FRONTEND_DIR) && $(NPM) run i18n:keys
 
 typecheck: typecheck-frontend typecheck-backend typecheck-contracts
 
@@ -214,6 +229,28 @@ test-unit-backend:
 test-unit-frontend:
 	@printf '%s\n' '[layer3][unit][frontend] 运行前端单元测试'
 	cd $(FRONTEND_DIR) && $(NPM) run test:unit
+
+test-cli:
+	@printf '%s\n' '[layer3][cli] 运行 cubic3-dp CLI 单元测试'
+	PYTHONPATH=cli $(PYTHON) -m pytest --no-cov tests/cli
+
+build-cli:
+	@printf '%s\n' '[build][cli] 构建 cubic3-dp CLI wheel'
+	rm -rf $(CLI_DIST_DIR)
+	mkdir -p $(CLI_DIST_DIR)
+	$(PYTHON) -m pip wheel --no-deps --no-build-isolation ./cli -w $(CLI_DIST_DIR)
+	rm -rf cli/build cli/*.egg-info
+
+build-cli-npm:
+	@printf '%s\n' '[build][cli][npm] 打包检查 @cubic3/dp-cli'
+	cd $(CLI_NPM_DIR) && $(NPM) pack --dry-run
+
+publish-cli-npm:
+	@printf '%s\n' '[publish][cli][npm] 发布 @cubic3/dp-cli 到 $(CLI_NPM_REGISTRY)'
+	cd $(CLI_NPM_DIR) && $(NPM) publish --registry $(CLI_NPM_REGISTRY)
+
+verify-cli: test-cli build-cli
+	@printf '%s\n' '[verify][cli] PASS（test-cli + build-cli）'
 
 test-integration: test-integration-backend test-integration-frontend
 
@@ -249,10 +286,10 @@ smoke-observability:
 smoke-semantic:
 	@printf '%s\n' '[contract][semantic-smoke] 领域 smoke 需要前端开发服务、最新后端代码和可写语义目录；Modeling Copilot smoke 使用 v2 Playwright mock 闭环；不属于默认 repo smoke'
 	@printf '%s\n' '[layer4][semantic] 运行语义中心关键路径 smoke'
-	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-smoke
-	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:domain-publish-smoke
-	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:governance-issues-smoke
-	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) $(NPM) run e2e:data-assets-smoke
+	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) PYTHON_BIN=$(PYTHON_BIN) $(NPM) run e2e:domain-smoke
+	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) PYTHON_BIN=$(PYTHON_BIN) $(NPM) run e2e:domain-publish-smoke
+	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) PYTHON_BIN=$(PYTHON_BIN) $(NPM) run e2e:governance-issues-smoke
+	cd $(FRONTEND_DIR) && DOMAIN_SMOKE_BASE_URL=$(DOMAIN_SMOKE_BASE_URL) PYTHON_BIN=$(PYTHON_BIN) $(NPM) run e2e:data-assets-smoke
 	cd $(FRONTEND_DIR) && $(NPM) run e2e:modeling-agent-smoke
 
 verify: lint typecheck test smoke
@@ -309,7 +346,15 @@ test-modeling-agent:
 		tests/unit/application/semantic/test_modeling_draft_builder.py \
 		tests/unit/application/semantic/test_modeling_copilot_service.py \
 		tests/integration/test_semantic_modeling_copilot_api.py
-	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- src/v2/hooks/semantic.more.test.tsx src/v2/pages/semantic/modeling-copilot/ModelingAgent.test.tsx
+	cd $(FRONTEND_DIR) && $(NPM) run test:unit -- \
+		src/v2/hooks/semantic.more.test.tsx \
+		src/v2/pages/semantic/modeling-copilot/ModelingAgent.artifactPanel.test.tsx \
+		src/v2/pages/semantic/modeling-copilot/ModelingAgent.sessionRail.test.tsx \
+		src/v2/pages/semantic/modeling-copilot/ModelingAgent.chatFlow.test.tsx \
+		src/v2/pages/semantic/modeling-copilot/ModelingAgent.publish.test.tsx \
+		src/v2/pages/semantic/modeling-copilot/BatchModelingAgent.test.tsx \
+		src/v2/pages/semantic/modeling-copilot/batchModeling.test.ts \
+		src/v2/pages/semantic/modeling-copilot/components/BatchModelingWorkbench.test.tsx
 
 test-semantic-prod-registry:
 	@printf '%s\n' '[layer3][semantic-prod-registry] 运行 SQL Registry / Publish Gate / Release Snapshot 生产化收敛测试'
@@ -328,6 +373,7 @@ test-semantic-postgres-concurrency:
 	@if [ -n "$(DATABASE_URL)" ]; then \
 		printf '%s\n' '[layer3][semantic-prod-postgres] 运行真实 PostgreSQL 并发发布验证'; \
 		DATABASE_URL="$(DATABASE_URL)" \
+		SEMANTIC_POSTGRES_DATABASE_URL="$(DATABASE_URL)" \
 		PYTHONPATH=. $(PYTHON) -m pytest --no-cov tests/integration/semantic/test_semantic_postgres_concurrency.py; \
 	else \
 		printf '%s\n' '[layer3][semantic-prod-postgres] skip: 未设置 DATABASE_URL'; \

@@ -63,24 +63,28 @@ class SendMessageHandler:
         )
         user_message = self.message_repository.create(user_message)
 
-        # 2. 尝试通过双层语义主链处理
         try:
-            result = self._handle_via_semantic_router(command, conversation, user_message)
-            if result:
-                return result
-        except Exception as e:
-            logger.warning("Semantic Router 不可用，继续回退到 Agent", error=str(e))
+            # 2. 尝试通过双层语义主链处理
+            try:
+                result = self._handle_via_semantic_router(command, conversation, user_message)
+                if result:
+                    return result
+            except Exception as e:
+                logger.warning("Semantic Router 不可用，继续回退到 Agent", error=str(e))
 
-        # 3. 尝试通过 AgentService 处理
-        try:
-            result = self._handle_via_agent(command, conversation, user_message)
-            if result:
-                return result
-        except Exception as e:
-            logger.warning("AgentService 不可用，回退到传统 LLM", error=str(e))
+            # 3. 尝试通过 AgentService 处理
+            try:
+                result = self._handle_via_agent(command, conversation, user_message)
+                if result:
+                    return result
+            except Exception as e:
+                logger.warning("AgentService 不可用，回退到传统 LLM", error=str(e))
 
-        # 4. 回退：传统 LLM 调用
-        return self._handle_via_legacy_llm(command, conversation, user_message)
+            # 4. 回退：传统 LLM 调用
+            return self._handle_via_legacy_llm(command, conversation, user_message)
+        finally:
+            # 仓储绑定容器 scoped_session（非 Flask db.session），消息/会话写入必须在该 session 提交
+            self.conversation_repository.commit()
 
     def _handle_via_semantic_router(self, command, conversation, user_message) -> Dict[str, Any] | None:
         """优先走双层语义 Router/Planner 主链。"""
@@ -97,14 +101,16 @@ class SendMessageHandler:
         primary_result = execution_results[0]
         primary_traceability = primary_result.get("traceability") or {}
         ai_content = self._build_semantic_router_response(plan_result)
+        generated_sql = self._extract_generated_sql(primary_result)
         ai_message = Message(
             conversation_id=command.conversation_id,
             role='assistant',
             content=ai_content,
-            generated_sql=self._extract_generated_sql(primary_result),
+            generated_sql=generated_sql,
             query_result=self._extract_query_result(primary_result),
             visualization_config=None,
             error=primary_result.get("reason") if primary_result.get("status") == "blocked" else None,
+            source='semantic',
             created_at=utcnow()
         )
         ai_message = self.message_repository.create(ai_message)
@@ -118,6 +124,15 @@ class SendMessageHandler:
         }
         conversation.update_context(context)
         self.conversation_repository.update(conversation)
+
+        # Phase 5：semantic 路径同样写入 AgentQueryLog，保证三层全部可追踪
+        self._record_query_log(
+            command,
+            source='semantic_router',
+            response=ai_content,
+            sql=generated_sql,
+            status='success',
+        )
 
         return {
             'user_message': user_message.to_dict(),
@@ -181,6 +196,7 @@ class SendMessageHandler:
                 sql=response.sql,
                 usage=response.usage,
                 duration=duration,
+                tool_trace=response.tool_trace_evidence(),
             )
             db.session.commit()
 
@@ -199,8 +215,41 @@ class SendMessageHandler:
             if hasattr(adapter, 'close'):
                 adapter.close()
 
+    # legacy 回退路径回答的前置提示（Phase 5 可信标注）
+    LEGACY_DISCLAIMER = "【未经语义层验证】本回答由直连 LLM 根据物理表结构生成，未经语义层口径校验，请谨慎采信。"
+
+    def _record_query_log(
+        self,
+        command,
+        source: str,
+        response: str | None = None,
+        sql: str | None = None,
+        status: str = 'success',
+        duration: int | None = None,
+    ) -> None:
+        """补写 AgentQueryLog（semantic / legacy 路径），失败不阻断主流程。"""
+        try:
+            from app.domain.entities.agent_query_log import AgentQueryLog
+            from app.extensions import db
+
+            log_entry = AgentQueryLog(
+                channel="datachat",
+                channel_ref=str(command.conversation_id),
+                user_id=command.user_id,
+                user_message=command.content,
+                status=status,
+                llm_provider=source,
+                agent_response=response,
+                sql_executed=sql,
+                duration_ms=duration,
+            )
+            db.session.add(log_entry)
+            db.session.commit()
+        except Exception as exc:
+            logger.warning("agent_query_log write failed", source=source, error=str(exc))
+
     def _handle_via_legacy_llm(self, command, conversation, user_message) -> Dict[str, Any]:
-        """传统 LLM 调用（回退路径）"""
+        """传统 LLM 调用（回退路径）——回答显式标注未经语义层验证"""
         dataset = self.dataset_repository.find_by_id(conversation.dataset_id)
         if not dataset:
             raise ApplicationException(f"数据集不存在: {conversation.dataset_id}")
@@ -213,12 +262,14 @@ class SendMessageHandler:
                 {
                     'physical_name': f.physical_name,
                     'data_type': f.data_type,
-                    'description': f.description or ''
+                    'description': f.comment or ''
                 }
                 for f in fields
             ]
         }
 
+        import time
+        t0 = time.monotonic()
         try:
             logger.info("Calling legacy LLM to generate SQL", conversation_id=command.conversation_id)
             llm_result = self.llm_service.generate_sql(
@@ -232,7 +283,7 @@ class SendMessageHandler:
 
             query_result = self._execute_query(dataset, generated_sql)
 
-            ai_content = explanation or "已为您生成查询并执行。"
+            ai_content = f"{self.LEGACY_DISCLAIMER}\n\n{explanation or '已为您生成查询并执行。'}"
             ai_message = Message(
                 conversation_id=command.conversation_id,
                 role='assistant',
@@ -240,12 +291,22 @@ class SendMessageHandler:
                 generated_sql=generated_sql,
                 query_result=query_result,
                 visualization_config=visualization_config,
+                source='legacy_llm',
                 created_at=utcnow()
             )
             ai_message = self.message_repository.create(ai_message)
 
             conversation.updated_at = utcnow()
             self.conversation_repository.update(conversation)
+
+            self._record_query_log(
+                command,
+                source='legacy_llm',
+                response=ai_content,
+                sql=generated_sql,
+                status='success',
+                duration=int((time.monotonic() - t0) * 1000),
+            )
 
             return {
                 'user_message': user_message.to_dict(),
@@ -259,9 +320,17 @@ class SendMessageHandler:
                 role='assistant',
                 content="抱歉，处理您的问题时遇到了错误。",
                 error=str(e),
+                source='legacy_llm',
                 created_at=utcnow()
             )
             error_message = self.message_repository.create(error_message)
+            self._record_query_log(
+                command,
+                source='legacy_llm',
+                response=str(e),
+                status='error',
+                duration=int((time.monotonic() - t0) * 1000),
+            )
             return {
                 'user_message': user_message.to_dict(),
                 'ai_message': error_message.to_dict()

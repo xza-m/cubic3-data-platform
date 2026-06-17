@@ -462,6 +462,125 @@ class TestToolExecutor:
         assert executor.execute("describe_cube", {"cube_name": "orders"}) == {"error": "语义层服务未配置"}
         assert executor.execute("query", {"dsl": {}}) == {"error": "语义层服务未配置"}
 
+    def test_list_cubes_and_describe_cube_pass_through_metadata_visibility(self):
+        """§6.2：list_cubes 走 discover 过滤，describe_cube 走 describe 脱敏"""
+        list_tool = ToolDef(
+            name="list_cubes",
+            description="List cubes",
+            parameters={},
+            channels=["feishu"],
+            handler="list_cubes",
+        )
+        describe_tool = ToolDef(
+            name="describe_cube",
+            description="Describe cube",
+            parameters={},
+            channels=["feishu"],
+            handler="describe_cube",
+        )
+        semantic = MagicMock()
+        semantic.list_cubes.return_value = [
+            {"name": "orders", "status": "active"},
+            {"name": "comment_reports", "status": "active"},
+        ]
+        semantic.describe_cube.return_value = {"name": "comment_reports", "table": "dw.dwd_x"}
+        visibility = MagicMock()
+        visibility.filter_discoverable_cubes.return_value = [{"name": "orders", "status": "active"}]
+        visibility.redact_cube_payload.return_value = {"name": "comment_reports", "table": None}
+        executor = ToolExecutor(
+            tool_defs=[list_tool, describe_tool],
+            adapter=MagicMock(),
+            semantic_service=semantic,
+            metadata_visibility_service=visibility,
+        )
+
+        listed = executor.execute("list_cubes", {})
+        assert [cube["name"] for cube in listed["cubes"]] == ["orders"]
+        assert listed["total"] == 1
+        visibility.filter_discoverable_cubes.assert_called_once()
+
+        described = executor.execute("describe_cube", {"cube_name": "comment_reports"})
+        assert described["table"] is None
+        visibility.redact_cube_payload.assert_called_once()
+
+
+# ============================================================================
+# free SQL 收口（§6.3 resource_set 同链裁决）
+# ============================================================================
+
+
+class TestExecuteSqlGovernance:
+    def _executor(self, guard, adapter=None):
+        tool_def = ToolDef(
+            name="execute_sql",
+            description="Execute SQL",
+            parameters={},
+            channels=["feishu"],
+            handler="execute_sql",
+        )
+        return ToolExecutor(
+            tool_defs=[tool_def],
+            adapter=adapter or MagicMock(),
+            free_sql_guard=guard,
+            agent_context=MagicMock(channel="datachat", user_id="internal:local:admin"),
+        )
+
+    def test_execute_sql_denied_by_guard_does_not_execute(self):
+        guard = MagicMock()
+        guard.adjudicate.return_value = {
+            "decision": "deny",
+            "reason": "未命中可用数据访问权限或访问规则",
+            "reason_code": "data_policy_not_matched",
+        }
+        adapter = MagicMock()
+        executor = self._executor(guard, adapter)
+
+        result = executor.execute("execute_sql", {"sql": "SELECT * FROM dwd_orders"})
+
+        adapter.execute_query.assert_not_called()
+        assert result["error_code"] == "data_policy_not_matched"
+        assert result["governance"]["decision"] == "deny"
+
+    def test_execute_sql_allowed_by_guard_carries_governance_evidence(self):
+        guard = MagicMock()
+        guard.adjudicate.return_value = {
+            "decision": "allow",
+            "reason_code": "data_policy_allowed",
+            "data_level": "M2",
+            "sql_hash": "sha256:abc",
+            "resource_tables": ["dwd_orders"],
+        }
+        adapter = MagicMock()
+        adapter.execute_query.return_value = {
+            "columns": ["id"],
+            "data": [[1]],
+            "execution_time_ms": 5,
+        }
+        executor = self._executor(guard, adapter)
+
+        result = executor.execute("execute_sql", {"sql": "SELECT id FROM dwd_orders"})
+
+        assert result["row_count"] == 1
+        assert result["governance"]["sql_hash"] == "sha256:abc"
+        guard.adjudicate.assert_called_once()
+
+    def test_execute_sql_without_guard_keeps_legacy_behavior(self):
+        adapter = MagicMock()
+        adapter.execute_query.return_value = {"columns": ["id"], "data": [[1]], "execution_time_ms": 5}
+        tool_def = ToolDef(
+            name="execute_sql",
+            description="Execute SQL",
+            parameters={},
+            channels=["feishu"],
+            handler="execute_sql",
+        )
+        executor = ToolExecutor(tool_defs=[tool_def], adapter=adapter)
+
+        result = executor.execute("execute_sql", {"sql": "SELECT id FROM dwd_orders"})
+
+        assert result["row_count"] == 1
+        assert "governance" not in result
+
 
 # ============================================================================
 # ToolDef

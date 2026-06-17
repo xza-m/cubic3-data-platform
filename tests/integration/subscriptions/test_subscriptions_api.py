@@ -7,6 +7,7 @@ W5.B · Subscriptions API 集成测试
   POST /api/v1/subscriptions                          → 创建
   GET  /api/v1/subscriptions/<id>                     → 详情
   POST /api/v1/subscriptions/<id>/disable             → 禁用
+  POST /api/v1/subscriptions/<id>/trigger             → 手动触发
   GET  /api/v1/app-instances/<instance_id>/subscriptions → 实例订阅列表
 
 矩阵：happy / boundary / error + 401。
@@ -20,9 +21,11 @@ import pytest
 BASE = "/api/v1/subscriptions"
 
 
-def _mock_container(service: MagicMock) -> MagicMock:
+def _mock_container(service: MagicMock, delivery_service: MagicMock | None = None) -> MagicMock:
     container = MagicMock()
     container.subscription_service.return_value = service
+    if delivery_service is not None:
+        container.delivery_service.return_value = delivery_service
     return container
 
 
@@ -82,7 +85,7 @@ class TestCreateSubscription:
                     "name": "daily-alert",
                     "app_instance_id": 5,
                     "channel_id": 3,
-                    "event_types": ["AppExecutionFailed"],
+                    "event_types": ["app.execution.failed"],
                 },
             )
 
@@ -103,6 +106,41 @@ class TestSubscriptionLifecycle:
 
         assert resp.status_code == 200
         assert resp.get_json()["data"]["enabled"] is False
+
+    def test_trigger_subscription(self, client):
+        svc = MagicMock()
+        delivery_svc = MagicMock()
+        delivery_svc.trigger_subscription.return_value = {
+            "event_type": "app.execution.completed",
+            "total_subscriptions": 1,
+            "successful": 1,
+            "failed": 0,
+            "details": [
+                {
+                    "subscription_id": 7,
+                    "subscription_name": "daily-alert",
+                    "channel_id": 3,
+                    "success": True,
+                    "detail": "ok",
+                }
+            ],
+        }
+        with patch(
+            "app.interfaces.api.v1.subscriptions.get_container",
+            return_value=_mock_container(svc, delivery_svc),
+        ):
+            resp = client.post(
+                f"{BASE}/7/trigger",
+                json={"event_type": "app.execution.completed"},
+            )
+
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["data"]["successful"] == 1
+        delivery_svc.trigger_subscription.assert_called_once()
+        kwargs = delivery_svc.trigger_subscription.call_args.kwargs
+        assert kwargs["subscription_id"] == 7
+        assert kwargs["event_type"] == "app.execution.completed"
 
 
 @pytest.mark.redesign

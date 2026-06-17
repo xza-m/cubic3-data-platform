@@ -4,32 +4,33 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from flask import Blueprint, g, request
+from flask import Blueprint, current_app, g, request
 
 from app.application.access.display_names import PrincipalDisplayNameResolver, display_name_from_principal
 from app.application.access.identity import AccessIdentityService, RoleBindingResolver
-from app.extensions import db
 from app.application.access.catalog import (
     BUILTIN_ACCESS_ROLE_CATALOG,
     BUILTIN_PERMISSION_PACKAGES,
     PERMISSION_PACKAGE_BY_CODE,
 )
+from app.di.utils import get_app_container
 from app.infrastructure.access.repositories import SqlAccessRepository
 from app.interfaces.api.middleware.auth import require_access_roles, require_auth
 from app.shared.response import bad_request, created, error, success
 
+
 bp = Blueprint("access_api_v1", __name__, url_prefix="/api/v1/access")
 
-ACCESS_READ_ROLES = ("viewer", "auditor", "governance_admin", "platform_admin")
+ACCESS_READ_ROLES = ("auditor", "governance_admin", "platform_admin")
 ACCESS_WRITE_ROLES = ("governance_admin", "platform_admin")
 
 
 def _repo() -> SqlAccessRepository:
-    return SqlAccessRepository(db.session)
+    return get_app_container().sql_access_repository()
 
 
 def _service() -> AccessIdentityService:
-    return AccessIdentityService(_repo())
+    return get_app_container().access_identity_service()
 
 
 def _json() -> dict[str, Any]:
@@ -40,7 +41,77 @@ def _current_actor() -> str:
     return getattr(g, "principal_id", None) or getattr(g, "user_id", None) or "system"
 
 
+def _split_identifier_config(value: Any) -> list[str]:
+    raw_values: list[Any]
+    if isinstance(value, str):
+        raw_values = value.replace("\n", ",").replace("，", ",").split(",")
+    elif isinstance(value, (list, tuple, set)):
+        raw_values = list(value)
+    else:
+        raw_values = []
+    identifiers: list[str] = []
+    for item in raw_values:
+        identifier = str(item or "").strip()
+        if identifier and identifier not in identifiers:
+            identifiers.append(identifier)
+    return identifiers
+
+
+def _config_bool(name: str, default: bool) -> bool:
+    value = current_app.config.get(name)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    return default
+
+
+def _configured_m2_allowlist_entries() -> tuple[list[dict[str, str]], bool]:
+    entries: list[dict[str, str]] = []
+    for identifier in _split_identifier_config(current_app.config.get("FEISHU_M2_READER_OPEN_IDS", "")):
+        entries.append({"identifier": identifier, "source": "FEISHU_M2_READER_OPEN_IDS"})
+
+    sync_cubic3 = _config_bool("FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST", True)
+    if sync_cubic3:
+        try:
+            from app.application.agent.agent_factory import get_data_agent_config
+
+            config = get_data_agent_config() or {}
+            for identifier in _split_identifier_config(config.get("allowed_user_ids", [])):
+                entries.append({"identifier": identifier, "source": "CUBIC3_ALLOWED_USER_IDS"})
+        except Exception:
+            current_app.logger.warning("读取 CUBIC3 飞书白名单失败，跳过 M2 白名单展示", exc_info=True)
+
+    deduped: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for entry in entries:
+        identifier = entry["identifier"]
+        if identifier in seen:
+            continue
+        seen.add(identifier)
+        deduped.append(entry)
+    return deduped, sync_cubic3
+
+
+def _principal_role_summary(principal_id: str) -> tuple[list[str], list[str], list[dict[str, Any]]]:
+    row = _repo().get_principal(principal_id)
+    context = RoleBindingResolver(_repo()).resolve_principal_context(
+        principal_id=principal_id,
+        actor_id=principal_id,
+        actor_type=row.principal_type if row is not None else "human",
+        source="access_api",
+    )
+    bindings = [_binding_to_dict(item) for item in _service().list_role_bindings(principal_id)]
+    return context.platform_roles, context.data_roles, bindings
+
+
 def _principal_to_dict(row) -> dict[str, Any]:
+    platform_roles, data_roles, bindings = _principal_role_summary(row.principal_id)
     return {
         "principal_id": row.principal_id,
         "principal_type": row.principal_type,
@@ -51,6 +122,9 @@ def _principal_to_dict(row) -> dict[str, Any]:
         "employee_no": row.employee_no,
         "status": row.status,
         "raw_profile": row.raw_profile or {},
+        "platform_roles": platform_roles,
+        "data_roles": data_roles,
+        "role_bindings": bindings,
         "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -93,6 +167,7 @@ def _api_key_to_dict(row) -> dict[str, Any]:
         "last_rotated_at": row.last_rotated_at.isoformat() if row.last_rotated_at else None,
         "usage_count": row.usage_count,
         "status": row.status,
+        "semantic_pin": dict(row.semantic_pin) if getattr(row, "semantic_pin", None) else None,
         "created_by": row.created_by,
         "created_by_display_name": created_by_display_name,
         "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -163,6 +238,84 @@ def get_role_catalog():
 def get_permission_packages():
     """返回管理员可理解的权限包目录。"""
     return success({"items": BUILTIN_PERMISSION_PACKAGES, "total": len(BUILTIN_PERMISSION_PACKAGES)})
+
+
+@bp.get("/m2-allowlist")
+@require_access_roles(*ACCESS_READ_ROLES)
+def get_m2_allowlist():
+    """返回默认 M2 白名单的配置来源、匹配状态与当前授权结果。"""
+
+    repo = _repo()
+    entries, sync_cubic3 = _configured_m2_allowlist_entries()
+    identifiers = [entry["identifier"] for entry in entries]
+    aliases_by_external_id = {
+        alias.external_id: alias for alias in repo.list_aliases_by_external_ids(identifiers)
+    }
+    principals_by_id = {
+        principal.principal_id: principal for principal in repo.list_principals_by_ids(identifiers)
+    }
+
+    items: list[dict[str, Any]] = []
+    matched_principal_ids: set[str] = set()
+    for entry in entries:
+        identifier = entry["identifier"]
+        alias = aliases_by_external_id.get(identifier)
+        principal = principals_by_id.get(identifier)
+        matched_principal_id = alias.principal_id if alias is not None else principal.principal_id if principal is not None else None
+        matched_principal = repo.get_principal(matched_principal_id) if matched_principal_id else None
+        platform_roles: list[str] = []
+        data_roles: list[str] = []
+        bindings: list[dict[str, Any]] = []
+        if matched_principal_id:
+            matched_principal_ids.add(matched_principal_id)
+            platform_roles, data_roles, bindings = _principal_role_summary(matched_principal_id)
+        has_m2 = "data_m2_detail_reader" in data_roles
+        revoked_conflict = any(
+            binding.get("role_code") == "data_m2_detail_reader" and binding.get("status") != "active"
+            for binding in bindings
+        )
+        items.append({
+            "identifier": identifier,
+            "source": entry["source"],
+            "match_status": "matched" if matched_principal_id else "unmatched",
+            "principal_id": matched_principal_id,
+            "display_name": display_name_from_principal(matched_principal),
+            "data_roles": data_roles,
+            "grant_status": "granted" if has_m2 else "pending_login" if not matched_principal_id else "pending_sync",
+            "risk": "manual_revoke_conflict" if revoked_conflict else None,
+        })
+
+    current_principals: list[dict[str, Any]] = []
+    for binding in repo.list_active_principal_role_bindings_by_role("data_m2_detail_reader"):
+        principal_id = binding.subject_key.removeprefix("principal:")
+        principal = repo.get_principal(principal_id)
+        platform_roles, data_roles, bindings = _principal_role_summary(principal_id)
+        current_principals.append({
+            "principal_id": principal_id,
+            "display_name": display_name_from_principal(principal),
+            "source": binding.source,
+            "platform_roles": platform_roles,
+            "data_roles": data_roles,
+            "in_configured_allowlist": principal_id in matched_principal_ids,
+            "last_bound_at": binding.created_at.isoformat() if binding.created_at else None,
+        })
+
+    unmatched_count = len([item for item in items if item["match_status"] == "unmatched"])
+    return success({
+        "items": items,
+        "current_principals": current_principals,
+        "summary": {
+            "configured_count": len(items),
+            "matched_count": len(items) - unmatched_count,
+            "unmatched_count": unmatched_count,
+            "current_m2_count": len(current_principals),
+            "sync_cubic3_allowlist": sync_cubic3,
+        },
+        "sources": {
+            "feishu_m2_reader_open_ids": current_app.config.get("FEISHU_M2_READER_OPEN_IDS", ""),
+            "sync_cubic3_allowlist": sync_cubic3,
+        },
+    })
 
 
 @bp.get("/principals")
@@ -248,6 +401,58 @@ def put_principal_role_bindings(principal_id: str):
         created_by=_current_actor(),
     )
     return success([_binding_to_dict(row) for row in rows], message="角色绑定已更新")
+
+
+def _scope_to_dict(row) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "principal_id": row.principal_id,
+        "attribute": row.attribute,
+        "values": list(row.values or []),
+        "source": row.source,
+        "synced_at": row.synced_at.isoformat() if row.synced_at else None,
+        "created_by": row.created_by,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@bp.get("/principals/<path:principal_id>/scopes")
+@require_access_roles(*ACCESS_READ_ROLES)
+def list_principal_scopes(principal_id: str):
+    rows = _service().list_principal_scopes(principal_id)
+    return success({"items": [_scope_to_dict(row) for row in rows], "total": len(rows)})
+
+
+@bp.put("/principals/<path:principal_id>/scopes")
+@require_access_roles(*ACCESS_WRITE_ROLES)
+def put_principal_scopes(principal_id: str):
+    """整体替换某来源下的数据范围属性（RLS row_scope 取值来源）。"""
+
+    body = _json()
+    scopes = body.get("scopes")
+    if not isinstance(scopes, list):
+        return bad_request("scopes 必须是数组")
+    normalized: list[dict[str, Any]] = []
+    for item in scopes:
+        if not isinstance(item, dict):
+            return bad_request("scopes 元素必须是对象")
+        attribute = str(item.get("attribute") or "").strip()
+        if not attribute:
+            return bad_request("scopes 元素缺少 attribute")
+        values = item.get("values")
+        if not isinstance(values, list):
+            return bad_request(f"scope {attribute} 的 values 必须是数组")
+        normalized.append({"attribute": attribute, "values": values})
+    rows = _service().put_principal_scopes(
+        principal_id=principal_id,
+        source=str(body.get("source") or "manual"),
+        scopes=normalized,
+        created_by=_current_actor(),
+    )
+    return success(
+        {"items": [_scope_to_dict(row) for row in rows], "total": len(rows)},
+        message="数据范围已更新",
+    )
 
 
 @bp.put("/principals/<path:principal_id>/permission-packages")
@@ -357,7 +562,32 @@ def patch_service_principal(principal_id: str):
 @bp.post("/service-principals/<path:principal_id>/api-keys")
 @require_access_roles(*ACCESS_WRITE_ROLES)
 def create_api_key(principal_id: str):
+    """签发 API Key。
+
+    可选 ``mode``：``scope``（模式 A，配 ``data_scopes`` 写入 source=issuance）
+    / ``delegation``（模式 B，要求委托白名单，自动附加委托 scope）。
+    """
+
     body = _json()
+    data_scopes = body.get("data_scopes")
+    normalized_scopes: list[dict[str, Any]] | None = None
+    if data_scopes is not None:
+        if not isinstance(data_scopes, list):
+            return bad_request("data_scopes 必须是数组")
+        normalized_scopes = []
+        for item in data_scopes:
+            if not isinstance(item, dict):
+                return bad_request("data_scopes 元素必须是对象")
+            attribute = str(item.get("attribute") or "").strip()
+            if not attribute:
+                return bad_request("data_scopes 元素缺少 attribute")
+            values = item.get("values")
+            if not isinstance(values, list):
+                return bad_request(f"data_scope {attribute} 的 values 必须是数组")
+            normalized_scopes.append({"attribute": attribute, "values": values})
+    semantic_pin = body.get("semantic_pin")
+    if semantic_pin is not None and not isinstance(semantic_pin, dict):
+        return bad_request("semantic_pin 必须是对象")
     key = _service().create_api_key(
         principal_id=principal_id,
         scopes=body.get("scopes") or [],
@@ -365,6 +595,9 @@ def create_api_key(principal_id: str):
         allowed_ips=body.get("allowed_ips") or [],
         rate_limit_per_minute=body.get("rate_limit_per_minute"),
         expires_at=_parse_dt(body.get("expires_at")),
+        mode=body.get("mode"),
+        data_scopes=normalized_scopes,
+        semantic_pin=semantic_pin,
     )
     return created({
         "key_id": key.key_id,

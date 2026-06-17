@@ -24,6 +24,134 @@ class TestDeliveryService:
         assert result['total_subscriptions'] == 0
         assert result['successful'] == 0
         assert result['failed'] == 0
+
+    def test_trigger_subscription_delivers_single_subscription_and_records_log(self):
+        """测试手动触发订阅 - 仅投递目标订阅并写入历史"""
+        from app.application.services.config.delivery_service import DeliveryService
+        from app.domain.entities.config.subscription import Subscription
+
+        mock_subscription = MagicMock(spec=Subscription)
+        mock_subscription.id = 7
+        mock_subscription.name = '每日同步告警'
+        mock_subscription.app_instance_id = 101
+        mock_subscription.channel_id = 301
+        mock_subscription.event_types = ['app.execution.completed', 'app.execution.failed']
+        mock_subscription.enabled = True
+
+        mock_repository = MagicMock()
+        mock_repository.find_by_id_with_relations.return_value = mock_subscription
+        mock_subscription_service = MagicMock()
+
+        service = DeliveryService(
+            subscription_service=mock_subscription_service,
+            subscription_repository=mock_repository,
+        )
+        service._deliver_to_channel = MagicMock(return_value={'success': True, 'detail': 'ok'})
+
+        result = service.trigger_subscription(
+            subscription_id=7,
+            event_type='app.execution.completed',
+            event_data={'app_code': 'sync'},
+            triggered_by='ou_test',
+        )
+
+        assert result['total_subscriptions'] == 1
+        assert result['successful'] == 1
+        assert result['failed'] == 0
+        service._deliver_to_channel.assert_called_once()
+        _, kwargs = service._deliver_to_channel.call_args
+        assert kwargs['subscription'] is mock_subscription
+        assert kwargs['event_type'] == 'app.execution.completed'
+        assert kwargs['event_data']['manual_trigger'] is True
+        assert kwargs['event_data']['triggered_by'] == 'ou_test'
+        mock_repository.add_delivery_log.assert_called_once()
+
+    def test_trigger_delivery_channel_contract_failure_writes_delivery_log(self):
+        """合约测试：trigger → delivery → channel 失败时写入 SubscriptionDeliveryLog。
+
+        渠道层（webhook）返回失败，校验：
+        1. trigger_subscription 返回 failed=1；
+        2. repository.add_delivery_log 收到 SubscriptionDeliveryLog 实体；
+        3. 日志字段 subscription_id / channel_id / event_type / status / message / duration_ms 完整。
+        """
+        from app.application.services.config.delivery_service import DeliveryService
+        from app.domain.entities.config.subscription import Subscription
+        from app.domain.entities.config.subscription_delivery_log import SubscriptionDeliveryLog
+        from app.domain.entities.config.channel import Channel, ChannelType
+
+        mock_channel = MagicMock(spec=Channel)
+        mock_channel.id = 301
+        mock_channel.channel_type = ChannelType.WEBHOOK.value
+        mock_channel.enabled = True
+        mock_channel.config = {'url': 'https://example.com/hook'}
+
+        mock_subscription = MagicMock(spec=Subscription)
+        mock_subscription.id = 7
+        mock_subscription.name = '异常监控告警'
+        mock_subscription.app_instance_id = 101
+        mock_subscription.channel_id = 301
+        mock_subscription.channel = mock_channel
+        mock_subscription.event_types = ['app.execution.failed']
+        mock_subscription.enabled = True
+        mock_subscription.delivery_config = {}
+
+        mock_repository = MagicMock()
+        mock_repository.find_by_id_with_relations.return_value = mock_subscription
+
+        service = DeliveryService(
+            subscription_service=MagicMock(),
+            subscription_repository=mock_repository,
+        )
+
+        with patch('requests.request') as mock_request:
+            mock_response = MagicMock()
+            mock_response.status_code = 502
+            mock_response.text = 'Bad Gateway'
+            mock_request.return_value = mock_response
+
+            result = service.trigger_subscription(
+                subscription_id=7,
+                event_type='app.execution.failed',
+                event_data={'app_code': 'anomaly'},
+            )
+
+        assert result['successful'] == 0
+        assert result['failed'] == 1
+        assert result['details'][0]['success'] is False
+
+        mock_repository.add_delivery_log.assert_called_once()
+        log_entry = mock_repository.add_delivery_log.call_args[0][0]
+        assert isinstance(log_entry, SubscriptionDeliveryLog)
+        assert log_entry.subscription_id == 7
+        assert log_entry.channel_id == 301
+        assert log_entry.event_type == 'app.execution.failed'
+        assert log_entry.status == 'failed'
+        assert 'HTTP 502' in log_entry.message
+        assert log_entry.duration_ms is not None and log_entry.duration_ms >= 0
+        assert log_entry.trigger_at is not None
+
+    def test_trigger_subscription_disabled_rejected(self):
+        """测试手动触发订阅 - 停用订阅不可触发"""
+        from app.application.services.config.delivery_service import DeliveryService
+        from app.domain.entities.config.subscription import Subscription
+        from app.shared.exceptions import ValidationError
+
+        mock_subscription = MagicMock(spec=Subscription)
+        mock_subscription.id = 7
+        mock_subscription.enabled = False
+        mock_subscription.event_types = ['app.execution.completed']
+
+        mock_repository = MagicMock()
+        mock_repository.find_by_id_with_relations.return_value = mock_subscription
+
+        service = DeliveryService(
+            subscription_service=MagicMock(),
+            subscription_repository=mock_repository,
+        )
+
+        with pytest.raises(ValidationError):
+            service.trigger_subscription(subscription_id=7)
+        mock_repository.add_delivery_log.assert_not_called()
     
     def test_deliver_event_with_subscriptions(self):
         """测试分发事件 - 有匹配订阅"""

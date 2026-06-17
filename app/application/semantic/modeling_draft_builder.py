@@ -8,6 +8,11 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from app.application.semantic.cube_modeling_source_service import CubeModelingSourceService
 from app.application.semantic.modeling_spec_repair import repair_modeling_spec
+from app.domain.ontology.entities import (
+    measure_ref_strings,
+    normalize_cube_bindings,
+    normalize_measure_refs,
+)
 
 
 class SemanticModelDraftBuilder:
@@ -137,7 +142,7 @@ class SemanticModelDraftBuilder:
         return {
             "spec": spec,
             "next_actions": {
-                "default_publish_target": "cube_only",
+                "default_publish_target": "cube_and_ontology",
                 "requires_ontology_confirmation": True,
             },
         }
@@ -173,7 +178,7 @@ class SemanticModelDraftBuilder:
         issues.extend(self._field_candidate_issues(cube))
 
         for metric in ontology.get("metrics") or []:
-            refs = metric.get("measure_refs") or []
+            refs = measure_ref_strings(metric.get("measure_refs"))
             if not refs:
                 issues.append(self._issue("error", f"metric.{metric.get('name')}", "BusinessMetric.measure_refs 不能为空"))
                 continue
@@ -307,10 +312,10 @@ class SemanticModelDraftBuilder:
         spec: Dict[str, Any],
         publish_targets: Optional[Dict[str, bool]] = None,
     ) -> Dict[str, Any]:
-        """按确认范围发布，默认只发布 Cube。"""
+        """按确认范围发布，默认 cube + ontology 同批发布（绑定完整的语义包）。"""
         targets = {
             "cube": True,
-            "ontology": False,
+            "ontology": True,
         }
         if publish_targets:
             targets.update({
@@ -423,6 +428,13 @@ class SemanticModelDraftBuilder:
             "title": subject,
             "description": f"{subject}对应的核心业务对象，由建模助手 Agent 根据事实表生成。",
             "aliases": [subject],
+            "cube_bindings": [
+                {
+                    "cube": cube_name,
+                    "role": "primary",
+                    "entity_key": self._default_entity_key(cube),
+                }
+            ],
             "status": "draft",
         }
         metrics = [self._metric_from_cube(cube, object_name, subject)]
@@ -469,7 +481,7 @@ class SemanticModelDraftBuilder:
             "semantic_formula": f"按 Cube measure {cube_name}.{measure_name} 计算",
             "description": f"{subject}相关的默认业务指标。",
             "semantic_labels": [subject, "建模助手 Agent"],
-            "measure_refs": [f"{cube_name}.{measure_name}"],
+            "measure_refs": [{"ref": f"{cube_name}.{measure_name}", "role": "primary"}],
             "aliases": [f"{subject}数"],
             "status": "draft",
         }
@@ -489,6 +501,100 @@ class SemanticModelDraftBuilder:
                 }
             )
         return properties
+
+    def _default_entity_key(self, cube: Dict[str, Any]) -> Optional[str]:
+        """从 cube 维度中挑选对象实体键：优先 *_id / id 命名，回退第一个维度。"""
+        dimensions = cube.get("dimensions") or {}
+        for field in dimensions:
+            lowered = str(field).lower()
+            if lowered == "id" or lowered.endswith("_id"):
+                return field
+        return next(iter(dimensions), None)
+
+    def recommend_bindable_objects(
+        self,
+        cube: Dict[str, Any],
+        *,
+        subject: Optional[str] = None,
+        limit: int = 3,
+    ) -> List[Dict[str, Any]]:
+        """建模态推荐：返回该 cube 可绑定的已有 BusinessObject，避免多表同对象重复建模。"""
+        try:
+            existing = (self._ontology_service.list_objects() or {}).get("items") or []
+        except Exception:
+            return []
+        cube_name = str(cube.get("name") or "")
+        cube_title = str(cube.get("title") or "")
+        dimensions = {str(field) for field in (cube.get("dimensions") or {})}
+        cube_text = f"{cube_name} {cube_title} {subject or ''}".lower()
+        cube_tokens = self._binding_match_tokens(cube_text)
+
+        suggestions: List[Dict[str, Any]] = []
+        for obj in existing:
+            if not isinstance(obj, dict):
+                continue
+            if str(obj.get("status") or "") == "deprecated":
+                continue
+            object_name = str(obj.get("name") or "")
+            if not object_name:
+                continue
+            object_terms = [
+                object_name,
+                str(obj.get("title") or ""),
+                *[str(alias) for alias in (obj.get("aliases") or [])],
+            ]
+            score = 0.0
+            reasons: List[str] = []
+            token_overlap = cube_tokens & self._binding_match_tokens(" ".join(object_terms).lower())
+            contained_terms = sorted(
+                term for term in object_terms if term and len(term) >= 2 and term.lower() in cube_text
+            )
+            if contained_terms:
+                score += 0.6
+                reasons.append(f"对象名称/别名命中 cube 主题：{', '.join(contained_terms[:3])}")
+            elif token_overlap:
+                score += 0.4 + 0.1 * min(len(token_overlap), 2)
+                reasons.append(f"名称分词与 cube 主题重合：{', '.join(sorted(token_overlap)[:3])}")
+
+            bindings = normalize_cube_bindings(obj.get("cube_bindings"))
+            entity_keys = {
+                str(binding.get("entity_key"))
+                for binding in bindings
+                if binding.get("entity_key")
+            }
+            matched_keys = sorted(entity_keys & dimensions)
+            if matched_keys:
+                score += 0.3
+                reasons.append(f"已有绑定 entity_key 与 cube 维度匹配：{', '.join(matched_keys)}")
+            if score <= 0:
+                continue
+
+            has_primary = any(binding.get("role") == "primary" for binding in bindings)
+            suggestions.append(
+                {
+                    "object_name": object_name,
+                    "title": obj.get("title"),
+                    "status": obj.get("status"),
+                    "score": round(min(score, 1.0), 2),
+                    "reasons": reasons,
+                    "suggested_binding": {
+                        "cube": cube_name,
+                        "role": "detail" if has_primary else "primary",
+                        "entity_key": matched_keys[0] if matched_keys else self._default_entity_key(cube),
+                    },
+                }
+            )
+        suggestions.sort(key=lambda item: (-item["score"], item["object_name"]))
+        return suggestions[:limit]
+
+    @staticmethod
+    def _binding_match_tokens(text: str) -> set[str]:
+        stopwords = {"cube", "draft", "table", "dwd", "dws", "ads", "dim", "df", "fact"}
+        return {
+            token
+            for token in re.split(r"[^0-9a-z\u4e00-\u9fff]+", text)
+            if len(token) >= 2 and token not in stopwords
+        }
 
     def _default_measure(self, measures: Dict[str, Any]) -> tuple[str, Dict[str, Any]]:
         for name, measure in measures.items():
@@ -583,7 +689,7 @@ class SemanticModelDraftBuilder:
         metric_bindings = []
         for metric in (spec.get("ontology") or {}).get("metrics") or []:
             metric_name = metric.get("name")
-            for measure_ref in metric.get("measure_refs") or []:
+            for measure_ref in measure_ref_strings(metric.get("measure_refs")):
                 parsed_cube, parsed_measure = self._parse_measure_ref(measure_ref, cube_name)
                 metric_bindings.append(
                     {
@@ -641,10 +747,21 @@ class SemanticModelDraftBuilder:
         return [save(payload) for payload in payloads]
 
     def _rewrite_measure_refs(self, ontology: Dict[str, Any], old_cube_name: str, new_cube_name: str) -> None:
+        def _rewrite(ref: str) -> str:
+            if ref.startswith(f"{old_cube_name}."):
+                return f"{new_cube_name}.{ref.split('.', 1)[1]}"
+            return ref
+
         for metric in ontology.get("metrics") or []:
             metric["measure_refs"] = [
-                f"{new_cube_name}.{ref.split('.', 1)[1]}" if ref.startswith(f"{old_cube_name}.") else ref
-                for ref in metric.get("measure_refs") or []
+                {**item, "ref": _rewrite(item["ref"])}
+                for item in normalize_measure_refs(metric.get("measure_refs"))
+            ]
+        object_payload = ontology.get("object")
+        if isinstance(object_payload, dict) and object_payload.get("cube_bindings"):
+            object_payload["cube_bindings"] = [
+                {**item, "cube": new_cube_name if item.get("cube") == old_cube_name else item.get("cube")}
+                for item in normalize_cube_bindings(object_payload.get("cube_bindings"))
             ]
 
     def _sample_questions(self, subject: str, metrics: List[Dict[str, Any]]) -> List[str]:

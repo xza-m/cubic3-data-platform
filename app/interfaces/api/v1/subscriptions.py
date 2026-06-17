@@ -16,6 +16,10 @@ def _get_service():
     return get_container().subscription_service()
 
 
+def _get_delivery_service():
+    return get_container().delivery_service()
+
+
 @bp.route('', methods=['GET'])
 @require_auth
 def list_subscriptions():
@@ -115,6 +119,22 @@ def disable_subscription(subscription_id: int):
     service = _get_service()
     subscription = service.disable_subscription(subscription_id)
     return success(data=subscription)
+
+
+@bp.route('/<int:subscription_id>/trigger', methods=['POST'])
+@require_auth
+def trigger_subscription(subscription_id: int):
+    """手动触发单个订阅"""
+    data = request.get_json(silent=True) or {}
+
+    service = _get_delivery_service()
+    result = service.trigger_subscription(
+        subscription_id=subscription_id,
+        event_type=data.get('event_type'),
+        event_data=data.get('event_data') or {},
+        triggered_by=g.user_id,
+    )
+    return success(data=result)
 
 
 @bp.route('/<int:subscription_id>/history', methods=['GET'])

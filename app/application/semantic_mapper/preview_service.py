@@ -74,7 +74,7 @@ class SemanticMapperPreviewService:
         items = self.stale_check()["items"]
         linked_measure_refs = 0
         for metric in self._metric_repository.list_all():
-            linked_measure_refs += sum(1 for ref in metric.measure_refs if self._resolve_measure_ref(ref) is not None)
+            linked_measure_refs += sum(1 for ref in metric.measure_ref_strings() if self._resolve_measure_ref(ref) is not None)
         return {
             "summary": {
                 "object_count": len(self._object_repository.list_all()),
@@ -91,7 +91,7 @@ class SemanticMapperPreviewService:
     def stale_check(self) -> Dict[str, Any]:
         issues: List[Dict[str, Any]] = []
         for metric in self._metric_repository.list_all():
-            missing = [ref for ref in metric.measure_refs if self._resolve_measure_ref(ref) is None]
+            missing = [ref for ref in metric.measure_ref_strings() if self._resolve_measure_ref(ref) is None]
             if missing:
                 issues.append(
                     {
@@ -131,7 +131,7 @@ class SemanticMapperPreviewService:
                 "linked_measure_ref_count": sum(
                     1
                     for metric in self._metric_repository.list_all()
-                    for ref in metric.measure_refs
+                    for ref in metric.measure_ref_strings()
                     if self._resolve_measure_ref(ref) is not None
                 ),
             },
@@ -187,7 +187,7 @@ class SemanticMapperPreviewService:
         linked_cubes: List[Dict[str, Any]] = []
         consistency_issues: List[str] = []
 
-        for ref in metric.measure_refs:
+        for ref in metric.measure_ref_strings():
             resolved = self._resolve_measure_ref(ref)
             if resolved is None:
                 linked_measures.append(
@@ -237,7 +237,7 @@ class SemanticMapperPreviewService:
         cube_name, _, measure_name = measure_ref.partition(".")
         linked_metrics: List[Dict[str, Any]] = []
         for metric in self._metric_repository.list_all():
-            if measure_ref not in metric.measure_refs:
+            if measure_ref not in metric.measure_ref_strings():
                 continue
             linked_metrics.append(
                 {
@@ -285,7 +285,7 @@ class SemanticMapperPreviewService:
         if cube is not None:
             measure_refs = {f"{cube.name}.{measure_name}" for measure_name in cube.measures}
             for metric in self._metric_repository.list_all():
-                if not measure_refs.intersection(metric.measure_refs):
+                if not measure_refs.intersection(metric.measure_ref_strings()):
                     continue
                 linked_metrics.append(
                     {
@@ -410,7 +410,7 @@ class SemanticMapperPreviewService:
     def _preview_metric(self, entity: BusinessMetric) -> Dict[str, Any]:
         targets = []
         issues = []
-        for ref in entity.measure_refs:
+        for ref in entity.measure_ref_strings():
             resolved = self._resolve_measure_ref(ref)
             if resolved is None:
                 issues.append(f"未解析 Measure 引用: {ref}")

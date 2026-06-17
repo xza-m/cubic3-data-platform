@@ -151,7 +151,7 @@ class TestOpenApiConfigAndDocs:
     def test_openapi_config_models_and_metadata(self):
         module = self._load_openapi_module()
 
-        assert module.info.title == "CUBIC3 API"
+        assert module.info.title == "CUBIC3 Data Platform API"
         assert len(module.tags) >= 5
         assert len(module.servers) == 2
         assert "bearerAuth" in module.security_schemes

@@ -393,6 +393,7 @@ def _run_feishu_agent(event: dict, config: dict):
             sql=response.sql,
             usage=response.usage,
             duration=duration,
+            tool_trace=response.tool_trace_evidence(),
         )
         db.session.commit()
 
@@ -436,6 +437,7 @@ def card_action():
     query_id = action_value.get("query_id")
 
     if not feedback:
+        # 飞书卡片回调协议要求顶层 toast 字段，不能包装为统一响应格式
         return jsonify({"toast": {"type": "info", "content": "无效操作"}})
 
     logger.info("收到飞书反馈: feedback=%s, query_id=%s", feedback, query_id)

@@ -57,6 +57,19 @@ class IRuntimeSnapshotRepository(Protocol):
     def get_release(self, release_id: str) -> Optional[SemanticRelease]:
         ...
 
+    def list_releases(
+        self,
+        namespace: str = "default",
+        *,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[SemanticRelease], int]:
+        ...
+
+    def get_snapshot_by_release_id(self, release_id: str) -> Optional[RuntimeSnapshot]:
+        ...
+
     def resolve_asset(
         self,
         snapshot_id: str,

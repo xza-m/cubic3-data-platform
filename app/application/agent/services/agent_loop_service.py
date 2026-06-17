@@ -20,6 +20,9 @@ from app.shared.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+SEMANTIC_TOOLS = ("query", "list_cubes", "describe_cube")
+
+
 class AgentLoopService:
     """Agent Loop 核心引擎"""
 
@@ -56,6 +59,14 @@ class AgentLoopService:
         last_data: list[list[Any]] | None = None
         last_columns: list[str] | None = None
 
+        # §4.2 通道优先级合约：语义工具可用时 execute_sql 只能作为降级路径
+        available_tools = {t["name"] for t in (tool_defs or [])}
+        semantic_tools_available = bool(available_tools & set(SEMANTIC_TOOLS))
+        semantic_attempted = False
+        last_semantic_error: str | None = None
+        tool_trace: list[dict[str, Any]] = []
+        degradation: dict[str, Any] | None = None
+
         for round_idx in range(max_rounds):
             logger.info(
                 "Agent Loop 轮次",
@@ -89,6 +100,8 @@ class AgentLoopService:
                     data=last_data,
                     columns=last_columns,
                     usage=accumulated_usage,
+                    tool_trace=tool_trace or None,
+                    degradation=degradation,
                 )
 
             # tool_use: 执行所有工具调用
@@ -122,7 +135,54 @@ class AgentLoopService:
                         summary=self._step_summary(tc.name, "running"),
                     ))
 
-                result = executor.execute(tc.name, tc.arguments)
+                if (
+                    tc.name == "execute_sql"
+                    and semantic_tools_available
+                    and not semantic_attempted
+                ):
+                    # 硬约束：语义工具可用且尚未尝试时，拒绝直接降级到 free SQL
+                    result = {
+                        "error": (
+                            "请先通过语义层工具回答（list_cubes 了解可用 Cube，"
+                            "再用 query 构造 DSL 查询）；仅当语义层无法覆盖时才允许 execute_sql。"
+                        ),
+                        "error_code": "semantic_first_required",
+                    }
+                else:
+                    result = executor.execute(tc.name, tc.arguments)
+
+                if tc.name in SEMANTIC_TOOLS:
+                    semantic_attempted = True
+                    if isinstance(result, dict) and result.get("error"):
+                        last_semantic_error = str(
+                            result.get("error_code") or result.get("error")
+                        )
+
+                if (
+                    tc.name == "execute_sql"
+                    and isinstance(result, dict)
+                    and result.get("error_code") != "semantic_first_required"
+                    and degradation is None
+                    and semantic_tools_available
+                ):
+                    # 语义工具存在但仍走到 free SQL：记录降级原因进入 evidence
+                    degradation = {
+                        "from": "semantic_query",
+                        "to": "execute_sql",
+                        "reason": last_semantic_error or "semantic_path_not_covering",
+                        "round": round_idx + 1,
+                    }
+
+                tool_trace.append(
+                    {
+                        "round": round_idx + 1,
+                        "tool": tc.name,
+                        "ok": not (isinstance(result, dict) and result.get("error")),
+                        "error_code": result.get("error_code")
+                        if isinstance(result, dict) and result.get("error")
+                        else None,
+                    }
+                )
 
                 logger.info(
                     "工具结果",
@@ -131,11 +191,15 @@ class AgentLoopService:
                     result_preview=self._truncate(result),
                 )
 
-                # 提取 SQL 查询结果供最终响应使用
+                # 提取 SQL 查询结果供最终响应使用（被拒绝/失败的 SQL 不作为最终响应证据）
                 if tc.name == "execute_sql":
-                    last_sql = tc.arguments.get("sql")
                     if "error" not in result:
-                        last_columns = result.get("columns", [])
+                        last_sql = tc.arguments.get("sql")
+                        # 适配器可能返回 [{'name','type'}] 结构化列定义，统一归一化为列名列表
+                        last_columns = [
+                            col.get("name") if isinstance(col, dict) else col
+                            for col in result.get("columns", [])
+                        ]
                         raw_data = result.get("data", [])
                         if raw_data and isinstance(raw_data[0], dict):
                             last_data = [
@@ -167,6 +231,8 @@ class AgentLoopService:
             columns=last_columns,
             error="max_rounds_exceeded",
             usage=accumulated_usage,
+            tool_trace=tool_trace or None,
+            degradation=degradation,
         )
 
     @staticmethod

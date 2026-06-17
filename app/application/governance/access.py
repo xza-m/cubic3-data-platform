@@ -11,12 +11,25 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal, Optional
+from dataclasses import dataclass, field, replace
+from typing import Any, Callable, Iterable, Literal, Optional
+
+from app.application.governance.row_scope import evaluate_row_scope_templates
 
 
 DataLevel = Literal["M0", "M1", "M2", "M3"]
 Decision = Literal["allow", "deny", "require_approval"]
+
+# RLS 行级安全执行模式（过渡开关，§6.3）。
+RLS_MODES = frozenset({"off", "observe", "deny", "enforce"})
+# 真正阻断（fail closed / 注入）的模式集合；observe / off 不阻断。
+RLS_ENFORCING_MODES = frozenset({"deny", "enforce"})
+
+
+def normalize_rls_mode(mode: Any) -> str:
+    """归一 RLS 执行模式；非法或缺省回落到安全态 ``deny``。"""
+    value = str(mode or "").strip().lower()
+    return value if value in RLS_MODES else "deny"
 
 _DATA_LEVEL_RANK: dict[str, int] = {"M0": 0, "M1": 1, "M2": 2, "M3": 3}
 _SQL_KEYWORDS = (
@@ -72,9 +85,21 @@ class PrincipalContext:
     data_roles: list[str] = field(default_factory=list)
     groups: list[str] = field(default_factory=list)
     departments: list[str] = field(default_factory=list)
+    # RLS 数据范围属性（attribute → 值列表），只来自服务端解析，不采信请求体声明。
+    data_scopes: dict[str, list[str]] = field(default_factory=dict)
     source: str = "anonymous"
     actor_type: str = "user"
     actor_id: Optional[str] = None
+    # 双主体模型：subject = 数据归属主体（无委托时等于自身）；acting = 执行主体（actor_id）。
+    subject_principal_id: Optional[str] = None
+
+    @property
+    def acting_principal_id(self) -> str:
+        return self.actor_id or self.principal_id
+
+    @property
+    def effective_subject_principal_id(self) -> str:
+        return self.subject_principal_id or self.principal_id
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -86,9 +111,11 @@ class PrincipalContext:
             "data_roles": list(self.data_roles),
             "groups": list(self.groups),
             "departments": list(self.departments),
+            "data_scopes": {key: list(values) for key, values in (self.data_scopes or {}).items()},
             "source": self.source,
             "actor_type": self.actor_type,
             "actor_id": self.actor_id or self.principal_id,
+            "subject_principal_id": self.effective_subject_principal_id,
         }
 
 
@@ -118,9 +145,13 @@ class PolicyDecisionResult:
     policy_epoch: int = 1
     ticket_preview: dict[str, Any] = field(default_factory=dict)
     execution_permit: dict[str, Any] = field(default_factory=dict)
+    decision_id: Optional[str] = None
+    # RLS 执行模式（过渡开关）：下游 fail closed / 网关 v2 升级均以此为准。
+    rls_enforcement_mode: str = "deny"
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
+            "decision_id": self.decision_id,
             "decision": self.decision,
             "effect": self.decision,
             "reason": self.reason,
@@ -142,6 +173,7 @@ class PolicyDecisionResult:
             "policy_version": self.policy_version,
             "policy_epoch": int(self.policy_epoch or 1),
             "execution_permit": dict(self.execution_permit),
+            "rls_enforcement_mode": self.rls_enforcement_mode,
         }
         if self.effective_row_scope:
             payload["effective_row_scope"] = dict(self.effective_row_scope)
@@ -179,6 +211,12 @@ class PrincipalResolver:
             source = "authenticated_user"
         else:
             source = "anonymous"
+        raw_scopes = incoming.get("data_scopes") if isinstance(incoming.get("data_scopes"), dict) else {}
+        data_scopes = {
+            str(key): _dedupe(values if isinstance(values, (list, tuple, set)) else [values])
+            for key, values in raw_scopes.items()
+            if str(key or "").strip()
+        }
         return PrincipalContext(
             principal_id=principal_id,
             principal_type=str(incoming.get("principal_type") or auth.get("principal_type") or "human"),
@@ -188,9 +226,11 @@ class PrincipalResolver:
             data_roles=[role for role in roles if str(role).startswith("data_")],
             groups=_dedupe(incoming.get("groups") or []),
             departments=_dedupe(incoming.get("departments") or []),
+            data_scopes=data_scopes,
             source=source,
             actor_type=str(incoming.get("actor_type") or auth.get("actor_type") or "user"),
             actor_id=incoming.get("actor_id") or auth.get("actor_id") or principal_id,
+            subject_principal_id=str(incoming.get("subject_principal_id") or "") or None,
         )
 
 
@@ -436,8 +476,15 @@ def _build_access_context_preview(
 class AccessPolicyDecisionService:
     """Phase 1 最小数据访问策略服务。"""
 
-    def __init__(self, policy_repository: Any | None = None) -> None:
+    def __init__(
+        self,
+        policy_repository: Any | None = None,
+        *,
+        rls_enforcement_mode: str = "deny",
+    ) -> None:
         self._policy_repository = policy_repository
+        # 代码层默认安全态 deny；生产由 DI 注入 config（默认 observe 过渡态）。
+        self._rls_enforcement_mode = normalize_rls_mode(rls_enforcement_mode)
 
     def pre_route(self, *, principal: PrincipalContext) -> PolicyDecisionResult:
         if principal.principal_id == "anonymous":
@@ -465,12 +512,26 @@ class AccessPolicyDecisionService:
         principal: PrincipalContext,
         compiled_targets: list[dict[str, Any]],
         approval_id: Optional[str] = None,
+        dimension_resolver: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
+        row_scope_mode: str = "evaluate",
     ) -> PolicyDecisionResult:
+        """post_compile 准入裁决 + 行级裁决（见架构设计 §5.7 控制点边界表）。
+
+        - ``dimension_resolver``：把 row_scope 模板的 ``dimension_ref`` 经与编译同
+          release 的 manifest catalog 解析为物理表+列；未提供时命中 row_scope 策略
+          一律 fail closed。
+        - ``row_scope_mode``：``evaluate``（语义路径，求值产出 effective_row_scope）
+          或 ``deny``（free SQL 等非语义路径，命中 row_scope 策略直接拒绝，
+          ``row_scope_requires_semantic_path``，§6.3 硬规则）。
+        """
+
         if self._policy_repository is not None:
             return self._post_compile_with_repository(
                 principal=principal,
                 compiled_targets=compiled_targets,
                 approval_id=approval_id,
+                dimension_resolver=dimension_resolver,
+                row_scope_mode=row_scope_mode,
             )
         data_level = infer_data_level_for_targets(compiled_targets)
         if data_level != "M0" and "platform_admin" in principal.roles and not _has_any_data_role(principal.roles):
@@ -531,6 +592,8 @@ class AccessPolicyDecisionService:
         principal: PrincipalContext,
         compiled_targets: list[dict[str, Any]],
         approval_id: Optional[str] = None,
+        dimension_resolver: Optional[Callable[[str], Optional[dict[str, Any]]]] = None,
+        row_scope_mode: str = "evaluate",
     ) -> PolicyDecisionResult:
         data_level = infer_data_level_for_targets(compiled_targets)
         resource_set = _normalize_resource_set(compiled_targets)
@@ -539,6 +602,7 @@ class AccessPolicyDecisionService:
             for target in compiled_targets
             if target.get("sql_hash")
         )
+        release_id, scoped_table_refs = _extract_ticket_binding_material(compiled_targets)
         roles = list(principal.roles or [])
         if data_level != "M0" and "platform_admin" in roles and not _has_any_data_role(roles):
             policy_epoch = _repository_current_policy_epoch(self._policy_repository)
@@ -560,8 +624,7 @@ class AccessPolicyDecisionService:
                 required_roles=[_required_role_for_data_level(data_level)],
                 policy_epoch=policy_epoch,
             )
-            self._persist_decision(result)
-            return result
+            return self._persist_decision(result)
 
         if data_level == "M3":
             policy_epoch = _repository_current_policy_epoch(self._policy_repository)
@@ -597,8 +660,7 @@ class AccessPolicyDecisionService:
                     },
                 ],
             )
-            self._persist_decision(result)
-            return result
+            return self._persist_decision(result)
 
         policies = list(self._policy_repository.list_policy_domains(status="active"))
         matching = [
@@ -625,8 +687,7 @@ class AccessPolicyDecisionService:
                 policy_version=deny_policy.policy_version,
                 policy_epoch=_policy_epoch(deny_policy),
             )
-            self._persist_decision(result)
-            return result
+            return self._persist_decision(result)
 
         allow_policy = next((policy for policy in matching if policy.effect == "allow"), None)
         if allow_policy is None:
@@ -650,8 +711,7 @@ class AccessPolicyDecisionService:
                     }
                 ],
             )
-            self._persist_decision(result)
-            return result
+            return self._persist_decision(result)
 
         profile = None
         if allow_policy.execution_profile_code:
@@ -669,10 +729,78 @@ class AccessPolicyDecisionService:
                 policy_version=allow_policy.policy_version,
                 policy_epoch=_policy_epoch(allow_policy),
             )
-            self._persist_decision(result)
-            return result
+            return self._persist_decision(result)
 
         execution_profile = _execution_profile_from_orm(profile)
+
+        # 行级裁决：命中最高优先级 allow 策略后逐条求值 row_scope 模板。
+        # attribute 取值来自 subject 主体 data_scopes；dimension_ref 经 manifest
+        # catalog（与编译同 release）解析；求值失败 fail closed（row_scope_unresolved）。
+        row_scope_templates = [
+            dict(item)
+            for item in (getattr(allow_policy, "row_scope", None) or [])
+            if isinstance(item, dict)
+        ]
+        effective_row_scope: dict[str, Any] = {}
+        # RLS 执行模式（§6.3 过渡开关）：
+        #   off      — 不求值、不阻断；
+        #   observe  — 求值产出 effective_row_scope 供审计，但绝不阻断（网关零感知）；
+        #   deny/enforce — 命中即 fail closed（gateway 注入未就绪）。
+        enforcing = self._rls_enforcement_mode in RLS_ENFORCING_MODES
+        if row_scope_templates and self._rls_enforcement_mode != "off":
+            if row_scope_mode == "deny":
+                # free SQL / 非语义路径：无法注入；仅 enforcing 模式 fail closed。
+                if enforcing:
+                    result = self._repository_decision(
+                        principal=principal,
+                        decision="deny",
+                        reason="该资源带行级安全策略，仅允许语义路径（gateway 注入）访问",
+                        reason_code="row_scope_requires_semantic_path",
+                        data_level=data_level,
+                        resource_set=resource_set,
+                        sql_hashes=sql_hashes,
+                        matched_policies=[allow_policy.to_dict()],
+                        policy_version=allow_policy.policy_version,
+                        policy_epoch=_policy_epoch(allow_policy),
+                    )
+                    return self._persist_decision(result)
+                # observe：free SQL 无法求值注入，按 advisory 放行（不计算 entries）。
+            else:
+                subject_scopes = dict(principal.data_scopes or {})
+                # 服务身份（模式 A）未配 scope 且命中 row_scope 策略 → enforcing 一律 fail
+                # closed，不允许通过 on_missing=unrestricted 绕过。
+                if principal.principal_type == "service" and not subject_scopes:
+                    entries, deny_code = [], "row_scope_unresolved"
+                else:
+                    entries, deny_code = evaluate_row_scope_templates(
+                        templates=row_scope_templates,
+                        data_scopes=subject_scopes,
+                        policy_code=allow_policy.policy_code,
+                        dimension_resolver=dimension_resolver,
+                    )
+                if deny_code:
+                    if enforcing:
+                        result = self._repository_decision(
+                            principal=principal,
+                            decision="deny",
+                            reason="行级安全模板求值失败：缺少数据范围属性或维度引用不可解析",
+                            reason_code=deny_code,
+                            data_level=data_level,
+                            resource_set=resource_set,
+                            sql_hashes=sql_hashes,
+                            matched_policies=[allow_policy.to_dict()],
+                            policy_version=allow_policy.policy_version,
+                            policy_epoch=_policy_epoch(allow_policy),
+                        )
+                        return self._persist_decision(result)
+                    # observe：求值失败不阻断，放行（effective_row_scope 留空）。
+                elif entries:
+                    effective_row_scope = {
+                        "version": "v1",
+                        "subject_principal_id": principal.effective_subject_principal_id,
+                        "entries": entries,
+                    }
+
         result = self._repository_decision(
             principal=principal,
             decision="allow",
@@ -685,14 +813,16 @@ class AccessPolicyDecisionService:
             execution_profile=execution_profile,
             policy_version=allow_policy.policy_version,
             policy_epoch=_policy_epoch(allow_policy),
+            effective_row_scope=effective_row_scope,
+            release_id=release_id,
+            scoped_table_refs=scoped_table_refs,
             execution_permit={
                 "mode": "policy_decision_preview",
                 "profile_code": execution_profile.get("profile_code"),
                 "enforcement": "control_plane_only",
             },
         )
-        self._persist_decision(result)
-        return result
+        return self._persist_decision(result)
 
     def _repository_decision(
         self,
@@ -713,6 +843,9 @@ class AccessPolicyDecisionService:
         suggestions: list[dict[str, Any]] | None = None,
         safe_alternatives: list[dict[str, Any]] | None = None,
         execution_permit: dict[str, Any] | None = None,
+        effective_row_scope: dict[str, Any] | None = None,
+        release_id: str | None = None,
+        scoped_table_refs: list[dict[str, Any]] | None = None,
     ) -> PolicyDecisionResult:
         permit = dict(execution_permit or {"mode": "not_issued", "reason_code": reason_code})
         if decision == "allow" and execution_profile:
@@ -733,6 +866,8 @@ class AccessPolicyDecisionService:
             "principal_id": principal.principal_id,
             "actor_type": principal.actor_type,
             "actor_id": principal.actor_id or principal.principal_id,
+            "acting_principal_id": principal.acting_principal_id,
+            "subject_principal_id": principal.effective_subject_principal_id,
             "data_level": data_level,
             "resource_set_physical": _resource_set_physical(resource_set),
             "sql_hashes": sql_hashes,
@@ -744,6 +879,13 @@ class AccessPolicyDecisionService:
             "policy_epoch": int(policy_epoch or 1),
             "note": "当前为权限判定预览，不是 gateway 可执行凭证",
         }
+        if effective_row_scope:
+            ticket_preview["effective_row_scope"] = dict(effective_row_scope)
+        # ticket 绑定三元组：双主体 + release_id + canonical_sql_hash（gateway 验签 TODO）
+        if release_id:
+            ticket_preview["release_id"] = release_id
+        if scoped_table_refs:
+            ticket_preview["scoped_table_refs"] = [dict(item) for item in scoped_table_refs]
         return PolicyDecisionResult(
             decision=decision,
             reason=reason,
@@ -753,6 +895,7 @@ class AccessPolicyDecisionService:
             matched_policies=matched_policies,
             resource_set=resource_set,
             sql_hashes=sql_hashes,
+            effective_row_scope=dict(effective_row_scope or {}),
             execution_profile=execution_profile or {},
             requires_approval=False,
             governance_required=governance_required,
@@ -765,12 +908,13 @@ class AccessPolicyDecisionService:
             policy_epoch=policy_epoch,
             ticket_preview=ticket_preview,
             execution_permit=permit,
+            rls_enforcement_mode=self._rls_enforcement_mode,
         )
 
-    def _persist_decision(self, result: PolicyDecisionResult) -> None:
+    def _persist_decision(self, result: PolicyDecisionResult) -> PolicyDecisionResult:
         if self._policy_repository is None:
-            return
-        self._policy_repository.save_policy_decision(
+            return result
+        saved = self._policy_repository.save_policy_decision(
             {
                 "principal_id": result.ticket_preview.get("principal_id") or "anonymous",
                 "actor_id": result.ticket_preview.get("actor_id"),
@@ -781,6 +925,7 @@ class AccessPolicyDecisionService:
                 "resource_set": result.resource_set,
                 "sql_hashes": result.sql_hashes,
                 "matched_policies": result.matched_policies,
+                "effective_row_scope": dict(result.effective_row_scope or {}) or None,
                 "execution_profile_code": result.execution_profile.get("profile_code"),
                 "policy_version": result.policy_version,
                 "policy_epoch": result.policy_epoch,
@@ -788,6 +933,16 @@ class AccessPolicyDecisionService:
                 "governance_required": result.governance_required,
             }
         )
+        decision_id = (saved or {}).get("decision_id")
+        if not decision_id:
+            return result
+        # 把持久化生成的 decision_id 回写到决策与 access_context_preview，
+        # gateway 的 GatewayAccessContext.v1 要求 policy_decision_id 必填可审计。
+        permit = dict(result.execution_permit)
+        preview = permit.get("access_context_preview")
+        if isinstance(preview, dict):
+            permit["access_context_preview"] = {**preview, "policy_decision_id": decision_id}
+        return replace(result, decision_id=decision_id, execution_permit=permit)
 
     def _build_decision(
         self,
@@ -862,7 +1017,30 @@ class AccessPolicyDecisionService:
             policy_version="phase1-preview",
             policy_epoch=1,
             ticket_preview=ticket_preview,
+            rls_enforcement_mode=self._rls_enforcement_mode,
         )
+
+
+def _extract_ticket_binding_material(
+    compiled_targets: list[dict[str, Any]],
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """从编译产物提取 ticket 绑定材料：release_id 与 row_scope 注入锚点。"""
+
+    release_id: str | None = None
+    scoped_table_refs: list[dict[str, Any]] = []
+    for target in compiled_targets or []:
+        if not isinstance(target, dict):
+            continue
+        material = target.get("ticket_material") or {}
+        if not isinstance(material, dict):
+            continue
+        pin = material.get("runtime_version_pin") or {}
+        if not release_id and isinstance(pin, dict) and pin.get("release_id"):
+            release_id = str(pin["release_id"])
+        for ref in material.get("scoped_table_refs") or []:
+            if isinstance(ref, dict):
+                scoped_table_refs.append(dict(ref))
+    return release_id, scoped_table_refs
 
 
 def _allowed_layers(data_level: DataLevel) -> list[str]:

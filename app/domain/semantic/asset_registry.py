@@ -13,8 +13,23 @@ AssetType = Literal["cube", "ontology", "domain", "glossary", "binding", "view",
 AssetStatus = Literal["draft", "active", "archived", "deleted"]
 AssetSourceKind = Literal["human", "copilot", "seed", "test_fixture"]
 RevisionStatus = Literal["draft", "validated", "published", "archived"]
-ReleaseStatus = Literal["created", "published", "failed", "rolled_back"]
+ReleaseStatus = Literal[
+    "created",
+    "published",
+    "superseded",
+    "deprecated",
+    "revoked",
+    "failed",
+    "rolled_back",
+]
 SnapshotStatus = Literal["active", "superseded", "failed"]
+
+# release 状态机（§6.1）：published（当前发布）→ superseded（被新版本替代，已 pin 消费方仍可用）
+# → deprecated（查询携带告警）→ revoked（阻断，终态，用于口径错误召回）。
+RELEASE_STATUS_TRANSITIONS: Dict[str, Tuple[str, ...]] = {
+    "deprecated": ("published", "superseded"),
+    "revoked": ("published", "superseded", "deprecated"),
+}
 
 RUNTIME_MANIFEST_SCHEMA_VERSION = "semantic-runtime-manifest/v1"
 
@@ -87,6 +102,8 @@ class SemanticRelease(BaseModel):
     idempotency_key: Optional[str] = None
     published_by: Optional[str] = None
     published_at: Optional[str] = None
+    status_reason: Optional[str] = None
+    status_changed_at: Optional[str] = None
     created_at: str = Field(default_factory=lambda: _utc_now())
 
 

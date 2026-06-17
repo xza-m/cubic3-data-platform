@@ -32,8 +32,46 @@ def build_gateway_access_context(
         or []
     )
 
-    return {
-        "schema": "GatewayAccessContext.v1",
+    effective_row_scope = dict(
+        policy_decision.get("effective_row_scope")
+        or ticket.get("effective_row_scope")
+        or {}
+    )
+    row_scope_entries = [
+        dict(item)
+        for item in (effective_row_scope.get("entries") or [])
+        if isinstance(item, dict)
+    ]
+    release_id = (
+        ticket.get("release_id")
+        or preview.get("release_id")
+        or policy_decision.get("release_id")
+    )
+    scoped_table_refs = [
+        dict(item)
+        for item in (ticket.get("scoped_table_refs") or preview.get("scoped_table_refs") or [])
+        if isinstance(item, dict)
+    ]
+    acting_principal_id = (
+        ticket.get("acting_principal_id")
+        or principal.get("actor_id")
+        or principal.get("principal_id")
+    )
+    subject_principal_id = (
+        ticket.get("subject_principal_id")
+        or principal.get("subject_principal_id")
+        or principal.get("principal_id")
+    )
+
+    # v2 增量字段：row_scope / release_id / scoped_table_refs / 双主体。
+    # 仅当存在 row_scope 且执行模式为 deny/enforce（需要网关注入）时才升级为 v2；
+    # observe / off 维持 v1，网关旧合约消费方零感知（缺省按安全态 deny 处理）。
+    enforcement_mode = str(policy_decision.get("rls_enforcement_mode") or "deny").strip().lower()
+    enforce_row_scope = bool(row_scope_entries) and enforcement_mode in {"deny", "enforce"}
+    schema = "GatewayAccessContext.v2" if enforce_row_scope else "GatewayAccessContext.v1"
+
+    context = {
+        "schema": schema,
         "policy_decision_id": policy_decision.get("decision_id") or preview.get("policy_decision_id"),
         "policy_trace_id": policy_decision.get("trace_id") or preview.get("trace_id"),
         "policy_version": preview.get("policy_version") or policy_decision.get("policy_version"),
@@ -56,3 +94,14 @@ def build_gateway_access_context(
             "expires_at": ticket.get("expires_at") or permit.get("expires_at"),
         },
     }
+    if schema == "GatewayAccessContext.v2":
+        context.update(
+            {
+                "row_scope": row_scope_entries,
+                "release_id": release_id,
+                "scoped_table_refs": scoped_table_refs,
+                "acting_principal_id": acting_principal_id,
+                "subject_principal_id": subject_principal_id,
+            }
+        )
+    return context

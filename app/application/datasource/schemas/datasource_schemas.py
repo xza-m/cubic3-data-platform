@@ -46,6 +46,7 @@ class DatasourceResponse(DatasourceBase):
     last_test_at: Optional[datetime]
     last_test_error: Optional[str]
     created_by: str
+    created_by_display_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     

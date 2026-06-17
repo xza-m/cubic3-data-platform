@@ -402,6 +402,27 @@ class TestPostgreSQLAdapter:
         assert schema['table_name'] == 'public.users'
         assert schema['row_count'] == 12
 
+    @patch('app.infrastructure.adapters.datasources.postgresql_adapter.psycopg2.connect')
+    def test_postgresql_get_table_schema_keeps_uncollected_stats_unknown(self, mock_connect):
+        """未采集 PostgreSQL 统计信息时，不把 n_live_tup=0 误判为真实 0。"""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [('id', 'integer', 'NO', None, '主键')]
+        mock_cursor.fetchone.side_effect = [('空表',), (0, None, None)]
+        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn.cursor.return_value = mock_cursor
+        mock_connect.return_value = mock_conn
+
+        adapter = PostgreSQLAdapter({'host': 'h', 'database': 'db'})
+        schema = adapter.get_table_schema('db', 'public.access_api_keys')
+
+        assert schema['table_name'] == 'public.access_api_keys'
+        assert schema['row_count'] is None
+
+    def test_postgresql_row_count_estimate_can_be_zero_after_analyze(self):
+        assert PostgreSQLAdapter._normalize_row_count_estimate((0, '2026-06-09', None)) == 0
+
 
 # =============================================================================
 # MySQLAdapter
@@ -821,6 +842,7 @@ class TestMaxComputeAdapter:
 
         assert result['success'] is False
         assert '连接失败' in result['message']
+        assert result['details']['error'] == 'MaxCompute 请求失败：Auth failed'
 
     def test_list_databases(self):
         """list_databases 返回项目名"""
@@ -1010,14 +1032,54 @@ class TestMaxComputeAdapter:
         adapter = MaxComputeAdapter({'access_id': 'id', 'access_key': 'key', 'endpoint': 'ep', 'project': 'proj'})
         adapter._get_odps_client = MagicMock(side_effect=RuntimeError('boom'))
 
-        with pytest.raises(Exception, match='获取表列表失败: boom'):
+        with pytest.raises(Exception, match='MaxCompute 请求失败：boom'):
             adapter.list_tables('proj')
-        with pytest.raises(Exception, match='获取表Schema失败: boom'):
+        with pytest.raises(Exception, match='MaxCompute 请求失败：boom'):
             adapter.get_table_schema('proj', 'orders')
-        with pytest.raises(Exception, match='预览数据失败: boom'):
+        with pytest.raises(Exception, match='预览数据失败: MaxCompute 请求失败：boom'):
             adapter.preview_table('orders')
-        with pytest.raises(Exception, match='获取分区列表失败: boom'):
+        with pytest.raises(Exception, match='获取分区列表失败: MaxCompute 请求失败：boom'):
             adapter.get_partitions('orders')
+
+    def test_maxcompute_auth_error_is_actionable_and_redacted(self):
+        access_id = 'LTAI5tHRkyA1uFzgHjJpfWjq'
+        raw_error = (
+            'AccessKeyIdNotFound: RequestId: 6A27B3348F79CC8F7DD50773 '
+            'ODPS-0410051:Invalid credentials - accessKeyId not found: '
+            'LTAI5tHRkyA1uFzgHjJpfWjq'
+        )
+        adapter = MaxComputeAdapter({
+            'access_id': access_id,
+            'access_key': 'secret-value',
+            'endpoint': 'https://service.cn-beijing.maxcompute.aliyun.com/api',
+            'project': 'proj',
+        })
+
+        message = adapter._format_error(Exception(raw_error))
+
+        assert message == 'MaxCompute 认证失败：AccessKey ID 不存在或无效，请检查数据源凭证后重新测试连接。'
+        assert access_id not in message
+        assert '6A27B3348F79CC8F7DD50773' not in message
+
+    def test_maxcompute_generic_error_redacts_credentials(self):
+        adapter = MaxComputeAdapter({
+            'access_id': 'LTAI5tHRkyA1uFzgHjJpfWjq',
+            'access_key': 'secret-value',
+            'endpoint': 'ep',
+            'project': 'proj',
+        })
+
+        message = adapter._format_error(
+            Exception(
+                'bad request RequestId: 6A27B3348F79CC8F7DD50773 '
+                'accessKeyId: LTAI5tHRkyA1uFzgHjJpfWjq accessKeySecret: secret-value'
+            )
+        )
+
+        assert message.startswith('MaxCompute 请求失败：')
+        assert 'LTAI5tHRkyA1uFzgHjJpfWjq' not in message
+        assert 'secret-value' not in message
+        assert '6A27B3348F79CC8F7DD50773' not in message
 
     def test_maxcompute_schema_preview_and_safe_value_cover_remaining_paths(self):
         partition_col = MagicMock()

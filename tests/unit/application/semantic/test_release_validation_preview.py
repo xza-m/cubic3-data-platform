@@ -351,6 +351,32 @@ def test_semantic_compile_preview_adapter_maps_blocked_preview_to_failed(tmp_pat
     assert result["compiler_preview"]["status"] == "blocked"
 
 
+def test_preview_reports_binding_validation_passed_for_bound_spec():
+    spec = _compilable_semantic_spec()
+    spec["ontology"]["object"]["cube_bindings"] = [
+        {"cube": "student_comments", "role": "primary", "entity_key": "comment_id"}
+    ]
+    service = ReleaseValidationPreviewService()
+
+    result = service.preview("session_1", "qa_live_1", spec)
+
+    assert result["binding_validation"]["status"] == "passed"
+    assert result["binding_validation"]["blockers"] == []
+
+
+def test_preview_reports_binding_blockers_for_broken_links():
+    spec = _compilable_semantic_spec()
+    spec["ontology"]["metrics"][0]["measure_refs"] = ["missing_cube.total_count"]
+    service = ReleaseValidationPreviewService()
+
+    result = service.preview("session_1", "qa_live_1", spec)
+
+    assert result["binding_validation"]["status"] == "failed"
+    codes = [item["code"] for item in result["binding_validation"]["blockers"]]
+    assert "metric_binding_unresolved" in codes
+    assert "object_binding_missing" in codes
+
+
 def test_semantic_compile_preview_adapter_requires_metric():
     class _UnusedCompiler:
         def compile_metric_preview(self, *args, **kwargs):  # pragma: no cover

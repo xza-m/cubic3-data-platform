@@ -190,14 +190,14 @@ class PostgreSQLAdapter(DataSourceAdapter):
                     table_comment_row = cursor.fetchone()
                     table_comment = table_comment_row[0] if table_comment_row else ''
                     
-                    # 获取行数（使用统计信息，更快）
+                    # 获取行数估算。未采集统计信息时返回 None，避免把 unknown 误显示为 0。
                     cursor.execute("""
-                        SELECT n_live_tup 
+                        SELECT n_live_tup, last_analyze, last_autoanalyze
                         FROM pg_stat_user_tables 
                         WHERE schemaname = %s AND relname = %s
                     """, (schema_name, table_name))
-                    row_count_row = cursor.fetchone()
-                    row_count = row_count_row[0] if row_count_row else 0
+                    stats_row = cursor.fetchone()
+                    row_count = self._normalize_row_count_estimate(stats_row)
             finally:
                 conn.close()
             
@@ -217,7 +217,7 @@ class PostgreSQLAdapter(DataSourceAdapter):
                 'comment': table_comment or '',
                 'columns': column_list,
                 'partitions': [],
-                'row_count': row_count or 0
+                'row_count': row_count
             }
             
         except Exception as e:
@@ -275,6 +275,23 @@ class PostgreSQLAdapter(DataSourceAdapter):
                 return {row[0]: row[1] for row in cur.fetchall()}
         except Exception:
             return {}
+
+    @staticmethod
+    def _normalize_row_count_estimate(stats_row):
+        """标准化 PostgreSQL 行数估算；无分析统计时保持 unknown。"""
+        if not stats_row:
+            return None
+
+        estimated = stats_row[0]
+        if estimated is None:
+            return None
+
+        last_analyze = stats_row[1] if len(stats_row) > 1 else None
+        last_autoanalyze = stats_row[2] if len(stats_row) > 2 else None
+        if int(estimated) == 0 and last_analyze is None and last_autoanalyze is None:
+            return None
+
+        return max(int(estimated), 0)
     
     def execute_query_stream(self, sql: str, batch_size: int = 1000):
         """流式执行查询"""

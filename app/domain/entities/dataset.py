@@ -65,7 +65,7 @@ class Dataset(db.Model):
     sync_error = Column(Text)
     
     # 审计字段
-    created_by = Column(String(50))
+    created_by = Column(String(191))
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     is_deleted = Column(Boolean, default=False)

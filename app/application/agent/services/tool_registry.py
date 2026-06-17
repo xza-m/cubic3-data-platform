@@ -40,12 +40,18 @@ class ToolExecutor:
         knowledge_service: Any | None = None,
         database: str | None = None,
         semantic_service: Any | None = None,
+        free_sql_guard: Any | None = None,
+        agent_context: Any | None = None,
+        metadata_visibility_service: Any | None = None,
     ):
         self._tools = {t.name: t for t in tool_defs}
         self._adapter = adapter
         self._knowledge = knowledge_service
         self._database = database
         self._semantic = semantic_service
+        self._free_sql_guard = free_sql_guard
+        self._agent_context = agent_context
+        self._metadata_visibility = metadata_visibility_service
 
     def execute(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """
@@ -120,6 +126,21 @@ class ToolExecutor:
         self, sql: str, wait_for_completion: bool = True,
     ) -> dict[str, Any]:
         safe_sql = prepare_readonly_sql(sql, limit=50000)
+
+        # §6.3 free SQL 收口前置：resource_set 同链裁决，decision != allow 不执行
+        governance: dict[str, Any] | None = None
+        if self._free_sql_guard is not None:
+            governance = self._free_sql_guard.adjudicate(
+                sql=safe_sql,
+                agent_context=self._agent_context,
+            )
+            if governance.get("decision") != "allow":
+                return {
+                    "error": governance.get("reason") or "free SQL 未通过数据访问裁决",
+                    "error_code": governance.get("reason_code") or "data_policy_denied",
+                    "governance": governance,
+                }
+
         result = self._adapter.execute_query(safe_sql, limit=50000)
 
         data = result.get("data") or result.get("rows") or []
@@ -135,6 +156,9 @@ class ToolExecutor:
         if row_count == 0:
             resp["message"] = "查询成功，结果为空（0 行）。符合条件的数据不存在。"
 
+        if governance is not None:
+            resp["governance"] = governance
+
         return resp
 
     # ── 语义层工具 ──
@@ -146,12 +170,30 @@ class ToolExecutor:
             cube for cube in self._semantic.list_cubes()
             if cube.get("status", "active") == "active"
         ]
+        # §6.2 metadata visibility：semantic.discover 裁决过滤目录摘要
+        if self._metadata_visibility is not None:
+            cubes = self._metadata_visibility.filter_discoverable_cubes(
+                principal=self._resolve_metadata_principal(),
+                cubes=cubes,
+            )
         return {"cubes": cubes, "total": len(cubes)}
 
     def _handle_describe_cube(self, cube_name: str) -> dict[str, Any]:
         if not self._semantic:
             return {"error": "语义层服务未配置"}
-        return self._semantic.describe_cube(cube_name)
+        payload = self._semantic.describe_cube(cube_name)
+        # §6.2 metadata visibility：semantic.describe 裁决决定物理细节是否脱敏
+        if self._metadata_visibility is not None and isinstance(payload, dict):
+            payload = self._metadata_visibility.redact_cube_payload(
+                principal=self._resolve_metadata_principal(),
+                payload=payload,
+            )
+        return payload
+
+    def _resolve_metadata_principal(self):
+        from app.application.agent.services.free_sql_guard import resolve_agent_principal
+
+        return resolve_agent_principal(self._agent_context)
 
     def _handle_query(self, dsl: dict[str, Any]) -> dict[str, Any]:
         if not self._semantic:
@@ -265,7 +307,7 @@ BUILTIN_TOOLS: list[ToolDef] = [
             "type": "object",
             "properties": {},
         },
-        channels=["feishu"],
+        channels=["feishu", "datachat"],
         handler="list_cubes",
     ),
     ToolDef(
@@ -281,7 +323,7 @@ BUILTIN_TOOLS: list[ToolDef] = [
                 },
             },
         },
-        channels=["feishu"],
+        channels=["feishu", "datachat"],
         handler="describe_cube",
     ),
     ToolDef(
@@ -334,7 +376,7 @@ BUILTIN_TOOLS: list[ToolDef] = [
                 },
             },
         },
-        channels=["feishu"],
+        channels=["feishu", "datachat"],
         handler="query",
     ),
 ]
@@ -351,16 +393,21 @@ class ToolRegistry:
         self,
         knowledge_service: Any | None = None,
         semantic_service: Any | None = None,
+        free_sql_guard: Any | None = None,
+        metadata_visibility_service: Any | None = None,
     ):
         self._tools = list(BUILTIN_TOOLS)
         self._knowledge = knowledge_service
         self._semantic = semantic_service
+        self._free_sql_guard = free_sql_guard
+        self._metadata_visibility = metadata_visibility_service
 
     def for_context(
         self,
         channel: str,
         adapter: Any,
         database: str | None = None,
+        agent_context: Any | None = None,
     ) -> tuple[list[dict[str, Any]], ToolExecutor]:
         """
         根据信道过滤工具列表，并绑定数据源适配器和知识服务到执行上下文
@@ -369,6 +416,7 @@ class ToolRegistry:
             channel: 信道标识 ("feishu" | "datachat")
             adapter: DataSourceAdapter 实例
             database: 默认数据库名（飞书信道为 MaxCompute project）
+            agent_context: AgentContext，free SQL 裁决用于解析请求主体
 
         Returns:
             (tool_defs, executor) — 工具定义 JSON 列表和绑定的执行器
@@ -390,6 +438,9 @@ class ToolRegistry:
             knowledge_service=self._knowledge,
             database=database,
             semantic_service=self._semantic,
+            free_sql_guard=self._free_sql_guard,
+            agent_context=agent_context,
+            metadata_visibility_service=self._metadata_visibility,
         )
 
         return tool_defs, executor

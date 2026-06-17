@@ -511,6 +511,9 @@ def _auth_header(
             "principal_id": principal_id,
             "user_name": principal_id,
             "roles": roles or ["user"],
+            "token_use": "access",
+            "sid": "test-session",
+            "jti": "test-access-token",
             "iat": datetime.utcnow(),
             "exp": datetime.utcnow() + timedelta(hours=1),
         },
@@ -1210,7 +1213,14 @@ def test_agent_runtime_api_requires_identity_outside_testing():
 
 def test_agent_runtime_api_accepts_authenticated_principal_outside_testing():
     token = jwt.encode(
-        {"user_id": "u1", "principal_id": "alice", "user_name": "Alice"},
+        {
+            "user_id": "u1",
+            "principal_id": "alice",
+            "user_name": "Alice",
+            "token_use": "access",
+            "sid": "test-session",
+            "jti": "test-access-token",
+        },
         "test-secret",
         algorithm="HS256",
     )
@@ -1226,7 +1236,13 @@ def test_agent_runtime_api_accepts_authenticated_principal_outside_testing():
 
 def test_agent_runtime_api_rejects_signed_token_without_principal_for_unowned_run():
     token = jwt.encode(
-        {"user_name": "No Principal", "roles": ["viewer"]},
+        {
+            "user_name": "No Principal",
+            "roles": ["viewer"],
+            "token_use": "access",
+            "sid": "test-session",
+            "jti": "test-access-token",
+        },
         "test-secret",
         algorithm="HS256",
     )
