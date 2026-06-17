@@ -281,7 +281,11 @@ smoke-access:
 	PYTHONPATH=. $(PYTHON) -m pytest --no-cov tests/integration/access
 
 smoke-observability:
-	@printf '%s\n' '[layer4][observability] skip: 当前仓库未配置统一可观测阈值校验'
+	@printf '%s\n' '[layer4][observability] 运行 gateway 可观测代理、告警评价与 telemetry client 契约 smoke'
+	PYTHONPATH=. $(PYTHON) -m pytest --no-cov \
+		tests/unit/infrastructure/gateway/test_alerting.py \
+		tests/unit/infrastructure/gateway/test_telemetry_client.py \
+		tests/integration/access/test_gateway_observability_api.py
 
 smoke-semantic:
 	@printf '%s\n' '[contract][semantic-smoke] 领域 smoke 需要前端开发服务、最新后端代码和可写语义目录；Modeling Copilot smoke 使用 v2 Playwright mock 闭环；不属于默认 repo smoke'
@@ -456,11 +460,16 @@ semantic-prod-env-required:
 	@DATABASE_URL="$(DATABASE_URL)" \
 	SEMANTIC_FIXTURE_NAMESPACE="$(SEMANTIC_FIXTURE_NAMESPACE)" \
 	SEMANTIC_PROD_LIVE="$(SEMANTIC_PROD_LIVE)" \
-	$(PYTHON) scripts/checks/semantic_prod_env_guard.py \
-		--require-baseline \
-		--require-live \
-		--require-fixture \
-		--require-postgres-concurrency
+	SEMANTIC_MODELING_COPILOT_STORE="$(SEMANTIC_MODELING_COPILOT_STORE)" \
+	QUERY_GATEWAY_BASE_URL="$(QUERY_GATEWAY_BASE_URL)" \
+	QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN="$(QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN)" \
+		$(PYTHON) scripts/checks/semantic_prod_env_guard.py \
+			--require-baseline \
+			--require-live \
+			--require-fixture \
+			--require-postgres-concurrency \
+			--require-sql-copilot-store \
+			--require-query-gateway
 
 verify-semantic-prod: verify-alembic test-semantic-prod-registry semantic-baseline-dry-run
 	@printf '%s\n' '[semantic-prod] 构建 nginx 生产镜像（v2 build，测试文件不进入 frontend Docker context）'

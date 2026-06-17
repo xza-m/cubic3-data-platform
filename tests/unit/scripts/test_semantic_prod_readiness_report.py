@@ -19,7 +19,12 @@ def test_semantic_prod_readiness_report_masks_secret_and_blocks_missing_inputs()
     assert report["checks"]["fixture_cleanup"]["status"] == "ready"
     assert report["checks"]["postgres_concurrency"]["status"] == "ready"
     assert report["checks"]["live_smoke"]["status"] == "blocked"
-    assert report["strict_problems"] == ["SEMANTIC_PROD_LIVE must be set to 1 for live semantic smoke"]
+    assert report["checks"]["query_gateway_execute"]["status"] == "blocked"
+    assert report["strict_problems"] == [
+        "SEMANTIC_PROD_LIVE must be set to 1 for live semantic smoke",
+        "QUERY_GATEWAY_BASE_URL is required for semantic execute gateway verification",
+        "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN is required for semantic execute gateway verification",
+    ]
 
 
 def test_semantic_prod_readiness_report_accepts_full_strict_inputs():
@@ -28,6 +33,8 @@ def test_semantic_prod_readiness_report_accepts_full_strict_inputs():
             "DATABASE_URL": "postgresql://example/semantic",
             "SEMANTIC_FIXTURE_NAMESPACE": "qa_live_20260520",
             "SEMANTIC_PROD_LIVE": "1",
+            "QUERY_GATEWAY_BASE_URL": "http://dw-query-gateway:8000",
+            "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN": "gateway-secret",
         }
     )
 
@@ -37,7 +44,10 @@ def test_semantic_prod_readiness_report_accepts_full_strict_inputs():
     assert report["checks"]["live_smoke"]["status"] == "ready"
     assert report["checks"]["fixture_cleanup"]["status"] == "ready"
     assert report["checks"]["postgres_concurrency"]["status"] == "ready"
+    assert report["checks"]["query_gateway_execute"]["status"] == "ready"
     assert report["resolved_inputs"]["database_url"] == "postgresql://example/semantic"
+    assert report["resolved_inputs"]["query_gateway_token_present"] is True
+    assert "gateway-secret" not in str(report)
 
 
 def test_semantic_prod_readiness_report_uses_single_database_url_for_strict_checks():
@@ -46,6 +56,8 @@ def test_semantic_prod_readiness_report_uses_single_database_url_for_strict_chec
             "DATABASE_URL": "postgresql://user:secret@example.com/semantic",
             "SEMANTIC_FIXTURE_NAMESPACE": "qa_live_20260520",
             "SEMANTIC_PROD_LIVE": "1",
+            "QUERY_GATEWAY_BASE_URL": "http://dw-query-gateway:8000",
+            "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN": "gateway-secret",
         }
     )
 
@@ -56,6 +68,7 @@ def test_semantic_prod_readiness_report_uses_single_database_url_for_strict_chec
     assert report["checks"]["baseline_fingerprint"]["status"] == "ready"
     assert report["checks"]["fixture_cleanup"]["status"] == "ready"
     assert report["checks"]["postgres_concurrency"]["status"] == "ready"
+    assert report["checks"]["query_gateway_execute"]["status"] == "ready"
 
 
 def test_mask_url_handles_non_url_and_passwordless_url():

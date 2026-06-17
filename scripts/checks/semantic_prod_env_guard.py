@@ -25,6 +25,15 @@ def check_env(args: argparse.Namespace, env: Mapping[str, str]) -> list[str]:
         problems.append("DATABASE_URL is required for PostgreSQL concurrency verification")
     elif args.require_postgres_concurrency and not _is_postgresql_url(database_url):
         problems.append("DATABASE_URL must be a PostgreSQL URL for semantic production verification")
+    if getattr(args, "require_sql_copilot_store", False):
+        copilot_store = (_value(env, "SEMANTIC_MODELING_COPILOT_STORE") or "sql").lower()
+        if copilot_store != "sql":
+            problems.append("SEMANTIC_MODELING_COPILOT_STORE must be sql for semantic production verification")
+    if getattr(args, "require_query_gateway", False):
+        if not _value(env, "QUERY_GATEWAY_BASE_URL"):
+            problems.append("QUERY_GATEWAY_BASE_URL is required for semantic execute gateway verification")
+        if not _value(env, "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN"):
+            problems.append("QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN is required for semantic execute gateway verification")
     return problems
 
 
@@ -42,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--require-live", action="store_true")
     parser.add_argument("--require-fixture", action="store_true")
     parser.add_argument("--require-postgres-concurrency", action="store_true")
+    parser.add_argument("--require-sql-copilot-store", action="store_true")
+    parser.add_argument("--require-query-gateway", action="store_true")
     args = parser.parse_args(argv)
 
     problems = check_env(args, os.environ)

@@ -11,6 +11,8 @@ def _args(**overrides):
         "require_live": False,
         "require_fixture": False,
         "require_postgres_concurrency": False,
+        "require_sql_copilot_store": False,
+        "require_query_gateway": False,
     }
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -57,6 +59,23 @@ def test_semantic_prod_env_guard_accepts_single_database_url_for_all_db_checks()
     assert problems == []
 
 
+def test_semantic_prod_env_guard_accepts_default_sql_copilot_store():
+    problems = check_env(_args(require_sql_copilot_store=True), {})
+
+    assert problems == []
+
+
+def test_semantic_prod_env_guard_rejects_yaml_copilot_store_for_production():
+    problems = check_env(
+        _args(require_sql_copilot_store=True),
+        {"SEMANTIC_MODELING_COPILOT_STORE": "yaml"},
+    )
+
+    assert problems == [
+        "SEMANTIC_MODELING_COPILOT_STORE must be sql for semantic production verification",
+    ]
+
+
 def test_semantic_prod_env_guard_requires_postgres_for_concurrency():
     problems = check_env(_args(require_postgres_concurrency=True), {})
 
@@ -70,3 +89,35 @@ def test_semantic_prod_env_guard_rejects_non_postgresql_concurrency_url():
     )
 
     assert problems == ["DATABASE_URL must be a PostgreSQL URL for semantic production verification"]
+
+
+def test_semantic_prod_env_guard_requires_gateway_config():
+    problems = check_env(_args(require_query_gateway=True), {})
+
+    assert problems == [
+        "QUERY_GATEWAY_BASE_URL is required for semantic execute gateway verification",
+        "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN is required for semantic execute gateway verification",
+    ]
+
+
+def test_semantic_prod_env_guard_requires_gateway_token():
+    problems = check_env(
+        _args(require_query_gateway=True),
+        {"QUERY_GATEWAY_BASE_URL": "http://dw-query-gateway:8000"},
+    )
+
+    assert problems == [
+        "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN is required for semantic execute gateway verification",
+    ]
+
+
+def test_semantic_prod_env_guard_accepts_gateway_config():
+    problems = check_env(
+        _args(require_query_gateway=True),
+        {
+            "QUERY_GATEWAY_BASE_URL": "http://dw-query-gateway:8000",
+            "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN": "secret",
+        },
+    )
+
+    assert problems == []

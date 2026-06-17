@@ -87,10 +87,11 @@ make verify-semantic-prod-strict
 - `DATABASE_URL`：同一个语义平台 PostgreSQL 库，用于 schema fingerprint、fixture cleanup 和 release 并发验证；本地可指向 Docker PG，上线前指向独立线上/预生产库。
 - `SEMANTIC_PROD_LIVE=1`：真实 Modeling Copilot live smoke。
 - `SEMANTIC_FIXTURE_NAMESPACE`：清理 live / fixture 测试资产。
+- `QUERY_GATEWAY_BASE_URL` 与 `QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN`：正式 `/api/v1/agent/semantic/execute` 提交 `dw-query-gateway` 所需配置。
 
 严格入口还会运行 `make test-semantic-postgres-concurrency`，验证 PostgreSQL advisory lock、`release_no` 串行分配、`previous_release_id` 锁内重算和 active snapshot partial unique 约束。
 
-`make semantic-prod-readiness-report` 会输出不含明文数据库密码的 JSON 报告，用于上线前先盘点 strict gate 的三类补证输入：PostgreSQL `DATABASE_URL`、live smoke 和 fixture namespace。报告只做盘点，不替代 `make verify-semantic-prod-strict`。
+`make semantic-prod-readiness-report` 会输出不含明文数据库密码和 gateway token 的 JSON 报告，用于上线前先盘点 strict gate 的补证输入：PostgreSQL `DATABASE_URL`、live smoke、fixture namespace、SQL copilot store 和 gateway 执行配置。报告只做盘点，不替代 `make verify-semantic-prod-strict`。
 
 ### Runtime 治理与观测补证
 

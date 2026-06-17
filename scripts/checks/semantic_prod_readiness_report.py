@@ -18,6 +18,8 @@ STRICT_ARGS = argparse.Namespace(
     require_live=True,
     require_fixture=True,
     require_postgres_concurrency=True,
+    require_sql_copilot_store=True,
+    require_query_gateway=True,
 )
 
 
@@ -26,6 +28,9 @@ def build_report(env: Mapping[str, str]) -> dict[str, Any]:
 
     database_url = _value(env, "DATABASE_URL")
     fixture_namespace = _value(env, "SEMANTIC_FIXTURE_NAMESPACE")
+    copilot_store = (_value(env, "SEMANTIC_MODELING_COPILOT_STORE") or "sql").lower()
+    query_gateway_base_url = _value(env, "QUERY_GATEWAY_BASE_URL")
+    query_gateway_token_present = bool(_value(env, "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN"))
     strict_problems = check_env(STRICT_ARGS, env)
     checks = {
         "baseline_fingerprint": {
@@ -48,6 +53,16 @@ def build_report(env: Mapping[str, str]) -> dict[str, Any]:
             "required": ["PostgreSQL DATABASE_URL"],
             "evidence": "test-semantic-postgres-concurrency",
         },
+        "copilot_sql_store": {
+            "status": "ready" if copilot_store == "sql" else "blocked",
+            "required": ["SEMANTIC_MODELING_COPILOT_STORE=sql"],
+            "evidence": "semantic-prod-env-required",
+        },
+        "query_gateway_execute": {
+            "status": "ready" if query_gateway_base_url and query_gateway_token_present else "blocked",
+            "required": ["QUERY_GATEWAY_BASE_URL", "QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN"],
+            "evidence": "semantic-prod-env-required + /api/v1/agent/semantic/execute",
+        },
     }
     return {
         "status": "ready_for_strict" if not strict_problems else "blocked",
@@ -57,6 +72,9 @@ def build_report(env: Mapping[str, str]) -> dict[str, Any]:
             "database_url": mask_url(database_url),
             "fixture_namespace": fixture_namespace or None,
             "live_smoke_enabled": _value(env, "SEMANTIC_PROD_LIVE") == "1",
+            "copilot_store": copilot_store,
+            "query_gateway_base_url": query_gateway_base_url or None,
+            "query_gateway_token_present": query_gateway_token_present,
         },
     }
 
