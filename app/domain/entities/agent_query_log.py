@@ -32,13 +32,14 @@ class AgentQueryLog(db.Model):
     app_instance_id = Column(BigInteger, nullable=True)
     channel = Column(String(20), nullable=False)            # feishu / datachat
     channel_ref = Column(String(128), nullable=True)        # chat_id 或 conversation_id
-    user_id = Column(String(64), nullable=True)
+    user_id = Column(String(191), nullable=True)
     user_message = Column(Text, nullable=False)
     agent_response = Column(Text, nullable=True)
     sql_executed = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default='pending')
     llm_provider = Column(String(20), nullable=True)
     token_usage = Column(JsonType, nullable=True)
+    tool_trace = Column(JsonType, nullable=True)         # 工具调用轨迹 + 降级原因（§4.2 evidence）
     duration_ms = Column(Integer, nullable=True)
     feedback = Column(String(20), nullable=True)            # positive / negative
     created_at = Column(DateTime, default=utcnow)
@@ -51,11 +52,13 @@ class AgentQueryLog(db.Model):
         self.status = 'running'
 
     def mark_success(self, response: str, sql: Optional[str] = None,
-                     usage: Optional[Dict] = None, duration: Optional[int] = None):
+                     usage: Optional[Dict] = None, duration: Optional[int] = None,
+                     tool_trace: Optional[Dict] = None):
         self.status = 'success'
         self.agent_response = response
         self.sql_executed = sql
         self.token_usage = usage
+        self.tool_trace = tool_trace
         self.duration_ms = duration
 
     def mark_error(self, error_msg: str, duration: Optional[int] = None):
@@ -84,6 +87,7 @@ class AgentQueryLog(db.Model):
             'status': self.status,
             'llm_provider': self.llm_provider,
             'token_usage': self.token_usage,
+            'tool_trace': self.tool_trace,
             'duration_ms': self.duration_ms,
             'feedback': self.feedback,
             'created_at': self.created_at.isoformat() if self.created_at else None,

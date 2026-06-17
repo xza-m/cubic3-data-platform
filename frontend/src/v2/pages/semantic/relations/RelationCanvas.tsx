@@ -1,10 +1,11 @@
 // frontend/src/v2/pages/semantic/relations/RelationCanvas.tsx
 //
-// 语义关系画布页（P6）。
-// 接口：GET /api/v1/semantic/graph（真实接口，返回 cube 节点 + join 关系边）
+// 语义关系画布页。
+// 接口：GET /api/v1/semantic/graph（真实接口，返回 Cube 节点 + 关系路径边）
 //
+// 定位：只读检查 Cube Join 路径与本体关系引用，关系定义仍在 Cube / 本体与关系中维护。
 // 渲染：纯 SVG 自绘节点+连线（不依赖 react-flow）。
-// 节点拖拽位置持久化到 localStorage。
+// 节点拖拽仅保存个人视图位置到 localStorage，不代表语义关系编辑。
 // 点击节点 → Inspector 侧栏 peek。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -104,9 +105,9 @@ export default function RelationCanvas() {
             setPositions(defaults)
             savePositions(defaults)
           }}
-          title={t('canvas.resetLayout', '重置布局')}
+          title={t('canvas.resetView', '重置视图')}
         >
-          <LayoutGrid size={12} /> {t('canvas.resetLayout', '重置布局')}
+          <LayoutGrid size={12} /> {t('canvas.resetView', '重置视图')}
         </Button>
         <RefreshButton
           onClick={() => graphQuery.refetch()}
@@ -154,7 +155,7 @@ export default function RelationCanvas() {
               />
             )}
           </ContextSection>
-          <ContextSection title={t('canvas.relations', '关联 Join')}>
+          <ContextSection title={t('canvas.relations', '关系路径')}>
             <RelatedEdges nodeId={node.id} edges={edges} nodes={nodes} />
           </ContextSection>
           <div className="px-4 py-2">
@@ -236,13 +237,30 @@ export default function RelationCanvas() {
   if (nodes.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-3">
-        {t('canvas.empty', '暂无 Cube 数据')}
+        {t('canvas.empty', '暂无可检查的 Cube 关系')}
       </div>
     )
   }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      <div
+        className="shrink-0 border-b px-4 py-3"
+        style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-sm font-semibold text-1">{t('canvas.title', '关系画布')}</h1>
+            <p className="mt-1 max-w-3xl text-xs text-3">
+              {t(
+                'canvas.readonlyHint',
+                '只读检查 Cube Join 路径与本体关系引用；关系定义仍在 Cube / 本体与关系中维护。',
+              )}
+            </p>
+          </div>
+          <Chip tone="neutral">{t('canvas.readonly', '只读检查')}</Chip>
+        </div>
+      </div>
       {/* 统计栏 */}
       <div
         className="shrink-0 border-b px-4 py-2 flex items-center gap-4 text-xs text-3"
@@ -254,7 +272,7 @@ export default function RelationCanvas() {
         </span>
         <span className="flex items-center gap-1">
           <GitMerge size={12} />
-          {edges.length} {t('canvas.joins', 'Join 关系')}
+          {edges.length} {t('canvas.paths', '关系路径')}
         </span>
         <div className="ml-auto flex items-center gap-3">
           {(['fact', 'dimension'] as const).map((type) => (
@@ -407,7 +425,7 @@ function RelatedEdges({
   const related = edges.filter((e) => e.source === nodeId || e.target === nodeId)
   const nameOf = (id: string) => nodes.find((n) => n.id === id)?.title ?? id
   if (!related.length) {
-    return <div className="px-4 py-2 text-xs text-3">{t('canvas.noRelations', '无 Join 关系')}</div>
+    return <div className="px-4 py-2 text-xs text-3">{t('canvas.noRelations', '无关系路径')}</div>
   }
   return (
     <div className="px-4 py-2 space-y-1">

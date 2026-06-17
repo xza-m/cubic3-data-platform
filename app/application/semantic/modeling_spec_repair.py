@@ -9,15 +9,13 @@ from app.application.semantic.source_candidate_scoring import (
     SourceCandidateScoringConfig,
     SourceCandidateScoringRule,
 )
+from app.domain.ontology.entities import measure_ref_strings, normalize_cube_bindings
+from app.domain.semantic.copilot_state import is_reviewable_spec
 
 
 def has_reviewable_spec(value: Any) -> bool:
-    return (
-        isinstance(value, dict)
-        and str(value.get("spec_version") or "") == "v1"
-        and isinstance(value.get("cube"), dict)
-        and bool(value["cube"])
-    )
+    """委托 domain 的权威判定，保留原导入路径兼容现有调用方。"""
+    return is_reviewable_spec(value)
 
 
 def repair_modeling_spec(
@@ -70,6 +68,8 @@ def repair_modeling_spec(
         "title": object_payload.get("title") or subject,
         "description": object_payload.get("description") or f"{subject}对应的核心业务对象。",
         "aliases": object_payload.get("aliases") or ([subject] if subject else []),
+        "cube_bindings": normalize_cube_bindings(object_payload.get("cube_bindings"))
+        or [{"cube": cube_name, "role": "primary", "entity_key": _default_entity_key(cube)}],
         "status": object_payload.get("status") or "draft",
     }
 
@@ -266,20 +266,28 @@ def _default_metric(object_name: str, subject: str, cube_name: str, measure_name
         "semantic_formula": f"按 Cube measure {cube_name}.{measure_name} 计算",
         "description": f"{subject}相关的默认业务指标。",
         "semantic_labels": [subject, "建模助手"],
-        "measure_refs": [f"{cube_name}.{measure_name}"],
+        "measure_refs": [{"ref": f"{cube_name}.{measure_name}", "role": "primary"}],
         "aliases": [f"{subject}数"],
         "status": "draft",
     }
 
 
-def _repair_measure_refs(value: Any, cube_name: str, measure_name: str) -> list[str]:
-    refs = value if isinstance(value, list) else []
+def _default_entity_key(cube: Dict[str, Any]) -> Optional[str]:
+    dimensions = cube.get("dimensions") or {}
+    for field in dimensions:
+        lowered = str(field).lower()
+        if lowered == "id" or lowered.endswith("_id"):
+            return field
+    return next(iter(dimensions), None)
+
+
+def _repair_measure_refs(value: Any, cube_name: str, measure_name: str) -> list[dict[str, Any]]:
+    refs = measure_ref_strings(value if isinstance(value, list) else [])
     valid = f"{cube_name}.{measure_name}"
     if not refs:
-        return [valid]
+        return [{"ref": valid, "role": "primary"}]
     repaired: list[str] = []
-    for ref in refs:
-        ref_text = str(ref or "")
+    for ref_text in refs:
         if "." not in ref_text or ref_text in {"candidate cube.measure", "cube.measure"}:
             repaired.append(valid)
             continue
@@ -290,7 +298,8 @@ def _repair_measure_refs(value: Any, cube_name: str, measure_name: str) -> list[
             repaired.append(valid)
         else:
             repaired.append(f"{cube_name}.{parsed_measure}")
-    return repaired or [valid]
+    deduped = list(dict.fromkeys(repaired)) or [valid]
+    return [{"ref": ref, "role": "primary" if index == 0 else "equivalent"} for index, ref in enumerate(deduped)]
 
 
 def _default_time_dimension(cube: Dict[str, Any]) -> Optional[str]:

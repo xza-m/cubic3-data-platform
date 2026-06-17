@@ -85,6 +85,7 @@ def validate_contract(
             if operation_id in operation_ids:
                 errors.append(f"operationId 重复: {operation_id} 出现在 {operation_ids[operation_id]} 和 {location}")
             operation_ids[operation_id] = location
+            errors.extend(_validate_openapi30_schema_types(location, operation))
 
     for path, method in required_operations:
         operation = paths.get(path, {}).get(method)
@@ -119,15 +120,37 @@ def _validate_agent_operation(location: str, operation: dict[str, Any]) -> list[
     if missing_statuses:
         errors.append(f"{location} 缺少错误响应: {', '.join(sorted(missing_statuses))}")
 
-    response_200 = responses.get("200")
-    if not _has_concrete_data_schema(response_200):
-        errors.append(f"{location} 200 响应缺少字段级 data schema")
+    success_responses = [
+        response
+        for status, response in responses.items()
+        if isinstance(status, str) and status.startswith("2")
+    ]
+    if not any(_has_concrete_data_schema(response) for response in success_responses):
+        errors.append(f"{location} 200/201 响应缺少字段级 data schema")
 
     if location.startswith("POST "):
         request_body = operation.get("requestBody")
         if not _has_concrete_json_schema(request_body):
             errors.append(f"{location} POST 请求缺少字段级 requestBody schema")
 
+    return errors
+
+
+def _validate_openapi30_schema_types(location: str, node: Any, path: str = "") -> list[str]:
+    """OpenAPI 3.0 不支持 JSON Schema 的 type 数组，空值应使用 nullable。"""
+    errors: list[str] = []
+    if isinstance(node, dict):
+        type_value = node.get("type")
+        if isinstance(type_value, list):
+            suffix = f" at {path}" if path else ""
+            errors.append(f"{location} 使用了 OpenAPI 3.0 不支持的数组型 type{suffix}")
+        for key, value in node.items():
+            next_path = f"{path}.{key}" if path else str(key)
+            errors.extend(_validate_openapi30_schema_types(location, value, next_path))
+    elif isinstance(node, list):
+        for index, value in enumerate(node):
+            next_path = f"{path}[{index}]" if path else f"[{index}]"
+            errors.extend(_validate_openapi30_schema_types(location, value, next_path))
     return errors
 
 

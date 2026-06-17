@@ -1,6 +1,8 @@
 import {
   buildGatewayTrend,
+  buildGatewayTrendFromTimeseries,
   getAssignedAccessPackageCodes,
+  formatAccessReasonLabel,
   formatAccessRoleLabel,
   formatDataLevelLabel,
   formatExecutionModeLabel,
@@ -13,6 +15,9 @@ import {
   paginateGatewayRows,
   replaceDataAccessPackageCode,
   replacePlatformPackageCode,
+  summarizePrincipalDataPackage,
+  summarizePrincipalPermissionSource,
+  summarizePrincipalPlatformPackages,
   summarizeGatewayDataQuality,
   splitAccessPackages,
   summarizeGatewayTrend,
@@ -39,6 +44,13 @@ describe('AccessIdentity 管理员文案', () => {
     })).toEqual(['M2 明细数据', 'DWD 明细层', '表名前缀 dwd_'])
   })
 
+  it('把权限和网关拒绝原因转换成中文主文案', () => {
+    expect(formatAccessReasonLabel('policy_allow')).toBe('平台策略放行')
+    expect(formatAccessReasonLabel('missing_data_role')).toBe('缺少对应数据角色')
+    expect(formatAccessReasonLabel('physical_denied_after_policy_allow')).toBe('MaxCompute 物理权限拒绝')
+    expect(formatAccessReasonLabel('m3_governance_required', true)).toBe('需要先完成数据治理')
+  })
+
   it('避免在权限配置 UI 中暴露执行侧凭据术语', () => {
     expect(formatExecutionModeLabel('gateway_binding')).toBe('网关执行画像')
     expect(formatExecutionModeLabel('internal_query_execution')).toBe('已下线执行模式')
@@ -46,13 +58,10 @@ describe('AccessIdentity 管理员文案', () => {
     expect(formatPolicyEffectLabel('deny')).toBe('拒绝访问')
   })
 
-  it('新建执行画像时不再提供平台内置执行模式', () => {
-    expect(getCredentialModeOptions()).toEqual(['gateway_binding', 'inline_policy_decision'])
-    expect(getCredentialModeOptions('internal_query_execution')).toEqual([
-      'gateway_binding',
-      'inline_policy_decision',
-      'internal_query_execution',
-    ])
+  it('执行画像只保留网关绑定模式，不再把历史模式塞回下拉', () => {
+    expect(getCredentialModeOptions()).toEqual(['gateway_binding'])
+    expect(getCredentialModeOptions('inline_policy_decision')).toEqual(['gateway_binding'])
+    expect(getCredentialModeOptions('internal_query_execution')).toEqual(['gateway_binding'])
   })
 
   it('把网关告警严重等级转换成控制台可读标签和卡片语气', () => {
@@ -87,6 +96,40 @@ describe('AccessIdentity 管理员文案', () => {
       windowDau: 3,
       peakQueries: 3,
       peakLabel: '05/28',
+      usesGatewayTimeseries: false,
+    })
+  })
+
+  it('优先使用 gateway timeseries 构造小时级趋势', () => {
+    const trend = buildGatewayTrendFromTimeseries([
+      {
+        bucket_start: '2026-06-11T11:00:00Z',
+        bucket_end: '2026-06-11T12:00:00Z',
+        query_total: 10,
+        success: 8,
+        failed: 1,
+        rejected: 0,
+        timeout: 1,
+        success_rate: 80,
+        execute_p95_ms: 1200,
+        queue_wait_p95_ms: 300,
+      },
+    ] as any)
+    const summary = summarizeGatewayTrend(trend ?? [])
+
+    expect(trend?.[0]).toMatchObject({
+      key: '2026-06-11T11:00:00Z',
+      label: '11:00',
+      total: 10,
+      allow: 8,
+      blocked: 2,
+      successRate: 80,
+      executeP95Ms: 1200,
+    })
+    expect(summary).toMatchObject({
+      usesGatewayTimeseries: true,
+      latestSuccessRate: 80,
+      peakExecuteP95Ms: 1200,
     })
   })
 
@@ -110,8 +153,42 @@ describe('AccessIdentity 管理员文案', () => {
       identityMissingCount: 1,
       dataLevelMissingCount: 2,
       executionProfileMissingCount: 1,
+      policyDecisionMissingCount: 3,
+      credentialRefMissingCount: 3,
+      platformGovernedCount: 0,
+      gatewayOnlyCount: 3,
+      legacyActorCount: 3,
       hasIdentityGap: true,
       hasDataGap: true,
+      source: 'query_runs',
+    })
+  })
+
+  it('使用 gateway contract-completeness 计算契约字段缺口', () => {
+    expect(summarizeGatewayDataQuality([], {
+      total: 100,
+      platform_governed_count: 20,
+      gateway_only_count: 80,
+      legacy_actor_count: 70,
+      principal_present_rate: 20,
+      actor_present_rate: 40,
+      policy_decision_present_rate: 25,
+      data_level_present_rate: 30,
+      execution_profile_present_rate: 35,
+      credential_ref_present_rate: 45,
+    })).toEqual({
+      total: 100,
+      identityMissingCount: 60,
+      dataLevelMissingCount: 70,
+      executionProfileMissingCount: 65,
+      policyDecisionMissingCount: 75,
+      credentialRefMissingCount: 55,
+      platformGovernedCount: 20,
+      gatewayOnlyCount: 80,
+      legacyActorCount: 70,
+      hasIdentityGap: true,
+      hasDataGap: true,
+      source: 'contract',
     })
   })
 
@@ -173,5 +250,40 @@ describe('AccessIdentity 管理员文案', () => {
     expect(replacePlatformPackageCode(['data_developer', 'data_m2_detail_reader'], packages, 'admin')).toEqual(['data_m2_detail_reader', 'admin'])
     expect(replaceDataAccessPackageCode(['admin', 'data_m1_reader'], packages, 'data_m2_detail_reader')).toEqual(['admin', 'data_m2_detail_reader'])
     expect(replaceDataAccessPackageCode(['admin', 'data_m2_detail_reader'], packages, null)).toEqual(['admin'])
+  })
+
+  it('成员表直接给出平台角色、数据权限和权限来源', () => {
+    const packages = [
+      {
+        package_code: 'admin',
+        name: '管理员',
+        description: '',
+        role_codes: ['governance_admin', 'auditor'],
+        role_type: 'platform',
+        data_level: null,
+      },
+      {
+        package_code: 'data_m2_detail_reader',
+        name: '明细数据读取',
+        description: '',
+        role_codes: ['data_m0_reader', 'data_m1_reader', 'data_m2_detail_reader'],
+        role_type: 'data',
+        data_level: 'M2',
+      },
+    ] as any
+    const principal = {
+      platform_roles: ['governance_admin'],
+      data_roles: ['data_m0_reader', 'data_m1_reader', 'data_m2_detail_reader'],
+      role_bindings: [
+        { role_code: 'data_m2_detail_reader', role_type: 'data', source: 'feishu_m2_allowlist' },
+      ],
+    } as any
+
+    expect(summarizePrincipalPlatformPackages(principal, packages)).toBe('管理员')
+    expect(summarizePrincipalDataPackage(principal, packages)).toBe('明细数据读取')
+    expect(summarizePrincipalPermissionSource(principal)).toEqual({
+      label: 'M2 白名单',
+      tone: 'success',
+    })
   })
 })

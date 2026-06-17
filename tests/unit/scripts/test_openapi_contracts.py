@@ -79,3 +79,18 @@ def test_validate_contract_rejects_duplicate_operation_ids():
     )
 
     assert any("DuplicateOperation" in error for error in errors)
+
+
+def test_validate_contract_rejects_json_schema_type_arrays_for_openapi30():
+    spec = _spec_with(_valid_operation("DemoList"))
+    operation = spec["paths"]["/api/v1/demo"]["get"]
+    operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]["properties"][
+        "optional_name"
+    ] = {"type": ["string", "null"]}
+
+    errors = validate_contract(
+        spec,
+        required_operations=[("/api/v1/demo", "get")],
+    )
+
+    assert any("数组型 type" in error for error in errors)

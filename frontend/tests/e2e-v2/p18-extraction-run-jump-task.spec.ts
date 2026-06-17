@@ -1,6 +1,6 @@
 // frontend/tests/e2e-v2/p18-extraction-run-jump-task.spec.ts
 //
-// P18 — 抽取 Run 详情页 happy path. The page hits `/api/v1/extraction/runs`
+// P18 — 同步 Run 详情页 happy path. The page hits `/api/v1/extraction/runs`
 // (NOT `/data-center/extraction-runs`). The run detail uses a `<button>`
 // (not `<a>`) labelled "查看所属任务" — the test only asserts the page
 // mounts and the error message text from the seeded run is visible.
@@ -41,9 +41,9 @@ test.beforeEach(async ({ page }) => {
   await mockJsonRoute(page, '**/api/v1/extraction/runs', envelope(runsList))
 })
 
-test('P18 抽取Run 详情页渲染 @p18', async ({ page }) => {
-  await gotoV2(page, '/extraction/runs/9001')
-  await expect(page).toHaveURL(/\/extraction\/runs\/9001/)
+test('P18 同步 Run 详情页渲染 @p18', async ({ page }) => {
+  await gotoV2(page, '/data-center/sync/runs/9001')
+  await expect(page).toHaveURL(/\/data-center\/sync\/runs\/9001/)
   await expect(page.locator('body')).toBeVisible()
   await expect(page.getByText('connection refused').first()).toBeVisible()
 })

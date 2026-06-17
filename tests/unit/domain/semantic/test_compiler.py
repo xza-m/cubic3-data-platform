@@ -216,6 +216,21 @@ class TestCompilerBasic:
         assert result.primary_cube == "answer_records"
         assert "LIMIT" in result.sql
 
+    def test_measure_sql_with_aggregate_not_double_wrapped(self):
+        """回归：Agent 生成的 measure.sql 已含聚合时不再叠加聚合（COUNT(COUNT(..))）。"""
+        cube = _make_cube(
+            "comment_reports", "dwd.comment_reports",
+            measures={
+                "total_count": MeasureDef(title="总数", type="count", sql="COUNT({CUBE}.comment_id)"),
+                "uv": MeasureDef(title="去重数", type="count_distinct", sql="count(distinct {CUBE}.student_id)"),
+            },
+        )
+        compiler = QueryCompiler(JoinGraph([cube]))
+        result = compiler.compile(QueryDSL(measures=["comment_reports.total_count", "comment_reports.uv"]))
+        assert "COUNT(COUNT(" not in result.sql.upper().replace(" ", "")
+        assert "COUNT(comment_reports.comment_id)" in result.sql
+        assert "count(distinct comment_reports.student_id)" in result.sql
+
     def test_dimension_and_measure(self, compiler):
         """TC-02: 单 Cube 维度+指标"""
         dsl = QueryDSL(
@@ -356,6 +371,23 @@ class TestCompilerJoin:
         assert "LEFT JOIN" in result.sql
         assert "dim_student student" in result.sql
         assert "student" in result.joined_cubes
+
+    def test_scoped_table_refs_emit_from_and_join_anchors(self, compiler):
+        """row_scope 注入锚点：主表 from + 关联表 join"""
+        dsl = QueryDSL(
+            measures=["answer_records.total_count"],
+            filters=[FilterDef(dimension="student.user_name", operator="equals", values=["倪佳俊"])],
+        )
+        result = compiler.compile(dsl)
+        assert {"table": "dwd_answer", "alias": "answer_records", "scan_anchor": "from"} in result.scoped_table_refs
+        assert {"table": "dim_student", "alias": "student", "scan_anchor": "join"} in result.scoped_table_refs
+
+    def test_scoped_table_refs_single_cube_only_from_anchor(self, compiler):
+        dsl = QueryDSL(measures=["answer_records.total_count"])
+        result = compiler.compile(dsl)
+        assert result.scoped_table_refs == [
+            {"table": "dwd_answer", "alias": "answer_records", "scan_anchor": "from"}
+        ]
 
     def test_join_placeholder_uses_edge_source(self):
         leaf = _make_cube(

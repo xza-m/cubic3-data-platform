@@ -53,6 +53,16 @@ describe('Tabs', () => {
     expect(screen.getByRole('tab').className).toContain('h-7')
   })
 
+  it('can render as inline tabs without a tablist divider', () => {
+    render(
+      <Tabs value="a" onChange={() => {}} bordered={false}>
+        <Tab value="a">A</Tab>
+      </Tabs>,
+    )
+    expect(screen.getByRole('tablist').className).not.toContain('border-b')
+    expect(screen.getByRole('tab').className).not.toContain('-mb-px')
+  })
+
   it('Tab throws if used outside Tabs', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     expect(() => render(<Tab value="a">x</Tab>)).toThrow(/inside <Tabs>/)

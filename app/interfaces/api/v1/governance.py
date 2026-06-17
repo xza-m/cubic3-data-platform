@@ -5,6 +5,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, request
 
+from app.application.governance.row_scope import validate_row_scope_templates
 from app.extensions import db
 from app.infrastructure.gateway.alerting import evaluate_gateway_alerts
 from app.infrastructure.gateway.telemetry_client import GatewayTelemetryClient, GatewayTelemetryError
@@ -17,7 +18,7 @@ GOVERNANCE_READ_ROLES = ("viewer", "auditor", "governance_admin", "platform_admi
 GOVERNANCE_WRITE_ROLES = ("governance_admin", "platform_admin")
 
 
-def create_governance_blueprint(audit_repository):
+def create_governance_blueprint(audit_repository, policy_metadata_repository=None):
     bp = Blueprint("governance", __name__, url_prefix="/api/v1/governance")
 
     def _access_repo() -> SqlAccessGovernanceRepository:
@@ -38,6 +39,18 @@ def create_governance_blueprint(audit_repository):
             timeout_seconds=timeout,
         )
 
+    def _gateway_window() -> str:
+        value = str(request.args.get("window") or "24h").strip()
+        return value or "24h"
+
+    def _gateway_bucket() -> str:
+        value = str(request.args.get("bucket") or "1h").strip()
+        return value or "1h"
+
+    def _gateway_query_run_limit(default: int = 50) -> int:
+        limit = request.args.get("limit", default, type=int)
+        return min(max(int(limit or default), 1), 200)
+
     def _profile_to_dict(row) -> dict[str, Any]:
         return {
             "profile_code": row.profile_code,
@@ -54,7 +67,7 @@ def create_governance_blueprint(audit_repository):
         }
 
     def _policy_to_dict(row) -> dict[str, Any]:
-        return {
+        payload = {
             "policy_code": row.policy_code,
             "name": row.name,
             "description": row.description,
@@ -69,6 +82,10 @@ def create_governance_blueprint(audit_repository):
             "policy_version": row.policy_version,
             "policy_epoch": int(row.policy_epoch or 1),
         }
+        row_scope = [dict(item) for item in (row.row_scope or []) if isinstance(item, dict)]
+        if row_scope:
+            payload["row_scope"] = row_scope
+        return payload
 
     def _validate_profile_payload(body: dict[str, Any]) -> tuple[bool, str | None]:
         if "credential_ref" in body and body.get("credential_ref"):
@@ -82,9 +99,14 @@ def create_governance_blueprint(audit_repository):
     def _validate_policy_payload(body: dict[str, Any]) -> tuple[bool, str | None]:
         if body.get("effect") and body.get("effect") not in {"allow", "deny"}:
             return False, "effect 仅支持 allow / deny；M3 治理阻断由默认规则承接"
-        blocked = {"approval_policy_code", "row_scope", "column_scope"}
+        blocked = {"approval_policy_code", "column_scope"}
         if blocked & set(body):
-            return False, "第一版不在 DataPolicy 中配置审批、行级或列级规则"
+            return False, "第一版不在 DataPolicy 中配置审批或列级规则"
+        if "row_scope" in body:
+            normalized, row_scope_error = validate_row_scope_templates(body.get("row_scope"))
+            if row_scope_error:
+                return False, row_scope_error
+            body["row_scope"] = normalized
         return True, None
 
     @bp.get("/execution-profiles")
@@ -164,6 +186,23 @@ def create_governance_blueprint(audit_repository):
         db.session.commit()
         return success(_policy_to_dict(row), message="数据访问规则已更新")
 
+    @bp.post("/data-policies/migrate-policy-metadata")
+    @require_access_roles(*GOVERNANCE_WRITE_ROLES)
+    def migrate_policy_metadata():
+        """存量 PolicyMetadata.allowed_roles 迁移为 semantic.discover 策略（§6.2，幂等）。"""
+        if policy_metadata_repository is None:
+            return bad_request("未配置本体策略元数据仓储，无法执行迁移")
+        from app.application.governance.metadata_visibility import (
+            migrate_policy_metadata_to_discover_policies,
+        )
+
+        summary = migrate_policy_metadata_to_discover_policies(
+            policy_metadata_repository=policy_metadata_repository,
+            governance_repository=_access_repo(),
+        )
+        db.session.commit()
+        return success(summary, message=f"已迁移 {summary['total']} 条可见性策略")
+
     @bp.get("/rule-summary")
     @require_access_roles(*GOVERNANCE_READ_ROLES)
     def get_rule_summary():
@@ -189,46 +228,25 @@ def create_governance_blueprint(audit_repository):
         )
         return success({"items": items, "total": len(items)})
 
-    @bp.get("/gateway/summary")
+    @bp.get("/gateway/observability")
     @require_access_roles(*GOVERNANCE_READ_ROLES)
-    def get_gateway_summary():
-        try:
-            return success(_gateway_client().get_summary())
-        except GatewayTelemetryError as exc:
-            return bad_request(str(exc))
-
-    @bp.get("/gateway/query-runs")
-    @require_access_roles(*GOVERNANCE_READ_ROLES)
-    def list_gateway_query_runs():
-        try:
-            limit = request.args.get("limit", 50, type=int)
-            limit = min(max(int(limit or 50), 1), 200)
-            return success(_gateway_client().list_query_runs(limit=limit))
-        except GatewayTelemetryError as exc:
-            return bad_request(str(exc))
-
-    @bp.get("/gateway/alerts")
-    @require_access_roles(*GOVERNANCE_READ_ROLES)
-    def get_gateway_alerts():
+    def get_gateway_observability():
         try:
             gateway = _gateway_client()
+            snapshot = gateway.get_observability_snapshot(
+                window=_gateway_window(),
+                bucket=_gateway_bucket(),
+                query_run_limit=_gateway_query_run_limit(default=200),
+            )
+            try:
+                readiness = gateway.get_readiness()
+            except GatewayTelemetryError as exc:
+                readiness = {"status": "unknown", "error": str(exc)}
+            snapshot["readiness"] = readiness
+            snapshot["alerts"] = evaluate_gateway_alerts(snapshot.get("summary") or {}, readiness)
+            return success(snapshot)
         except GatewayTelemetryError as exc:
             return bad_request(str(exc))
-
-        telemetry_error = None
-        readiness = None
-        try:
-            summary = gateway.get_summary()
-        except GatewayTelemetryError as exc:
-            summary = {}
-            telemetry_error = str(exc)
-
-        try:
-            readiness = gateway.get_readiness()
-        except GatewayTelemetryError as exc:
-            readiness = {"status": "unknown", "error": str(exc)}
-
-        return success(evaluate_gateway_alerts(summary, readiness, telemetry_error=telemetry_error))
 
     @bp.route("/audit-traces", methods=["GET"])
     @require_access_roles(*GOVERNANCE_READ_ROLES)

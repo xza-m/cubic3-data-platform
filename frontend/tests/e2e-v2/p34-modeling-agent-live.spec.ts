@@ -62,6 +62,116 @@ type FileSnapshot = Map<string, string>
 
 test.skip(process.env.P34_LIVE_API !== '1', '显式设置 P34_LIVE_API=1 才运行真实后端 smoke')
 
+async function seedStudentCommentSourceEvidence(
+  request: APIRequestContext,
+  headers: Record<string, string>,
+): Promise<void> {
+  const syncRun = await api<Record<string, unknown>>(
+    request,
+    'POST',
+    '/api/v1/semantic/assets/sync-runs',
+    headers,
+    {
+      source_id: '4',
+      source_type: 'maxcompute',
+      mode: 'payload',
+      requested_by: 'p34_modeling_agent_live',
+      metadata: {
+        fixture: 'p34_modeling_agent_live',
+        namespace: LIVE_SEMANTIC_NAMESPACE || 'default',
+        version: '2026-06-15',
+      },
+      tables: [
+        {
+          database: 'df_cb_258187',
+          name: EXPECTED_SOURCE_TABLE,
+          title: '学生评论举报明细事实表',
+          layer: 'dwd',
+          description: '互动域学生评论/举报事实明细，用于 P34 live 建模闭环验证',
+          profile: {
+            row_count: 128,
+            partition_count: 7,
+            freshness_status: 'fresh',
+          },
+          fields: [
+            {
+              name: 'report_id',
+              data_type: 'BIGINT',
+              nullable: false,
+              comment: '举报记录 ID',
+              profile: { null_rate: 0, cardinality: 128 },
+            },
+            {
+              name: 'comment_id',
+              data_type: 'BIGINT',
+              nullable: false,
+              comment: '被举报评论/笔记内容 ID',
+              profile: { null_rate: 0, cardinality: 96 },
+            },
+            {
+              name: 'comment_school_id',
+              data_type: 'BIGINT',
+              nullable: false,
+              comment: '被举报内容发布者学校 ID',
+              profile: { null_rate: 0, cardinality: 12 },
+            },
+            {
+              name: 'comment_school_name',
+              data_type: 'STRING',
+              nullable: true,
+              comment: '被举报内容发布者学校名称',
+              profile: { null_rate: 0.02, cardinality: 12 },
+            },
+            {
+              name: 'comment_published_at',
+              data_type: 'DATETIME',
+              nullable: true,
+              comment: '被举报内容发布时间',
+              profile: { null_rate: 0.01, cardinality: 120 },
+            },
+            {
+              name: 'comment_content',
+              data_type: 'STRING',
+              nullable: true,
+              comment: '被举报内容文本，敏感字段，仅限内部审核分析使用',
+              sensitivity_level: 'restricted',
+              profile: { null_rate: 0.07, cardinality: 110 },
+            },
+            {
+              name: 'ds',
+              data_type: 'STRING',
+              nullable: false,
+              comment: '业务日期分区',
+              partition: true,
+              profile: { null_rate: 0, cardinality: 7 },
+            },
+          ],
+          lineage: [
+            {
+              direction: 'downstream',
+              target_type: 'cube',
+              target_ref: 'student_comment_cube',
+              relation_type: 'derived_metric_source',
+            },
+          ],
+          usage: [
+            {
+              source_type: 'sql_history',
+              source_ref: 'p34_live_student_comment_query',
+              usage_count: 9,
+            },
+          ],
+        },
+      ],
+    },
+  )
+  const status = String(syncRun.status || objectAt(syncRun.sync_run).status || '')
+  expect(
+    ['success', 'completed', 'running', 'queued', 'pending'],
+    `学生评论数据资产证据同步状态非法: ${JSON.stringify(syncRun)}`,
+  ).toContain(status)
+}
+
 async function login(request: APIRequestContext): Promise<{ token: string; headers: Record<string, string> }> {
   const explicit = process.env.P34_LIVE_AUTH_TOKEN || process.env.DOMAIN_SMOKE_AUTH_TOKEN
   if (explicit) {
@@ -279,6 +389,7 @@ test('P34 live 真实后端完成 session -> deterministic draft -> proposal -> 
   const semanticAssets = await snapshotTrackedStudentCommentAssets()
   try {
     const auth = await login(request)
+    await seedStudentCommentSourceEvidence(request, auth.headers)
 
     let session = await api<CopilotSession>(
       request,

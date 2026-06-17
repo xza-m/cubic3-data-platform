@@ -3,7 +3,7 @@ doc_type: adr
 status: accepted
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-09
 ---
 
 # ADR-012 固定 Dataset、数据资产与查询执行边界
@@ -14,7 +14,7 @@ Accepted，2026-06-03 起生效。
 
 ## 背景
 
-当前代码同时存在 `DataSource`、`Dataset`、`DataAssetTable`、表缓存、语义资产、平台查询历史和 gateway 查询遥测。它们来自不同建设阶段，分别解决过数据接入、数据集注册、元数据发现、语义建模和生产问数的问题。
+当前代码同时存在 `DataSource`、`Dataset`、`DataAssetTable`、表缓存、语义资产、平台查询历史和 gateway 查询遥测。它们来自不同建设阶段，分别解决过数据接入、平台 Dataset 登记、元数据发现、语义建模和生产问数的问题。
 
 如果不固定概念边界，平台会出现三类问题：
 
@@ -89,7 +89,7 @@ Agent / 应用问题
 
 缺点：
 
-- 短期内仍有 `/data-center/datasets` 与 `/semantic/assets` 两个入口，需要 UI 文案和读模型明确区分。
+- 短期内仍有 `/data-center/assets` 与 `/semantic/assets` 两个入口：前者是平台数据中心的资产目录 / 资产登记入口，后者是语义中心的数据资产证据与同步入口，需要 UI 文案和读模型明确区分。
 - 需要补投影服务，避免页面直接各自拼接事实源。
 
 ### 方案 B：把 Dataset 全部并入数据资产底座，未采纳

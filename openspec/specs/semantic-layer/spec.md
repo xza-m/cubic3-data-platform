@@ -1,8 +1,56 @@
 # semantic-layer Specification
 
 ## Purpose
-TBD - created by archiving change add-measure-descriptions. Update Purpose after archive.
+`semantic-layer` 定义语义中心的持久化语义资产与编译契约。语义中心负责保存 `Cube`、`View`、`Domain`、`Recipe` 等语义真值，并封装从语义意图到只读物理 SQL 或物理执行计划的编译能力。Gateway 是执行面，只处理已解析的物理 SQL 或物理执行计划；Data Agent、BI 和数据分析等消费方通过语义中心契约消费语义资产，不直接依赖语义建模工具。
+
 ## Requirements
+### Requirement: Semantic Center SHALL Own Semantic Assets And Compilation
+语义中心 SHALL 承担语义资产持久化与语义到 SQL / Query Plan 的编译职责，并 SHALL 将执行面依赖限制为已解析的物理执行输入。
+
+#### Scenario: Persist semantic asset truth
+- **WHEN** `Cube`、`View`、`Domain`、`Recipe` 等语义资产被创建、更新或发布
+- **THEN** 语义中心 SHALL 持久化已发布或可治理的语义定义、生命周期状态和血缘元数据
+- **AND** 语义建设工作台中的草稿、Proposal 或临时项目 SHALL NOT 被消费方视为语义真值
+
+#### Scenario: Compile semantic intent before execution
+- **WHEN** 消费方提交语义 DSL、语义 spec 或语义查询意图
+- **THEN** 语义中心 SHALL 将其编译为只读物理 SQL 或已解析的物理执行计划
+- **AND** 编译结果 SHALL 包含已解析的物理表、物理字段、SQL 方言和必要的查询保护信息
+
+#### Scenario: Gateway receives only physical execution input
+- **WHEN** 语义中心、Data Agent、BI 或数据分析链路调用 Gateway 执行查询
+- **THEN** Gateway SHALL 只接收物理 SQL 或物理执行计划
+- **AND** Gateway SHALL NOT 解析 `Cube`、`View`、`Domain`、语义 DSL 或语义 spec
+- **AND** Gateway SHALL NOT 承接语义 spec 到 SQL / Query Plan 的编译职责
+
+### Requirement: Semantic Consumers SHALL Depend On Semantic Center Contracts
+Data Agent、BI 和数据分析 SHALL 作为语义中心消费者，通过稳定 API 或编译结果消费语义资产，而不是直接依赖语义建设工作台。
+
+#### Scenario: Consumer discovers released semantic assets
+- **WHEN** Data Agent、BI 或数据分析需要发现可用指标、维度或关系
+- **THEN** 它们 SHALL 调用语义中心的发现、描述、查询或编译契约
+- **AND** 它们 SHALL NOT 读取建模工作台的项目、Proposal、Asset Package 或页面状态作为运行时依赖
+
+#### Scenario: Draft modeling state is not consumer-visible
+- **WHEN** 语义对象仍处于建模草稿、建议修订或未发布状态
+- **THEN** 默认消费方 SHALL NOT 将其作为可查询或可发布语义资产
+- **AND** 消费方可见性 SHALL 由语义中心持久化状态与发布状态决定
+
+### Requirement: Dataset Terminology SHALL Stay Access-Layer Specific
+平台 `Dataset` SHALL 表示数据访问/分析层的数据集，不 SHALL 与语义建设中的物理资产证据底座混用。
+
+#### Scenario: View publish creates a downstream virtual dataset
+- **WHEN** 语义 `View` 被发布为虚拟数据集
+- **THEN** 平台 SHALL 创建或更新面向数据访问/分析层的 `Dataset`
+- **AND** 该 `Dataset` SHALL 保留语义来源、编译 SQL 和字段映射等血缘信息
+- **AND** 该 `Dataset` SHALL NOT 替代 `Cube`、`View`、`Domain` 等语义资产真值
+
+#### Scenario: Modeling evidence is not named platform Dataset
+- **WHEN** 语义建设流程分析物理表画像、字段画像、血缘或使用事实
+- **THEN** 这些事实 SHALL 被表达为建模证据或物理资产证据
+- **AND** 它们 SHALL NOT 被命名或解释为平台 `Dataset`
+- **AND** 已存在的平台 `Dataset` MAY 作为下游使用信号或消费上下文参与分析
+
 ### Requirement: Measure Minimal Descriptions
 The system SHALL support low-maintenance descriptive metadata for measures defined inside a Cube.
 
@@ -406,4 +454,3 @@ The system SHALL provide a frontend module under `/semantic` with Cube managemen
 #### Scenario: Developer tools
 - **WHEN** a user navigates to `/semantic/devtools`
 - **THEN** the system SHALL display a tabbed interface with Playground, Schema Sync, YAML Editor, and Compile Debugger
-

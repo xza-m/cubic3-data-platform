@@ -38,7 +38,7 @@ last_reviewed: 2026-06-07
 | `docker compose ps` | passed | backend、nginx、postgres、redis、2 个 rq_worker 均为 Up。 |
 | `curl -sf http://127.0.0.1:81/health` 与 `/api/v1/health` | passed | 均返回 `data.status=ok`。 |
 | Docker PG Alembic 状态 | passed | `alembic_version=0004_instance_heartbeats`，`agent_inference_runtime_runs` 与 `instance_heartbeats` 均已存在。 |
-| Browser 回归 | passed | `/dashboard` 不再出现 `Start learning/Courses/Interactive demos`；`/extraction/runs` 不再出现 `Run #undefined`；未落回登录页。 |
+| Browser 回归 | passed | `/dashboard` 不再出现 `Start learning/Courses/Interactive demos`；`/data-center/sync/runs` 不再出现 `Run #undefined`；未落回登录页。 |
 | 后端日志复查 | passed | 重启后 1 分钟内无 `ERROR/Traceback/Working outside/value too long/instance_heartbeats_table_not_found`。 |
 
 ## 本轮发现与修复
@@ -48,7 +48,7 @@ last_reviewed: 2026-06-07
 - 固定 Docker Compose 本地环境的 `DATABASE_URL`，避免宿主机同名变量把 backend/worker 串到外部 `legacy-bi-postgres`。
 - 为 APScheduler 固定平台任务保留 Flask app context，修复 `query_export_cleanup` 在后台线程中 `Working outside of application context` 的运行态错误。
 - 清理 Dashboard 学习区英文壳文案，统一为中文产品表达。
-- 修复抽取执行页关闭态 PeekPanel 暴露 `Run #undefined` 的问题，并补充 Playwright 回归断言。
+- 修复同步记录页关闭态 PeekPanel 暴露 `Run #undefined` 的问题，并补充 Playwright 回归断言。
 
 ## 剩余风险
 

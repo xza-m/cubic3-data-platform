@@ -53,6 +53,42 @@ class TestDiagnoseInvalidKind:
             svc.diagnose_and_record(user_id=1, input_kind="excel", input_text="x")
 
 
+class TestDefinitionHashRecorded:
+    """Phase 3：诊断落库时记录当前语义定义集版本标识。"""
+
+    def test_records_definition_hash_with_semantic_service(self):
+        class _Cube:
+            def __init__(self, name):
+                self.name = name
+
+            def model_dump(self, mode="json"):
+                return {"name": self.name}
+
+        semantic_service = MagicMock()
+        semantic_service._cube_repo.list_all.return_value = [_Cube("orders")]
+        repo = _make_repo()
+        svc = DiagnoseRunService(repo=repo, semantic_service=semantic_service)
+        svc.diagnose_and_record(user_id=1, input_kind="sql", input_text="SELECT 1")
+        create_call = repo.create.call_args[0][0]
+        assert isinstance(create_call["definition_hash"], str)
+        assert len(create_call["definition_hash"]) == 64
+
+    def test_definition_hash_none_without_semantic_service(self):
+        repo = _make_repo()
+        svc = DiagnoseRunService(repo=repo, semantic_service=None)
+        svc.diagnose_and_record(user_id=1, input_kind="sql", input_text="SELECT 1")
+        create_call = repo.create.call_args[0][0]
+        assert create_call["definition_hash"] is None
+
+    def test_definition_hash_swallow_repo_failure(self):
+        semantic_service = MagicMock()
+        semantic_service._cube_repo.list_all.side_effect = RuntimeError("repo down")
+        repo = _make_repo()
+        svc = DiagnoseRunService(repo=repo, semantic_service=semantic_service)
+        svc.diagnose_and_record(user_id=1, input_kind="sql", input_text="SELECT 1")
+        assert repo.create.call_args[0][0]["definition_hash"] is None
+
+
 class TestGetNotFound:
     """get() 返回 None 时抛 EntityNotFoundError。"""
 

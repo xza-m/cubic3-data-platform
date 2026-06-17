@@ -1,6 +1,7 @@
 """
 MaxCompute 数据源适配器
 """
+import re
 import time
 from typing import List, Dict, Any
 from .base_adapter import DataSourceAdapter
@@ -66,10 +67,11 @@ class MaxComputeAdapter(DataSourceAdapter):
                 }
             }
         except Exception as e:
+            message = self._format_error(e)
             return {
                 'success': False,
-                'message': f'连接失败: {str(e)}',
-                'details': {'error': str(e)}
+                'message': f'连接失败: {message}',
+                'details': {'error': message}
             }
     
     def list_databases(self) -> List[str]:
@@ -103,7 +105,7 @@ class MaxComputeAdapter(DataSourceAdapter):
             
             return tables
         except Exception as e:
-            raise Exception(f"获取表列表失败: {str(e)}")
+            raise Exception(self._format_error(e))
     
     def get_table_schema(self, database: str = None, table: str = None) -> Dict[str, Any]:
         """获取MaxCompute表的Schema信息"""
@@ -153,7 +155,7 @@ class MaxComputeAdapter(DataSourceAdapter):
                 'size': table_obj.size if hasattr(table_obj, 'size') else None
             }
         except Exception as e:
-            raise Exception(f"获取表Schema失败: {str(e)}")
+            raise Exception(self._format_error(e))
     
     def execute_query(self, sql: str, limit: int = 100) -> Dict[str, Any]:
         """执行MaxCompute SQL查询（调用方应已完成 SQL 校验和 LIMIT 注入）"""
@@ -193,7 +195,7 @@ class MaxComputeAdapter(DataSourceAdapter):
                 'execution_time_ms': execution_time_ms
             }
         except Exception as e:
-            raise Exception(f"查询执行失败: {str(e)}")
+            raise Exception(f"查询执行失败: {self._format_error(e)}")
     
     def execute_query_stream(self, sql: str, batch_size: int = 1000):
         """流式执行MaxCompute查询"""
@@ -229,7 +231,7 @@ class MaxComputeAdapter(DataSourceAdapter):
                         'batch_size': len(batch)
                     }
         except Exception as e:
-            raise Exception(f"流式查询失败: {str(e)}")
+            raise Exception(f"流式查询失败: {self._format_error(e)}")
     
     @staticmethod
     def _safe_value(val):
@@ -287,7 +289,7 @@ class MaxComputeAdapter(DataSourceAdapter):
                 'execution_time_ms': execution_time_ms,
             }
         except Exception as e:
-            raise Exception(f"预览数据失败: {str(e)}")
+            raise Exception(f"预览数据失败: {self._format_error(e)}")
 
     def get_partitions(self, table: str) -> List[str]:
         """获取表的分区列表"""
@@ -304,9 +306,50 @@ class MaxComputeAdapter(DataSourceAdapter):
             
             return partitions
         except Exception as e:
-            raise Exception(f"获取分区列表失败: {str(e)}")
+            raise Exception(f"获取分区列表失败: {self._format_error(e)}")
     
     def _close_connection(self):
         """关闭MaxCompute连接"""
         # MaxCompute SDK 不需要显式关闭连接
         self.odps = None
+
+    def _format_error(self, exc: Exception) -> str:
+        """将 PyODPS 原始错误转换为面向用户的脱敏提示。"""
+        message = str(exc)
+        lowered = message.lower()
+
+        if 'accesskeyidnotfound' in lowered or 'accesskeyid not found' in lowered:
+            return 'MaxCompute 认证失败：AccessKey ID 不存在或无效，请检查数据源凭证后重新测试连接。'
+        if (
+            'invalidaccesskeysecret' in lowered
+            or 'signaturedoesnotmatch' in lowered
+            or 'accesskey secret' in lowered
+        ):
+            return 'MaxCompute 认证失败：AccessKey Secret 无效，请检查数据源凭证后重新测试连接。'
+        if 'invalid credentials' in lowered:
+            return 'MaxCompute 认证失败：凭证无效，请检查数据源 AccessKey 配置后重新测试连接。'
+        if 'forbidden' in lowered or 'permission' in lowered or 'privilege' in lowered:
+            return 'MaxCompute 权限不足：当前账号无法访问目标项目或表，请检查授权。'
+        if 'timeout' in lowered or 'timed out' in lowered or 'read timed out' in lowered:
+            return 'MaxCompute 请求超时：请检查网络、Endpoint 或稍后重试。'
+
+        return f"MaxCompute 请求失败：{self._sanitize_error_message(message)}"
+
+    def _sanitize_error_message(self, message: str) -> str:
+        """移除云侧错误中可能出现的凭证、Secret 和 RequestId。"""
+        sanitized = message
+        for key in ('access_id', 'access_key', 'secret_access_key'):
+            value = self.config.get(key)
+            if isinstance(value, str) and value:
+                sanitized = sanitized.replace(value, '***')
+
+        patterns = [
+            (r'accessKeyId\s+not\s+found\s*:\s*[A-Za-z0-9_\-]+', 'accessKeyId not found: ***'),
+            (r'(accessKeyId|access_key|access-id|accessId)\s*[:=]\s*[A-Za-z0-9_\-]+', r'\1: ***'),
+            (r'(accessKeySecret|secret_access_key|accessSecret)\s*[:=]\s*[^,\s;]+', r'\1: ***'),
+            (r'RequestId\s*:\s*[A-Za-z0-9_\-]+', 'RequestId: ***'),
+        ]
+        for pattern, replacement in patterns:
+            sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
+
+        return sanitized

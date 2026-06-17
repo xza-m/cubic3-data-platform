@@ -232,6 +232,51 @@ class SqlAssetRegistryRepository:
         row = self.session.get(SemanticReleaseORM, release_id)
         return _release_from_row(row) if row is not None else None
 
+    def list_releases(
+        self,
+        namespace: str = "default",
+        *,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[SemanticRelease], int]:
+        query = self.session.query(SemanticReleaseORM).filter(SemanticReleaseORM.namespace == namespace)
+        if status:
+            query = query.filter(SemanticReleaseORM.status == status)
+        total = int(query.count())
+        rows = (
+            query.order_by(SemanticReleaseORM.release_no.desc(), SemanticReleaseORM.created_at.desc())
+            .offset(max(offset, 0))
+            .limit(max(1, min(limit, 200)))
+            .all()
+        )
+        return [_release_from_row(row) for row in rows], total
+
+    def update_release_status(
+        self,
+        release_id: str,
+        *,
+        status: str,
+        reason: Optional[str] = None,
+    ) -> Optional[SemanticRelease]:
+        row = self.session.get(SemanticReleaseORM, release_id)
+        if row is None:
+            return None
+        row.status = status
+        row.status_reason = reason
+        row.status_changed_at = datetime.utcnow()
+        self.session.commit()
+        return _release_from_row(row)
+
+    def get_snapshot_by_release_id(self, release_id: str) -> Optional[RuntimeSnapshot]:
+        row = (
+            self.session.query(SemanticRuntimeSnapshotORM)
+            .filter(SemanticRuntimeSnapshotORM.release_id == release_id)
+            .order_by(SemanticRuntimeSnapshotORM.created_at.desc())
+            .first()
+        )
+        return _snapshot_from_row(row) if row is not None else None
+
     def list_release_assets(self, release_id: str) -> list[SemanticReleaseAsset]:
         rows = (
             self.session.query(SemanticReleaseAssetORM)
@@ -264,6 +309,19 @@ class SqlAssetRegistryRepository:
 
             release.previous_release_id = self.get_active_release_id(release.namespace)
             release.release_no = self._next_release_no_locked(release.namespace)
+            now = datetime.utcnow()
+            # §6.1 release 状态机：被替代的 release 显式落为 superseded（已 pin 消费方仍可读取）
+            old_releases = (
+                self.session.query(SemanticReleaseORM)
+                .filter(
+                    SemanticReleaseORM.namespace == release.namespace,
+                    SemanticReleaseORM.status == "published",
+                )
+                .all()
+            )
+            for old_release in old_releases:
+                old_release.status = "superseded"
+                old_release.status_changed_at = now
             old_snapshots = (
                 self.session.query(SemanticRuntimeSnapshotORM)
                 .filter(
@@ -272,7 +330,6 @@ class SqlAssetRegistryRepository:
                 )
                 .all()
             )
-            now = datetime.utcnow()
             for old_snapshot in old_snapshots:
                 old_snapshot.status = "superseded"
                 old_snapshot.superseded_at = now
@@ -465,6 +522,8 @@ def _release_to_row(release: SemanticRelease) -> SemanticReleaseORM:
         idempotency_key=release.idempotency_key,
         published_by=release.published_by,
         published_at=_parse_utc(release.published_at),
+        status_reason=release.status_reason,
+        status_changed_at=_parse_utc(release.status_changed_at),
         created_at=_parse_utc(release.created_at) or datetime.utcnow(),
     )
 
@@ -482,6 +541,8 @@ def _release_from_row(row: SemanticReleaseORM) -> SemanticRelease:
         idempotency_key=row.idempotency_key,
         published_by=row.published_by,
         published_at=_format_utc(row.published_at) if row.published_at else None,
+        status_reason=row.status_reason,
+        status_changed_at=_format_utc(row.status_changed_at) if row.status_changed_at else None,
         created_at=_format_utc(row.created_at),
     )
 

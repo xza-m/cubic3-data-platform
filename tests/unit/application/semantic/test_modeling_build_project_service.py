@@ -223,6 +223,114 @@ def test_build_project_service_creates_project_and_scan_queue():
     assert repo.list_packages(project["id"])[0].target == "semantic_center"
 
 
+class _FakeScanner:
+    """模拟 ModelingSourceScanner：按 scope 是否带真实坐标决定能否扫描。"""
+
+    def __init__(self, packages):
+        self._packages = packages
+        self.scan_calls = 0
+
+    def can_scan(self, project):
+        scope = dict(project.scope or {})
+        return scope.get("source_id") is not None and bool(scope.get("database"))
+
+    def scan(self, project, strategy="balanced"):
+        self.scan_calls += 1
+        results = []
+        for pkg in self._packages:
+            # 真实 scanner 会用 project.id 盖章 project_id 与 package id
+            copied = pkg.model_copy(deep=True)
+            copied.project_id = project.id
+            copied.id = create_asset_package_id(project.id, copied.source, copied.package_type)
+            results.append(copied)
+        return results
+
+
+def test_scan_project_uses_scanner_when_source_present():
+    from app.application.semantic.modeling_build_project_service import (
+        ModelingBuildProjectService,
+    )
+
+    repo = InMemoryBuildProjectRepository()
+    scanned_package = ModelingAssetPackage(
+        id="build-test:dimension:dim-school-df",
+        project_id="ignored",
+        title="学校维度候选",
+        package_type="dimension",
+        source="dim_school_df",
+        grain="一条学校维度记录",
+        confidence=0.82,
+        risk="low",
+        status="ready_for_review",
+    )
+    scanner = _FakeScanner([scanned_package])
+    service = ModelingBuildProjectService(repo, scanner=scanner)
+
+    project = service.create_project(
+        {
+            "name": "真实源建设",
+            "business_domain": "真实源建设",
+            "scope": {"source_id": 7, "database": "dw"},
+        },
+        principal_id="alice",
+    )
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+
+    assert scanner.scan_calls == 1
+    assert scanned["asset_package_count"] == 1
+    assert scanned["asset_packages"][0]["source"] == "dim_school_df"
+
+
+def test_scan_project_falls_back_when_scanner_returns_empty():
+    from app.application.semantic.modeling_build_project_service import (
+        ModelingBuildProjectService,
+    )
+
+    repo = InMemoryBuildProjectRepository()
+    scanner = _FakeScanner([])  # 真实源命中但无可建模表
+    service = ModelingBuildProjectService(repo, scanner=scanner)
+
+    project = service.create_project(
+        {
+            "name": "空源建设",
+            "business_domain": "空源建设",
+            "scope": {
+                "source_id": 7,
+                "database": "dw",
+                "selected_sources": ["ods_manual_df"],
+            },
+        },
+        principal_id="alice",
+    )
+    scanned = service.scan_project(project["id"], {}, principal_id="alice")
+
+    assert scanner.scan_calls == 1
+    assert scanned["asset_package_count"] == 1
+    assert scanned["asset_packages"][0]["source"] == "ods_manual_df"
+
+
+def test_scan_project_without_scanner_keeps_demo_packages():
+    from app.application.semantic.modeling_build_project_service import (
+        ModelingBuildProjectService,
+    )
+
+    repo = InMemoryBuildProjectRepository()
+    service = ModelingBuildProjectService(repo)  # 无 scanner 注入
+
+    project = service.create_project(
+        {
+            "name": "学情分析",
+            "business_domain": "学情分析",
+            "scope": {"source_id": 7, "database": "dw"},
+        },
+        principal_id="alice",
+    )
+    scanned = service.scan_project(project["id"], {"strategy": "balanced"}, principal_id="alice")
+
+    # scanner 未注入时即便带真实坐标也走演示兜底，保证零回归
+    assert scanned["asset_package_count"] == 3
+
+
 def test_build_project_service_batch_run_id_creates_isolated_project_container():
     from app.application.semantic.modeling_build_project_service import (
         ModelingBuildProjectService,

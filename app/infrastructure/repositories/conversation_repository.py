@@ -51,6 +51,14 @@ class ConversationRepository(IConversationRepository):
             self.session.flush()
             logger.info(f"Deleted conversation", conversation_id=conversation_id)
 
+    def commit(self) -> None:
+        """提交事务（事务边界由调用方控制，仓储只暴露提交动作）"""
+        try:
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+
 
 class MessageRepository(IMessageRepository):
     """消息仓储实现"""

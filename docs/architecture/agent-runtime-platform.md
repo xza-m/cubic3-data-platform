@@ -896,7 +896,7 @@ app/application/semantic/
 
 ```mermaid
 flowchart TD
-  UI["/semantic/modeling-copilot"] --> Service["SemanticModelingCopilotService"]
+  UI["/semantic/modeling-workbench"] --> Service["SemanticModelingCopilotService"]
   Service --> App["SemanticModelingAgentApp"]
   App --> Evidence["SemanticEvidenceBuilder"]
   App --> Runtime["AgentInferenceRuntimeService"]

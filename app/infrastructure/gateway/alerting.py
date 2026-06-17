@@ -21,8 +21,19 @@ class GatewayAlertThresholds:
     avg_queue_wait_critical_ms: float = 300_000
     timeout_warning_count: int = 1
     rejected_warning_count: int = 1
+    result_rejected_warning_count: int = 1
     export_failure_warning_count: int = 1
+    export_not_ready_warning_count: int = 1
     publish_conflict_warning_count: int = 1
+    auth_denied_warning_count: int = 1
+    invalid_token_warning_count: int = 1
+    missing_token_warning_count: int = 1
+    legacy_protocol_warning_count: int = 1
+    credential_missing_warning_count: int = 1
+    credential_invalid_warning_count: int = 1
+    worker_heartbeat_stale_warning_count: int = 1
+    worker_orphan_lease_reclaimed_warning_count: int = 1
+    gateway_readyz_degraded_warning_count: int = 1
 
 
 Severity = str
@@ -77,6 +88,18 @@ def evaluate_gateway_alerts(
         )
 
     _append_readiness_alerts(ready, add_alert)
+
+    live_worker_count = int(_number(source, "live_worker_count"))
+    worker_capacity = int(_number(source, "worker_capacity"))
+    if worker_capacity > 0 and live_worker_count <= 0:
+        add_alert(
+            code="gateway_worker_unavailable",
+            severity="critical",
+            title="Gateway Worker 不可用",
+            message=f"当前存活 Worker {live_worker_count} 个，容量配置 {worker_capacity}",
+            value=live_worker_count,
+            threshold_value=">0",
+        )
 
     stability = _number(source, "stability", default=100)
     if stability < threshold.stability_critical:
@@ -177,6 +200,22 @@ def evaluate_gateway_alerts(
     _append_counter_alert(
         source,
         add_alert,
+        key="result_rejected_count",
+        code="gateway_result_rejected_seen",
+        title="Gateway 结果护栏拒绝",
+        threshold_value=threshold.result_rejected_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="export_not_ready_count",
+        code="gateway_export_not_ready_seen",
+        title="Gateway 导出未就绪",
+        threshold_value=threshold.export_not_ready_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
         key="export_failure_count",
         code="gateway_export_failure_seen",
         title="Gateway 导出失败",
@@ -189,6 +228,78 @@ def evaluate_gateway_alerts(
         code="gateway_publish_conflict_seen",
         title="Gateway 结果发布冲突",
         threshold_value=threshold.publish_conflict_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="auth_denied_count",
+        code="gateway_auth_denied_seen",
+        title="Gateway 认证拒绝",
+        threshold_value=threshold.auth_denied_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="invalid_token_count",
+        code="gateway_invalid_token_seen",
+        title="Gateway 无效令牌请求",
+        threshold_value=threshold.invalid_token_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="missing_token_count",
+        code="gateway_missing_token_seen",
+        title="Gateway 缺失令牌请求",
+        threshold_value=threshold.missing_token_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="legacy_protocol_count",
+        code="gateway_legacy_protocol_seen",
+        title="Gateway legacy 协议调用",
+        threshold_value=threshold.legacy_protocol_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="credential_missing_count",
+        code="gateway_credential_missing_seen",
+        title="Gateway 凭据绑定缺失",
+        threshold_value=threshold.credential_missing_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="credential_invalid_count",
+        code="gateway_credential_invalid_seen",
+        title="Gateway 凭据无效",
+        threshold_value=threshold.credential_invalid_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="worker_heartbeat_stale_count",
+        code="gateway_worker_heartbeat_stale_seen",
+        title="Gateway Worker 心跳过期",
+        threshold_value=threshold.worker_heartbeat_stale_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="worker_orphan_lease_reclaimed_count",
+        code="gateway_worker_orphan_lease_reclaimed_seen",
+        title="Gateway 回收孤儿租约",
+        threshold_value=threshold.worker_orphan_lease_reclaimed_warning_count,
+    )
+    _append_counter_alert(
+        source,
+        add_alert,
+        key="gateway_readyz_degraded_count",
+        code="gateway_readyz_degraded_seen",
+        title="Gateway readyz 降级事件",
+        threshold_value=threshold.gateway_readyz_degraded_warning_count,
     )
 
     alerts.sort(key=lambda item: _SEVERITY_RANK.get(str(item.get("severity")), 0), reverse=True)
@@ -207,6 +318,19 @@ def evaluate_gateway_alerts(
             "avg_queue_wait_ms": avg_queue_wait_ms,
             "max_current_queue_wait_ms": current_queue_wait_ms,
             "timeout_count": int(_number(source, "timeout_count")),
+            "result_rejected_count": int(_number(source, "result_rejected_count")),
+            "export_not_ready_count": int(_number(source, "export_not_ready_count")),
+            "auth_denied_count": int(_number(source, "auth_denied_count")),
+            "invalid_token_count": int(_number(source, "invalid_token_count")),
+            "missing_token_count": int(_number(source, "missing_token_count")),
+            "legacy_protocol_count": int(_number(source, "legacy_protocol_count")),
+            "credential_missing_count": int(_number(source, "credential_missing_count")),
+            "credential_invalid_count": int(_number(source, "credential_invalid_count")),
+            "worker_heartbeat_stale_count": int(_number(source, "worker_heartbeat_stale_count")),
+            "worker_orphan_lease_reclaimed_count": int(_number(source, "worker_orphan_lease_reclaimed_count")),
+            "gateway_readyz_degraded_count": int(_number(source, "gateway_readyz_degraded_count")),
+            "live_worker_count": live_worker_count,
+            "worker_capacity": worker_capacity,
         },
         "evaluated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }

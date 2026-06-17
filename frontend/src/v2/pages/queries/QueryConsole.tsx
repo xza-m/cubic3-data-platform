@@ -25,7 +25,9 @@ import {
   useDatasourceSchemaTables,
 } from '@v2/hooks/datasources'
 import { fmtNum } from '@v2/lib/format'
+import { datasourceTypeLabel } from '@v2/lib/datasourceTypes'
 import { IdentityName } from '@v2/components/IdentityName'
+import { useToast } from '@v2/components/ui'
 import type { DatasourceTableSummary } from '@v2/api/datasources'
 import type { QueryRunResult } from '@v2/api/queries'
 import { t } from '@v2/i18n'
@@ -74,6 +76,7 @@ export default function QueryConsole() {
     return routePrefill ?? storedPrefill
   })
 
+  const toast = useToast()
   const [sql, setSql] = useState<string>(() => initialPrefill?.sql ?? DEFAULT_SQL)
   const [sourceId, setSourceId] = useState<number | null>(initialPrefill?.source_id ?? null)
   const [database, setDatabase] = useState<string | null>(null)
@@ -195,11 +198,15 @@ export default function QueryConsole() {
 
   const handleRun = useCallback(async () => {
     if (sourceId == null) {
-      alert(t('queryConsole.alert.pickSource', '请先选择数据源'))
+      const msg = t('queryConsole.alert.pickSource', '请先选择数据源')
+      setErrorMsg(msg)
+      toast.show({ tone: 'warning', title: msg })
       return
     }
     if (!sql.trim()) {
-      alert(t('queryConsole.alert.enterSql', '请输入 SQL'))
+      const msg = t('queryConsole.alert.enterSql', '请输入 SQL')
+      setErrorMsg(msg)
+      toast.show({ tone: 'warning', title: msg })
       return
     }
     setErrorMsg(null)
@@ -215,7 +222,7 @@ export default function QueryConsole() {
       setResult(null)
       setErrorMsg(err instanceof Error ? err.message : t('queryConsole.state.execFailed', '执行失败'))
     }
-  }, [sourceId, sql, executeMut, prefillPrincipalId])
+  }, [sourceId, sql, executeMut, prefillPrincipalId, toast])
 
   const handleSave = useCallback(async () => {
     if (!saveName.trim() || sourceId == null) return
@@ -228,10 +235,15 @@ export default function QueryConsole() {
       })
       setSaveDialogOpen(false)
       setSaveName('')
-    } catch (_err) {
-      // error handled by mutation
+      toast.show({ tone: 'success', title: t('queryConsole.toast.saved', '查询已保存') })
+    } catch (err) {
+      toast.show({
+        tone: 'danger',
+        title: t('queryConsole.toast.saveFailed', '保存查询失败'),
+        description: err instanceof Error ? err.message : undefined,
+      })
     }
-  }, [saveName, sourceId, sql, createMut, prefillPrincipalId])
+  }, [saveName, sourceId, sql, createMut, prefillPrincipalId, toast])
 
   return (
     <div className="relative flex flex-1 overflow-hidden">
@@ -261,7 +273,7 @@ export default function QueryConsole() {
             options={sourceList.map((source) => ({
               value: String(source.id),
               label: source.name,
-              description: source.source_type,
+              description: datasourceTypeLabel(source.source_type),
             }))}
           />
           <SelectControl
@@ -331,7 +343,7 @@ export default function QueryConsole() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-xs font-medium">{activeSource.name}</span>
                     <span className="block truncate text-xs" style={{ color: 'var(--text-3)' }}>
-                      {activeSource.source_type}
+                      {datasourceTypeLabel(activeSource.source_type)}
                     </span>
                   </span>
                 </div>

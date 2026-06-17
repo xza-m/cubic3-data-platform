@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Chip, SkeletonRows, Switch, Table, useToast, type TableColumn } from '@v2/components/ui'
+import { Chip, SkeletonRows, Switch, Table, useToast, type TableColumn, useConfirm } from '@v2/components/ui'
 import { CreateButton } from '@v2/components/CommonControls'
 import { t } from '@v2/i18n'
 import { fmtDateTime } from '@v2/lib/format'
@@ -226,6 +226,7 @@ function ChannelFormDialog({
 export default function Channels() {
   const navigate = useNavigate()
   const toast = useToast()
+  const confirm = useConfirm()
   const { data, isLoading } = useChannels()
   const rows = useMemo(() => data?.items ?? [], [data])
 
@@ -253,7 +254,7 @@ export default function Channels() {
   }
 
   const handleDelete = async (row: Channel) => {
-    if (!window.confirm(t('channel.confirm.delete', `删除渠道「${row.name}」？`))) return
+    if (!(await confirm({ title: t('channel.confirm.delete', '删除渠道「{name}」？', { name: row.name }), tone: 'danger' }))) return
     await deleteMutation.mutateAsync(row.id)
     toast.show({ tone: 'warning', title: t('channel.toast.deleted', '已删除'), description: row.name })
     if (peekRow?.id === row.id) setPeekRow(null)

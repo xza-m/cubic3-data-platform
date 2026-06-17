@@ -4,8 +4,21 @@ export interface ReleasePreview {
   releaseDiff: ReleasePreviewDiff;
   impactSummary: ReleasePreviewImpactSummary;
   semanticCompile: ReleasePreviewValidation;
+  bindingValidation: ReleasePreviewBindingValidation;
   gatewayValidation: ReleasePreviewValidation;
   consumerValidation: ReleasePreviewConsumerValidation;
+}
+
+export interface ReleasePreviewBindingBlocker {
+  code: string;
+  message: string;
+  path: string;
+}
+
+export interface ReleasePreviewBindingValidation {
+  status: ReleasePreviewValidationStatus;
+  message?: string;
+  blockers: ReleasePreviewBindingBlocker[];
 }
 
 export interface ReleasePreviewDiff {
@@ -68,6 +81,7 @@ export function extractReleasePreview(
     releaseDiff: parseReleaseDiff(releasePreview.release_diff),
     impactSummary: parseImpactSummary(releasePreview.impact_summary),
     semanticCompile: parseValidation(releasePreview.semantic_compile),
+    bindingValidation: parseBindingValidation(releasePreview.binding_validation),
     gatewayValidation: parseGatewayValidation(
       releasePreview.gateway_validation,
     ),
@@ -109,6 +123,29 @@ function parseImpactSummary(value: unknown): ReleasePreviewImpactSummary {
 
 function parseGatewayValidation(value: unknown): ReleasePreviewValidation {
   return parseValidation(value);
+}
+
+function parseBindingValidation(
+  value: unknown,
+): ReleasePreviewBindingValidation {
+  if (!isRecord(value)) {
+    return { status: "not_configured", blockers: [] };
+  }
+  const message = optionalString(value.message);
+  return {
+    status: toStringValue(
+      value.status,
+      "unknown",
+    ) as ReleasePreviewValidationStatus,
+    ...(message === undefined ? {} : { message }),
+    blockers: Array.isArray(value.blockers)
+      ? value.blockers.filter(isRecord).map((blocker) => ({
+          code: toStringValue(blocker.code),
+          message: toStringValue(blocker.message),
+          path: toStringValue(blocker.path),
+        }))
+      : [],
+  };
 }
 
 function parseValidation(value: unknown): ReleasePreviewValidation {

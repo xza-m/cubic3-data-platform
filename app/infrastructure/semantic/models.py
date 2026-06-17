@@ -31,7 +31,7 @@ class SemanticAssetORM(db.Model):
     status = Column(String(32), nullable=False, default="draft")
     current_revision_id = Column(String(128), nullable=True)
     current_release_id = Column(String(128), nullable=True)
-    owner_principal_id = Column(String(128), nullable=True)
+    owner_principal_id = Column(String(191), nullable=True)
     source_kind = Column(String(32), nullable=False, default="human")
     created_at = Column(DateTime, nullable=False, default=utcnow)
     updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
@@ -60,7 +60,7 @@ class SemanticAssetRevisionORM(db.Model):
     spec_checksum = Column(String(64), nullable=False)
     change_summary = Column(String(512), nullable=True)
     proposal_id = Column(String(128), nullable=True)
-    created_by = Column(String(128), nullable=True)
+    created_by = Column(String(191), nullable=True)
     created_at = Column(DateTime, nullable=False, default=utcnow)
 
 
@@ -114,8 +114,10 @@ class SemanticReleaseORM(db.Model):
     previous_release_id = Column(String(128), nullable=True)
     rollback_of_release_id = Column(String(128), nullable=True)
     idempotency_key = Column(String(128), nullable=True)
-    published_by = Column(String(128), nullable=True)
+    published_by = Column(String(191), nullable=True)
     published_at = Column(DateTime, nullable=True)
+    status_reason = Column(String(512), nullable=True)
+    status_changed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=utcnow)
 
 
@@ -176,7 +178,7 @@ class SemanticModelingAgentSessionORM(db.Model):
     )
 
     id = Column(String(128), primary_key=True)
-    principal_id = Column(String(128), nullable=True)
+    principal_id = Column(String(191), nullable=True)
     status = Column(String(32), nullable=False, default="active")
     state = Column(String(32), nullable=False, default="created")
     state_version = Column(Integer, nullable=False, default=1)
@@ -215,7 +217,7 @@ class SemanticModelingBuildProjectORM(db.Model):
     )
 
     id = Column(String(128), primary_key=True)
-    created_by = Column(String(128), nullable=True)
+    created_by = Column(String(191), nullable=True)
     status = Column(String(32), nullable=False, default="draft")
     payload_json = Column(JsonType, nullable=False, default=dict)
     version = Column(Integer, nullable=False, default=1)

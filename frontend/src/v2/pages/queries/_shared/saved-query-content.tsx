@@ -12,6 +12,7 @@ import type { SavedQuery, SavedQueryDetail, CreateSavedQueryPayload, UpdateSaved
 import { ActionIconButton } from '@v2/components/ActionIconButton'
 import { IdentityName } from '@v2/components/IdentityName'
 import { t } from '@v2/i18n'
+import { datasourceTypeLabel } from '@v2/lib/datasourceTypes'
 
 // ──────────────────────────────────────────────────────────────────────────
 // Tab label
@@ -402,7 +403,7 @@ export function CreateSavedQueryForm({
         >
           {datasources.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.name} · {s.source_type}
+              {s.name} · {datasourceTypeLabel(s.source_type)}
             </option>
           ))}
         </select>

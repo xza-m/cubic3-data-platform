@@ -14,6 +14,7 @@ from app.domain.ontology.entities import (
     OntologyHistoryEvent,
     GlossaryEntry,
     PolicyMetadata,
+    normalize_measure_refs,
 )
 from app.domain.ontology.ports.history_repository import IOntologyHistoryRepository
 from app.domain.ontology.ports.action_repository import IBusinessActionRepository
@@ -283,7 +284,7 @@ class OntologyDefinitionService:
                 "object_name": object_name,
                 "aliases": self._dedupe(payload.get("aliases")),
                 "semantic_labels": self._dedupe(payload.get("semantic_labels")),
-                "measure_refs": self._dedupe(payload.get("measure_refs")),
+                "measure_refs": normalize_measure_refs(payload.get("measure_refs")),
             }
         )
         self._metric_repository.save(entity)

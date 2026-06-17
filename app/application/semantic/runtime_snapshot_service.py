@@ -22,6 +22,27 @@ class RuntimeSnapshotService:
         snapshot = self._runtime_snapshot_repository.get_active_snapshot(namespace)
         if snapshot is None:
             return {"ok": False, "error_code": "semantic_runtime_not_ready"}
+        return self._build_manifest(snapshot)
+
+    def get_manifest_for_release(self, release_id: str) -> dict[str, Any]:
+        """按不可变 release_id 读取 manifest（pinned 消费方 / 审计回放入口）。
+
+        superseded / deprecated release 仍可读取（deprecated 携带告警）；
+        revoked release 一律阻断。
+        """
+        get_snapshot = getattr(self._runtime_snapshot_repository, "get_snapshot_by_release_id", None)
+        if not callable(get_snapshot):
+            return {"ok": False, "error_code": "semantic_runtime_release_pin_unsupported"}
+        snapshot = get_snapshot(release_id)
+        if snapshot is None:
+            return {
+                "ok": False,
+                "error_code": "semantic_runtime_release_not_found",
+                "release_id": release_id,
+            }
+        return self._build_manifest(snapshot)
+
+    def _build_manifest(self, snapshot: RuntimeSnapshot) -> dict[str, Any]:
         release = self._runtime_snapshot_repository.get_release(snapshot.release_id)
         for manifest_name, manifest in (
             ("asset_manifest_json", snapshot.asset_manifest_json),
@@ -69,10 +90,25 @@ class RuntimeSnapshotService:
                 "snapshot_id": snapshot.id,
                 "release_id": snapshot.release_id,
             }
+        # §6.1 release 状态机：revoked 阻断（fail closed），deprecated 携带告警
+        if release.status == "revoked":
+            return {
+                "ok": False,
+                "error_code": "release_revoked",
+                "snapshot_id": snapshot.id,
+                "release_id": snapshot.release_id,
+                "release_status": release.status,
+                "status_reason": release.status_reason,
+            }
+        warnings: list[str] = []
+        if release.status == "deprecated":
+            warnings.append("release_deprecated")
         return {
             "ok": True,
             "snapshot_id": snapshot.id,
             "release_id": snapshot.release_id,
+            "release_status": release.status,
+            "warnings": warnings,
             "version_pin": self._version_pin(snapshot=snapshot, release=release, asset_trace=asset_trace),
             "asset_trace": asset_trace,
             "binding_trace": self._manifest_trace(snapshot.binding_manifest_json, collection_key="bindings"),

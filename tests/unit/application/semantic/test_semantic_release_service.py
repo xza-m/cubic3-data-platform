@@ -196,6 +196,145 @@ def test_semantic_release_service_reuses_published_idempotency_key(db_session):
     assert db_session.query(SemanticReleaseORM).count() == 1
 
 
+def test_publish_supersedes_previous_release_explicitly(db_session):
+    """§6.1 状态机：新发布后旧 release 显式落为 superseded，而非停留在 published。"""
+    repo = SqlAssetRegistryRepository(db_session)
+    release_service = SemanticReleaseService(repo)
+    asset = repo.create_or_update_asset(
+        SemanticAsset(
+            id="asset_student_comment",
+            namespace="qa_live_1",
+            asset_type="cube",
+            asset_key="student_comment",
+        )
+    )
+    revision_v1 = repo.append_revision(asset.id, {"cube": {"name": "student_comment", "v": 1}})
+    release_v1 = release_service.publish(
+        namespace="qa_live_1",
+        revision_ids=[revision_v1.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_1",
+    )
+    revision_v2 = repo.append_revision(
+        asset.id, {"cube": {"name": "student_comment", "v": 2}}, force_new_revision=True
+    )
+    release_v2 = release_service.publish(
+        namespace="qa_live_1",
+        revision_ids=[revision_v2.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_2",
+    )
+
+    assert repo.get_release(release_v1.id).status == "superseded"
+    assert repo.get_release(release_v2.id).status == "published"
+    assert repo.get_active_release_id("qa_live_1") == release_v2.id
+
+
+def test_release_deprecate_and_revoke_state_machine(db_session):
+    repo = SqlAssetRegistryRepository(db_session)
+    release_service = SemanticReleaseService(repo)
+    asset = repo.create_or_update_asset(
+        SemanticAsset(
+            id="asset_student_comment",
+            namespace="qa_live_1",
+            asset_type="cube",
+            asset_key="student_comment",
+        )
+    )
+    revision = repo.append_revision(asset.id, {"cube": {"name": "student_comment"}})
+    release = release_service.publish(
+        namespace="qa_live_1",
+        revision_ids=[revision.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_1",
+    )
+
+    deprecated = release_service.deprecate(release_id=release.id, actor="alice", reason="口径待替换")
+    assert deprecated.status == "deprecated"
+    assert deprecated.status_reason == "口径待替换"
+    assert deprecated.status_changed_at is not None
+
+    revoked = release_service.revoke(release_id=release.id, actor="alice", reason="口径错误召回")
+    assert revoked.status == "revoked"
+    assert revoked.status_reason == "口径错误召回"
+
+    # revoked 是终态：不可再 deprecate
+    with pytest.raises(ValueError, match="semantic_release_invalid_transition"):
+        release_service.deprecate(release_id=release.id, actor="alice")
+    with pytest.raises(ValueError, match="semantic_release_invalid_transition"):
+        release_service.revoke(release_id=release.id, actor="alice", reason="再次撤销")
+
+
+def test_release_transition_rejects_unknown_release(db_session):
+    repo = SqlAssetRegistryRepository(db_session)
+    release_service = SemanticReleaseService(repo)
+
+    with pytest.raises(ValueError, match="not found"):
+        release_service.revoke(release_id="rel_missing", actor="alice", reason="召回")
+
+
+def test_publish_declares_compatibility_against_previous_manifest(db_session):
+    """§6.1 publish gate 增项：声明对上一 release 的兼容性。"""
+    repo = SqlAssetRegistryRepository(db_session)
+    release_service = SemanticReleaseService(repo)
+    asset_a = repo.create_or_update_asset(
+        SemanticAsset(
+            id="asset_a",
+            namespace="qa_live_1",
+            asset_type="cube",
+            asset_key="cube_a",
+        )
+    )
+    asset_b = repo.create_or_update_asset(
+        SemanticAsset(
+            id="asset_b",
+            namespace="qa_live_1",
+            asset_type="cube",
+            asset_key="cube_b",
+        )
+    )
+    revision_a1 = repo.append_revision(asset_a.id, {"cube": {"name": "cube_a", "v": 1}})
+    first = release_service.publish(
+        namespace="qa_live_1",
+        revision_ids=[revision_a1.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_1",
+    )
+    assert first.gate_result_json["compatibility"]["level"] == "compatible"
+    assert first.gate_result_json["compatibility"]["added_assets"] == ["cube:cube_a"]
+
+    # 同 key 资产变更：compatible + changed_assets
+    revision_a2 = repo.append_revision(
+        asset_a.id, {"cube": {"name": "cube_a", "v": 2}}, force_new_revision=True
+    )
+    second = release_service.publish(
+        namespace="qa_live_1",
+        revision_ids=[revision_a2.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_2",
+    )
+    assert second.gate_result_json["compatibility"]["level"] == "compatible"
+    assert second.gate_result_json["compatibility"]["changed_assets"] == ["cube:cube_a"]
+
+    # 发布另一个资产：cube_a 退出运行时 manifest → breaking + removed_assets
+    revision_b1 = repo.append_revision(asset_b.id, {"cube": {"name": "cube_b", "v": 1}})
+    third = release_service.publish(
+        namespace="qa_live_1",
+        revision_ids=[revision_b1.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_3",
+    )
+    assert third.gate_result_json["compatibility"]["level"] == "breaking"
+    assert third.gate_result_json["compatibility"]["removed_assets"] == ["cube:cube_a"]
+    assert third.gate_result_json["compatibility"]["added_assets"] == ["cube:cube_b"]
+
+
 def test_semantic_release_service_rollback_creates_new_release_and_snapshot(db_session):
     repo = SqlAssetRegistryRepository(db_session)
     release_service = SemanticReleaseService(repo)

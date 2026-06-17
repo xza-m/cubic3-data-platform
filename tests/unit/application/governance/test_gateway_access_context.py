@@ -46,3 +46,96 @@ def test_gateway_access_context_uses_ticket_preview_as_fallback():
     assert context["resource_refs"] == [{"project": "dw", "table": "ads_user"}]
     assert context["sql_hashes"] == ["ticket-hash"]
     assert context["ticket"]["id"] == "ticket-2"
+
+
+def test_gateway_access_context_upgrades_to_v2_when_row_scope_present():
+    context = build_gateway_access_context(
+        policy_decision={
+            "decision_id": "pd-3",
+            "decision": "allow",
+            "effective_row_scope": {
+                "version": "v1",
+                "subject_principal_id": "user:alice",
+                "entries": [
+                    {
+                        "table": "dwd_comment_reports",
+                        "column": "school_id",
+                        "operator": "in",
+                        "values": ["s_001"],
+                        "policy_code": "m2_detail_read",
+                        "dimension_ref": "comment_reports.school_id",
+                    }
+                ],
+            },
+        },
+        ticket_preview={
+            "sql_hashes": ["hash-1"],
+            "release_id": "rel-9",
+            "scoped_table_refs": [
+                {"table": "dwd_comment_reports", "alias": "comment_reports", "scan_anchor": "from"}
+            ],
+            "acting_principal_id": "service:agent-1",
+            "subject_principal_id": "user:alice",
+        },
+        principal_context={"principal_id": "service:agent-1"},
+    )
+
+    assert context["schema"] == "GatewayAccessContext.v2"
+    assert context["row_scope"][0]["column"] == "school_id"
+    assert context["release_id"] == "rel-9"
+    assert context["scoped_table_refs"][0]["scan_anchor"] == "from"
+    assert context["acting_principal_id"] == "service:agent-1"
+    assert context["subject_principal_id"] == "user:alice"
+
+
+def test_gateway_access_context_stays_v1_without_row_scope():
+    context = build_gateway_access_context(
+        policy_decision={"decision": "allow"},
+        ticket_preview={"sql_hashes": ["hash-1"], "release_id": "rel-9"},
+    )
+
+    assert context["schema"] == "GatewayAccessContext.v1"
+    assert "row_scope" not in context
+    assert "release_id" not in context
+
+
+def _row_scope_decision(mode: str) -> dict:
+    return {
+        "decision_id": "pd-mode",
+        "decision": "allow",
+        "rls_enforcement_mode": mode,
+        "effective_row_scope": {
+            "version": "v1",
+            "subject_principal_id": "user:alice",
+            "entries": [
+                {
+                    "table": "dwd_comment_reports",
+                    "column": "school_id",
+                    "operator": "in",
+                    "values": ["s_001"],
+                    "policy_code": "m2_detail_read",
+                }
+            ],
+        },
+    }
+
+
+def test_gateway_access_context_observe_mode_stays_v1_zero_gateway_impact():
+    """observe：即便有 row_scope，也维持 v1、不下发 row_scope，网关零感知。"""
+    context = build_gateway_access_context(
+        policy_decision=_row_scope_decision("observe"),
+        ticket_preview={"sql_hashes": ["hash-1"]},
+    )
+
+    assert context["schema"] == "GatewayAccessContext.v1"
+    assert "row_scope" not in context
+
+
+def test_gateway_access_context_deny_mode_promotes_to_v2():
+    context = build_gateway_access_context(
+        policy_decision=_row_scope_decision("deny"),
+        ticket_preview={"sql_hashes": ["hash-1"]},
+    )
+
+    assert context["schema"] == "GatewayAccessContext.v2"
+    assert context["row_scope"][0]["column"] == "school_id"

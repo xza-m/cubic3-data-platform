@@ -128,7 +128,16 @@ def test_subscription_repository_covers_relation_queries_and_filters():
     assert total == 4
     assert repo.find_by_app_instance(2, enabled_only=True) == ["subscription"]
     assert repo.find_by_app_instance(2, enabled_only=False) == ["subscription"]
-    assert repo.find_matching_subscriptions("task.completed") == ["subscription"]
+
+    # find_matching_subscriptions 改为 Python 侧按 event_types 过滤，
+    # 需返回带 event_types 属性的对象而非纯字符串。
+    matched = MagicMock()
+    matched.event_types = ["task.completed"]
+    unmatched = MagicMock()
+    unmatched.event_types = ["task.failed"]
+    query.all.return_value = [matched, unmatched]
+    assert repo.find_matching_subscriptions("task.completed") == [matched]
+    query.all.return_value = ["subscription"]
     repo.delete(entity)
     repo.commit()
 

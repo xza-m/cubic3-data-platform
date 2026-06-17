@@ -119,6 +119,18 @@ class TestSchemaBrowserServiceUnit:
         assert len(result["tables"]) == 2
         assert result["tables"][0]["table_name"] == "user_event"
 
+    def test_list_tables_preserves_zero_row_count(self):
+        """Boundary: 0 是合法行数，不能被 row_count_estimate fallback 覆盖。"""
+        adapter = _make_mock_adapter(
+            tables=[{"table_name": "empty_table", "row_count": 0, "row_count_estimate": 999}]
+        )
+        svc = _make_isolated_service()
+
+        with patch.object(svc, "_get_adapter", return_value=adapter):
+            result = svc.list_tables(1, "ods")
+
+        assert result["tables"][0]["row_count"] == 0
+
     def test_get_table_schema_happy(self):
         """Happy: 返回字段详情，含 columns + row_count_estimate。"""
         adapter = _make_mock_adapter()
@@ -133,6 +145,21 @@ class TestSchemaBrowserServiceUnit:
         assert result["columns"][0]["nullable"] is False
         assert "row_count_estimate" in result
         assert "fetched_at" in result
+
+    def test_get_table_schema_keeps_unknown_row_count(self):
+        """Boundary: adapter 返回 None 时，前端应收到 unknown 而不是伪 0。"""
+        adapter = _make_mock_adapter()
+        adapter.get_table_schema.return_value = {
+            "table_name": "empty_table",
+            "columns": [{"name": "id", "type": "bigint", "is_nullable": False}],
+            "row_count": None,
+        }
+        svc = _make_isolated_service()
+
+        with patch.object(svc, "_get_adapter", return_value=adapter):
+            result = svc.get_table_schema(1, "ods", "empty_table")
+
+        assert result["row_count_estimate"] is None
 
     def test_datasource_not_found_raises(self):
         """Error: 数据源不存在时抛出 ApplicationException。"""
@@ -233,6 +260,24 @@ class TestSchemaBrowserServiceCacheAndErrorBranches:
         with patch.object(svc, "_get_adapter", return_value=adapter):
             with pytest.raises(ApplicationException, match="获取表列表失败"):
                 svc.list_tables(1, "ods")
+
+    def test_list_tables_adapter_error_not_double_wrapped(self):
+        """Boundary: connector 错误已带用户提示时，服务层只加一次业务上下文。"""
+        from app.shared.exceptions import ApplicationException
+
+        adapter = MagicMock()
+        adapter.list_tables.side_effect = RuntimeError(
+            "MaxCompute 认证失败：AccessKey ID 不存在或无效，请检查数据源凭证后重新测试连接。"
+        )
+        svc = _make_isolated_service()
+
+        with patch.object(svc, "_get_adapter", return_value=adapter):
+            with pytest.raises(ApplicationException) as exc_info:
+                svc.list_tables(1, "ods")
+
+        message = str(exc_info.value)
+        assert message.startswith("获取表列表失败: MaxCompute 认证失败")
+        assert "获取表列表失败: 获取表列表失败" not in message
 
     def test_get_table_schema_uses_cache(self):
         """get_table_schema 第二次调用命中缓存（line 145）。"""

@@ -34,6 +34,8 @@ services:
       - ./instance:/app/instance
       - ./app:/app/app
       - ./wsgi.py:/app/wsgi.py:ro
+      # 只注入 Codex CLI 登录态文件，避免把 ~/.codex/worktrees 和缓存暴露给 Docker Desktop 文件共享。
+      - ${AGENT_CODEX_AUTH_FILE:-${HOME}/.codex/auth.json}:/root/.codex/auth.json:rw
     environment:
       # 本地 compose 固定使用内置 PostgreSQL，避免宿主机 DATABASE_URL 污染容器。
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/cubic3_data_platform
@@ -42,10 +44,25 @@ services:
       - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
       - FEISHU_APP_ID=${FEISHU_APP_ID}
       - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+      - FEISHU_ADMIN_OPEN_IDS=${FEISHU_ADMIN_OPEN_IDS}
+      - FEISHU_M2_READER_OPEN_IDS=${FEISHU_M2_READER_OPEN_IDS}
+      - FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST=${FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST:-true}
       - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID}
       - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET}
       - OSS_ENDPOINT=${OSS_ENDPOINT}
       - OSS_BUCKET_NAME=${OSS_BUCKET_NAME}
+      - SUPERSET_BASE_URL=${SUPERSET_BASE_URL}
+      - SUPERSET_USERNAME=${SUPERSET_USERNAME}
+      - SUPERSET_PASSWORD=${SUPERSET_PASSWORD}
+      - SUPERSET_JWT=${SUPERSET_JWT}
+      - SUPERSET_TIMEOUT=${SUPERSET_TIMEOUT:-20}
+      - SUPERSET_RETRY_MAX=${SUPERSET_RETRY_MAX:-3}
+      - SUPERSET_RETRY_BACKOFF=${SUPERSET_RETRY_BACKOFF:-1.5}
+      - SUPERSET_SCREENSHOT_MAX_WAIT=${SUPERSET_SCREENSHOT_MAX_WAIT:-60}
+      - SUPERSET_SCREENSHOT_POLL_INTERVAL=${SUPERSET_SCREENSHOT_POLL_INTERVAL:-3}
+      - SUPERSET_DASHBOARD_URL_TEMPLATE=${SUPERSET_DASHBOARD_URL_TEMPLATE}
+      - SUPERSET_VIEWPORT_WIDTH=${SUPERSET_VIEWPORT_WIDTH:-1920}
+      - SUPERSET_VIEWPORT_HEIGHT=${SUPERSET_VIEWPORT_HEIGHT:-1080}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost:81}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
@@ -92,6 +109,8 @@ services:
       - ./instance:/app/instance
       - ./app:/app/app
       - ./run_worker.py:/app/run_worker.py:ro
+      # 只注入 Codex CLI 登录态文件，避免把 ~/.codex/worktrees 和缓存暴露给 Docker Desktop 文件共享。
+      - ${AGENT_CODEX_AUTH_FILE:-${HOME}/.codex/auth.json}:/root/.codex/auth.json:rw
     environment:
       # 本地 compose 固定使用内置 PostgreSQL，避免宿主机 DATABASE_URL 污染容器。
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/cubic3_data_platform
@@ -99,8 +118,23 @@ services:
       - PYTHONPATH=/app
       - FEISHU_APP_ID=${FEISHU_APP_ID}
       - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
+      - FEISHU_ADMIN_OPEN_IDS=${FEISHU_ADMIN_OPEN_IDS}
+      - FEISHU_M2_READER_OPEN_IDS=${FEISHU_M2_READER_OPEN_IDS}
+      - FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST=${FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST:-true}
       - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID}
       - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET}
+      - SUPERSET_BASE_URL=${SUPERSET_BASE_URL}
+      - SUPERSET_USERNAME=${SUPERSET_USERNAME}
+      - SUPERSET_PASSWORD=${SUPERSET_PASSWORD}
+      - SUPERSET_JWT=${SUPERSET_JWT}
+      - SUPERSET_TIMEOUT=${SUPERSET_TIMEOUT:-20}
+      - SUPERSET_RETRY_MAX=${SUPERSET_RETRY_MAX:-3}
+      - SUPERSET_RETRY_BACKOFF=${SUPERSET_RETRY_BACKOFF:-1.5}
+      - SUPERSET_SCREENSHOT_MAX_WAIT=${SUPERSET_SCREENSHOT_MAX_WAIT:-60}
+      - SUPERSET_SCREENSHOT_POLL_INTERVAL=${SUPERSET_SCREENSHOT_POLL_INTERVAL:-3}
+      - SUPERSET_DASHBOARD_URL_TEMPLATE=${SUPERSET_DASHBOARD_URL_TEMPLATE}
+      - SUPERSET_VIEWPORT_WIDTH=${SUPERSET_VIEWPORT_WIDTH:-1920}
+      - SUPERSET_VIEWPORT_HEIGHT=${SUPERSET_VIEWPORT_HEIGHT:-1080}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost:81}
       - LLM_API_KEY=${LLM_API_KEY}
       - LLM_API_BASE=${LLM_API_BASE:-https://api.openai.com/v1}

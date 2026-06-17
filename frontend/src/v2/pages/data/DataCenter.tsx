@@ -1,0 +1,936 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import {
+  Activity,
+  AlertCircle,
+  ArrowRight,
+  Boxes,
+  Database,
+  GitBranch,
+  RefreshCw,
+  ServerCog,
+  ShieldCheck,
+  Table2,
+} from 'lucide-react'
+import { useDatasources, useTestConnection } from '@v2/hooks/datasources'
+import { useDatasets } from '@v2/hooks/datasets'
+import type { Datasource } from '@v2/api/datasources'
+import type { Dataset } from '@v2/api/datasets'
+import { Button, Table, type TableColumn } from '@v2/components/ui'
+import { CreateButton, RefreshButton, Toolbar, ToolbarSearch } from '@v2/components/CommonControls'
+import { RetryState } from '@v2/components/LoadState'
+import { useToast } from '@v2/components/ui/Toast'
+import { useAppShell } from '@v2/layout/AppShell'
+import { fmtDateTime } from '@v2/lib/format'
+import { isConnectedDatasourceStatus, normalizeDatasourceConnectionStatus } from '@v2/lib/factSources'
+import { t } from '@v2/i18n'
+import {
+  connectionStatusChip,
+  datasourceTypeLabel,
+  DatasourceTypeIcon,
+} from './_shared/datasource-detail-content'
+import { syncStatusChip } from './_shared/dataset-detail-content'
+import { DATA_CENTER_TABS, dataCenterTabFromPath } from './_shared/data-center-tabs'
+import { DataCenterNavTabs } from './_shared/data-center-nav'
+
+function assetSourceId(asset: Dataset): number | null {
+  return asset.source_id ?? asset.datasource_id ?? null
+}
+
+function assetSourceName(asset: Dataset, sourceNameById: Map<number, string>): string {
+  const sourceId = assetSourceId(asset)
+  if (sourceId != null) return asset.datasource_name ?? sourceNameById.get(sourceId) ?? `#${sourceId}`
+  return asset.datasource_name ?? '-'
+}
+
+export default function DataCenter() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const toast = useToast()
+  const { setBreadcrumbs, setTopBarActions, setContextPanel } = useAppShell()
+  const [keyword, setKeyword] = useState('')
+  const [testingId, setTestingId] = useState<number | null>(null)
+  const activeTab = dataCenterTabFromPath(location.pathname)
+
+  const datasources = useDatasources({ page: 1, page_size: 100 })
+  const datasets = useDatasets({ page: 1, page_size: 100 })
+  const testConnection = useTestConnection()
+
+  const sourceRows = useMemo(() => datasources.data?.items ?? [], [datasources.data?.items])
+  const assetRows = useMemo(() => datasets.data?.items ?? [], [datasets.data?.items])
+
+  const sourceNameById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const source of sourceRows) map.set(source.id, source.name)
+    return map
+  }, [sourceRows])
+
+  const assetCountBySource = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const asset of assetRows) {
+      const sourceId = assetSourceId(asset)
+      if (sourceId == null) continue
+      map.set(sourceId, (map.get(sourceId) ?? 0) + 1)
+    }
+    return map
+  }, [assetRows])
+
+  const filteredSources = useMemo(() => {
+    const query = keyword.trim().toLowerCase()
+    if (!query) return sourceRows
+    return sourceRows.filter((source) =>
+      [source.name, source.description, datasourceTypeLabel(source.source_type)]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)),
+    )
+  }, [keyword, sourceRows])
+
+  const filteredAssets = useMemo(() => {
+    const query = keyword.trim().toLowerCase()
+    if (!query) return assetRows
+    return assetRows.filter((asset) =>
+      [
+        asset.dataset_name,
+        asset.dataset_code,
+        asset.physical_table,
+        asset.owner,
+        assetSourceName(asset, sourceNameById),
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query)),
+    )
+  }, [assetRows, keyword, sourceNameById])
+
+  const summary = useMemo(() => {
+    const connected = sourceRows.filter((source) => isConnectedDatasourceStatus(source.connection_status)).length
+    const failedConnections = sourceRows.filter(
+      (source) => normalizeDatasourceConnectionStatus(source.connection_status) === 'failed',
+    ).length
+    const pendingConnections = sourceRows.filter(
+      (source) => normalizeDatasourceConnectionStatus(source.connection_status) === 'unknown',
+    ).length
+    const failedAssets = assetRows.filter((asset) => asset.sync_status === 'failed').length
+    const syncedAssets = assetRows.filter((asset) => asset.sync_status === 'synced').length
+    return {
+      connected,
+      failedConnections,
+      pendingConnections,
+      failedAssets,
+      syncedAssets,
+      sourceTotal: sourceRows.length,
+      assetTotal: assetRows.length,
+    }
+  }, [assetRows, sourceRows])
+
+  const handleRefreshAll = useCallback(async () => {
+    const [sourceResult, assetResult] = await Promise.all([datasources.refetch(), datasets.refetch()])
+    const ok = sourceResult.status === 'success' && assetResult.status === 'success'
+    toast.show({
+      title: ok ? t('dataCenter.toast.refreshed', '已刷新数据中心') : t('dataCenter.toast.partial', '刷新未完成'),
+      description: ok
+        ? t('dataCenter.toast.refreshedDesc', '连接、资产与同步摘要已更新。')
+        : t('dataCenter.toast.partialDesc', '部分数据加载失败，请查看页面错误态。'),
+      tone: ok ? 'success' : 'warning',
+    })
+  }, [datasources, datasets, toast])
+
+  const handleTestConnection = useCallback(
+    async (source: Datasource) => {
+      if (testingId != null) return
+      setTestingId(source.id)
+      try {
+        const result = await testConnection.mutateAsync(source.id)
+        toast.show({
+          title: result.ok ? t('dataCenter.toast.testPassed', '连接测试通过') : t('dataCenter.toast.testFailed', '连接测试未通过'),
+          description: `${source.name} · ${result.message || result.error_message || ''}`.trim(),
+          tone: result.ok ? 'success' : 'danger',
+        })
+        await datasources.refetch()
+      } catch (error) {
+        toast.show({
+          title: t('dataCenter.toast.testFailed', '连接测试未通过'),
+          description: error instanceof Error ? error.message : source.name,
+          tone: 'danger',
+        })
+      } finally {
+        setTestingId(null)
+      }
+    },
+    [datasources, testConnection, testingId, toast],
+  )
+
+  useEffect(() => {
+    const current = DATA_CENTER_TABS.find((tab) => tab.id === activeTab)
+    setBreadcrumbs([
+      t('dataCenter.breadcrumb.data', '数据'),
+      t('dataCenter.breadcrumb.center', '数据中心'),
+      current?.label ?? t('dataCenter.tab.overview', '概览'),
+    ])
+  }, [activeTab, setBreadcrumbs])
+
+  useEffect(() => {
+    const primaryAction =
+      activeTab === 'assets'
+        ? { label: t('dataCenter.action.registerAsset', '登记资产'), to: '/data-center/assets/register' }
+        : activeTab === 'sync'
+          ? { label: t('dataCenter.action.createTask', '新建任务'), to: '/data-center/sync/tasks/new' }
+          : activeTab === 'impact'
+            ? null
+            : { label: t('dataCenter.action.createConnection', '新建连接'), to: '/data-center/connections/new' }
+
+    setTopBarActions(
+      <Toolbar>
+        <RefreshButton
+          onClick={() => void handleRefreshAll()}
+          loading={datasources.isFetching || datasets.isFetching}
+          label={t('dataCenter.action.refresh', '刷新数据中心')}
+          ariaLabel={t('dataCenter.action.refresh', '刷新数据中心')}
+        />
+        {primaryAction ? (
+          <CreateButton label={primaryAction.label} onClick={() => navigate(primaryAction.to)} />
+        ) : null}
+      </Toolbar>,
+    )
+    return () => setTopBarActions(null)
+  }, [activeTab, datasources.isFetching, datasets.isFetching, handleRefreshAll, navigate, setTopBarActions])
+
+  useEffect(() => {
+    setContextPanel({
+      title: t('dataCenter.ctx.title', '数据中心'),
+      subtitle: t('dataCenter.ctx.subtitle', '按连接、资产、同步和影响组织数据中心能力。'),
+      body: (
+        <div className="space-y-4 px-4 py-4 text-xs">
+          <ContextSection title={t('dataCenter.ctx.boundary', '产品边界')}>
+            <p className="leading-5 text-3">
+              {t('dataCenter.ctx.boundaryDesc', '数据中心承接连接、资产目录、同步任务和影响分析；语义中心负责语义资产持久化与编译，gateway 负责执行物理 SQL。')}
+            </p>
+          </ContextSection>
+          <ContextSection title={t('dataCenter.ctx.launch', '上线判断')}>
+            <ul className="space-y-1 leading-5 text-3">
+              <li>{t('dataCenter.ctx.launchConnection', '连接状态入口唯一且可解释')}</li>
+              <li>{t('dataCenter.ctx.launchAsset', '资产目录不再暴露内部 Dataset 术语')}</li>
+              <li>{t('dataCenter.ctx.launchSync', '同步失败能直接定位下一步')}</li>
+              <li>{t('dataCenter.ctx.launchImpact', '影响分析只展示消费者关系，不暴露 API')}</li>
+            </ul>
+          </ContextSection>
+          <ContextSection title={t('dataCenter.ctx.currentData', '当前数据')}>
+            <div className="grid grid-cols-2 gap-2">
+              <MiniStat label={t('dataCenter.unit.connection', '连接')} value={summary.sourceTotal} />
+              <MiniStat label={t('dataCenter.unit.asset', '资产')} value={summary.assetTotal} />
+            </div>
+          </ContextSection>
+        </div>
+      ),
+    })
+    return () => setContextPanel(null)
+  }, [setContextPanel, summary.assetTotal, summary.sourceTotal])
+
+  const loading = datasources.isLoading || datasets.isLoading
+  const error = datasources.error ?? datasets.error
+  const isError = datasources.isError || datasets.isError
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className="border-b px-5 py-4"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium"
+                style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+              >
+                {t('dataCenter.hero.badge', '数据中心')}
+              </span>
+              <span className="text-[11px] text-3">{t('dataCenter.hero.kicker', '连接、资产、同步与影响分析')}</span>
+            </div>
+            <h1 className="mt-2 text-[20px] font-semibold text-1">{t('dataCenter.hero.title', '数据中心')}</h1>
+            <p className="mt-1 max-w-3xl text-[12px] leading-5 text-3">
+              {t('dataCenter.hero.desc', '按“连接 → 资产 → 同步 → 影响”的任务路径组织数据中心能力，不改变语义中心与 gateway 的职责边界。')}
+            </p>
+          </div>
+          <WorkflowStrip />
+        </div>
+      </div>
+
+      <div className="shrink-0 px-5 pt-3">
+        <DataCenterNavTabs />
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
+        {isError ? (
+          <RetryState
+            message={error instanceof Error ? error.message : t('dataCenter.error.loadFailed', '加载数据中心失败')}
+            onRetry={() => void handleRefreshAll()}
+            retryAriaLabel={t('dataCenter.error.retry', '重试加载数据中心')}
+          />
+        ) : loading ? (
+          <DataCenterSkeleton />
+        ) : (
+          <>
+            {activeTab === 'overview' ? (
+              <OverviewPanel
+                summary={summary}
+                sources={sourceRows}
+                assets={assetRows}
+                onOpenConnections={() => navigate('/data-center/connections')}
+                onOpenAssets={() => navigate('/data-center/assets')}
+              />
+            ) : null}
+            {activeTab === 'connections' ? (
+              <ConnectionsPanel
+                rows={filteredSources}
+                keyword={keyword}
+                onKeywordChange={setKeyword}
+                assetCountBySource={assetCountBySource}
+                testingId={testingId}
+                onTestConnection={handleTestConnection}
+                onOpenDetail={(source) => navigate(`/data-center/connections/${source.id}`)}
+              />
+            ) : null}
+            {activeTab === 'assets' ? (
+              <AssetsPanel
+                rows={filteredAssets}
+                keyword={keyword}
+                onKeywordChange={setKeyword}
+                sourceNameById={sourceNameById}
+                onOpenDetail={(asset) => navigate(`/data-center/assets/${asset.id}`)}
+              />
+            ) : null}
+            {activeTab === 'sync' ? (
+              <SyncPanel sources={sourceRows} assets={assetRows} sourceNameById={sourceNameById} />
+            ) : null}
+            {activeTab === 'impact' ? (
+              <ImpactPanel sources={sourceRows} assets={assetRows} sourceNameById={sourceNameById} />
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function WorkflowStrip() {
+  const steps = [
+    { label: t('dataCenter.workflow.connection', '连接'), icon: ServerCog },
+    { label: t('dataCenter.workflow.asset', '资产'), icon: Boxes },
+    { label: t('dataCenter.workflow.sync', '同步'), icon: RefreshCw },
+    { label: t('dataCenter.workflow.impact', '影响'), icon: GitBranch },
+  ]
+  return (
+    <div
+      className="flex h-10 items-center rounded-md border px-3"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+    >
+      {steps.map((step, index) => (
+        <div key={step.label} className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-2">
+            <step.icon size={13} aria-hidden />
+            {step.label}
+          </span>
+          {index < steps.length - 1 ? <ArrowRight size={12} className="mx-2 text-3" aria-hidden /> : null}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function OverviewPanel({
+  summary,
+  sources,
+  assets,
+  onOpenConnections,
+  onOpenAssets,
+}: {
+  summary: {
+    connected: number
+    failedConnections: number
+    pendingConnections: number
+    failedAssets: number
+    syncedAssets: number
+    sourceTotal: number
+    assetTotal: number
+  }
+  sources: Datasource[]
+  assets: Dataset[]
+  onOpenConnections: () => void
+  onOpenAssets: () => void
+}) {
+  const risks = [
+    {
+      label: t('dataCenter.risk.failedConnection', '异常连接'),
+      value: summary.failedConnections,
+      tone: summary.failedConnections > 0 ? 'danger' : 'neutral',
+    },
+    {
+      label: t('dataCenter.risk.pendingConnection', '待测试连接'),
+      value: summary.pendingConnections,
+      tone: summary.pendingConnections > 0 ? 'warning' : 'neutral',
+    },
+    {
+      label: t('dataCenter.risk.failedAsset', '同步失败资产'),
+      value: summary.failedAssets,
+      tone: summary.failedAssets > 0 ? 'danger' : 'neutral',
+    },
+  ] as const
+
+  return (
+    <div className="space-y-4 overflow-auto scroll-thin">
+      <div className="grid grid-cols-4 gap-3">
+        <MetricCard title={t('dataCenter.metric.connections', '连接总数')} value={summary.sourceTotal} icon={ServerCog} helper={t('dataCenter.metric.connectionsDesc', '可测试、可同步的外部连接')} />
+        <MetricCard title={t('dataCenter.metric.connected', '连通连接')} value={summary.connected} icon={ShieldCheck} helper={t('dataCenter.metric.connectedDesc', '最近测试通过的连接')} tone="success" />
+        <MetricCard title={t('dataCenter.metric.assets', '数据资产')} value={summary.assetTotal} icon={Boxes} helper={t('dataCenter.metric.assetsDesc', '已登记或可运营的表资产')} />
+        <MetricCard title={t('dataCenter.metric.syncedAssets', '已同步资产')} value={summary.syncedAssets} icon={Table2} helper={t('dataCenter.metric.syncedAssetsDesc', '字段结构可用的资产')} tone="success" />
+      </div>
+
+      <div className="grid min-h-[320px] grid-cols-[1.4fr_1fr] gap-4">
+        <Panel title={t('dataCenter.overview.todo', '今日待处理')} subtitle={t('dataCenter.overview.todoDesc', '把分散的错误和未知态收敛成运营队列。')}>
+          <div className="grid grid-cols-3 gap-2">
+            {risks.map((risk) => (
+              <RiskCard key={risk.label} label={risk.label} value={risk.value} tone={risk.tone} />
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <TaskCard
+              icon={ServerCog}
+              title={t('dataCenter.task.checkConnection', '检查连接健康')}
+              description={t('dataCenter.task.checkConnectionDesc', '优先处理异常或尚未测试的数据连接。')}
+              cta={t('dataCenter.task.openConnections', '进入连接管理')}
+              onClick={onOpenConnections}
+            />
+            <TaskCard
+              icon={Boxes}
+              title={t('dataCenter.task.confirmAssets', '确认资产目录')}
+              description={t('dataCenter.task.confirmAssetsDesc', '从已连通的数据连接沉淀可用于语义建设的表资产。')}
+              cta={t('dataCenter.task.openAssets', '进入资产目录')}
+              onClick={onOpenAssets}
+            />
+          </div>
+        </Panel>
+
+        <Panel title={t('dataCenter.overview.recentObjects', '最近运营对象')} subtitle={t('dataCenter.overview.recentObjectsDesc', '按工作对象而不是内部 API 组织。')}>
+          <div className="space-y-2">
+            {sources.slice(0, 3).map((source) => (
+              <ObjectRow
+                key={`source-${source.id}`}
+                icon={<DatasourceTypeIcon type={source.source_type} size="sm" />}
+                title={source.name}
+                subtitle={`${datasourceTypeLabel(source.source_type)} · ${fmtDateTime(source.updated_at)}`}
+                meta={connectionStatusChip(source.connection_status)}
+              />
+            ))}
+            {assets.slice(0, 2).map((asset) => (
+              <ObjectRow
+                key={`asset-${asset.id}`}
+                icon={<Boxes size={16} />}
+                title={asset.dataset_name}
+                subtitle={asset.physical_table ?? asset.dataset_code}
+                meta={syncStatusChip(asset.sync_status)}
+              />
+            ))}
+          </div>
+        </Panel>
+      </div>
+    </div>
+  )
+}
+
+function ConnectionsPanel({
+  rows,
+  keyword,
+  onKeywordChange,
+  assetCountBySource,
+  testingId,
+  onTestConnection,
+  onOpenDetail,
+}: {
+  rows: Datasource[]
+  keyword: string
+  onKeywordChange: (value: string) => void
+  assetCountBySource: Map<number, number>
+  testingId: number | null
+  onTestConnection: (source: Datasource) => void
+  onOpenDetail: (source: Datasource) => void
+}) {
+  const columns = useMemo<TableColumn<Datasource>[]>(
+    () => [
+      {
+        key: 'name',
+        title: t('dataCenter.connection.col.name', '连接'),
+        render: (row) => (
+          <div className="flex min-w-0 items-center gap-2">
+            <DatasourceTypeIcon type={row.source_type} size="sm" />
+            <div className="min-w-0">
+              <div className="truncate text-xs font-medium text-1">{row.name}</div>
+              <div className="truncate text-[11px] text-3">{row.description || t('dataCenter.common.noDescription', '暂无描述')}</div>
+            </div>
+          </div>
+        ),
+      },
+      {
+        key: 'source_type',
+        title: t('dataCenter.connection.col.type', '类型'),
+        width: 120,
+        render: (row) => <span className="text-xs font-medium text-2">{datasourceTypeLabel(row.source_type)}</span>,
+      },
+      {
+        key: 'connection_status',
+        title: t('dataCenter.connection.col.status', '连接状态'),
+        width: 120,
+        render: (row) => connectionStatusChip(testingId === row.id ? 'pending' : row.connection_status),
+      },
+      {
+        key: 'assets',
+        title: t('dataCenter.connection.col.assets', '关联资产'),
+        width: 96,
+        render: (row) => <span className="text-xs tabular-nums text-2">{assetCountBySource.get(row.id) ?? 0}</span>,
+      },
+      {
+        key: 'last_test_at',
+        title: t('dataCenter.connection.col.lastTest', '最近测试'),
+        width: 150,
+        render: (row) => <span className="text-[11px] text-3">{fmtDateTime(row.last_test_at)}</span>,
+      },
+      {
+        key: 'actions',
+        title: t('dataCenter.common.actions', '操作'),
+        width: 190,
+        render: (row) => (
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={testingId === row.id}
+              disabled={testingId != null && testingId !== row.id}
+              onClick={(event) => {
+                event.stopPropagation()
+                onTestConnection(row)
+              }}
+            >
+              {t('dataCenter.connection.test', '测试连接')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenDetail(row)
+              }}
+            >
+              {t('dataCenter.common.detail', '详情')}
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [assetCountBySource, onOpenDetail, onTestConnection, testingId],
+  )
+
+  return (
+    <Panel
+      title={t('dataCenter.connection.title', '连接管理')}
+      subtitle={t('dataCenter.connection.subtitle', '把外部连接、凭证、连接测试和目录同步收敛到一个对象视角。')}
+      toolbar={<ToolbarSearch value={keyword} onChange={onKeywordChange} placeholder={t('dataCenter.connection.search', '搜索连接名称、类型或描述…')} width={300} />}
+      fullHeight
+    >
+      <Table columns={columns} rows={rows} rowKey={(row) => row.id} onRowClick={onOpenDetail} emptyText={t('dataCenter.connection.empty', '暂无连接')} />
+    </Panel>
+  )
+}
+
+function AssetsPanel({
+  rows,
+  keyword,
+  onKeywordChange,
+  sourceNameById,
+  onOpenDetail,
+}: {
+  rows: Dataset[]
+  keyword: string
+  onKeywordChange: (value: string) => void
+  sourceNameById: Map<number, string>
+  onOpenDetail: (asset: Dataset) => void
+}) {
+  const navigate = useNavigate()
+  const columns = useMemo<TableColumn<Dataset>[]>(
+    () => [
+      {
+        key: 'dataset_name',
+        title: t('dataCenter.asset.col.name', '资产'),
+        render: (row) => (
+          <div className="min-w-0">
+            <div className="truncate text-xs font-medium text-1">{row.dataset_name}</div>
+            <div className="truncate text-[11px] text-3">{row.physical_table ?? row.dataset_code}</div>
+          </div>
+        ),
+      },
+      {
+        key: 'source',
+        title: t('dataCenter.asset.col.source', '来源连接'),
+        width: 180,
+        render: (row) => <span className="text-xs text-2">{assetSourceName(row, sourceNameById)}</span>,
+      },
+      {
+        key: 'owner',
+        title: 'Owner',
+        width: 120,
+        render: (row) => <span className="text-xs text-2">{row.owner || '-'}</span>,
+      },
+      {
+        key: 'sync_status',
+        title: t('dataCenter.asset.col.sync', '同步'),
+        width: 110,
+        render: (row) => syncStatusChip(row.sync_status),
+      },
+      {
+        key: 'semantic_status',
+        title: t('dataCenter.asset.col.semantic', '语义状态'),
+        width: 120,
+        render: (row) => (
+          <span
+            className="inline-flex rounded px-1.5 py-0.5 text-xs font-medium"
+            style={{
+              background: row.sync_status === 'synced' ? 'var(--accent-soft)' : 'var(--bg-surface-2)',
+              color: row.sync_status === 'synced' ? 'var(--accent)' : 'var(--text-3)',
+            }}
+          >
+            {row.sync_status === 'synced' ? t('dataCenter.asset.semanticReady', '可建模') : t('dataCenter.asset.semanticPending', '需同步')}
+          </span>
+        ),
+      },
+      {
+        key: 'actions',
+        title: t('dataCenter.common.actions', '操作'),
+        width: 190,
+        render: (row) => (
+          <div className="flex items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(event) => {
+                event.stopPropagation()
+                navigate(`/semantic/modeling-workbench?dataset_id=${row.id}`)
+              }}
+            >
+              {t('dataCenter.asset.modeling', '语义建设')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenDetail(row)
+              }}
+            >
+              {t('dataCenter.common.detail', '详情')}
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [navigate, onOpenDetail, sourceNameById],
+  )
+
+  return (
+    <Panel
+      title={t('dataCenter.asset.title', '资产目录')}
+      subtitle={t('dataCenter.asset.subtitle', '把底层表和文件沉淀为用户能理解的数据资产目录。')}
+      toolbar={<ToolbarSearch value={keyword} onChange={onKeywordChange} placeholder={t('dataCenter.asset.search', '搜索资产、表路径、Owner…')} width={300} />}
+      fullHeight
+    >
+      <Table columns={columns} rows={rows} rowKey={(row) => row.id} onRowClick={onOpenDetail} emptyText={t('dataCenter.asset.empty', '暂无数据资产')} />
+    </Panel>
+  )
+}
+
+function SyncPanel({
+  sources,
+  assets,
+  sourceNameById,
+}: {
+  sources: Datasource[]
+  assets: Dataset[]
+  sourceNameById: Map<number, string>
+}) {
+  const rows = useMemo(() => {
+    const sourceRuns = sources.map((source) => ({
+      id: `source-${source.id}`,
+      object: source.name,
+      type: t('dataCenter.sync.catalog', '目录同步'),
+      status: isConnectedDatasourceStatus(source.connection_status)
+        ? t('dataCenter.sync.refreshable', '可刷新')
+        : t('dataCenter.sync.checkConnection', '需检查连接'),
+      tone: isConnectedDatasourceStatus(source.connection_status) ? 'success' : 'danger',
+      updatedAt: source.updated_at,
+      owner: datasourceTypeLabel(source.source_type),
+    }))
+    const assetRuns = assets.slice(0, 12).map((asset) => ({
+      id: `asset-${asset.id}`,
+      object: asset.dataset_name,
+      type: t('dataCenter.sync.fields', '字段同步'),
+      status: asset.sync_status === 'synced'
+        ? t('dataCenter.sync.synced', '已同步')
+        : asset.sync_status === 'failed'
+          ? t('dataCenter.sync.failed', '失败')
+          : t('dataCenter.sync.pending', '待同步'),
+      tone: asset.sync_status === 'synced' ? 'success' : asset.sync_status === 'failed' ? 'danger' : 'warning',
+      updatedAt: asset.last_sync_at ?? asset.updated_at,
+      owner: assetSourceName(asset, sourceNameById),
+    }))
+    return [...sourceRuns, ...assetRuns]
+  }, [assets, sourceNameById, sources])
+
+  const columns = useMemo<TableColumn<(typeof rows)[number]>[]>(
+    () => [
+      { key: 'object', title: t('dataCenter.sync.col.object', '对象'), render: (row) => <span className="text-xs font-medium text-1">{row.object}</span> },
+      { key: 'type', title: t('dataCenter.sync.col.type', '任务类型'), width: 120 },
+      {
+        key: 'status',
+        title: t('dataCenter.sync.col.status', '状态'),
+        width: 130,
+        render: (row) => (
+          <span
+            className="inline-flex rounded px-1.5 py-0.5 text-xs font-medium"
+            style={{
+              background: row.tone === 'danger' ? 'var(--danger-soft)' : row.tone === 'warning' ? 'var(--warning-soft)' : 'var(--success-soft)',
+              color: row.tone === 'danger' ? 'var(--danger)' : row.tone === 'warning' ? 'var(--warning)' : 'var(--success)',
+            }}
+          >
+            {row.status}
+          </span>
+        ),
+      },
+      { key: 'owner', title: t('dataCenter.sync.col.source', '来源'), width: 180 },
+      { key: 'updatedAt', title: t('dataCenter.sync.col.updatedAt', '最近更新'), width: 160, render: (row) => <span className="text-[11px] text-3">{fmtDateTime(row.updatedAt)}</span> },
+    ],
+    [],
+  )
+
+  return (
+    <Panel title={t('dataCenter.sync.title', '同步任务')} subtitle={t('dataCenter.sync.subtitle', '元数据刷新、字段同步、失败重试集中在任务视角，不散落到每个页面。')} fullHeight>
+      <Table columns={columns} rows={rows} rowKey={(row) => row.id} emptyText={t('dataCenter.sync.empty', '暂无同步任务')} />
+    </Panel>
+  )
+}
+
+function ImpactPanel({
+  sources,
+  assets,
+  sourceNameById,
+}: {
+  sources: Datasource[]
+  assets: Dataset[]
+  sourceNameById: Map<number, string>
+}) {
+  const rows = useMemo(() => {
+    return assets.slice(0, 16).map((asset) => ({
+      id: asset.id,
+      asset: asset.dataset_name,
+      source: assetSourceName(asset, sourceNameById),
+      semantic: asset.sync_status === 'synced' ? t('dataCenter.impact.semanticReady', '可进入语义建设') : t('dataCenter.impact.semanticPending', '等待同步'),
+      consumers: asset.sync_status === 'synced' ? t('dataCenter.impact.consumers', '语义中心 / BI / Data Agent') : t('dataCenter.common.none', '暂无'),
+    }))
+  }, [assets, sourceNameById])
+
+  const columns = useMemo<TableColumn<(typeof rows)[number]>[]>(
+    () => [
+      { key: 'asset', title: t('dataCenter.impact.col.asset', '数据资产'), render: (row) => <span className="text-xs font-medium text-1">{row.asset}</span> },
+      { key: 'source', title: t('dataCenter.impact.col.source', '来源连接'), width: 180 },
+      { key: 'semantic', title: t('dataCenter.impact.col.semantic', '语义可用性'), width: 160 },
+      { key: 'consumers', title: t('dataCenter.impact.col.consumers', '潜在消费者'), width: 220 },
+    ],
+    [],
+  )
+
+  return (
+    <div className="grid min-h-0 flex-1 grid-cols-[1fr_300px] gap-4">
+      <Panel title={t('dataCenter.impact.title', '影响分析')} subtitle={t('dataCenter.impact.subtitle', '展示资产被哪些语义能力和消费端使用，不再把内部查询 API 当作用户入口。')} fullHeight>
+        <Table columns={columns} rows={rows} rowKey={(row) => row.id} emptyText={t('dataCenter.impact.empty', '暂无影响关系')} />
+      </Panel>
+      <Panel title={t('dataCenter.boundary.title', '职责边界')} subtitle={t('dataCenter.boundary.subtitle', '方案 B 不改变底层运行边界。')}>
+        <BoundaryItem icon={Boxes} title={t('dataCenter.boundary.dataCenter', '数据中心')} description={t('dataCenter.boundary.dataCenterDesc', '管理连接、目录、同步和资产影响。')} />
+        <BoundaryItem icon={Database} title={t('dataCenter.boundary.semantic', '语义中心')} description={t('dataCenter.boundary.semanticDesc', '持久化语义资产，封装语义到 SQL / Query Plan 的编译能力。')} />
+        <BoundaryItem icon={ShieldCheck} title="Gateway" description={t('dataCenter.boundary.gatewayDesc', '执行物理 SQL，不承接建模工具语义 spec。')} />
+        <div className="mt-4 rounded-md border p-3 text-[12px] leading-5 text-3" style={{ borderColor: 'var(--border)' }}>
+          {t('dataCenter.boundary.currentConnections', '当前连接 {n} 个，影响分析只做控制面展示；真实查询事实仍以 gateway 为准。', { n: sources.length })}
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
+function MetricCard({
+  title,
+  value,
+  helper,
+  icon: Icon,
+  tone = 'neutral',
+}: {
+  title: string
+  value: number
+  helper: string
+  icon: typeof Activity
+  tone?: 'neutral' | 'success'
+}) {
+  return (
+    <div className="rounded-md border p-4" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] font-medium text-3">{title}</span>
+        <Icon size={16} style={{ color: tone === 'success' ? 'var(--success)' : 'var(--accent)' }} />
+      </div>
+      <div className="mt-3 text-[26px] font-semibold tabular-nums text-1">{value}</div>
+      <div className="mt-1 text-[11px] text-3">{helper}</div>
+    </div>
+  )
+}
+
+function RiskCard({ label, value, tone }: { label: string; value: number; tone: 'danger' | 'warning' | 'neutral' }) {
+  const color = tone === 'danger' ? 'var(--danger)' : tone === 'warning' ? 'var(--warning)' : 'var(--text-2)'
+  return (
+    <div className="rounded-md border p-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
+      <div className="flex items-center gap-2 text-[12px] font-medium text-2">
+        <AlertCircle size={14} style={{ color }} />
+        {label}
+      </div>
+      <div className="mt-2 text-xl font-semibold tabular-nums" style={{ color }}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function TaskCard({
+  icon: Icon,
+  title,
+  description,
+  cta,
+  onClick,
+}: {
+  icon: typeof Activity
+  title: string
+  description: string
+  cta: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className="rounded-md border p-3 text-left transition-colors hover:bg-[color:var(--bg-surface-2)]"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-2 text-[13px] font-semibold text-1">
+        <Icon size={15} className="text-[color:var(--accent)]" />
+        {title}
+      </div>
+      <p className="mt-1 text-[12px] leading-5 text-3">{description}</p>
+      <div className="mt-3 inline-flex items-center gap-1 text-[12px] font-medium text-[color:var(--accent)]">
+        {cta}
+        <ArrowRight size={12} />
+      </div>
+    </button>
+  )
+}
+
+function Panel({
+  title,
+  subtitle,
+  toolbar,
+  children,
+  fullHeight = false,
+}: {
+  title: string
+  subtitle: string
+  toolbar?: React.ReactNode
+  children: React.ReactNode
+  fullHeight?: boolean
+}) {
+  return (
+    <section
+      className={`min-h-0 rounded-md border ${fullHeight ? 'flex flex-1 flex-col overflow-hidden' : ''}`}
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+    >
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+        <div className="min-w-0">
+          <h2 className="text-[14px] font-semibold text-1">{title}</h2>
+          <p className="mt-1 text-[12px] leading-5 text-3">{subtitle}</p>
+        </div>
+        {toolbar ? <div className="shrink-0">{toolbar}</div> : null}
+      </div>
+      <div className={fullHeight ? 'min-h-0 flex-1 overflow-hidden p-3' : 'p-3'}>{children}</div>
+    </section>
+  )
+}
+
+function ObjectRow({
+  icon,
+  title,
+  subtitle,
+  meta,
+}: {
+  icon: React.ReactNode
+  title: string
+  subtitle: string | null
+  meta: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-md border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ background: 'var(--bg-surface-2)', color: 'var(--text-2)' }}>
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-medium text-1">{title}</div>
+        <div className="truncate text-[11px] text-3">{subtitle || '-'}</div>
+      </div>
+      <div className="shrink-0">{meta}</div>
+    </div>
+  )
+}
+
+function BoundaryItem({ icon: Icon, title, description }: { icon: typeof Activity; title: string; description: string }) {
+  return (
+    <div className="mb-3 flex gap-3">
+      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ background: 'var(--bg-surface-2)', color: 'var(--accent)' }}>
+        <Icon size={15} />
+      </div>
+      <div>
+        <div className="text-[13px] font-semibold text-1">{title}</div>
+        <div className="mt-0.5 text-[12px] leading-5 text-3">{description}</div>
+      </div>
+    </div>
+  )
+}
+
+function ContextSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section>
+      <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-3">{title}</div>
+      {children}
+    </section>
+  )
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border px-2 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
+      <div className="text-[10px] text-3">{label}</div>
+      <div className="text-base font-semibold tabular-nums text-1">{value}</div>
+    </div>
+  )
+}
+
+function DataCenterSkeleton() {
+  return (
+    <div className="grid grid-cols-4 gap-3">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div
+          key={index}
+          className="h-28 animate-pulse rounded-md border"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+        />
+      ))}
+    </div>
+  )
+}

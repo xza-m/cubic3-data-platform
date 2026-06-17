@@ -37,7 +37,7 @@ class QueryExport(db.Model):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # 归属
-    user_id = Column(String(128), nullable=False)
+    user_id = Column(String(191), nullable=False)
     source_id = Column(BigInteger, nullable=True)
 
     # 查询定义

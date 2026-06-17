@@ -12,7 +12,7 @@ import {
   type QueryExportStatus,
 } from '@v2/api/queries'
 import { RetryState } from '@v2/components/LoadState'
-import { useToast } from '@v2/components/ui'
+import { useToast, useConfirm } from '@v2/components/ui'
 import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 
@@ -30,6 +30,7 @@ const STATUS_TABS: Array<{ id: StatusFilter; label: string }> = [
 
 export default function QueryExports() {
   const toast = useToast()
+  const confirm = useConfirm()
   const [status, setStatus] = useState<StatusFilter>('all')
   const [page, setPage] = useState(1)
 
@@ -47,11 +48,12 @@ export default function QueryExports() {
 
   const handleCancel = async (row: QueryExport) => {
     if (
-      !window.confirm(
-        t('queryExport.confirm.cancel', '取消任务 #{id}？', {
+      !(await confirm({
+        title: t('queryExport.confirm.cancel', '取消任务 #{id}？', {
           id: String(row.id),
         }),
-      )
+        tone: 'danger',
+      }))
     ) {
       return
     }

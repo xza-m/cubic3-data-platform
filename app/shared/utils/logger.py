@@ -6,6 +6,7 @@ import logging
 import json
 import sys
 import os
+import re
 from datetime import datetime
 from app.shared.utils.time import utcnow
 from typing import Any, Dict, Optional
@@ -14,6 +15,20 @@ from contextvars import ContextVar
 # 上下文变量用于跟踪请求 ID 和用户 ID
 request_id_var: ContextVar[Optional[str]] = ContextVar('request_id', default=None)
 user_id_var: ContextVar[Optional[str]] = ContextVar('user_id', default=None)
+
+
+_SENSITIVE_LOG_VALUE_RE = re.compile(
+    r'(?i)'
+    r'((?:\\?["\']?)'
+    r'(?:password|access[_-]?key(?:[_-]?(?:id|secret))?|access[_-]?id|secret(?:[_-]?key)?|token)'
+    r'(?:\\?["\']?)\s*[:=]\s*(?:\\?["\']?))'
+    r'([^,}\]\s"\\\']+)'
+)
+
+
+def redact_sensitive_log_text(text: str) -> str:
+    """脱敏日志文本里的常见密钥字段，避免异常堆栈泄漏连接配置。"""
+    return _SENSITIVE_LOG_VALUE_RE.sub(r'\1******', text)
 
 
 class StructuredLogger:
@@ -153,7 +168,7 @@ class StructuredFormatter(logging.Formatter):
             'timestamp': utcnow().isoformat(),
             'level': record.levelname,
             'logger': record.name,
-            'message': record.getMessage(),
+            'message': redact_sensitive_log_text(record.getMessage()),
             'module': record.module,
             'function': record.funcName,
             'line': record.lineno
@@ -206,6 +221,9 @@ class StructuredFormatter(logging.Formatter):
                 parts.append(f"\n{log_entry['exception']}")
             
             return ' '.join(parts)
+
+    def formatException(self, ei) -> str:
+        return redact_sensitive_log_text(super().formatException(ei))
 
 
 # ============================================================================

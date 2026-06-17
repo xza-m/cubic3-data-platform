@@ -4,13 +4,14 @@ import { Button, Card, CardBody, CardHead, Chip, Input, Select, Table, type Tabl
 import { ToolbarSearch } from '@v2/components/CommonControls'
 import { ListPagination } from '@v2/components/ListPagination'
 import { useAppShell } from '@v2/layout/AppShell'
-import { ContextActions, ContextRow, ContextSection } from '@v2/layout/Inspector'
+import { ContextRow, ContextSection } from '@v2/layout/Inspector'
 import { normalizeDataAssetSyncStatus } from '@v2/lib/factSources'
 import { t } from '@v2/i18n'
 import {
   getDataAssetTableEvidence,
   getDataAssetTableFields,
   getDataAssetRadar,
+  inferDataAssetFieldSemantics,
   getSemanticGovernanceIssues,
   listDataAssetSyncRuns,
   listDataAssetPhysicalTables,
@@ -18,6 +19,7 @@ import {
   type DataAssetMetadataSyncResponse,
   type DataAssetEvidenceBundle,
   type DataAssetFieldProfile,
+  type DataAssetFieldSemanticCandidate,
   type DataAssetPhysicalTable,
   type DataAssetPhysicalTableListParams,
   type DataAssetRadarResponse,
@@ -72,10 +74,11 @@ const fmtDateTime = (value: string | null | undefined) => {
 }
 
 export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
-  const { setBreadcrumbs, setTopBarActions, setContextPanel } = useAppShell()
+  const { setBreadcrumbs, setContextPanel } = useAppShell()
   const [radar, setRadar] = useState<DataAssetRadarResponse>(EMPTY_RADAR)
   const [tables, setTables] = useState<DataAssetPhysicalTable[]>([])
   const [fields, setFields] = useState<DataAssetFieldProfile[]>([])
+  const [fieldSemantics, setFieldSemantics] = useState<DataAssetFieldSemanticCandidate[]>([])
   const [evidence, setEvidence] = useState<DataAssetEvidenceBundle | null>(null)
   const [syncRuns, setSyncRuns] = useState<DataAssetSyncRun[]>([])
   const [driftIssues, setDriftIssues] = useState<SemanticGovernanceIssue[]>([])
@@ -91,6 +94,8 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [fieldSemanticLoading, setFieldSemanticLoading] = useState(false)
+  const [fieldSemanticError, setFieldSemanticError] = useState<string | null>(null)
   const hasLoadedRef = useRef(false)
   const listRequestIdRef = useRef(0)
   const detailRequestIdRef = useRef(0)
@@ -113,8 +118,8 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
       const [nextRadar, nextTables, nextSyncRuns, nextGovernanceIssues] = await Promise.all([
         getDataAssetRadar(),
         listDataAssetPhysicalTables(tableParams),
-        listDataAssetSyncRuns({ limit: 50 }),
-        getSemanticGovernanceIssues({ schema_source: 'asset_snapshot' }),
+        view === 'sync-runs' ? listDataAssetSyncRuns({ limit: 50 }) : Promise.resolve({ items: [], total: 0 }),
+        getSemanticGovernanceIssues({ schema_source: 'asset_snapshot' }).catch(() => ({ issues: [] })),
       ])
       if (listRequestIdRef.current !== requestId) return
       setRadar(nextRadar)
@@ -138,7 +143,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
         if (shouldShowLoading) setLoading(false)
       }
     }
-  }, [databaseFilter, schemaFilter, sourceFilter, syncStatusFilter, tableKeyword, tablePage])
+  }, [databaseFilter, schemaFilter, sourceFilter, syncStatusFilter, tableKeyword, tablePage, view])
 
   useEffect(() => {
     void load()
@@ -149,12 +154,16 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
     detailRequestIdRef.current = requestId
     if (!selectedTableId) {
       setFields([])
+      setFieldSemantics([])
+      setFieldSemanticError(null)
       setEvidence(null)
       return undefined
     }
 
     let cancelled = false
     setFields([])
+    setFieldSemantics([])
+    setFieldSemanticError(null)
     setEvidence(null)
     void Promise.all([
       getDataAssetTableFields(selectedTableId),
@@ -173,6 +182,20 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
       cancelled = true
     }
   }, [selectedTableId])
+
+  const handleInferFieldSemantics = useCallback(async () => {
+    if (!selectedTableId) return
+    setFieldSemanticLoading(true)
+    setFieldSemanticError(null)
+    try {
+      const result = await inferDataAssetFieldSemantics(selectedTableId, fields)
+      setFieldSemantics(result.fields ?? result.candidates ?? result.items ?? [])
+    } catch (err) {
+      setFieldSemanticError(err instanceof Error ? err.message : t('assets.fieldSemantic.error', '字段语义识别失败'))
+    } finally {
+      setFieldSemanticLoading(false)
+    }
+  }, [fields, selectedTableId])
 
   useEffect(() => {
     const current = VIEW_META.find((item) => item.view === view)?.label ?? '资产雷达'
@@ -218,20 +241,6 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
     setTablePage(1)
   }, [])
 
-  useEffect(() => {
-    setTopBarActions(
-      <>
-        <Button size="sm" variant="ghost" onClick={() => void load()} aria-label="刷新资产底座">
-          <RefreshCw size={12} /> 刷新
-        </Button>
-        <Button size="sm" variant="primary" onClick={() => void handleSync()} disabled={syncing}>
-          <RefreshCw size={12} /> {syncing ? '同步中...' : '同步元数据'}
-        </Button>
-      </>,
-    )
-    return () => setTopBarActions(null)
-  }, [handleSync, load, setTopBarActions, syncing])
-
   const syncRate = useMemo(() => {
     const total = radar.summary.physical_table_count
     if (!total) return 0
@@ -254,18 +263,11 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
             <ContextRow label="质量问题" value={radar.summary.quality_issue_count} />
             <ContextRow label="最近同步" value={fmtDateTime(radar.summary.last_sync_at)} />
           </ContextSection>
-          <ContextSection title="快捷操作">
-            <ContextActions>
-              <Button size="sm" variant="ghost" className="w-full justify-start" onClick={() => void handleSync()} disabled={syncing}>
-                <RefreshCw size={12} /> {syncing ? '同步中...' : '同步元数据'}
-              </Button>
-            </ContextActions>
-          </ContextSection>
         </>
       ),
     })
     return () => setContextPanel(null)
-  }, [handleSync, radar, setContextPanel, syncRate, syncing])
+  }, [radar, setContextPanel, syncRate])
 
   const columns = useMemo<TableColumn<DataAssetPhysicalTable>[]>(
     () => [
@@ -297,7 +299,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
   )
 
   const activeLabel = VIEW_META.find((item) => item.view === view)?.label ?? '资产雷达'
-  const syncNotice = syncMessage ?? formatLatestSyncNotice(syncRuns[0])
+  const syncNotice = syncMessage ?? (view === 'sync-runs' ? formatLatestSyncNotice(syncRuns[0]) : null)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -312,14 +314,16 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
               汇总物理表、字段、血缘、质量和同步任务，为语义建模提供可复用的元数据事实层；Dataset 类型资产通过 asset_type='dataset' 表达。
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={() => void load()} aria-label="刷新资产底座">
-              <RefreshCw size={12} /> 刷新
-            </Button>
-            <Button size="sm" variant="primary" onClick={() => void handleSync()} disabled={syncing}>
-              <RefreshCw size={12} /> {syncing ? '同步中...' : '同步元数据'}
-            </Button>
-          </div>
+          {view === 'sync-runs' ? (
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => void load()} aria-label="刷新同步记录">
+                <RefreshCw size={12} /> 刷新
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => void handleSync()} disabled={syncing}>
+                <RefreshCw size={12} /> {syncing ? '同步中...' : '同步元数据'}
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         {syncNotice ? (
@@ -370,7 +374,16 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
             {view === 'quality' ? (
               <TableProfileSection tables={tables} evidence={evidence} selectedTableId={selectedTableId} />
             ) : null}
-            {view === 'fields' ? <FieldProfileSection fields={fields} /> : null}
+            {view === 'fields' ? (
+              <FieldProfileSection
+                fields={fields}
+                semanticCandidates={fieldSemantics}
+                semanticError={fieldSemanticError}
+                semanticLoading={fieldSemanticLoading}
+                selectedTableId={selectedTableId}
+                onInferSemantics={handleInferFieldSemantics}
+              />
+            ) : null}
             {view === 'lineage' ? <LineageUsageSection evidence={evidence} /> : null}
             {view === 'sync-runs' ? <SyncRunsSection syncRuns={syncRuns} /> : null}
           </div>
@@ -664,7 +677,21 @@ function TableProfileSection({
   )
 }
 
-function FieldProfileSection({ fields }: { fields: DataAssetFieldProfile[] }) {
+function FieldProfileSection({
+  fields,
+  semanticCandidates,
+  semanticError,
+  semanticLoading,
+  selectedTableId,
+  onInferSemantics,
+}: {
+  fields: DataAssetFieldProfile[]
+  semanticCandidates: DataAssetFieldSemanticCandidate[]
+  semanticError: string | null
+  semanticLoading: boolean
+  selectedTableId: string | null
+  onInferSemantics: () => void
+}) {
   const columns = useMemo<TableColumn<DataAssetFieldProfile>[]>(
     () => [
       {
@@ -697,16 +724,58 @@ function FieldProfileSection({ fields }: { fields: DataAssetFieldProfile[] }) {
 
   return (
     <Card>
-      <CardHead title="字段画像明细" subtitle="字段类型、注释、空值率与基数线索" />
+      <CardHead
+        title="字段画像明细"
+        subtitle="字段类型、注释、空值率与基数线索"
+        extra={
+          <Button size="sm" variant="ghost" disabled={!selectedTableId || fields.length === 0 || semanticLoading} onClick={onInferSemantics}>
+            {semanticLoading ? t('assets.fieldSemantic.running', '识别中...') : t('assets.fieldSemantic.action', '一键识别语义')}
+          </Button>
+        }
+      />
       <CardBody>
+        {semanticError ? (
+          <div className="mb-3 rounded border px-3 py-2 text-xs text-danger" style={{ borderColor: 'var(--border)' }}>
+            {semanticError}
+          </div>
+        ) : null}
+        {semanticCandidates.length > 0 ? <FieldSemanticCandidatePanel candidates={semanticCandidates} /> : null}
         <Table
           columns={columns}
           rows={fields}
           rowKey={(row) => row.id}
-          emptyText="暂无字段画像，请先同步元数据。"
+          emptyText={t('assets.fields.empty', '暂无字段画像，请先同步元数据。')}
         />
       </CardBody>
     </Card>
+  )
+}
+
+function FieldSemanticCandidatePanel({ candidates }: { candidates: DataAssetFieldSemanticCandidate[] }) {
+  return (
+    <div className="mb-3 rounded border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-[12px] font-semibold text-1">{t('assets.fieldSemantic.title', '字段语义候选')}</div>
+        <Chip tone="accent">{candidates.length} 项</Chip>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        {candidates.slice(0, 8).map((candidate, index) => {
+          const field = String(candidate.field ?? candidate.name ?? `field-${index + 1}`)
+          const label = String(candidate.label ?? candidate.semantic_type ?? candidate.role ?? t('assets.fieldSemantic.pending', '待确认语义'))
+          const confidence = typeof candidate.confidence === 'number' ? `${Math.round(candidate.confidence * 100)}%` : '—'
+          return (
+            <div key={`${field}:${index}`} className="rounded bg-[var(--bg-surface)] px-3 py-2 text-[12px]">
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="font-mono text-1">{field}</code>
+                <Chip tone="neutral">{confidence}</Chip>
+              </div>
+              <div className="mt-1 text-2">{label}</div>
+              {candidate.evidence?.length ? <div className="mt-1 text-[11px] text-3">{candidate.evidence.slice(0, 2).join('；')}</div> : null}
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

@@ -1,17 +1,39 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractLoginToken } from './login-utils'
+import { extractLoginTokenPair } from './login-utils'
 
 describe('Login helpers', () => {
-  it('extractLoginToken supports backend envelope token', () => {
-    expect(extractLoginToken({ data: { token: 'jwt-token' } })).toBe('jwt-token')
+  it('extractLoginTokenPair supports backend envelope token pair', () => {
+    expect(
+      extractLoginTokenPair({
+        data: {
+          access_token: 'access-token',
+          refresh_token: 'refresh-token',
+          expires_in: 3600,
+          refresh_expires_in: 2592000,
+        },
+      }),
+    ).toMatchObject({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_in: 3600,
+      refresh_expires_in: 2592000,
+    })
   })
 
-  it('extractLoginToken keeps compatibility with flat access_token', () => {
-    expect(extractLoginToken({ access_token: 'legacy-token' })).toBe('legacy-token')
+  it('extractLoginTokenPair supports flat token pair', () => {
+    expect(
+      extractLoginTokenPair({
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+      }),
+    ).toMatchObject({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+    })
   })
 
-  it('extractLoginToken returns null for malformed payload', () => {
-    expect(extractLoginToken({ data: {} })).toBeNull()
+  it('extractLoginTokenPair returns null for malformed payload', () => {
+    expect(extractLoginTokenPair({ data: { access_token: 'access-only' } })).toBeNull()
   })
 })

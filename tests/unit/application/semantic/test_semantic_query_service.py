@@ -340,6 +340,65 @@ def test_query_handles_execution_error_and_swallowed_close_failure():
     assert "查询超时" in result["hint"]
 
 
+def test_query_error_responses_carry_stable_error_codes():
+    """Phase 3 证据包：DSL 校验 / 编译 / 准备 / 执行失败都带稳定 error_code。"""
+    repo = _CubeRepo([_cube("answer_records"), _cube("student")])
+
+    invalid_dsl = SemanticQueryService(cube_repo=repo).query({"measures": "not-a-list"})
+    assert invalid_dsl["error_code"] == "dsl_validate_error"
+
+    compile_fail = SemanticQueryService(cube_repo=repo).query(
+        {"measures": ["answer_records.total_count"], "dimensions": ["student.id"]}
+    )
+    assert compile_fail["error_code"] == "compile_error"
+
+    prepare_fail = SemanticQueryService(
+        cube_repo=repo,
+        runtime_binding_service=_RuntimeBindingService(dialect=RuntimeError("dialect unavailable")),
+    ).query({"measures": ["answer_records.total_count"]})
+    assert prepare_fail["error_code"] == "datasource_binding_error"
+
+    class FailingAdapter:
+        def execute_query(self, sql, limit=50000):
+            raise RuntimeError("Permission denied for table")
+
+    execute_fail = SemanticQueryService(
+        cube_repo=repo,
+        runtime_binding_service=_RuntimeBindingService(adapter=FailingAdapter()),
+    ).query({"measures": ["answer_records.total_count"]})
+    assert execute_fail["error_code"] == "permission_denied"
+    assert execute_fail["definition_hash"]
+
+
+def test_classify_execute_error_enums():
+    classify = SemanticQueryService._classify_execute_error
+    assert classify("Syntax error near FROM") == "sql_syntax_error"
+    assert classify("ODPS-0130161: parse exception") == "sql_syntax_error"
+    assert classify("Permission denied") == "permission_denied"
+    assert classify("query timed out") == "execute_timeout"
+    assert classify("Invalid table name") == "schema_mismatch"
+    assert classify("something else") == "execute_error"
+
+
+def test_query_success_includes_definition_hash():
+    class _Adapter:
+        def execute_query(self, sql, limit=50000):
+            return {"columns": ["total_count"], "rows": [[1]]}
+
+    service = SemanticQueryService(
+        cube_repo=_CubeRepo([_cube("answer_records")]),
+        runtime_binding_service=_RuntimeBindingService(adapter=_Adapter()),
+    )
+
+    result = service.query({"measures": ["answer_records.total_count"]})
+
+    assert result["row_count"] == 1
+    assert isinstance(result["definition_hash"], str) and len(result["definition_hash"]) == 64
+    # 同一定义重复计算应稳定
+    assert result["definition_hash"] == service.definition_hash("answer_records")
+    assert service.definition_hash("ghost") is None
+
+
 def test_ensure_compiler_rebuilds_when_runtime_dialect_changes():
     class AnotherDialect(MaxComputeDialect):
         pass

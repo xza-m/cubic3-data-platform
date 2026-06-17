@@ -44,7 +44,7 @@ last_reviewed: 2026-05-05
 - `Canvas` -> `/semantic/domains`、`/semantic/domains/:id`、`/semantic/relations`
 - `Diagnostics` -> `/semantic/workbench`
 
-`/semantic/cubes/new`、`/semantic/cubes/:name/edit` 当前是 v2 真实页面。`/semantic/tools`、`/semantic/overview`、`/semantic/modeling` 等旧入口只保留兼容重定向。`View`、`Recipe`、`Schema Drift` 等能力继续挂靠在现有页面模型中，不单独升格为一级导航。
+`/semantic/cubes/new`、`/semantic/cubes/:name/edit` 当前是 v2 真实页面。`/semantic/tools`、`/semantic/overview`、`/semantic/modeling` 等旧入口不再注册兼容重定向。`View`、`Recipe`、`Schema Drift` 等能力继续挂靠在现有页面模型中，不单独升格为一级导航。
 Phase 2 同时固定对象落点：`Cube` 是分析执行真相源，`Ontology` 是业务语义真相源；`Domain` 收窄为业务上下文和资产组织对象；`View` 在展示和摘要层按“特殊 Cube”收敛；`Recipe` 保持轻量消费对象，不与正式建模入口竞争。
 
 ## 理由
@@ -65,9 +65,9 @@ Phase 2 同时固定对象落点：`Cube` 是分析执行真相源，`Ontology` 
 约束：
 
 - 新的语义能力优先落到当前 `Modeling Assistant / Ontology Workbench / Inventory / Canvas / Diagnostics` 页面模型中，而不是直接新增一级资产中心
-- `/semantic/modeling` 是旧兼容入口，当前重定向到 `/semantic/domains`
+- `/semantic/modeling` 是旧入口，不再注册兼容重定向
 - `/semantic/ontology` 是业务语义主入口；`/semantic/workbench` 是语义诊断入口
-- `/semantic/modeling-workbench` 是语义建设冷启动顶层任务流，不归属 `/semantic/cubes/new`；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 仅保留兼容重定向
+- `/semantic/modeling-workbench` 是语义建设冷启动顶层任务流，不归属 `/semantic/cubes/new`；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 不再注册兼容重定向
 - `Domain.cubes[]` / 业务上下文资产画布只作为 `Cube <-> Domain` 资产归属和候选范围事实；`Cube.domain_id` 只允许作为兼容投影字段存在
 - Domain 不作为指标、关系、动作或 Join 的第三套真相源；正式业务语义以 `Ontology` 为准，分析执行以 `Cube` 为准
 - 业务上下文资产画布不再维护关系边，Domain 数据模型、YAML 与 API 不再保留 `joins` / `join_count`；执行 Join 只在 `Cube.joins` 中建模，业务关系只在 `Ontology BusinessRelation` 中建模

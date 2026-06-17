@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from app.application.semantic.field_candidates import FieldCandidateService, FieldCandidateSet
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
+from app.domain.ontology.entities import measure_ref_strings
 from app.domain.semantic.entities import CubeDefinition, MeasureDef
 from app.domain.semantic.ports.cube_repository import ICubeRepository
 from app.domain.ports.repositories.semantic_registry_repository import (
@@ -23,6 +24,7 @@ class CubeModelingService:
         registry_repo: Optional[ISemanticRegistryRepository] = None,
         metric_repository: Any = None,
         field_candidate_service: Optional[FieldCandidateService] = None,
+        query_service: Any = None,
     ):
         self._cube_repo = cube_repo
         self._runtime = runtime_binding_service
@@ -30,6 +32,7 @@ class CubeModelingService:
         self._registry_repo = registry_repo
         self._metric_repository = metric_repository
         self._field_candidate_service = field_candidate_service or FieldCandidateService()
+        self._query_service = query_service
 
     def generate_cube_draft(
         self,
@@ -315,6 +318,10 @@ class CubeModelingService:
     def _after_save(self, cube: CubeDefinition) -> None:
         if self._definition_service is not None:
             self._definition_service.invalidate_cache()
+        # 查询服务缓存了编译器与 JoinGraph，定义变更后必须一并失效，
+        # 否则 /semantic/query 会继续按旧定义编译 SQL。
+        if self._query_service is not None:
+            self._query_service.invalidate_cache()
         if self._registry_repo is not None:
             binding = self._runtime.resolve_source_binding_summary(cube)
             self._registry_repo.upsert(
@@ -354,7 +361,7 @@ class CubeModelingService:
             return
         linked_refs = set()
         for metric in self._metric_repository.list_all():
-            for measure_ref in getattr(metric, "measure_refs", []) or []:
+            for measure_ref in measure_ref_strings(getattr(metric, "measure_refs", []) or []):
                 if measure_ref in certified_measure_refs:
                     linked_refs.add(measure_ref)
         missing_refs = [ref for ref in certified_measure_refs if ref not in linked_refs]

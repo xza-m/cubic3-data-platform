@@ -15,9 +15,11 @@ import {
   listSubscriptions,
   listSubscriptionsByInstance,
   listSubscriptionHistory,
+  triggerSubscription,
   updateSubscription,
   type CreateSubscriptionPayload,
   type SubscriptionListParams,
+  type TriggerSubscriptionPayload,
   type UpdateSubscriptionPayload,
 } from '../api/subscriptions'
 
@@ -122,6 +124,23 @@ export function useDisableSubscription() {
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['subscriptions'] })
       qc.invalidateQueries({ queryKey: qk('subscriptions', 'detail', id) })
+    },
+  })
+}
+
+// ============================================================================
+// 手动触发
+// ============================================================================
+
+export function useTriggerSubscription() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload?: TriggerSubscriptionPayload }) =>
+      triggerSubscription(id, payload ?? {}),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ['subscriptions'] })
+      qc.invalidateQueries({ queryKey: qk('subscriptions', 'detail', id) })
+      qc.invalidateQueries({ queryKey: qk('subscriptions', 'detail', id, 'history') })
     },
   })
 }

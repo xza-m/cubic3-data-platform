@@ -266,6 +266,39 @@ def test_official_compile_metric_reads_metric_and_cube_from_runtime_snapshot_man
     assert preview["resource_set"]["physical"][0]["table"] == "dwd_interaction_comment_reports_df"
     assert "comment_school_name" in preview["logical_sql"]
 
+    # §6.1 求值与编译同 release：pinned_release_id 经 get_manifest_for_release 解析
+    class _PinnableSnapshotService:
+        def __init__(self, manifest):
+            self._manifest = manifest
+            self.active_calls = 0
+            self.release_calls = []
+
+        def get_active_manifest(self, namespace="default"):
+            self.active_calls += 1
+            return {"ok": False, "error_code": "should_not_be_used"}
+
+        def get_manifest_for_release(self, release_id):
+            self.release_calls.append(release_id)
+            return self._manifest
+
+    snapshot = _PinnableSnapshotService(runtime_manifest)
+    pinned_compiler = ExecutionCompilerPreviewService(
+        metric_repository=metric_repo,
+        cube_repository=cube_repo,
+        runtime_snapshot_service=snapshot,
+    )
+    pinned_preview = pinned_compiler.compile_metric_preview(
+        "comment_count",
+        runtime_mode="official",
+        pinned_release_id="rel_1",
+        analysis_intent={"dimension_terms": ["学校"], "limit": 100},
+    )
+    assert snapshot.release_calls == ["rel_1"]
+    assert snapshot.active_calls == 0
+    assert pinned_preview["status"] == "ready"
+    assert pinned_preview["bindings"]["runtime_release_id"] == "rel_1"
+    assert pinned_preview["ticket_material"]["runtime_version_pin"]["release_id"] == "rel_1"
+
 
 def test_compile_metric_uses_query_dsl_for_one_hop_join_dimension(tmp_path):
     cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))

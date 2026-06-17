@@ -1,0 +1,9 @@
+name: comment_report_daily
+title: 每日举报评论视图
+description: 闭环验收：基于学生评论举报 cube 的每日汇总视图
+public: true
+cubes:
+  - join_path: dwd_interaction_comment_reports_df
+    includes:
+      - report_created_at
+      - total_count

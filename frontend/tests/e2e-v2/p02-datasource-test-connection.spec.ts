@@ -1,6 +1,6 @@
 // frontend/tests/e2e-v2/p02-datasource-test-connection.spec.ts
 //
-// P2 — 数据源详情页"测试连接"按钮 happy path.
+// P2 — 连接详情页"测试连接"按钮 happy path.
 
 import { test, expect } from '@playwright/test'
 import { gotoV2, installApiCatchAll, mockJsonRoute, prepareV2Page, envelope } from './helpers'
@@ -15,8 +15,8 @@ test.beforeEach(async ({ page }) => {
   await mockJsonRoute(page, '**/api/v1/data-center/datasources/1/test', envelope(dsFx.test_connection_ok))
 })
 
-test('P02 数据源详情 测试连接 → 成功提示 @p02', async ({ page }) => {
-  await gotoV2(page, '/data-center/datasources/1')
+test('P02 连接详情 测试连接 → 成功提示 @p02', async ({ page }) => {
+  await gotoV2(page, '/data-center/connections/1')
 
   await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
 

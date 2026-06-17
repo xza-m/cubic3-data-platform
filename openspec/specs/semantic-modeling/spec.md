@@ -1,8 +1,48 @@
 # semantic-modeling Specification
 
 ## Purpose
-TBD - created by archiving change add-domain-catalog-management. Update Purpose after archive.
+`semantic-modeling` 定义语义建设工作台的产品与流程规范。语义建设工作台是语义中心冷启动和后续语义建设入口，用于基于物理表画像、字段画像、血缘和使用事实形成建模证据，支持草稿、Proposal、关系编排和发布准备；它不是消费者发布面，也不是语义资产持久化真值或执行编译职责的替代品。
+
 ## Requirements
+### Requirement: Semantic Modeling Workbench SHALL Be A Construction Entry
+语义建设工作台 SHALL 作为语义中心冷启动和后续语义建设入口，聚焦建模发现、草稿编排、Proposal 校验和发布准备。
+
+#### Scenario: Support semantic cold start and ongoing construction
+- **WHEN** 用户从冷启动状态或持续治理状态进入语义建设工作台
+- **THEN** 工作台 SHALL 支持浏览物理资产证据、生成或修订语义草稿、组织关系建模并准备发布
+- **AND** 工作台 SHALL 将最终可消费语义资产交由语义中心持久化和发布
+
+#### Scenario: Workbench is not a consumer publishing surface
+- **WHEN** 语义对象达到可面向消费者使用的状态
+- **THEN** 工作台 SHALL 通过语义中心 Release 或发布契约完成交付
+- **AND** 工作台 SHALL NOT 直接向 Data Agent、BI、数据分析或平台 `Dataset` 消费面发布运行时资产
+
+### Requirement: Modeling Tools SHALL Not Become Consumer Runtime Dependencies
+Data Agent、BI 和数据分析 SHALL 依赖语义中心已发布契约，不 SHALL 直接依赖建模工具、页面状态或临时项目。
+
+#### Scenario: Consumers use released semantic center contracts
+- **WHEN** Data Agent、BI 或数据分析需要查询或解释语义资产
+- **THEN** 它们 SHALL 使用语义中心提供的发现、描述、编译或查询契约
+- **AND** 它们 SHALL NOT 读取语义建设工作台中的 Build Project、Asset Package、Proposal 或画布临时状态
+
+#### Scenario: Unreleased modeling state stays internal
+- **WHEN** 一个模型只存在于工作台草稿、Proposal 或校验失败状态
+- **THEN** 该模型 SHALL 只作为建模内部状态存在
+- **AND** 消费方 SHALL NOT 将其作为可查询、可发布或可认证资产
+
+### Requirement: Modeling Evidence SHALL Use Physical Asset Facts
+语义建设中的数据资产底座 SHALL 基于物理表画像、字段画像、血缘和使用事实，而不 SHALL 与平台 `Dataset` 概念混用。
+
+#### Scenario: Build modeling evidence from physical facts
+- **WHEN** 工作台推荐、校验或解释语义模型
+- **THEN** 它 SHALL 使用物理表、物理字段、字段统计画像、血缘关系和查询使用事实作为建模证据
+- **AND** 这些证据 SHALL 记录其物理来源和更新时间
+
+#### Scenario: Keep platform Dataset as downstream context
+- **WHEN** 工作台引用平台 `Dataset`
+- **THEN** 该引用 SHALL 仅表示数据访问/分析层的下游使用信号或消费上下文
+- **AND** 工作台 SHALL NOT 将平台 `Dataset` 当作语义建模的资产底座或物理事实来源
+
 ### Requirement: Catalog SHALL Be A Managed Domain Object
 The platform SHALL treat `catalog` as an independently managed semantic directory object and SHALL persist it separately from `domain`.
 
@@ -220,4 +260,3 @@ The platform SHALL treat domain publish as the only activation gate for domain r
 #### Scenario: Publish a domain draft
 - **WHEN** a user publishes a domain
 - **THEN** the system SHALL validate cycles, duplicate edges, `1:N` aggregation strategy, active cube references, and duplicate domain fingerprints before activation
-

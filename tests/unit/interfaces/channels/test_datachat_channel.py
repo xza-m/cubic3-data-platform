@@ -9,9 +9,10 @@ from app.interfaces.channels.datachat_channel import DataChatChannel
 
 
 def _build_dataset() -> SimpleNamespace:
+    # DatasetField 实体的备注字段是 comment（无 description 属性）
     fields = [
-        SimpleNamespace(physical_name="user_id", data_type="bigint", description="用户 ID"),
-        SimpleNamespace(physical_name="order_cnt", data_type="bigint", description=None),
+        SimpleNamespace(physical_name="user_id", data_type="bigint", comment="用户 ID"),
+        SimpleNamespace(physical_name="order_cnt", data_type="bigint", comment=None),
     ]
     return SimpleNamespace(
         id=7,
@@ -55,6 +56,7 @@ def test_to_agent_request_builds_schema_history_and_adapter(monkeypatch: pytest.
     assert request.history == [{"role": "user", "content": "历史消息"}]
     assert schema_info["table_name"] == "dws_orders"
     assert schema_info["source_type"] == "postgresql"
+    assert schema_info["fields"][0]["description"] == "用户 ID"
     assert schema_info["fields"][1]["description"] == ""
     assert resolved_adapter is adapter
 
@@ -137,6 +139,35 @@ def test_deliver_response_persists_ai_message_and_updates_conversation() -> None
     assert result["user_message"] == {"id": 10, "role": "user"}
     assert result["ai_message"]["role"] == "assistant"
     conv_repo.update.assert_called_once_with(conversation)
+
+
+def test_deliver_response_normalizes_structured_column_definitions() -> None:
+    """适配器（如 MaxCompute）返回 [{'name','type'}] 列定义时必须归一化为列名。"""
+    conv_repo = MagicMock()
+    msg_repo = MagicMock()
+    conv_repo.find_by_id.return_value = SimpleNamespace(updated_at=None)
+    msg_repo.create.side_effect = lambda message: message
+    channel = DataChatChannel(conv_repo, msg_repo, MagicMock())
+
+    response = AgentResponse(
+        text="完成",
+        sql="select ds, count(*) from t group by ds",
+        data=[["20260611", 437961]],
+        columns=[{"name": "ds", "type": "string"}, {"name": "total", "type": "bigint"}],
+    )
+
+    channel.deliver_response(
+        response,
+        conversation_id=5,
+        user_message=SimpleNamespace(to_dict=lambda: {"id": 1}),
+    )
+
+    saved_message = msg_repo.create.call_args.args[0]
+    assert saved_message.query_result == {
+        "columns": ["ds", "total"],
+        "data": [{"ds": "20260611", "total": 437961}],
+        "row_count": 1,
+    }
 
 
 def test_deliver_response_records_error_and_skips_missing_conversation_update() -> None:

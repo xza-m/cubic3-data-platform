@@ -13,6 +13,7 @@ import { fmtNum } from '@v2/lib/format'
 // 等待 X-Crosscut：@v2/i18n（t()）
 import { t } from '@v2/i18n'
 import type { CubeDetail, CubeDimension, CubeMeasure } from '@v2/api/semantic'
+import { useSemanticCubeBacklinks } from '@v2/hooks/semantic'
 
 export interface CubeActions {
   onOpenDesigner?: () => void
@@ -231,7 +232,46 @@ export function CubeDetailContent({
           </ul>
         </CardBody>
       </Section>
+
+      <CubeImpactSection cubeName={cube.name} />
     </div>
+  )
+}
+
+function CubeImpactSection({ cubeName }: { cubeName: string }) {
+  const backlinks = useSemanticCubeBacklinks(cubeName)
+  const payload = backlinks.data ?? {}
+  const items = (payload.items ?? payload.backlinks ?? []) as Array<Record<string, unknown>>
+  const total = typeof payload.total === 'number' ? payload.total : items.length
+
+  return (
+    <Section title={t('cube.impact.title', '影响范围')}>
+      <CardBody className="rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs text-2">
+            {backlinks.isLoading
+              ? t('common.loading', '加载中…')
+              : t('cube.impact.summary', '发现 {count} 个下游引用', { count: String(total) })}
+          </div>
+          <Chip tone={total > 0 ? 'warning' : 'success'}>
+            {total > 0 ? t('cube.impact.hasRefs', '变更需评估') : t('cube.impact.noRefs', '暂无反链')}
+          </Chip>
+        </div>
+        {items.length > 0 ? (
+          <ul className="mt-2 space-y-1.5 text-xs leading-5 text-2">
+            {items.slice(0, 6).map((item, index) => {
+              const label = String(item.title ?? item.name ?? item.id ?? item.ref ?? `ref-${index + 1}`)
+              const type = String(item.type ?? item.ref_type ?? item.source ?? 'reference')
+              return (
+                <li key={`${type}:${label}:${index}`}>
+                  <b className="text-1">{type}</b> · {label}
+                </li>
+              )
+            })}
+          </ul>
+        ) : null}
+      </CardBody>
+    </Section>
   )
 }
 

@@ -22,6 +22,7 @@ interface TabsCtx {
   value: string
   onChange: (v: string) => void
   size: 'md' | 'sm'
+  bordered: boolean
 }
 
 const Ctx = createContext<TabsCtx | null>(null)
@@ -30,19 +31,29 @@ export interface TabsProps {
   value: string
   onChange: (v: string) => void
   size?: 'md' | 'sm'
+  bordered?: boolean
   className?: string
   'aria-label'?: string
   children: ReactNode
 }
 
-export function Tabs({ value, onChange, size = 'md', className, 'aria-label': ariaLabel, children }: TabsProps) {
+export function Tabs({
+  value,
+  onChange,
+  size = 'md',
+  bordered = true,
+  className,
+  'aria-label': ariaLabel,
+  children,
+}: TabsProps) {
   return (
-    <Ctx.Provider value={{ value, onChange, size }}>
+    <Ctx.Provider value={{ value, onChange, size, bordered }}>
       <div
         role="tablist"
         aria-label={ariaLabel}
         className={cn(
-          'flex items-center gap-1 border-b',
+          'flex items-center gap-1',
+          bordered && 'border-b',
           className,
         )}
         style={{ borderColor: 'var(--border)' }}
@@ -80,7 +91,8 @@ export function Tab({ value, disabled, id, 'aria-controls': ariaControls, childr
       disabled={disabled}
       onClick={() => !disabled && ctx.onChange(value)}
       className={cn(
-        'relative -mb-px flex items-center gap-1.5 border-b-2 border-transparent px-3 transition-colors',
+        'relative flex items-center gap-1.5 border-b-2 border-transparent px-3 transition-colors',
+        ctx.bordered && '-mb-px',
         ctx.size === 'sm' ? 'h-7 text-[12px]' : 'h-9 text-[13px]',
         active
           ? 'border-[color:var(--accent)] text-1 font-medium'

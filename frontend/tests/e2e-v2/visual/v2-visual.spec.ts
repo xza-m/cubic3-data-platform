@@ -9,7 +9,7 @@
 //
 // Coverage (5 first-impression screens):
 //   V01  /dashboard
-//   V02  /data-center/datasources
+//   V02  /data-center/connections
 //   V03  /semantic/cubes
 //   V04  /semantic/ontology/objects
 //   V05  /settings
@@ -33,6 +33,7 @@ import {
   prepareV2Page,
 } from '../helpers'
 import dsFx from '../fixtures/datasources.json' with { type: 'json' }
+import dsetFx from '../fixtures/datasets.json' with { type: 'json' }
 import ontoFx from '../fixtures/ontology.json' with { type: 'json' }
 import prefFx from '../fixtures/preferences.json' with { type: 'json' }
 
@@ -141,9 +142,9 @@ test('V01 /dashboard 视觉基线 @visual', async ({ page }) => {
   await expect(page).toHaveScreenshot('v01-dashboard.png', SHOT_OPTS)
 })
 
-// ── V02  /data-center/datasources ────────────────────────────────────────────
+// ── V02  /data-center/connections ────────────────────────────────────────────
 
-test('V02 /data-center/datasources 视觉基线 @visual', async ({ page }) => {
+test('V02 /data-center/connections 视觉基线 @visual', async ({ page }) => {
   await freezeClock(page, FROZEN_NOW_ISO)
   await prepareV2Page(page)
   await installApiCatchAll(page)
@@ -152,16 +153,17 @@ test('V02 /data-center/datasources 视觉基线 @visual', async ({ page }) => {
   // Match both `?page=...` query strings and a bare URL.
   await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources', envelope(dsFx.list))
+  await mockJsonRoute(page, '**/api/v1/data-center/datasets?**', envelope(dsetFx.list))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources/1', envelope(dsFx.detail))
 
-  await gotoV2(page, '/data-center/datasources')
+  await gotoV2(page, '/data-center/connections')
 
   // Page has no <h1>; assert on a row + on the search placeholder which is a
   // stable structural element.
   await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
-  await expect(page.getByPlaceholder('按名称、类型搜索…')).toBeVisible()
+  await expect(page.getByPlaceholder('搜索连接名称、类型或描述…')).toBeVisible()
 
-  await expect(page).toHaveScreenshot('v02-datasources.png', SHOT_OPTS)
+  await expect(page).toHaveScreenshot('v02-data-center-connections.png', SHOT_OPTS)
 })
 
 // ── V03  /semantic/cubes ─────────────────────────────────────────────────────

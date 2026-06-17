@@ -17,7 +17,7 @@ last_reviewed: 2026-06-03
 
 - 根文档：`README.md`
 - 架构与启动文档：`docs/TECH_STACK_AND_ARCHITECTURE.md`、`docs/QUICK_START.md`、`docs/STARTUP_GUIDE.md`
-- 质量与运行文档：`docs/quality/testing.md`、`docs/quality/backend-coverage.md`、`docs/quality/frontend-coverage.md`、`docs/quality/review.md`、`docs/runbooks/local-dev.md`、`docs/semantic_verification.md`
+- 质量与运行文档：`docs/quality/testing.md`、`docs/quality/backend-coverage.md`、`docs/quality/frontend-coverage.md`、`docs/quality/review.md`、`docs/runbooks/local-dev.md`、`docs/runbooks/cubic3-dp-cli.md`、`docs/semantic_verification.md`
 - 架构设计文档：`docs/architecture/*.md`
 - 前端文档：`frontend/README.md`
 - 当前实现：`app/__init__.py`、`app/di/container.py`、`app/interfaces/api/v1/*`
@@ -39,7 +39,7 @@ last_reviewed: 2026-06-03
 | 健康检查 | `/api/v1/health` | 当前是 `/health` | 已修正文档 |
 | 数据中心接口 | 旧版 `/api/v1/metadata/*` 等接口描述 | 当前主 API 为 `/api/v1/data-center/datasources` 与 `/api/v1/data-center/datasets` | 已在基线文档中写明，并将旧元数据文档标记为历史说明 |
 | 查询中心 IA | `/queries/editor` 等子页仍被当作主入口 | 当前主入口统一收口为 `/queries`，旧查询子页只保留兼容重定向 | 已更新前端与架构文档 |
-| 语义中心 IA | `/semantic/tools`、`/semantic/overview` 等旧入口仍被默认引用，或把 `/semantic/workbench` 当作业务语义主入口 | 当前主入口为 `/semantic/ontology`；`/semantic/workbench` 是语义诊断工作台；Cube、Domain、View 保留独立资产页，旧入口只保留兼容重定向 | 已更新前端、架构文档与 v2 路由/API 审计 |
+| 语义中心 IA | `/semantic/tools`、`/semantic/overview` 等旧入口仍被默认引用，或把 `/semantic/workbench` 当作业务语义主入口 | 当前入口以新 IA 为准：`/semantic/modeling-workbench`、`/semantic/assets`、`/semantic/cubes`、`/semantic/ontology`、`/semantic/relations`、`/semantic/domains`、`/semantic/workbench`；旧语义入口不再注册兼容重定向 | 已更新前端、架构文档与 v2 路由/API 审计 |
 | 查询中心 IA | `/queries/history`、`/queries/visual`、`/queries/my` 等被误写为旧兼容入口 | 当前 `/queries` 是查询工作台，`/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是有效子路由 | 已更新 README、前端说明与审计文档 |
 | Dataset / 数据资产 / 查询事实源 | `Dataset`、数据资产底座、平台查询历史和 gateway telemetry 被混用为同一类统计事实 | 当前 `Dataset` 是平台应用层可查询 / 可消费抽象；数据资产底座是元数据事实与证据层；平台交互式查询读 `query_histories`；正式 Agent / 用户数仓查询执行事实读 `dw-query-gateway` | 新增 ADR-012，并同步 README、架构目录、技术栈基线和系统总览 |
 | 智能问数 UI | 文档描述 `DataChat` 前端已展示语义执行来源 | 后端 `/api/v1/conversations` 主链仍存在，v2 `/data-chat` 当前是 Placeholder | 已改为后端能力与前端占位分开描述 |
@@ -79,6 +79,7 @@ last_reviewed: 2026-06-03
 - `docs/quality/frontend-v2-route-api-audit.md`
 - `docs/quality/review.md`
 - `docs/runbooks/local-dev.md`
+- `docs/runbooks/cubic3-dp-cli.md`
 - `frontend/README.md`
 - `docs/readme.md`
 - `docs/DOC_ALIGNMENT_REPORT.md`

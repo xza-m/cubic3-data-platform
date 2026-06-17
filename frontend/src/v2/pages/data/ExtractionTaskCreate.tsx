@@ -1,8 +1,8 @@
 // frontend/src/v2/pages/data/ExtractionTaskCreate.tsx
 //
-// 新建提取任务（/extraction/tasks/new）。
+// 新建同步任务（/data-center/sync/tasks/new）。
 // 对接 POST /api/v1/extraction/tasks
-//      GET  /api/v1/data-center/datasets (target dataset selector)
+//      GET  /api/v1/data-center/datasets (target asset selector)
 
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -11,6 +11,7 @@ import { useCreateExtractionTask } from '@v2/hooks/extraction'
 import { useDatasets } from '@v2/hooks/datasets'
 import type { CreateTaskPayload } from '@v2/api/extraction'
 import { t } from '@v2/i18n'
+import { DataCenterSyncTabs } from './_shared/data-center-nav'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { useAppShell } from '@v2/layout/AppShell'
@@ -50,13 +51,14 @@ export default function ExtractionTaskCreate() {
   useEffect(() => {
     setBreadcrumbs([
       t('extractionTaskCreate.breadcrumb.data', '数据'),
-      t('extractionTaskCreate.breadcrumb.tasks', '提取任务'),
+      t('extractionTaskCreate.breadcrumb.center', '数据中心'),
+      t('extractionTaskCreate.breadcrumb.tasks', '同步任务'),
       t('extractionTaskCreate.breadcrumb.create', '新建'),
     ])
     setTopBarActions(
       <button
         type="button"
-        onClick={() => navigate('/extraction/tasks')}
+        onClick={() => navigate('/data-center/sync/tasks')}
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
         style={{ color: 'var(--text-2)' }}
       >
@@ -88,8 +90,10 @@ export default function ExtractionTaskCreate() {
 
   if (done) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <div className="flex flex-col items-center gap-4 text-center">
+      <>
+        <DataCenterSyncTabs />
+        <div className="flex flex-1 items-center justify-center p-8">
+          <div className="flex flex-col items-center gap-4 text-center">
           <div
             className="flex h-14 w-14 items-center justify-center rounded-full"
             style={{ background: 'var(--success-soft)', color: 'var(--success)' }}
@@ -100,12 +104,12 @@ export default function ExtractionTaskCreate() {
             {t('extractionTaskCreate.done.title', '创建成功')}
           </div>
           <p className="max-w-sm text-xs" style={{ color: 'var(--text-3)' }}>
-            {t('extractionTaskCreate.done.desc.prefix', '任务')} <strong>{taskName}</strong> {t('extractionTaskCreate.done.desc.suffix', '已创建。')}
+            {t('extractionTaskCreate.done.desc.prefix', '同步任务')} <strong>{taskName}</strong> {t('extractionTaskCreate.done.desc.suffix', '已创建。')}
           </p>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => navigate('/extraction/tasks')}
+              onClick={() => navigate('/data-center/sync/tasks')}
               className="rounded-md border px-3 py-2 text-xs"
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
             >
@@ -114,7 +118,7 @@ export default function ExtractionTaskCreate() {
             {createdId != null && (
               <button
                 type="button"
-                onClick={() => navigate(`/extraction/tasks/${createdId}`)}
+                onClick={() => navigate(`/data-center/sync/tasks/${createdId}`)}
                 className="rounded-md px-3 py-2 text-xs font-medium"
                 style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
               >
@@ -122,13 +126,16 @@ export default function ExtractionTaskCreate() {
               </button>
             )}
           </div>
+          </div>
         </div>
-      </div>
+      </>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden p-4">
+    <>
+      <DataCenterSyncTabs />
+      <div className="flex flex-1 flex-col overflow-hidden p-4">
       <div
         className="flex flex-1 flex-col overflow-hidden rounded-lg border"
         style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
@@ -137,7 +144,7 @@ export default function ExtractionTaskCreate() {
         <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
           <Workflow size={14} style={{ color: 'var(--accent)' }} />
           <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
-            {t('extractionTaskCreate.title', '新建提取任务')}
+            {t('extractionTaskCreate.title', '新建同步任务')}
           </span>
         </div>
 
@@ -150,19 +157,19 @@ export default function ExtractionTaskCreate() {
                 value={taskName}
                 onChange={(e) => setTaskName(e.target.value)}
                 required
-                placeholder={t('extractionTaskCreate.placeholder.taskName', '如 dwd_order 日增量提取')}
+                placeholder={t('extractionTaskCreate.placeholder.taskName', '如 dwd_order 日增量同步')}
                 style={inputStyle}
               />
             </Field>
 
-            <Field label={t('extractionTaskCreate.field.dataset', '目标数据集')} required>
+            <Field label={t('extractionTaskCreate.field.dataset', '目标数据资产')} required>
               <select
                 value={datasetId ?? ''}
                 onChange={(e) => setDatasetId(Number(e.target.value))}
                 required
                 style={inputStyle}
               >
-                <option value="">{t('extractionTaskCreate.placeholder.dataset', '请选择数据集…')}</option>
+                <option value="">{t('extractionTaskCreate.placeholder.dataset', '请选择数据资产…')}</option>
                 {datasets.map((ds) => (
                   <option key={ds.id} value={ds.id}>
                     {ds.dataset_name} ({ds.dataset_code})
@@ -238,7 +245,7 @@ export default function ExtractionTaskCreate() {
             <div className="flex justify-end gap-2 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
               <button
                 type="button"
-                onClick={() => navigate('/extraction/tasks')}
+                onClick={() => navigate('/data-center/sync/tasks')}
                 className="rounded-md border px-4 py-2 text-xs"
                 style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
               >
@@ -262,7 +269,8 @@ export default function ExtractionTaskCreate() {
           </div>
         </form>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 

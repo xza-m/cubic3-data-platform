@@ -29,6 +29,8 @@ install_codex(
 )
 PY
 
+RUN mkdir -p /root/.codex
+
 COPY . .
 
 RUN chmod +x entrypoint.sh

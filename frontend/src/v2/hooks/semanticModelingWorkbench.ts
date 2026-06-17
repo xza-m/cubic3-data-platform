@@ -4,6 +4,7 @@ import {
   applySemanticAssetPackageAction,
   createSemanticBuildProject,
   getSemanticBuildProject,
+  getSemanticAssetPackageProposalReadiness,
   listSemanticBuildProjects,
   scanSemanticBuildProject,
   updateSemanticAssetPackage,
@@ -25,6 +26,19 @@ export function useSemanticBuildProject(projectId: string | undefined) {
     queryKey: qk('semantic', 'modeling-workbench-project', projectId),
     queryFn: () => getSemanticBuildProject(projectId!),
     enabled: Boolean(projectId),
+  })
+}
+
+export function useSemanticAssetPackageProposalReadiness(
+  projectId: string | undefined,
+  packageId: string | undefined,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: qk('semantic', 'modeling-workbench-package-readiness', projectId, packageId),
+    queryFn: () => getSemanticAssetPackageProposalReadiness(projectId!, packageId!),
+    enabled: enabled && Boolean(projectId) && Boolean(packageId),
+    staleTime: 30_000,
   })
 }
 

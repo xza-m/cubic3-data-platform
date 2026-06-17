@@ -63,7 +63,8 @@ def test_student_comment_official_runtime_assets_are_consumable():
     metric = metric_repo.get("student_comment_total_count")
     assert obj is not None and obj.status == "active"
     assert metric is not None and metric.status == "active"
-    assert metric.measure_refs == ["dwd_interaction_comment_reports_df.total_count"]
+    assert metric.measure_ref_strings() == ["dwd_interaction_comment_reports_df.total_count"]
+    assert metric.primary_measure_ref() == "dwd_interaction_comment_reports_df.total_count"
 
     properties = [item for item in property_repo.list_all() if item.object_name == "student_comment"]
     assert properties

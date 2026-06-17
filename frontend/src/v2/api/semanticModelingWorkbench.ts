@@ -182,6 +182,11 @@ export const getSemanticAssetPackage = (projectId: string, packageId: string) =>
     `/semantic/modeling-workbench/projects/${encodeURIComponent(projectId)}/packages/${encodeURIComponent(packageId)}`,
   )
 
+export const getSemanticAssetPackageProposalReadiness = (projectId: string, packageId: string) =>
+  get<SemanticProposalReadiness>(
+    `/semantic/modeling-workbench/projects/${encodeURIComponent(projectId)}/packages/${encodeURIComponent(packageId)}/proposal-readiness`,
+  )
+
 export const updateSemanticAssetPackage = (
   projectId: string,
   packageId: string,

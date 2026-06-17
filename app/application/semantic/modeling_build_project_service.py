@@ -46,8 +46,15 @@ class IModelingBuildProjectRepository(Protocol):
 class ModelingBuildProjectService:
     """语义中心冷启动建设项目服务。"""
 
-    def __init__(self, repository: IModelingBuildProjectRepository):
+    def __init__(
+        self,
+        repository: IModelingBuildProjectRepository,
+        scanner: Any = None,
+    ):
         self.repository = repository
+        # scanner 为可选注入：带真实数据源坐标时走真实表缓存扫描，
+        # 未注入或缺少坐标时降级到演示兜底，保证存量调用与测试零回归。
+        self._scanner = scanner
 
     def create_project(
         self,
@@ -127,16 +134,11 @@ class ModelingBuildProjectService:
         existing_packages = {
             package.id: package for package in self.repository.list_packages(project.id)
         }
-        if scope.get("recommendation_empty"):
-            packages = [
-                self._preserve_review_fields(package, existing_packages.get(package.id))
-                for package in self._fallback_packages_from_scope(project, strategy)
-            ]
-        else:
-            packages = [
-                self._preserve_review_fields(package, existing_packages.get(package.id))
-                for package in self._deterministic_packages(project, strategy)
-            ]
+        raw_packages = self._scan_packages(project, strategy)
+        packages = [
+            self._preserve_review_fields(package, existing_packages.get(package.id))
+            for package in raw_packages
+        ]
         project.status = "scanned"
         self.repository.save_scan_result(self._with_package_summary(project, packages), packages)
         return self.get_project(project.id, principal_id=principal_id)
@@ -233,6 +235,23 @@ class ModelingBuildProjectService:
         if action == "split":
             return self._split_package(project, package, payload, reason)
         return self._merge_package(project, package, payload, reason)
+
+    def _scan_packages(
+        self,
+        project: ModelingBuildProject,
+        strategy: str,
+    ) -> list[ModelingAssetPackage]:
+        """选择扫描来源：真实表缓存 > scope 推荐回退 > 演示兜底。"""
+        scope = dict(project.scope or {})
+        if self._scanner is not None and self._scanner.can_scan(project):
+            scanned = self._scanner.scan(project, strategy)
+            if scanned:
+                return scanned
+            # 真实源命中但无可建模表：退回 scope 最小候选，避免空队列。
+            return self._fallback_packages_from_scope(project, strategy)
+        if scope.get("recommendation_empty"):
+            return self._fallback_packages_from_scope(project, strategy)
+        return self._deterministic_packages(project, strategy)
 
     def _deterministic_packages(
         self,

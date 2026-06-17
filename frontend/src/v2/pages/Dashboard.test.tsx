@@ -77,22 +77,25 @@ describe('Dashboard fact source labels', () => {
     mockUseDashboardOverview.mockReturnValue(dashboardResult())
   })
 
-  it('展示数据资产事实源，不把平台查询表述为 Gateway 正式问数', () => {
+  it('展示产品口径来源，不暴露实现表名或平台 Dataset 文案', () => {
     renderDashboard()
 
     expect(screen.getByText('数据资产')).toBeInTheDocument()
-    expect(screen.getByText('较上周 · 资产事实层 · data_asset_tables')).toBeInTheDocument()
+    expect(screen.getByText('较上周 · 数据资产事实源')).toBeInTheDocument()
     expect(screen.getByText('平台查询')).toBeInTheDocument()
-    expect(screen.getByText('近 7 日累计 · 交互式查询 · query_histories')).toBeInTheDocument()
-    expect(screen.getByText('平台交互式查询 · query_histories')).toBeInTheDocument()
+    expect(screen.getAllByText('交互式查询记录')).toHaveLength(1)
+    expect(screen.getByText('近 7 日累计 · 交互式查询记录')).toBeInTheDocument()
+    expect(screen.getByText('用业务问题生成 Cube 与本体草稿，校验后发布到语义中心，供 Agent / BI / 数据分析消费')).toBeInTheDocument()
     expect(screen.queryByText(/Gateway 正式问数/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/data_asset_tables|query_histories|平台 Dataset|发布给 Agent/)).not.toBeInTheDocument()
   })
 
-  it('数据规模回退到平台 Dataset 时明确标注来源', () => {
+  it('数据规模回退到 datasets 时展示平台数据集', () => {
     mockUseDashboardOverview.mockReturnValue(dashboardResult('datasets'))
 
     renderDashboard()
 
-    expect(screen.getByText('较上周 · 回退到平台 Dataset')).toBeInTheDocument()
+    expect(screen.getByText('较上周 · 平台数据集')).toBeInTheDocument()
+    expect(screen.queryByText(/平台 Dataset/)).not.toBeInTheDocument()
   })
 })

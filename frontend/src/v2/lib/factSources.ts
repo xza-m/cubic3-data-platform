@@ -32,6 +32,10 @@ export function normalizeDataAssetSyncStatus(status?: string | null): DataAssetS
 
 export function formatDatasetScaleSource(source?: string | null): string {
   return source === 'datasets'
-    ? '回退到平台 Dataset'
-    : '资产事实层 · data_asset_tables'
+    ? '平台数据集'
+    : '数据资产事实源'
+}
+
+export function formatQueryHistorySource(_source?: string | null): string {
+  return '交互式查询记录'
 }

@@ -1,5 +1,6 @@
 import pytest
 import time
+from unittest.mock import MagicMock
 
 from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.domain.entities.data_source import DataSource
@@ -372,6 +373,34 @@ def test_update_cube_and_missing_cube_paths():
 
     with pytest.raises(ApplicationException, match="未找到 Cube"):
         service.activate_cube("ghost")
+
+
+def test_update_cube_invalidates_definition_and_query_caches():
+    """定义变更后必须同时失效定义服务与查询服务缓存（compiler/JoinGraph）。"""
+    cube_repo = _InMemoryCubeRepo()
+    cube_repo.save(
+        CubeDefinition(
+            name="orders",
+            title="订单",
+            table="dws.orders",
+            source_id=11,
+            dimensions={"id": {"title": "主键", "type": "number", "sql": "{CUBE}.id", "primary_key": True}},
+            measures={"total_count": {"title": "总数", "type": "count", "sql": "{CUBE}.id"}},
+        )
+    )
+    definition_service = MagicMock()
+    query_service = MagicMock()
+    service = CubeModelingService(
+        cube_repo=cube_repo,
+        runtime_binding_service=_FakeRuntime(),
+        definition_service=definition_service,
+        query_service=query_service,
+    )
+
+    service.update_cube("orders", {"table": "dws.orders_v2"})
+
+    definition_service.invalidate_cache.assert_called()
+    query_service.invalidate_cache.assert_called()
 
 
 def test_normalize_humanize_and_type_helpers_cover_edge_cases():

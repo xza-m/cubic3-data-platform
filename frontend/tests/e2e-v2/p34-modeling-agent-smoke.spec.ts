@@ -1222,7 +1222,10 @@ test("P34 候选来源确认后确定性生成 spec @smoke @p34", async ({ page 
     },
   );
 
-  await gotoV2(page, "/semantic/modeling-copilot/session_source_candidate_1");
+  await gotoV2(
+    page,
+    "/semantic/modeling-workbench/quick?sessionId=session_source_candidate_1",
+  );
   await expect(page).toHaveURL(
     /\/semantic\/modeling-workbench\/quick\?sessionId=session_source_candidate_1$/,
   );
@@ -1351,22 +1354,19 @@ test("P1 Build Project 批量语义建设生成真实候选队列 @smoke @p34", 
   await gotoV2(page, "/semantic/modeling-workbench");
 
   await expect(
-    page.getByRole("heading", { name: "批量语义建设" }),
+    page.getByRole("heading", { name: "语义冷启动项目" }),
   ).toBeVisible();
   await expect(page.getByText("目标：语义中心")).toBeVisible();
   await expect(page.getByText("Builder 过渡工作区")).toHaveCount(0);
-  await expect(page.getByText("推荐建设范围")).toBeVisible();
+  await expect(page.getByText("推荐范围", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("若暂无自动推荐，可手动选择源表生成最小候选队列。"),
+    page.getByText("未选真实数据源，使用演示数据生成候选队列；选定数据源与库后可扫描真实表。"),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /生成批量建设队列/ }),
-  ).toBeVisible();
-  await page.getByLabel("业务域").fill("学情分析");
-  await page.getByLabel("候选表数量").fill("28");
-  await page.getByRole("button", { name: /生成批量建设队列/ }).click();
+  await expect(page.getByRole("button", { name: /生成候选队列/ })).toBeVisible();
+  await page.getByLabel("业务主题").fill("学情分析");
+  await page.getByRole("button", { name: /生成候选队列/ }).click();
 
-  await expect(page.getByText("学情分析批量语义建设")).toBeVisible();
+  await expect(page.getByText("学情分析语义冷启动项目")).toBeVisible();
   await expect(page.getByText("候选资产队列")).toBeVisible();
   await expect(page.getByRole("button", { name: "暂缓" }).first()).toBeVisible();
   await expect(
@@ -1391,11 +1391,11 @@ test("P1 Build Project 批量语义建设生成真实候选队列 @smoke @p34", 
     page.getByText("发布检查统一在右侧资产面板完成"),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "学情分析事实主题候选" }),
+    page.getByRole("heading", { name: "学情分析事实主题候选" }).first(),
   ).toBeVisible();
   await expect(page.getByText("dwd_learning_activity_df").first()).toBeVisible();
   await expect(page.getByText("一条学习行为事件").first()).toBeVisible();
-  await expect(page.getByText("表画像显示行为时间字段完整。")).toBeVisible();
+  await expect(page.getByText("表画像显示行为时间字段完整。").first()).toBeVisible();
   await expectWorkbenchPageCanScroll(page);
   await expect(page.getByLabel("建模目标")).toHaveValue(
     /dwd_learning_activity_df/,
@@ -1414,27 +1414,4 @@ test("P1 Build Project 批量语义建设生成真实候选队列 @smoke @p34", 
   await expect(page.getByText("语义编译").first()).toBeVisible();
   await expect(page.getByText("执行验证").first()).toBeVisible();
   await expect(page.getByText("消费者可用性").first()).toBeVisible();
-});
-
-test("旧 Modeling Copilot 入口兼容重定向到统一语义建设工作台 @p34", async ({
-  page,
-}) => {
-  await gotoV2(page, "/semantic/modeling-copilot/batch");
-  await expect(page).toHaveURL(/\/semantic\/modeling-workbench$/);
-  await expect(
-    page.getByRole("heading", { name: "批量语义建设" }),
-  ).toBeVisible();
-
-  await gotoV2(page, "/semantic/modeling-copilot/new");
-  await expect(page).toHaveURL(/\/semantic\/modeling-workbench\/quick$/);
-  await expect(
-    page.getByRole("heading", { name: "语义建设工作台" }),
-  ).toBeVisible();
-  await expect(page.getByText("快速单资产模式").first()).toBeVisible();
-
-  await gotoV2(page, "/semantic/modeling-copilot/session_agent_1");
-  await expect(page).toHaveURL(
-    /\/semantic\/modeling-workbench\/quick\?sessionId=session_agent_1$/,
-  );
-  await expect(page.getByText("快速单资产模式").first()).toBeVisible();
 });

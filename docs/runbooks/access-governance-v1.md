@@ -3,12 +3,14 @@ doc_type: runbook
 status: current
 source_of_truth: primary
 owner: engineering
-last_reviewed: 2026-05-13
+last_reviewed: 2026-06-09
 ---
 
 # 轻量权限体系运行手册
 
 本文档说明 cubic3 第一阶段轻量权限体系如何初始化、如何配置后台角色、如何处理 M3 资源，以及如何做生产 smoke。
+
+当前固定方案为 **B+：轻量权限中心 + 网关执行闭环**。架构决策见 [ADR-013 固定轻量权限中心与网关执行闭环](../architecture/decisions/ADR-013-lightweight-access-governance.md)，产品与界面设计见 [权限中心产品方案与界面设计](../prd/access_permission_center_prd.md)。
 
 当前口径：`data-platform` 承载身份、角色、数据准入、执行画像、权限审计和网关管理 UI；`dw-query-gateway` 作为独立执行面负责 SQL guard、MaxCompute 调用和真实执行遥测。行级、列级、脱敏和物理隔离继续交给 MaxCompute RAM / LabelSecurity / Policy。gateway -> MaxCompute RAM 当前只落方案，真实 RAM User AK/SK 和 CredentialBinding 不在 data-platform 表内保存。
 
@@ -23,10 +25,10 @@ last_reviewed: 2026-05-13
 
 | 界面对象 | 管理员心智 | 底层对象 |
 | --- | --- | --- |
-| 成员权限 | 给成员分配平台角色和数据访问权限 | `Principal` / `RoleBinding` |
-| 机器人接入 | 哪个 Bot、Agent、Skill 或 Job 可以调用平台 | `ServicePrincipal` / `ApiKey` |
+| 主体权限 | 给碳基成员分配平台角色和数据访问权限，同时查看硅基机器人接入 | `Principal` / `RoleBinding` / `ServicePrincipal` / `ApiKey` |
+| M2 白名单 | 解释默认 M2 权限来源、主体匹配状态和当前授权结果 | `FEISHU_M2_READER_OPEN_IDS` / `allowed_user_ids` / `RoleBinding` |
 | 数据访问规则 | 查看默认准入、例外规则和判定记录 | `DataPolicy` / `ExecutionProfile` / `PolicyDecision` |
-| 权限审计 | 查看权限审批、最近判定和治理要求 | `PolicyDecision` / 审批记录 |
+| 权限审计 | 查看策略判定、治理要求和访问拦截记录 | `PolicyDecision` / 治理要求记录 |
 | 网关观测 | 查看真实执行面的查询次数、稳定性和物理权限兜底 | `dw-query-gateway` telemetry / gateway trace |
 
 界面默认使用“平台角色、数据访问权限、机器人、访问规则、权限审计、网关观测”等产品语言；`Principal`、`DataPolicy`、`ExecutionProfile`、`CredentialBinding` 只作为工程实现名出现在 API、日志和高级排障材料中。
@@ -45,9 +47,9 @@ seed_access_governance_defaults()
 
 | profile_code | M 等级 | 用途 |
 | --- | --- | --- |
-| `inline_m0` | M0 | DIM / ADS 基础数据、语义知识和公开摘要 |
-| `internal_m1` | M1 | DWS 汇总层查询 |
-| `internal_m2` | M2 | 受控 DWD 明细查询，强审计 |
+| `mc_m0_reader` | M0 | DIM / ADS 基础数据、语义知识和公开摘要 |
+| `mc_m1_reader` | M1 | DWS 汇总层查询 |
+| `mc_m2_detail_reader` | M2 | 受控 DWD 明细查询，强审计 |
 
 默认数据策略：
 
@@ -58,9 +60,44 @@ seed_access_governance_defaults()
 | `m2_detail_read` | allow | `data_m2_detail_reader` | `dwd_` |
 | `m3_raw_block` | deny | 无角色要求 | `ods_` / `raw_` / M3 |
 
+### 1.1 方案 B：全员登录 + M2 白名单
+
+方案 B 的启动口径是：企业内飞书用户可以通过 SSO 登录并自动落成 `access_principals`，但默认只获得 `viewer` 平台角色；只有命中默认 M2 白名单的用户，登录时才会额外绑定：
+
+```text
+data_m0_reader
+data_m1_reader
+data_m2_detail_reader
+```
+
+默认 M2 白名单支持三种标识：
+
+- 飞书 `open_id`
+- 飞书 `union_id`
+- 平台生成的 `principal_id`，例如 `feishu:<tenant_key>:<union_id>`
+
+配置方式：
+
+```bash
+FEISHU_M2_READER_OPEN_IDS=on_xxx,ou_xxx,feishu:tenant_a:un_xxx
+FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST=true
+```
+
+`FEISHU_M2_READER_SYNC_CUBIC3_ALLOWLIST=true` 是默认值，表示复用 CUBIC3 智能问数应用配置里的 `allowed_user_ids` 作为默认 M2 白名单。若后续希望“能使用智能问数”和“默认 M2 查询权限”拆开，设为 `false`，再只维护 `FEISHU_M2_READER_OPEN_IDS`。
+
+注意：默认 M2 只让 data-platform 的 `DataPolicy` 能放行 M2 受控明细；真实执行仍必须通过 `dw-query-gateway` 的 SQL guard、CredentialBinding 和 MaxCompute RAM / ACL 物理权限。
+
+联调和后台展示可读取白名单解释接口：
+
+```http
+GET /api/v1/access/m2-allowlist
+```
+
+该接口只返回配置来源、匹配状态、当前 M2 成员和风险提示，不执行授权写入。它用于确认“哪些飞书 ID 应该默认拥有 M2”以及“这些 ID 是否已经登录落成 Principal”。授权写入仍发生在飞书 SSO 首次登录或后续同步任务中。
+
 ## 2. 平台角色与数据访问权限
 
-后台默认把成员权限拆成两类能力：
+后台默认把主体权限拆成两类能力：
 
 ```http
 GET /api/v1/access/permission-packages
@@ -73,7 +110,7 @@ GET /api/v1/access/permission-packages
 | 管理员 | `governance_admin` / `auditor` | 管权限配置、访问规则和审计，不自动拥有数据读取权限 |
 | 产品经理 | `product_manager` | 查看业务对象、指标解释和产品分析入口 |
 | 数据开发 | `semantic_modeler` | 维护业务对象、指标、Cube 和语义草稿 |
-| 普通用户 | `viewer` | 使用基础入口和公开页面 |
+| 普通用户 | `viewer` | 使用基础入口和公开页面，不可读取权限中心 |
 
 内置数据访问权限：
 
@@ -86,7 +123,7 @@ GET /api/v1/access/permission-packages
 推荐操作路径：
 
 ```text
-配置中心 -> 访问网关 -> 权限配置 -> 成员权限 -> 选择成员 -> 选择平台角色和数据访问权限 -> 保存权限配置
+配置中心 -> 访问网关 -> 权限配置 -> 主体权限 -> 选择碳基成员 -> 选择平台角色和数据访问权限 -> 保存权限配置
 ```
 
 接口方式：
@@ -130,9 +167,9 @@ auditor
 
 `platform_admin` 不自动获得数据权限，需要另绑 `data_*` 角色。
 
-## 4. 绑定数据角色（高级接口）
+## 4. 底层角色绑定接口（内部自动化）
 
-高级接口仍保留，用于迁移、自动化或故障修复：
+该接口用于迁移、自动化或故障修复，不作为后台产品主操作入口，也不是旧前端兼容路径。管理员日常操作应走 `permission-packages`，前端不再暴露直接编辑底层 `role-bindings` 的入口。
 
 ```http
 PUT /api/v1/access/principals/{principal_id}/role-bindings
@@ -209,8 +246,8 @@ M3 命中时返回：
 
 | 二级菜单 | 用途 |
 | --- | --- |
-| 权限管理 | 成员权限、机器人接入、数据访问规则 |
-| 权限审计 | 权限审批、策略判定和治理要求 |
+| 权限管理 | 主体权限、M2 白名单、数据访问规则 |
+| 权限审计 | 策略判定、治理要求和访问拦截记录 |
 | 网关观测 | 查询执行记录、访问趋势、SQL guard、MaxCompute 物理拒绝和稳定性 |
 
 ## 7. 机器人接入和 API Key
@@ -236,6 +273,45 @@ delegation.feishu_user
 
 请求体必须携带 `feishu_context`。data-platform 会根据 `tenant_key + union_id/open_id` 解析真人 Principal，并只使用服务端 RoleBinding。
 
+签发时可显式选择身份模式（M3 产品化）：
+
+| 模式 | 请求体 | 行级求值口径 |
+| --- | --- | --- |
+| 模式 A（scope） | `"mode": "scope"` + `data_scopes`（写入 `access_principal_scopes`，source=issuance） | 取服务身份自带 scope；未配 scope 且命中 row_scope 策略时 fail closed |
+| 模式 B（delegation） | `"mode": "delegation"`（要求 service principal 已配 `allowed_tenants` 委托白名单，自动附加 `delegation.feishu_user`） | 取被代理 subject 主体的 scope；请求体 scope 声明一律不采信 |
+
+可选 `semantic_pin`（§6.1 release pin）：`{"pin_policy": "pinned", "release_id": "rel_x"}` 让该 Key 的语义解析固定在不可变 release；`track_active`（默认）跟随 active。
+
+## 7.1 行级安全（row_scope）与过渡 fail closed
+
+M3 平台侧已落地行级安全模板与求值链（设计见 [semantic-binding-and-rls.md](../architecture/semantic-binding-and-rls.md) §3/§6）：
+
+- `DataPolicy.row_scope` 配谓词模板：`[{"dimension_ref": "cube.dimension", "operator": "in", "attribute": "school_ids", "on_missing": "deny"}]`，经 `/api/v1/governance/data-policies` 维护。
+- 主体数据范围经 `PUT /api/v1/access/principals/{id}/scopes` 配置（source=manual）或 Key 签发模式 A 写入（source=issuance）。
+- `post_compile` 求值产出 `effective_row_scope`（物理表+列+具体值），随决策持久化并进入审计 UI（双主体归因）。
+
+**执行模式开关 `RLS_ENFORCEMENT_MODE`（过渡，默认 `observe`）**：考虑 gateway 仍有存量用户、直接注入影响生产可用，RLS 是否阻断由该开关统一控制（`AccessPolicyDecisionService` 单点读取、随 `PolicyDecisionResult.rls_enforcement_mode` 透传到所有 fail-closed 落点与网关 context）：
+
+| 模式 | row_scope 命中时行为 | GatewayAccessContext |
+| --- | --- | --- |
+| `off` | 跳过求值，放行 | v1（不下发 row_scope）|
+| `observe`（默认） | 求值 + 写审计，**放行不阻断** | v1（网关零感知）|
+| `deny` | fail closed（见下表） | v2（含 row_scope）|
+| `enforce` | 预留，gateway 注入就绪后真正注入；当前等价 `deny` | v2 |
+
+> 未配 `row_scope` 的策略在任何模式下零影响；`observe` 下网关收到的 context 与改造前完全一致。生产先用 `observe` 积累求值证据，gateway `apply_scope` 就绪后切 `deny`/`enforce`。
+
+**`deny` / `enforce` 模式下的 fail closed 落点**（observe/off 不触发）：
+
+| 路径 | reason_code |
+| --- | --- |
+| free SQL 命中带 row_scope 策略的资源 | `row_scope_requires_semantic_path`（语义路径外不放行） |
+| 非 gateway 引擎（PG/MySQL/ClickHouse 直查） | `row_scope_engine_unsupported` |
+| gateway 引擎（注入能力未就绪） | `scope_injection_unsupported` |
+| 模板属性缺失且 `on_missing: deny` | `row_scope_unresolved` |
+
+元数据可见性（§6.2）：`semantic.discover` / `semantic.describe` 已进 DataPolicy 裁决链；服务身份默认不可发现（deny-first），人类主体默认可见 active 资产 M0/M1 摘要，M2+ 物理细节（表名 / dimension SQL / join 拓扑）需对应数据角色，否则脱敏返回。存量 ontology `PolicyMetadata.allowed_roles` 经 `POST /api/v1/governance/data-policies/migrate-policy-metadata` 一次性迁为 discover 策略。
+
 ## 8. 生产 Smoke
 
 轻量权限闭环 smoke 固定入口：
@@ -249,6 +325,7 @@ make smoke-access
 | 路径 | 目标 |
 | --- | --- |
 | 飞书 SSO 登录兼容 | 真人 Principal 可登录并进入新身份体系 |
+| M2 白名单解释 | `/api/v1/access/m2-allowlist` 返回配置标识、匹配状态和当前授权 |
 | API Key 生命周期 | 明文只创建时返回，后续详情不泄露 |
 | Bot 代理真人 | API Key + `feishu_context` 解析为 actor service、principal human |
 | M1 / M2 放行 | 命中默认 DataPolicy 和 ExecutionProfile |

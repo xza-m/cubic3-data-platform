@@ -6,6 +6,7 @@ import AppRoutes from '@v2/routes'
 import { ThemeProvider } from '@v2/components/ThemeProvider'
 import { A11yPreferencesProvider } from '@v2/components/A11yPreferencesProvider'
 import { ToastProvider } from '@v2/components/ui/Toast'
+import { ConfirmProvider } from '@v2/components/ui/ConfirmDialog'
 import { createQueryClient } from '@v2/hooks/query-client'
 import { ErrorBoundary } from '@v2/components/ErrorBoundary'
 import { ev, obs } from '@v2/observability'
@@ -18,12 +19,14 @@ export default function App() {
       <ThemeProvider>
         <A11yPreferencesProvider>
           <ToastProvider>
-            <ErrorBoundary>
-              <BrowserRouter>
-                <NavigationTracker />
-                <AppRoutes />
-              </BrowserRouter>
-            </ErrorBoundary>
+            <ConfirmProvider>
+              <ErrorBoundary>
+                <BrowserRouter>
+                  <NavigationTracker />
+                  <AppRoutes />
+                </BrowserRouter>
+              </ErrorBoundary>
+            </ConfirmProvider>
           </ToastProvider>
         </A11yPreferencesProvider>
       </ThemeProvider>

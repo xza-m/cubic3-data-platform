@@ -27,13 +27,14 @@ import {
   useDeleteScheduledQuery,
 } from '@v2/hooks/queries'
 import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
-import { useToast } from '@v2/components/ui'
+import { useToast, useConfirm } from '@v2/components/ui'
 import type { ScheduledQuery } from '@v2/api/queries'
 import { t } from '@v2/i18n'
 
 export default function QueriesScheduled() {
   const navigate = useNavigate()
   const toast = useToast()
+  const confirm = useConfirm()
 
   const [page, setPage] = useState(1)
   const [peekRow, setPeekRow] = useState<ScheduledQuery | null>(null)
@@ -101,13 +102,14 @@ export default function QueriesScheduled() {
 
   async function handleDelete(row: ScheduledQuery) {
     if (
-      !window.confirm(
-        t(
+      !(await confirm({
+        title: t(
           'queries.scheduled.confirm.delete',
           '删除调度「{name}」？此操作将解除关联 APScheduler job。',
           { name: row.name },
         ),
-      )
+        tone: 'danger',
+      }))
     )
       return
     try {

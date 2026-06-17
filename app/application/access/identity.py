@@ -41,6 +41,24 @@ def _dedupe(values: Iterable[Any]) -> list[str]:
     return result
 
 
+def _normalize_semantic_pin(semantic_pin: dict[str, Any] | None) -> dict[str, Any] | None:
+    """校验并规范化 API Key 语义 release pin 配置（§6.1）。"""
+    if not semantic_pin:
+        return None
+    if not isinstance(semantic_pin, dict):
+        raise ValidationError("semantic_pin 必须是对象")
+    pin_policy = _clean(semantic_pin.get("pin_policy") or "track_active")
+    if pin_policy not in {"pinned", "track_active"}:
+        raise ValidationError("semantic_pin.pin_policy 仅支持 pinned / track_active")
+    release_id = _clean(semantic_pin.get("release_id") or "")
+    if pin_policy == "pinned" and not release_id:
+        raise ValidationError("semantic_pin.pin_policy=pinned 时必须提供 release_id")
+    normalized: dict[str, Any] = {"pin_policy": pin_policy}
+    if release_id:
+        normalized["release_id"] = release_id
+    return normalized
+
+
 def make_human_principal_id(tenant_key: str, *, union_id: str | None, open_id: str | None) -> str:
     """生成飞书真人 Principal ID，优先使用 union_id。"""
 
@@ -91,6 +109,8 @@ class AuthenticatedActor:
     service_type: str | None = None
     tenant_key: str | None = None
     key_id: str | None = None
+    # 语义 release pin（§6.1）：{"pin_policy": "pinned"|"track_active", "release_id": "..."}
+    semantic_pin: dict[str, Any] | None = None
 
 
 class DelegationReplayStore:
@@ -180,6 +200,10 @@ class RoleBindingResolver:
         platform_roles = _dedupe(platform_roles)
         data_roles = _dedupe(data_roles)
         principal_type = principal.principal_type if principal else "human"
+        data_scopes: dict[str, list[str]] = {}
+        scope_resolver = getattr(self.repository, "resolve_principal_data_scopes", None)
+        if callable(scope_resolver):
+            data_scopes = dict(scope_resolver(principal_id) or {})
         return PrincipalContext(
             principal_id=principal_id,
             principal_type=principal_type,
@@ -189,6 +213,7 @@ class RoleBindingResolver:
             data_roles=data_roles,
             groups=list(groups or []),
             departments=list(departments or []),
+            data_scopes=data_scopes,
             source=source,
             actor_type=actor_type,
             actor_id=actor_id or principal_id,
@@ -351,10 +376,51 @@ class AccessIdentityService:
         allowed_ips: list[str] | None = None,
         rate_limit_per_minute: int | None = None,
         expires_at: datetime | None = None,
+        mode: str | None = None,
+        data_scopes: list[dict[str, Any]] | None = None,
+        semantic_pin: dict[str, Any] | None = None,
         commit: bool = True,
     ) -> CreatedApiKey:
-        if self.repository.get_service_principal(principal_id) is None:
+        """签发 API Key（§4.3/4.4 产品化）。
+
+        - ``mode="scope"``（模式 A）：服务身份自带数据范围——``data_scopes`` 写入
+          ``access_principal_scopes``（source=issuance），不允许携带委托 scope。
+        - ``mode="delegation"``（模式 B）：服务身份代理 subject 主体——要求 service
+          principal 已配置委托白名单（``allowed_tenants``），自动附加委托 scope；
+          row_scope 求值取 subject 的 scope，请求体 scope 声明一律不采信（ADR-013）。
+        - ``mode`` 为空时保持兼容旧行为（不做模式校验）。
+        - ``semantic_pin``（§6.1 消费方 pin 配置）：
+          ``{"pin_policy": "pinned"|"track_active", "release_id": "..."}``，
+          pinned 时要求 release_id 非空。
+        """
+        service = self.repository.get_service_principal(principal_id)
+        if service is None:
             raise ValidationError("API Key 只能签发给 service principal")
+        scopes = _dedupe(scopes)
+        mode_value = _clean(mode or "")
+        if mode_value:
+            if mode_value not in {"scope", "delegation"}:
+                raise ValidationError("mode 仅支持 scope（模式 A）/ delegation（模式 B）")
+            if mode_value == "scope":
+                if DELEGATION_SCOPE in scopes:
+                    raise ValidationError("模式 A（scope）不允许携带委托 scope")
+            else:
+                if data_scopes:
+                    raise ValidationError("模式 B（delegation）不在签发时配置数据范围，row_scope 取 subject 主体 scope")
+                if not (service.allowed_tenants or []):
+                    raise ValidationError("模式 B 需要先在 service principal 上配置委托白名单（allowed_tenants）")
+                if DELEGATION_SCOPE not in scopes:
+                    scopes = [*scopes, DELEGATION_SCOPE]
+        if data_scopes:
+            if mode_value == "delegation":
+                raise ValidationError("模式 B（delegation）不在签发时配置数据范围")
+            self.repository.replace_principal_scopes(
+                principal_id=principal_id,
+                source="issuance",
+                scopes=data_scopes,
+                created_by=created_by,
+            )
+        normalized_pin = _normalize_semantic_pin(semantic_pin)
         key_id = "ak_" + secrets.token_hex(8)
         secret = secrets.token_urlsafe(32)
         plaintext = f"{API_KEY_PREFIX}_{key_id}_{secret}"
@@ -363,11 +429,12 @@ class AccessIdentityService:
             principal_id=principal_id,
             key_prefix=f"{API_KEY_PREFIX}_{key_id}",
             key_hash=hash_api_key(plaintext),
-            scopes=_dedupe(scopes),
+            scopes=scopes,
             allowed_ips=list(allowed_ips or []),
             rate_limit_per_minute=rate_limit_per_minute,
             expires_at=expires_at,
             status="active",
+            semantic_pin=normalized_pin,
             created_by=created_by,
         )
         self.repository.add_api_key(row)
@@ -424,6 +491,7 @@ class AccessIdentityService:
             service_type=service.service_type,
             tenant_key=principal.tenant_key,
             key_id=row.key_id,
+            semantic_pin=dict(row.semantic_pin) if getattr(row, "semantic_pin", None) else None,
         )
 
     def rotate_api_key(self, key_id: str, *, rotated_by: str | None = None) -> CreatedApiKey:
@@ -439,6 +507,7 @@ class AccessIdentityService:
             allowed_ips=list(row.allowed_ips or []),
             rate_limit_per_minute=row.rate_limit_per_minute,
             expires_at=row.expires_at,
+            semantic_pin=dict(row.semantic_pin) if getattr(row, "semantic_pin", None) else None,
         )
 
     def revoke_api_key(self, key_id: str) -> dict[str, Any]:
@@ -582,6 +651,35 @@ class AccessIdentityService:
 
     def list_role_bindings(self, principal_id: str) -> list[Any]:
         return self.repository.list_role_bindings_for_principal(principal_id)
+
+    # ------------------------------------------------------------------
+    # Principal data scope（RLS）
+    # ------------------------------------------------------------------
+
+    def put_principal_scopes(
+        self,
+        *,
+        principal_id: str,
+        source: str,
+        scopes: list[dict[str, Any]],
+        created_by: str | None = None,
+    ) -> list[Any]:
+        if self.repository.get_principal(principal_id) is None:
+            raise ValidationError("Principal 不存在")
+        source_value = _clean(source) or "manual"
+        if source_value not in {"manual", "issuance", "feishu_dept"}:
+            raise ValidationError("source 仅支持 manual / issuance / feishu_dept")
+        rows = self.repository.replace_principal_scopes(
+            principal_id=principal_id,
+            source=source_value,
+            scopes=scopes,
+            created_by=created_by,
+        )
+        self.repository.commit()
+        return rows
+
+    def list_principal_scopes(self, principal_id: str) -> list[Any]:
+        return self.repository.list_principal_scopes(principal_id)
 
 
 def _safe_feishu_context(feishu_context: dict[str, Any]) -> dict[str, Any]:

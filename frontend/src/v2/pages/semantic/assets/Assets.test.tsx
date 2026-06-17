@@ -96,16 +96,6 @@ function twoPhysicalTables() {
   }
 }
 
-function physicalTablesResponse(tables: ReturnType<typeof twoPhysicalTables>['tables']) {
-  return {
-    tables,
-    total: tables.length,
-    page: 1,
-    page_size: 20,
-    page_count: tables.length > 0 ? 1 : 0,
-  }
-}
-
 describe('数据资产底座工作区', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -225,10 +215,15 @@ describe('数据资产底座工作区', () => {
 
     expect(await screen.findByRole('heading', { name: '资产雷达' })).toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: '数据资产底座页面' })).not.toBeInTheDocument()
+    expect(screen.queryByText('资产功能索引')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /字段画像/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /元数据同步/ })).not.toBeInTheDocument()
     expect(await screen.findByText('底座健康概览')).toBeInTheDocument()
     expect(screen.getByText('18')).toBeInTheDocument()
     expect(screen.getByText('92')).toBeInTheDocument()
-    expect(screen.getByText('最近同步：成功，写入 1 张表 / 2 个字段')).toBeInTheDocument()
+    expect(screen.queryByText('最近同步：成功，写入 1 张表 / 2 个字段')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '刷新同步记录' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '同步元数据' })).not.toBeInTheDocument()
     expect(screen.getByText('订单事实表')).toBeInTheDocument()
     expect(screen.getByText('dwd_order_fact')).toBeInTheDocument()
     expect(screen.getByText('生产 PostgreSQL')).toBeInTheDocument()
@@ -309,6 +304,21 @@ describe('数据资产底座工作区', () => {
     expect(within(driftSummary as HTMLElement).getByText('旧契约 issues 分支仍应展示')).toBeInTheDocument()
   })
 
+  it('语义治理 issues 失败时不阻断资产雷达核心数据', async () => {
+    mockApiClientGet.mockRejectedValueOnce(new Error('governance unavailable'))
+
+    render(
+      <MemoryRouter>
+        <AssetWorkspace view="radar" />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('底座健康概览')).toBeInTheDocument()
+    expect(screen.getByText('18')).toBeInTheDocument()
+    expect(screen.getByText('订单事实表')).toBeInTheDocument()
+    expect(screen.queryByText('资产底座数据加载失败，请稍后重试。')).not.toBeInTheDocument()
+  })
+
   it('最近同步提示展示失败数据源名称', async () => {
     mockListDataAssetSyncRuns.mockResolvedValueOnce({
       items: [
@@ -336,7 +346,7 @@ describe('数据资产底座工作区', () => {
 
     render(
       <MemoryRouter>
-        <Assets />
+        <AssetWorkspace view="sync-runs" />
       </MemoryRouter>,
     )
 
@@ -349,7 +359,7 @@ describe('数据资产底座工作区', () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter>
-        <Assets />
+        <AssetWorkspace view="sync-runs" />
       </MemoryRouter>,
     )
 
@@ -370,6 +380,8 @@ describe('数据资产底座工作区', () => {
     expect(await screen.findByText('物理表列表')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '资产雷达' })).not.toBeInTheDocument()
     expect(screen.queryByText('底座健康概览')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '刷新同步记录' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '同步元数据' })).not.toBeInTheDocument()
     expect(screen.getByText('1 / 1')).toBeInTheDocument()
   })
 
@@ -606,96 +618,52 @@ describe('数据资产底座工作区', () => {
     expect(within(ordersCard as HTMLElement).queryByText('comments-fresh')).not.toBeInTheDocument()
   })
 
-  it('旧列表响应不会覆盖当前选中物理表', async () => {
+  it('旧同步记录响应不会覆盖当前同步页结果', async () => {
     const user = userEvent.setup()
-    const staleTables = deferred<Awaited<ReturnType<typeof listDataAssetPhysicalTables>>>()
-    const [, commentsTable] = twoPhysicalTables().tables
-    const [ordersTable] = twoPhysicalTables().tables
+    const staleSyncRuns = deferred<Awaited<ReturnType<typeof listDataAssetSyncRuns>>>()
 
-    mockListDataAssetPhysicalTables
-      .mockImplementationOnce(() => staleTables.promise)
-      .mockResolvedValue(physicalTablesResponse([commentsTable]))
-    mockGetDataAssetTableEvidence.mockResolvedValue({
-      runtime_truth: false,
-      sample_profile: { row_count: 880000, partition_count: 31, profile_status: 'comments-fresh' },
-      usage_evidence: [],
-      lineage_evidence: [],
-    })
-
-    render(
-      <MemoryRouter>
-        <AssetWorkspace view="quality" />
-      </MemoryRouter>,
-    )
-
-    await user.click(screen.getByRole('button', { name: '刷新资产底座' }))
-
-    const selector = await screen.findByLabelText('选择画像物理表')
-    await waitFor(() => expect(selector).toHaveValue('table.comments'))
-    expect(await screen.findByText('学生评论举报事实表')).toBeInTheDocument()
-
-    staleTables.resolve(physicalTablesResponse([ordersTable]))
-
-    await waitFor(() => expect(selector).toHaveValue('table.comments'))
-    expect(screen.getByText('学生评论举报事实表')).toBeInTheDocument()
-    expect(screen.queryByText('订单事实表')).not.toBeInTheDocument()
-  })
-
-  it('旧治理问题响应不会覆盖当前 Schema 漂移摘要', async () => {
-    const user = userEvent.setup()
-    const staleGovernance = deferred<{ data: { data: { items: Array<Record<string, unknown>> } } }>()
-
-    mockApiClientGet
-      .mockImplementationOnce(() => staleGovernance.promise)
-      .mockResolvedValueOnce({
-        data: {
-          data: {
-            items: [
-              {
-                id: 'current-governance-issue',
-                code: 'schema_drift_current',
-                severity: 'warn',
-                object_type: 'physical_table',
-                object_name: 'dwd_current_fact',
-                message: '当前 governance 漂移',
-              },
-            ],
+    mockListDataAssetSyncRuns
+      .mockImplementationOnce(() => staleSyncRuns.promise)
+      .mockResolvedValue({
+        items: [
+          {
+            id: 'sync-current',
+            source_id: 'all',
+            status: 'success',
+            started_at: '2026-05-24T08:40:00Z',
+            finished_at: '2026-05-24T08:41:00Z',
+            stats: { table_count: 2, field_count: 4 },
           },
-        },
+        ],
+        total: 1,
       })
 
     render(
       <MemoryRouter>
-        <AssetWorkspace view="radar" />
+        <AssetWorkspace view="sync-runs" />
       </MemoryRouter>,
     )
 
-    await user.click(screen.getByRole('button', { name: '刷新资产底座' }))
+    await user.click(screen.getByRole('button', { name: '刷新同步记录' }))
+    expect(await screen.findByText('sync-current')).toBeInTheDocument()
 
-    expect(await screen.findByText('当前 governance 漂移')).toBeInTheDocument()
-    await waitFor(() => expect(mockApiClientGet).toHaveBeenCalledTimes(2))
-
-    staleGovernance.resolve({
-      data: {
-        data: {
-          items: [
-            {
-              id: 'stale-governance-issue',
-              code: 'schema_drift_stale',
-              severity: 'warn',
-              object_type: 'physical_table',
-              object_name: 'dwd_stale_fact',
-              message: '旧 governance 漂移',
-            },
-          ],
+    staleSyncRuns.resolve({
+      items: [
+        {
+          id: 'sync-stale',
+          source_id: 'all',
+          status: 'success',
+          started_at: '2026-05-23T08:40:00Z',
+          finished_at: '2026-05-23T08:41:00Z',
+          stats: { table_count: 1, field_count: 2 },
         },
-      },
+      ],
+      total: 1,
     })
-    await staleGovernance.promise
+    await staleSyncRuns.promise
 
-    expect(screen.getByText('当前 governance 漂移')).toBeInTheDocument()
-    expect(screen.queryByText('旧 governance 漂移')).not.toBeInTheDocument()
-    expect(screen.queryByText('dwd_stale_fact')).not.toBeInTheDocument()
+    expect(screen.getByText('sync-current')).toBeInTheDocument()
+    expect(screen.queryByText('sync-stale')).not.toBeInTheDocument()
   })
 
   it('旧 evidence 不会覆盖当前选中表画像', async () => {

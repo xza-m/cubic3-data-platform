@@ -10,6 +10,14 @@ export interface BatchModelingScope {
   sourceCount: number
   strategy: BatchModelingStrategy
   includeExistingSemantics: boolean
+  // 真实扫描坐标：选定数据源 + 库时，后端扫描器读真实表缓存出候选；
+  // 未选定时降级为演示队列，保证向后兼容。
+  sourceId?: number | null
+  database?: string | null
+  // 仅用于扫描计划/风险预览文案展示，不参与后端扫描参数下发。
+  sourceLabel?: string | null
+  tablePrefixes?: string[]
+  maxTables?: number
 }
 
 export interface BatchModelingQueueItem {
@@ -41,6 +49,8 @@ export const BATCH_MODELING_DEFAULT_SCOPE: BatchModelingScope = {
   sourceCount: 18,
   strategy: 'balanced',
   includeExistingSemantics: true,
+  sourceId: null,
+  database: null,
 }
 
 export function buildBatchModelingPlan(scope: BatchModelingScope): BatchModelingPlan {
@@ -50,7 +60,7 @@ export function buildBatchModelingPlan(scope: BatchModelingScope): BatchModeling
   const needsScope = normalizedScope.sourceCount > 60 || normalizedScope.strategy === 'exploratory'
 
   return {
-    title: `${domain}批量语义建设`,
+    title: `${domain}语义冷启动项目`,
     target: 'semantic_center',
     riskLevel,
     scope: normalizedScope,
@@ -84,6 +94,23 @@ export function batchModelingStrategyLabel(strategy: BatchModelingStrategy): str
   return BATCH_MODELING_STRATEGY_LABELS[strategy]
 }
 
+// 分诊分桶：把候选包按审阅注意力归到三桶，缓解审核疲劳。
+export type BatchTriageBucket = 'ready' | 'attention' | 'parked'
+
+export const BATCH_TRIAGE_BUCKET_ORDER: BatchTriageBucket[] = ['ready', 'attention', 'parked']
+
+export const BATCH_TRIAGE_BUCKET_LABELS: Record<BatchTriageBucket, string> = {
+  ready: '自动就绪',
+  attention: '待补口径 / 高风险',
+  parked: '已暂缓 / 重复',
+}
+
+export function triageBucketForStatus(status: string): BatchTriageBucket {
+  if (status === 'needs_scope' || status === 'high_risk') return 'attention'
+  if (status === 'deferred' || status === 'duplicate_candidate') return 'parked'
+  return 'ready'
+}
+
 export function batchModelingRiskLabel(risk: BatchModelingRiskLevel): string {
   return BATCH_MODELING_RISK_LABELS[risk]
 }
@@ -98,12 +125,39 @@ function resolveRiskLevel(scope: BatchModelingScope): BatchModelingRiskLevel {
   return 'low'
 }
 
+// 选定真实数据源 + 库时，扫描计划反映真实坐标与表上限；否则保持演示口径。
+export function isRealSourceScope(scope: BatchModelingScope): boolean {
+  return Boolean(scope.sourceId) && Boolean((scope.database ?? '').trim())
+}
+
 function buildScanPlan(scope: BatchModelingScope): string[] {
+  const alignLine = scope.includeExistingSemantics
+    ? '对齐已有语义对象、指标和 Cube，避免重复建设。'
+    : '不复用已有语义资产，仅生成待审阅候选建议。'
+
+  if (isRealSourceScope(scope)) {
+    const sourceLabel = scope.sourceLabel?.trim() || `数据源 #${scope.sourceId}`
+    const maxTables = scope.maxTables ?? scope.sourceCount
+    return [
+      `从 ${sourceLabel} 的库 ${scope.database} 读取真实表缓存，最多扫描 ${maxTables} 张表。`,
+      alignLine,
+      '按命名分层（事实 / 维度 / 指标）取列推断字段角色，生成带列快照的待审阅候选。',
+    ]
+  }
+
   return [
     `扫描 ${scope.sourceCount} 张候选物理表画像、字段画像与血缘使用。`,
-    scope.includeExistingSemantics ? '对齐已有语义对象、指标和 Cube，避免重复建设。' : '不复用已有语义资产，仅生成待审阅候选建议。',
-    '按业务域聚类出事实主题、维度主题、指标候选与高风险缺口。',
+    alignLine,
+    '按业务主题聚类出事实主题、维度主题、指标候选与高风险缺口。',
   ]
+}
+
+// 扫描完成后按真实风险桶汇总，替代仅基于 sourceCount 的启发式预览。
+export function summarizeRiskLevel(summary?: Record<string, number> | null): BatchModelingRiskLevel {
+  if (!summary) return 'low'
+  if ((summary.high ?? 0) > 0) return 'high'
+  if ((summary.medium ?? 0) > 0) return 'medium'
+  return 'low'
 }
 
 function buildQueueItems(

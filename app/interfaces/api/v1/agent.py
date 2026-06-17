@@ -94,15 +94,37 @@ def create_agent_blueprint(agent_plan_handler, agent_execute_service=None):
     @bp.route("/semantic/execute", methods=["POST"])
     @require_auth
     def semantic_execute():
+        from flask import current_app
+
         if agent_execute_service is None:
-            return error("Agent 语义执行服务未配置", status=503)
+            return error(
+                "Agent 语义执行服务未配置",
+                status=503,
+                details={
+                    "error_code": "agent_execute_service_not_configured",
+                    "hint": "请检查 DI 容器中 agent_execute_service 的装配与 query_gateway 配置。",
+                },
+            )
+        token = str(current_app.config.get("QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN") or "").strip()
+        if not token:
+            return error(
+                "dw-query-gateway 服务令牌未配置，正式语义执行不可用",
+                status=503,
+                details={
+                    "error_code": "gateway_token_missing",
+                    "hint": "请在环境变量中配置 QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN 后重启服务。",
+                },
+            )
         try:
             body = AgentSemanticExecuteRequest(**(request.get_json(silent=True) or {}))
             runtime_options = dict(body.runtime_options or {})
             runtime_options["runtime_mode"] = "official"
             authenticated_user = authenticated_user_from_g()
+            # 与 /semantic/plan 对齐：未显式传 principal_context 时从 bearer 解析，
+            # 否则 principal 无角色绑定，治理决策必然 deny。
+            principal_context = body.principal_context or principal_context_from_bearer(source="agent_bearer")
             principal = PrincipalResolver().resolve(
-                principal_context=body.principal_context,
+                principal_context=principal_context,
                 viewer_roles=body.viewer_roles,
                 authenticated_user=authenticated_user,
             )
@@ -117,7 +139,15 @@ def create_agent_blueprint(agent_plan_handler, agent_execute_service=None):
         except PydanticValidationError as exc:
             return error("请求参数错误", details=exc.errors())
         except GatewayQueryError as exc:
-            return error(f"dw-query-gateway is not configured or unavailable: {exc}", status=503)
+            return error(
+                f"dw-query-gateway is not configured or unavailable: {exc}",
+                status=503,
+                details={
+                    "error_code": "gateway_unavailable",
+                    "message": str(exc),
+                    "hint": "请确认 dw-query-gateway 服务可达（QUERY_GATEWAY_BASE_URL），且服务令牌有效。",
+                },
+            )
         except (AuthenticationError, AuthorizationError, ValidationError):
             raise
         except Exception as exc:

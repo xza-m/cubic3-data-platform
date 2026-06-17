@@ -3,7 +3,7 @@
     "items": [
       {
         "id": 201,
-        "task_name": "学习行为抽取",
+        "task_name": "学习行为同步",
         "task_code": "learning_behavior",
         "dataset_id": 1,
         "task_type": "scheduled",
@@ -20,7 +20,7 @@
   },
   "task_detail": {
     "id": 201,
-    "task_name": "学习行为抽取",
+    "task_name": "学习行为同步",
     "task_code": "learning_behavior",
     "dataset_id": 1,
     "task_type": "scheduled",
@@ -64,7 +64,7 @@
   },
   "logs": {
     "items": [
-      { "ts": "2026-04-21T02:00:00+08:00", "level": "INFO",  "message": "starting extraction" },
+      { "ts": "2026-04-21T02:00:00+08:00", "level": "INFO",  "message": "starting sync" },
       { "ts": "2026-04-21T02:00:15+08:00", "level": "WARNING", "message": "retry #1 due to timeout" },
       { "ts": "2026-04-21T02:00:30+08:00", "level": "ERROR", "message": "connection refused" }
     ],

@@ -199,3 +199,96 @@ def test_runtime_snapshot_service_returns_version_pin_and_asset_trace(db_session
             "status": "published",
         }
     ]
+
+
+_VALID_CUBE_SPEC = {
+    "cube": {
+        "name": "student_comment",
+        "title": "学生评论",
+        "table": "dws.student_comment",
+        "source_id": 1,
+        "source_database": "dw",
+        "dimensions": {
+            "comment_id": {"title": "评论ID", "type": "string", "sql": "{CUBE}.comment_id"}
+        },
+        "measures": {
+            "comment_count": {
+                "title": "评论数",
+                "type": "number",
+                "sql": "COUNT(DISTINCT {CUBE}.comment_id)",
+            }
+        },
+    }
+}
+
+
+def _publish_one(repo, release_service, *, idempotency_key="pub_1"):
+    asset = repo.create_or_update_asset(
+        SemanticAsset(
+            id="asset_student_comment",
+            namespace="qa_live_1",
+            asset_type="cube",
+            asset_key="student_comment",
+        )
+    )
+    revision = repo.append_revision(asset.id, _VALID_CUBE_SPEC, force_new_revision=True)
+    return release_service.publish(
+        namespace="qa_live_1",
+        revision_ids=[revision.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key=idempotency_key,
+    )
+
+
+def test_runtime_snapshot_service_fails_closed_for_revoked_release(db_session):
+    """§6.1 状态机：active release 被 revoke 后，runtime manifest 必须 fail closed。"""
+    repo = SqlAssetRegistryRepository(db_session)
+    release_service = SemanticReleaseService(repo)
+    service = RuntimeSnapshotService(repo)
+    release = _publish_one(repo, release_service)
+
+    release_service.revoke(release_id=release.id, actor="alice", reason="口径错误召回")
+    result = service.get_active_manifest("qa_live_1")
+
+    assert result["ok"] is False
+    assert result["error_code"] == "release_revoked"
+    assert result["release_id"] == release.id
+
+
+def test_runtime_snapshot_service_warns_for_deprecated_release(db_session):
+    """deprecated release：查询继续可用，但 manifest 携带告警。"""
+    repo = SqlAssetRegistryRepository(db_session)
+    release_service = SemanticReleaseService(repo)
+    service = RuntimeSnapshotService(repo)
+    release = _publish_one(repo, release_service)
+
+    release_service.deprecate(release_id=release.id, actor="alice", reason="口径待替换")
+    result = service.get_active_manifest("qa_live_1")
+
+    assert result["ok"] is True
+    assert result["version_pin"]["release_status"] == "deprecated"
+    assert "release_deprecated" in result["warnings"]
+
+
+def test_runtime_snapshot_service_get_manifest_for_release_supports_pinned_consumer(db_session):
+    """§6.1 pin 语义：pinned 消费方可按 release_id 取历史 manifest（superseded 不阻断）。"""
+    repo = SqlAssetRegistryRepository(db_session)
+    release_service = SemanticReleaseService(repo)
+    service = RuntimeSnapshotService(repo)
+    first = _publish_one(repo, release_service, idempotency_key="pub_1")
+    second = _publish_one(repo, release_service, idempotency_key="pub_2")
+
+    pinned = service.get_manifest_for_release(first.id)
+    active = service.get_active_manifest("qa_live_1")
+
+    assert pinned["ok"] is True
+    assert pinned["version_pin"]["release_id"] == first.id
+    assert pinned["version_pin"]["release_status"] == "superseded"
+    assert active["version_pin"]["release_id"] == second.id
+
+    # revoked 对 pinned 消费方同样 fail closed
+    release_service.revoke(release_id=first.id, actor="alice", reason="召回")
+    revoked = service.get_manifest_for_release(first.id)
+    assert revoked["ok"] is False
+    assert revoked["error_code"] == "release_revoked"

@@ -27,6 +27,7 @@ CUBIC3（仓库名 `cubic3-data-platform`）是一个面向企业数据场景的
 - [docs/quality/frontend-v2-route-api-audit.md](docs/quality/frontend-v2-route-api-audit.md)
 - [docs/quality/review.md](docs/quality/review.md)
 - [docs/runbooks/local-dev.md](docs/runbooks/local-dev.md)
+- [docs/runbooks/cubic3-dp-cli.md](docs/runbooks/cubic3-dp-cli.md)
 - [frontend/README.md](frontend/README.md)
 - [docs/DOC_ALIGNMENT_REPORT.md](docs/DOC_ALIGNMENT_REPORT.md)
 - [docs/KNOWLEDGE_BASE_GOVERNANCE.md](docs/KNOWLEDGE_BASE_GOVERNANCE.md)
@@ -50,6 +51,7 @@ CUBIC3（仓库名 `cubic3-data-platform`）是一个面向企业数据场景的
 - [v2 路由与 API 契约审计](docs/quality/frontend-v2-route-api-audit.md)
 - [评审规则](docs/quality/review.md)
 - [本地开发运行手册](docs/runbooks/local-dev.md)
+- [cubic3-dp CLI 使用手册](docs/runbooks/cubic3-dp-cli.md)
 - [知识库治理规范](docs/KNOWLEDGE_BASE_GOVERNANCE.md)
 - [知识库维护 SOP](docs/KNOWLEDGE_BASE_MAINTENANCE_SOP.md)
 - [架构设计目录](docs/architecture/README.md)
@@ -122,11 +124,11 @@ Phase 1 当前已验证的数据中心主链路基线为：
 
 - 工作台：`/dashboard`
 - 查询分析中心：`/queries`
-- 语义建设工作台：`/semantic/modeling-workbench`（快速单资产入口为 `/semantic/modeling-workbench/quick`；旧 `/semantic/modeling-copilot/new`、`/semantic/modeling-copilot/batch` 与 `/semantic/modeling-copilot/:sessionId` 仅保留兼容重定向）
+- 语义建设工作台：`/semantic/modeling-workbench`（快速单资产入口为 `/semantic/modeling-workbench/quick`；旧 `/semantic/modeling-copilot/*` UI 路径不再注册）
 - 业务语义工作台：`/semantic/ontology`
 - 语义诊断工作台：`/semantic/workbench`
 
-查询中心的 `/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是当前有效子路由；旧的 `/queries/editor`、`/queries/templates` 以及语义中心旧别名路由只保留兼容重定向，不再作为主 IA。
+查询中心的 `/queries/history`、`/queries/visual`、`/queries/my`、`/queries/scheduled`、`/queries/exports` 是当前有效子路由；旧的 `/queries/editor`、`/queries/templates` 仍作为已上线查询深链保留兼容重定向，不再作为主 IA。语义中心处于新界面定版阶段，旧别名路由不再注册。
 
 当前后端新增了与双层语义架构对应的 API 前缀：
 
@@ -275,6 +277,7 @@ Docker 模式下 `backend` 与 `rq_worker` 固定连接 compose 内置 PostgreSQ
 - 后端 API：`http://localhost:5000`
 - API 文档：`http://localhost:5000/api/docs`
 - 健康检查：`http://localhost:5000/health`
+- CLI：`cubic3-dp`，见 `docs/runbooks/cubic3-dp-cli.md`
 
 ### 方式二：本地开发
 
@@ -352,6 +355,15 @@ make verify-docs
 # 语义中心专项校验
 make verify-semantic
 make smoke-semantic
+
+# cubic3-dp CLI
+make test-cli
+make build-cli
+make verify-cli
+
+# CLI Agent-First 自描述与认证
+PYTHONPATH=cli python -m cubic3_dp_cli.main describe
+PYTHONPATH=cli python -m cubic3_dp_cli.main auth status
 
 # 可选：coverage 专项验证（不在默认闸门里）
 make coverage            # 聚合：== coverage-backend（frontend 已退役 skip）

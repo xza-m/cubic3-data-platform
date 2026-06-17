@@ -62,6 +62,8 @@ class CreateConversationHandler:
         )
         
         conversation = self.conversation_repository.create(conversation)
+        # 仓储绑定的是容器 scoped_session（非 Flask db.session），事务必须在同一 session 上提交
+        self.conversation_repository.commit()
         
         logger.info(
             "Conversation created successfully",

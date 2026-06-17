@@ -89,6 +89,7 @@ class AgentService:
                 request.context.channel,
                 ds_adapter,
                 database=self._default_database,
+                agent_context=request.context,
             )
 
             messages: list[dict[str, Any]] = [

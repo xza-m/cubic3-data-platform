@@ -206,3 +206,213 @@ def test_role_binding_resolver_splits_platform_and_data_roles(db_session):
     assert context.platform_roles == ["semantic_modeler"]
     assert context.data_roles == ["data_m1_reader"]
     assert context.roles == ["semantic_modeler", "data_m1_reader"]
+
+
+def test_principal_scopes_replace_by_source_and_merge_in_context(db_session):
+    service = _service(db_session)
+    principal = service.upsert_feishu_principal(
+        tenant_key="tenant_a",
+        open_id="ou_scope_user",
+        union_id="on_scope_user",
+        display_name="王五",
+    )
+
+    service.put_principal_scopes(
+        principal_id=principal.principal_id,
+        source="manual",
+        scopes=[{"attribute": "school_ids", "values": ["s_001", "s_002"]}],
+        created_by="test",
+    )
+    service.put_principal_scopes(
+        principal_id=principal.principal_id,
+        source="issuance",
+        scopes=[
+            {"attribute": "school_ids", "values": ["s_002", "s_003"]},
+            {"attribute": "region", "values": ["east"]},
+        ],
+        created_by="test",
+    )
+
+    rows = service.list_principal_scopes(principal.principal_id)
+    assert {(row.attribute, row.source) for row in rows} == {
+        ("school_ids", "manual"),
+        ("school_ids", "issuance"),
+        ("region", "issuance"),
+    }
+
+    context = RoleBindingResolver(SqlAccessRepository(db_session)).resolve_principal_context(
+        principal_id=principal.principal_id,
+    )
+    assert set(context.data_scopes) == {"school_ids", "region"}
+    assert sorted(context.data_scopes["school_ids"]) == ["s_001", "s_002", "s_003"]
+    assert context.data_scopes["region"] == ["east"]
+
+    # PUT 是按 source 整体替换语义
+    service.put_principal_scopes(
+        principal_id=principal.principal_id,
+        source="manual",
+        scopes=[],
+        created_by="test",
+    )
+    context = RoleBindingResolver(SqlAccessRepository(db_session)).resolve_principal_context(
+        principal_id=principal.principal_id,
+    )
+    assert sorted(context.data_scopes["school_ids"]) == ["s_002", "s_003"]
+    assert context.data_scopes["region"] == ["east"]
+
+
+def test_create_api_key_mode_a_writes_issuance_scopes_and_blocks_delegation_scope(db_session):
+    from app.shared.exceptions import ValidationError
+
+    service = _service(db_session)
+    owner = service.upsert_feishu_principal(
+        tenant_key="tenant_a",
+        open_id="ou_owner_a",
+        union_id="on_owner_a",
+        display_name="负责人",
+    )
+    service_principal = service.create_service_principal(
+        tenant_key="tenant_a",
+        service_type="skill",
+        code="mode_a_skill",
+        owner_principal_id=owner.principal_id,
+        created_by=owner.principal_id,
+    )
+
+    service.create_api_key(
+        principal_id=service_principal.principal_id,
+        scopes=["agent.semantic.plan"],
+        mode="scope",
+        data_scopes=[{"attribute": "school_ids", "values": ["s_001", "s_002"]}],
+        created_by=owner.principal_id,
+    )
+
+    rows = service.list_principal_scopes(service_principal.principal_id)
+    assert [(row.attribute, row.source, list(row.values)) for row in rows] == [
+        ("school_ids", "issuance", ["s_001", "s_002"]),
+    ]
+
+    with pytest.raises(ValidationError, match="模式 A"):
+        service.create_api_key(
+            principal_id=service_principal.principal_id,
+            scopes=["delegation.feishu_user"],
+            mode="scope",
+        )
+
+
+def test_create_api_key_mode_b_requires_whitelist_and_appends_delegation_scope(db_session):
+    from app.shared.exceptions import ValidationError
+
+    service = _service(db_session)
+    owner = service.upsert_feishu_principal(
+        tenant_key="tenant_a",
+        open_id="ou_owner_b",
+        union_id="on_owner_b",
+        display_name="负责人",
+    )
+    no_whitelist = service.create_service_principal(
+        tenant_key="tenant_a",
+        service_type="bot",
+        code="mode_b_no_whitelist",
+        owner_principal_id=owner.principal_id,
+        created_by=owner.principal_id,
+    )
+    with pytest.raises(ValidationError, match="委托白名单"):
+        service.create_api_key(
+            principal_id=no_whitelist.principal_id,
+            scopes=["agent.semantic.plan"],
+            mode="delegation",
+        )
+
+    whitelisted = service.create_service_principal(
+        tenant_key="tenant_a",
+        service_type="bot",
+        code="mode_b_ok",
+        owner_principal_id=owner.principal_id,
+        allowed_tenants=["tenant_a"],
+        created_by=owner.principal_id,
+    )
+    with pytest.raises(ValidationError, match="数据范围"):
+        service.create_api_key(
+            principal_id=whitelisted.principal_id,
+            scopes=["agent.semantic.plan"],
+            mode="delegation",
+            data_scopes=[{"attribute": "school_ids", "values": ["s_001"]}],
+        )
+    key = service.create_api_key(
+        principal_id=whitelisted.principal_id,
+        scopes=["agent.semantic.plan"],
+        mode="delegation",
+        created_by=owner.principal_id,
+    )
+    actor = service.authenticate_api_key(key.api_key)
+    assert "delegation.feishu_user" in actor.scopes
+
+
+def test_create_api_key_validates_and_persists_semantic_pin(db_session):
+    from app.shared.exceptions import ValidationError
+
+    service = _service(db_session)
+    owner = service.upsert_feishu_principal(
+        tenant_key="tenant_a",
+        open_id="ou_owner_pin",
+        union_id="on_owner_pin",
+        display_name="负责人",
+    )
+    service_principal = service.create_service_principal(
+        tenant_key="tenant_a",
+        service_type="skill",
+        code="pin_skill",
+        owner_principal_id=owner.principal_id,
+        created_by=owner.principal_id,
+    )
+
+    with pytest.raises(ValidationError, match="release_id"):
+        service.create_api_key(
+            principal_id=service_principal.principal_id,
+            scopes=["agent.semantic.plan"],
+            semantic_pin={"pin_policy": "pinned"},
+        )
+    with pytest.raises(ValidationError, match="pin_policy"):
+        service.create_api_key(
+            principal_id=service_principal.principal_id,
+            scopes=["agent.semantic.plan"],
+            semantic_pin={"pin_policy": "latest"},
+        )
+
+    key = service.create_api_key(
+        principal_id=service_principal.principal_id,
+        scopes=["agent.semantic.plan"],
+        semantic_pin={"pin_policy": "pinned", "release_id": "rel_9"},
+        created_by=owner.principal_id,
+    )
+    actor = service.authenticate_api_key(key.api_key)
+    assert actor.semantic_pin == {"pin_policy": "pinned", "release_id": "rel_9"}
+
+    rotated = service.rotate_api_key(key.key_id, rotated_by=owner.principal_id)
+    rotated_row = service.get_api_key(rotated.key_id)
+    assert rotated_row.semantic_pin == {"pin_policy": "pinned", "release_id": "rel_9"}
+
+
+def test_put_principal_scopes_rejects_unknown_source_and_principal(db_session):
+    from app.shared.exceptions import ValidationError
+
+    service = _service(db_session)
+    principal = service.upsert_feishu_principal(
+        tenant_key="tenant_a",
+        open_id="ou_scope_user2",
+        union_id="on_scope_user2",
+        display_name="赵六",
+    )
+    with pytest.raises(ValidationError, match="source"):
+        service.put_principal_scopes(
+            principal_id=principal.principal_id,
+            source="request_body",
+            scopes=[],
+        )
+    with pytest.raises(ValidationError, match="Principal"):
+        service.put_principal_scopes(
+            principal_id="feishu:tenant_a:not_exists",
+            source="manual",
+            scopes=[],
+        )

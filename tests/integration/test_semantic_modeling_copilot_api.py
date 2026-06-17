@@ -320,7 +320,13 @@ def test_modeling_copilot_rejects_signed_token_without_principal_over_body_princ
     app.register_blueprint(create_semantic_modeling_copilot_blueprint(service))
     register_error_handlers(app)
     token = jwt.encode(
-        {"user_name": "No Principal", "roles": ["viewer"]},
+        {
+            "user_name": "No Principal",
+            "roles": ["viewer"],
+            "token_use": "access",
+            "sid": "test-session",
+            "jti": "test-access-token",
+        },
         "your-secret-key",
         algorithm="HS256",
     )

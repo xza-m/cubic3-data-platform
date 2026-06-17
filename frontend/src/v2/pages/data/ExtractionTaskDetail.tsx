@@ -1,6 +1,6 @@
 // frontend/src/v2/pages/data/ExtractionTaskDetail.tsx
 //
-// 提取任务详情全屏页（L3）。
+// 同步任务详情全屏页（L3）。
 // NOTE: 后端无 GET /extraction/tasks/:id 单项接口；通过列表查询后 client-side find。
 //   待后端补充 detail 接口后，替换为直接查询。
 // 对接 GET /api/v1/extraction/tasks + POST /api/v1/extraction/tasks/:id/execute
@@ -19,6 +19,7 @@ import {
 } from './_shared/extraction-task-detail-content'
 import { fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
+import { DataCenterSyncTabs } from './_shared/data-center-nav'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { useAppShell } from '@v2/layout/AppShell'
@@ -86,7 +87,8 @@ export default function ExtractionTaskDetail() {
     if (!task) return
     setBreadcrumbs([
       t('extractionTaskDetail.breadcrumb.data', '数据'),
-      t('extractionTaskDetail.breadcrumb.tasks', '提取任务'),
+      t('extractionTaskDetail.breadcrumb.center', '数据中心'),
+      t('extractionTaskDetail.breadcrumb.tasks', '同步任务'),
       task.task_name,
     ])
   }, [task, setBreadcrumbs])
@@ -96,10 +98,10 @@ export default function ExtractionTaskDetail() {
     openTab({
       id: `extraction-task:${task.id}`,
       label: taskTabLabel(task),
-      to: `/extraction/tasks/${task.id}`,
+      to: `/data-center/sync/tasks/${task.id}`,
       closeable: true,
       onClose: () => {
-        navigate('/extraction/tasks')
+        navigate('/data-center/sync/tasks')
         return true
       },
     })
@@ -110,7 +112,7 @@ export default function ExtractionTaskDetail() {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => navigate('/extraction/tasks')}
+          onClick={() => navigate('/data-center/sync/tasks')}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
@@ -119,15 +121,15 @@ export default function ExtractionTaskDetail() {
         <RefreshButton
           onClick={() => refetch()}
           loading={isFetching}
-          ariaLabel={t('extractionTaskDetail.action.refresh', '刷新提取任务')}
+          ariaLabel={t('extractionTaskDetail.action.refresh', '刷新同步任务')}
         />
         <button
           type="button"
-          onClick={() => navigate('/extraction/runs')}
+          onClick={() => navigate('/data-center/sync/runs')}
           className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
         >
-          <ExternalLink size={12} /> {t('extractionTaskDetail.action.viewRuns', '查看执行记录')}
+          <ExternalLink size={12} /> {t('extractionTaskDetail.action.viewRuns', '查看同步记录')}
         </button>
       </div>,
     )
@@ -171,7 +173,7 @@ export default function ExtractionTaskDetail() {
                 value={task.last_run_at ? fmtRelative(task.last_run_at) : '—'}
               />
               <Pair
-                label={t('extractionTaskDetail.pair.dataset', '数据集')}
+                label={t('extractionTaskDetail.pair.dataset', '目标资产')}
                 value={`#${task.dataset_id}`}
               />
             </div>
@@ -186,7 +188,7 @@ export default function ExtractionTaskDetail() {
                     : t('extractionTaskDetail.neighbor.noPrev', '没有上一项')
                 }
                 disabled={!neighbors.prev}
-                onClick={neighbors.prev ? () => navigate(`/extraction/tasks/${neighbors.prev!.id}`) : undefined}
+                onClick={neighbors.prev ? () => navigate(`/data-center/sync/tasks/${neighbors.prev!.id}`) : undefined}
               />
               <NeighborBtn
                 label={
@@ -195,7 +197,7 @@ export default function ExtractionTaskDetail() {
                     : t('extractionTaskDetail.neighbor.noNext', '没有下一项')
                 }
                 disabled={!neighbors.next}
-                onClick={neighbors.next ? () => navigate(`/extraction/tasks/${neighbors.next!.id}`) : undefined}
+                onClick={neighbors.next ? () => navigate(`/data-center/sync/tasks/${neighbors.next!.id}`) : undefined}
               />
             </div>
           </section>
@@ -235,7 +237,9 @@ export default function ExtractionTaskDetail() {
   const detailTabs = buildDetailTabs()
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <>
+      <DataCenterSyncTabs />
+      <div className="flex flex-1 flex-col overflow-hidden">
       <header className="border-b px-4 py-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-3">
           <div
@@ -250,7 +254,7 @@ export default function ExtractionTaskDetail() {
               {taskStatusChip(task.last_run_status)}
             </div>
             <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-              <code>{task.task_code}</code> · dataset #{task.dataset_id} · {task.task_type}
+              <code>{task.task_code}</code> · asset #{task.dataset_id} · {task.task_type}
             </div>
           </div>
         </div>
@@ -294,7 +298,8 @@ export default function ExtractionTaskDetail() {
           />
         )}
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 

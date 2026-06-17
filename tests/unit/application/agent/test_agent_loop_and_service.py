@@ -80,6 +80,34 @@ def test_agent_loop_service_executes_tool_calls_and_reports_progress() -> None:
     assert llm.calls[1]["messages"][-1]["role"] == "tool"
 
 
+def test_agent_loop_service_normalizes_structured_column_definitions() -> None:
+    """适配器返回 [{'name','type'}] 结构化列定义时，AgentResponse.columns 必须归一化为列名列表。"""
+    llm = FakeLLM([
+        LLMResponse(
+            content="先查 SQL",
+            stop_reason="tool_use",
+            tool_calls=[ToolCall(id="call_1", name="execute_sql", arguments={"sql": "select 1"})],
+            usage={},
+        ),
+        LLMResponse(content="完成", stop_reason="end_turn", usage={}),
+    ])
+    executor = MagicMock()
+    executor.execute.return_value = {
+        "columns": [{"name": "ds", "type": "string"}, {"name": "total", "type": "bigint"}],
+        "data": [["20260611", 437961]],
+    }
+    service = AgentLoopService(llm)
+
+    response = service.run(
+        messages=[{"role": "system", "content": "sys"}, {"role": "user", "content": "hello"}],
+        tool_defs=[{"name": "execute_sql"}],
+        executor=executor,
+    )
+
+    assert response.columns == ["ds", "total"]
+    assert response.data == [["20260611", 437961]]
+
+
 def test_agent_loop_service_handles_raw_tool_rows_and_max_rounds() -> None:
     llm = FakeLLM([
         LLMResponse(
@@ -107,6 +135,100 @@ def test_agent_loop_service_handles_raw_tool_rows_and_max_rounds() -> None:
     assert response.data == [[1]]
     assert AgentLoopService._step_summary("custom_tool", "running") == "🔧 正在执行 custom_tool..."
     assert AgentLoopService._truncate({"text": "x" * 600})["_truncated"] is True
+
+
+def test_agent_loop_service_blocks_execute_sql_before_semantic_attempt() -> None:
+    """§4.2 通道优先级合约：语义工具可用且未尝试时，execute_sql 被硬约束拒绝。"""
+    llm = FakeLLM([
+        LLMResponse(
+            content="直接写 SQL",
+            stop_reason="tool_use",
+            tool_calls=[ToolCall(id="call_1", name="execute_sql", arguments={"sql": "select 1"})],
+            usage={},
+        ),
+        LLMResponse(content="好的我先看语义层", stop_reason="end_turn", usage={}),
+    ])
+    executor = MagicMock()
+    service = AgentLoopService(llm)
+
+    response = service.run(
+        messages=[{"role": "system", "content": "sys"}, {"role": "user", "content": "hello"}],
+        tool_defs=[{"name": "execute_sql"}, {"name": "query"}, {"name": "list_cubes"}],
+        executor=executor,
+    )
+
+    executor.execute.assert_not_called()
+    assert response.sql is None
+    assert response.tool_trace[0]["tool"] == "execute_sql"
+    assert response.tool_trace[0]["ok"] is False
+    assert response.tool_trace[0]["error_code"] == "semantic_first_required"
+    assert response.degradation is None
+
+
+def test_agent_loop_service_records_degradation_after_semantic_failure() -> None:
+    """语义 query 失败后降级 execute_sql：降级原因必须进入 evidence。"""
+    llm = FakeLLM([
+        LLMResponse(
+            content="先语义查询",
+            stop_reason="tool_use",
+            tool_calls=[ToolCall(id="call_1", name="query", arguments={"dsl": {}})],
+            usage={},
+        ),
+        LLMResponse(
+            content="降级 SQL",
+            stop_reason="tool_use",
+            tool_calls=[ToolCall(id="call_2", name="execute_sql", arguments={"sql": "select 1"})],
+            usage={},
+        ),
+        LLMResponse(content="完成", stop_reason="end_turn", usage={}),
+    ])
+    executor = MagicMock()
+    executor.execute.side_effect = [
+        {"error": "未找到 Cube: orders", "error_code": "cube_not_found"},
+        {"columns": ["id"], "data": [[1]]},
+    ]
+    service = AgentLoopService(llm)
+
+    response = service.run(
+        messages=[{"role": "system", "content": "sys"}, {"role": "user", "content": "hello"}],
+        tool_defs=[{"name": "execute_sql"}, {"name": "query"}],
+        executor=executor,
+    )
+
+    assert response.sql == "select 1"
+    assert response.degradation == {
+        "from": "semantic_query",
+        "to": "execute_sql",
+        "reason": "cube_not_found",
+        "round": 2,
+    }
+    assert [item["tool"] for item in response.tool_trace] == ["query", "execute_sql"]
+    assert response.tool_trace_evidence()["degradation"]["reason"] == "cube_not_found"
+
+
+def test_agent_loop_service_allows_execute_sql_without_semantic_tools() -> None:
+    """信道没有语义工具时（如纯 SQL 信道），execute_sql 不受语义优先约束。"""
+    llm = FakeLLM([
+        LLMResponse(
+            content="直接 SQL",
+            stop_reason="tool_use",
+            tool_calls=[ToolCall(id="call_1", name="execute_sql", arguments={"sql": "select 1"})],
+            usage={},
+        ),
+        LLMResponse(content="完成", stop_reason="end_turn", usage={}),
+    ])
+    executor = MagicMock()
+    executor.execute.return_value = {"columns": ["id"], "data": [[1]]}
+    service = AgentLoopService(llm)
+
+    response = service.run(
+        messages=[{"role": "system", "content": "sys"}, {"role": "user", "content": "hello"}],
+        tool_defs=[{"name": "execute_sql"}],
+        executor=executor,
+    )
+
+    assert response.sql == "select 1"
+    assert response.degradation is None
 
 
 def test_agent_service_handles_missing_adapter_success_path_and_exception() -> None:
@@ -140,7 +262,9 @@ def test_agent_service_handles_missing_adapter_success_path_and_exception() -> N
 
     assert response.text == "ok"
     prompt_builder.build.assert_called_once_with(request.context, schema_info=None)
-    tool_registry.for_context.assert_called_once_with("feishu", adapter, database="dw")
+    tool_registry.for_context.assert_called_once_with(
+        "feishu", adapter, database="dw", agent_context=request.context
+    )
     loop_messages = loop.run.call_args.kwargs["messages"]
     assert loop_messages[0]["role"] == "system"
     assert loop_messages[-1]["content"] == "你好"

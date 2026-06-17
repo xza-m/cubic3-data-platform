@@ -3,7 +3,10 @@
 # i18n key 命名规范（Round 4 · T-001b）
 
 > 单一真值来源。所有 `t(key, fallback)` 的 `key` 必须遵循此规范；
-> CI gate（T-001e，规划中）将按本文件的正则做 lint。
+> CI gate（`npm run i18n:coverage` + `npm run i18n:keys`）按本文件的正则做 lint。
+>
+> **中文单语言**：产品已收敛为中文单语言，仓库不再维护 `en.json`；
+> `t()` 的键值层保留用于文案治理，静态 key 必须存在于 `zh.json`。
 
 ## 1. 总体形态
 
@@ -39,14 +42,20 @@
 | `a11y` | 无障碍专用（纯 aria / sr-only） | — |
 | `nav` | 侧栏 / 面包屑 / 导航标签 | `layout/` |
 | `settings` | 偏好设置 | `settings/` |
-| `data` | 数据中心（数据源 / 数据集 / 抽取任务 / Run） | `data/` |
+| `data` | 数据中心（连接 / 数据资产 / 同步任务 / 同步记录） | `data/` |
 | `queries` | 查询工坊（历史 / 计划 / 存档 / Console） | `queries/` |
 | `semantic` | 语义（域 / 本体 / Cube / 视图） | `semantic/` |
 | `apps` | 应用中心（市场 / 实例 / 执行） | `apps/` |
 | `config` | 配置中心（用户 / 角色 / 审计） | `config/` |
 | `auth` | 登录 / 授权 / 错误页 | `Login.tsx` / `Forbidden.tsx` / `NotFound.tsx` |
+| `dataCenter` | 数据中心壳层（概览 / 连接 / 资产 / 同步 / 影响） | `data/DataCenter.tsx` 及 `data/_shared/data-center-*` |
 
 不允许自创新 domain；新模块先改本文件再提 PR。
+
+> 历史包袱说明：`zh.json` 中还存在一批按页面命名的历史 domain
+> （如 `queryConsole`、`queryVisual`、`channel`、`subscription`、`domain`、`cube`、`access` 等）。
+> 这些 key 已被大量调用方引用，**不做追溯重命名**；新增 key 优先归入上表 domain，
+> 在既有历史 domain 页面内补充文案时允许沿用该页面前缀，保持同页一致性。
 
 ## 3. page / component 段
 
@@ -102,13 +111,13 @@ t('data.dataset.rows_count', '共 {n} 行', { n: total })
 ## 7. Fallback 约定
 
 - `t()` 的 `fallback` 必须**与 `zh.json` 对应值一致**（或是它的合理简写）。
-- CI（T-001e）会扫不一致，以 `zh.json` 为准回写 fallback。
-- 过渡期（zh.json 未覆盖该 key）：以 `fallback` 当值。
+- 静态 key 必须存在于 `zh.json`；`npm run i18n:keys` 校验，缺失可用 `npm run i18n:keys -- --fix` 回填。
+- `fallback` 禁止使用反引号模板字面量；变量一律走 `vars` 参数（见 §6），`i18n:keys` 会拦截违规。
 
 ## 8. 评审流程
 
 1. 写代码时先查 `zh.json`，复用已有 key；
-2. 找不到就按本规范新增 key + 中文文案 + `en.json` 占位（同 key，值写空串 `""`）；
+2. 找不到就按本规范新增 key + 中文文案（中文单语言，无需 en 占位）；
 3. 提 PR 时把新增 key 整理到 PR 描述里，reviewer 抽查是否命中上面的 domain / element / modifier 词表；
 4. 同一 PR 不得跨 domain 新增 > 20 个 key，超出需拆。
 

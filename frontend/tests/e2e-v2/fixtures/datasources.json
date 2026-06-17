@@ -10,11 +10,36 @@
         "extra_config": {},
         "is_active": true,
         "connection_status": "connected",
+        "last_test_at": "2026-04-21T10:00:00+08:00",
+        "last_test_error": null,
+        "created_by": "feishu:tenant:on_teacher",
+        "created_by_display_name": "王老师",
         "created_at": "2026-04-01T08:00:00+08:00",
         "updated_at": "2026-04-01T08:00:00+08:00"
+      },
+      {
+        "id": 2,
+        "name": "生产 MaxCompute",
+        "source_type": "maxcompute",
+        "description": "E2E MaxCompute fixture",
+        "connection_config": {
+          "endpoint": "https://service.cn-beijing.maxcompute.aliyun.com/api",
+          "project": "dw_prod",
+          "access_id": "****",
+          "access_key": "****"
+        },
+        "extra_config": {},
+        "is_active": true,
+        "connection_status": "unknown",
+        "last_test_at": null,
+        "last_test_error": null,
+        "created_by": "tester",
+        "created_by_display_name": null,
+        "created_at": "2026-04-02T08:00:00+08:00",
+        "updated_at": "2026-04-02T08:00:00+08:00"
       }
     ],
-    "total": 1,
+    "total": 2,
     "page": 1,
     "page_size": 100,
     "total_pages": 1
@@ -28,6 +53,10 @@
     "extra_config": {},
     "is_active": true,
     "connection_status": "connected",
+    "last_test_at": "2026-04-21T10:00:00+08:00",
+    "last_test_error": null,
+    "created_by": "feishu:tenant:on_teacher",
+    "created_by_display_name": "王老师",
     "created_at": "2026-04-01T08:00:00+08:00",
     "updated_at": "2026-04-01T08:00:00+08:00"
   },
@@ -56,6 +85,6 @@
     ]
   },
   "types": [
-    { "type": "postgresql", "display_name": "PostgreSQL", "description": "PostgreSQL 数据源" }
+    { "type": "postgresql", "display_name": "PostgreSQL", "description": "PostgreSQL 连接" }
   ]
 }

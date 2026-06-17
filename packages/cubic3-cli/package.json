@@ -1,0 +1,28 @@
+{
+  "name": "@cubic3/dp-cli",
+  "version": "0.1.0",
+  "description": "CUBIC3 Data Platform command line tools",
+  "type": "module",
+  "bin": {
+    "cubic3-dp": "bin/cubic3-dp"
+  },
+  "scripts": {
+    "prepack": "node scripts/prepare-python-package.js",
+    "postinstall": "node scripts/install-python-cli.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "files": [
+    "bin",
+    "python",
+    "scripts",
+    "README.md"
+  ],
+  "publishConfig": {
+    "registry": "https://verdaccio.xiaoluxue.cn/"
+  },
+  "license": "UNLICENSED",
+  "private": false
+}

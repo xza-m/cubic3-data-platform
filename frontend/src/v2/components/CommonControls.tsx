@@ -113,6 +113,7 @@ export function RefreshButton({
   const isLoading = Boolean(loading || pending)
   const displayLabel = isLoading ? loadingLabel : label
   const accessibleLabel = ariaLabel ?? label
+  const labelSlotWidth = `${Math.max(label.length, loadingLabel.length)}em`
 
   useEffect(() => () => {
     mountedRef.current = false
@@ -143,7 +144,9 @@ export function RefreshButton({
       title={accessibleLabel}
     >
       {isLoading ? null : <RefreshCcw size={12} aria-hidden />}
-      <span>{displayLabel}</span>
+      <span className="inline-block text-left" style={{ minWidth: labelSlotWidth }}>
+        {displayLabel}
+      </span>
     </Button>
   )
 }

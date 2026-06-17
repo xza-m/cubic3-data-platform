@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const pythonSource = resolvePythonSource(packageRoot)
+const venvPython = process.platform === 'win32'
+  ? join(packageRoot, '.venv', 'Scripts', 'python.exe')
+  : join(packageRoot, '.venv', 'bin', 'python')
+
+const python = existsSync(venvPython)
+  ? venvPython
+  : (process.env.CUBIC3_DP_PYTHON || process.env.PYTHON || 'python3')
+const env = { ...process.env }
+
+if (!existsSync(venvPython) && pythonSource) {
+  env.PYTHONPATH = env.PYTHONPATH ? `${pythonSource}${sep}${env.PYTHONPATH}` : pythonSource
+}
+
+const result = spawnSync(python, ['-m', 'cubic3_dp_cli.main', ...process.argv.slice(2)], {
+  env,
+  stdio: 'inherit',
+})
+
+if (result.error) {
+  console.error(`[cubic3-dp] 无法启动 Python 运行时: ${result.error.message}`)
+  console.error('[cubic3-dp] 请确认已安装 Python 3.11+，或重新执行 npm rebuild @cubic3/dp-cli。')
+  process.exit(127)
+}
+
+process.exit(typeof result.status === 'number' ? result.status : 1)
+
+function resolvePythonSource(root) {
+  const packaged = join(root, 'python')
+  if (existsSync(join(packaged, 'cubic3_dp_cli'))) return packaged
+
+  const workspaceCli = resolve(root, '..', '..', 'cli')
+  if (existsSync(join(workspaceCli, 'cubic3_dp_cli'))) return workspaceCli
+
+  return null
+}

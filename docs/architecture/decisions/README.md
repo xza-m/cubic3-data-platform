@@ -3,7 +3,7 @@ doc_type: adr-index
 status: maintained
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-06-03
+last_reviewed: 2026-06-12
 ---
 
 # ADR 目录
@@ -30,3 +30,6 @@ last_reviewed: 2026-06-03
 - [ADR-010 生产语义资产采用 SQL Registry 作为事实源](ADR-010-semantic-sql-registry-production-source.md)
 - [ADR-011 数仓查询网关与本项目执行边界](ADR-011-dw-query-gateway-execution-boundary.md)
 - [ADR-012 Dataset、数据资产与查询执行边界](ADR-012-dataset-data-asset-and-query-boundary.md)
+- [ADR-013 轻量权限中心与网关执行闭环](ADR-013-lightweight-access-governance.md)（「暂不做行级」边界已由 [semantic-binding-and-rls.md](../semantic-binding-and-rls.md) 解除，实体骨架不变）
+- [ADR-014 双层语义采用并行双门面 + 单一编译脊柱](ADR-014-dual-facade-single-spine-semantics.md)（配套落地设计见 [semantic-binding-and-rls.md](../semantic-binding-and-rls.md)）
+- [ADR-015 建模助手采用「Agent 广度 + Copilot 深度」双形态共享脊柱](ADR-015-modeling-assistant-agent-copilot.md)（冷启动批量扫描真实化，发布权在人，无 LLM 可降级）

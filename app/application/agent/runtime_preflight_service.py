@@ -55,7 +55,7 @@ class SemanticRuntimePreflightService:
             f"{target_cube_name}.{target_measure_name}" if target_cube_name and target_measure_name else None
         )
         if metric is not None:
-            measure_refs = list(metric.measure_refs or [])
+            measure_refs = metric.measure_ref_strings()
             if expected_measure_ref and expected_measure_ref not in measure_refs:
                 issues.append(
                     self._issue(
@@ -103,7 +103,7 @@ class SemanticRuntimePreflightService:
             metric is not None
             and cube is not None
             and expected_measure_ref
-            and expected_measure_ref in list(metric.measure_refs or [])
+            and expected_measure_ref in metric.measure_ref_strings()
             and target_measure_name in cube.measures
         ):
             resolved_bindings.append(
@@ -131,7 +131,7 @@ class SemanticRuntimePreflightService:
     def _resolve_target_ref(*, metric, cube_name: str | None, measure_name: str | None) -> tuple[str | None, str | None]:
         if cube_name and measure_name:
             return cube_name, measure_name
-        refs = list(getattr(metric, "measure_refs", []) or []) if metric is not None else []
+        refs = metric.measure_ref_strings() if metric is not None else []
         if cube_name:
             for ref in refs:
                 ref_cube, _, ref_measure = ref.partition(".")
@@ -210,7 +210,7 @@ class SemanticRuntimePreflightService:
             "title": entity.title,
             "object_name": entity.object_name,
             "status": entity.status,
-            "measure_refs": list(entity.measure_refs or []),
+            "measure_refs": entity.measure_ref_strings(),
         }
 
     @staticmethod

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { findLayout, findModule, NAV_MODULES } from './navigation'
 import zhMessages from '../i18n/zh.json'
-import enMessages from '../i18n/en.json'
 
 describe('navigation access entry', () => {
   it('权限治理入口指向 Access 工作台', () => {
@@ -13,21 +12,49 @@ describe('navigation access entry', () => {
     expect(paths).toContain('/config/access')
   })
 
-  it('系统侧用访问网关承载权限、审计和网关观测', () => {
-    const access = NAV_MODULES.find((module) => module.id === 'access')
-    expect(access?.label).toBe('访问网关')
-    expect(access?.description).toBe('权限配置、审计与网关观测')
-    expect(access?.subnav?.map((item) => item.label)).toEqual(['权限管理', '权限审计', '网关观测'])
-    expect(access?.subnav?.map((item) => item.section)).toEqual(['权限', '权限', '网关'])
+  it('F5：/config 收敛为统一配置中心模块，权限/网关/通知共享一个二级侧栏壳', () => {
+    const config = NAV_MODULES.find((module) => module.id === 'config')
+    expect(config?.label).toBe('配置中心')
+    expect(config?.basePath).toBe('/config')
+    expect(config?.defaultPath).toBe('/config/access')
+    expect(config?.group).toBe('系统')
+    expect(config?.subnav?.map((item) => item.label)).toEqual([
+      '权限管理',
+      '权限审计',
+      '网关观测',
+      '渠道',
+      '订阅',
+    ])
+    expect(config?.subnav?.map((item) => item.section)).toEqual([
+      '权限',
+      '权限',
+      '网关',
+      '通知与交付',
+      '通知与交付',
+    ])
+  })
+
+  it('F5：渠道/订阅/访问网关不再各占一个一级模块', () => {
+    const ids = NAV_MODULES.map((module) => module.id)
+    expect(ids).not.toContain('channels')
+    expect(ids).not.toContain('subscriptions')
+    expect(ids).not.toContain('access')
+  })
+
+  it('F5：/config 子路径均命中统一 config 模块', () => {
+    expect(findModule('/config/access')?.id).toBe('config')
+    expect(findModule('/config/access/audit')?.id).toBe('config')
+    expect(findModule('/config/channels/3')?.id).toBe('config')
+    expect(findModule('/config/subscriptions/new')?.id).toBe('config')
   })
 })
 
 describe('findLayout', () => {
-  it('未配置 layout 的模块默认开启 secondarySidebar 与 inspector', () => {
-    const datasources = NAV_MODULES.find((m) => m.id === 'datasources')!
-    const resolved = findLayout('/data-center/datasources', datasources)
+  it('数据中心采用正式 IA：页面内一级 Tab，不再开启二级侧栏', () => {
+    const dataCenter = NAV_MODULES.find((m) => m.id === 'data-center')!
+    const resolved = findLayout('/data-center/connections', dataCenter)
     expect(resolved).toEqual({
-      secondarySidebar: true,
+      secondarySidebar: false,
       inspector: true,
       hideBreadcrumbs: false,
     })
@@ -41,7 +68,7 @@ describe('findLayout', () => {
     expect(resolved.hideBreadcrumbs).toBe(false)
   })
 
-  it('语义中心默认双栏，但语义建设工作台和 modeling-copilot 兼容路由切到 fullBleed', () => {
+  it('语义中心所有正式入口统一使用模块内嵌布局', () => {
     const semantic = NAV_MODULES.find((m) => m.id === 'semantic')!
     const ontology = findLayout('/semantic/ontology', semantic)
     expect(ontology).toEqual({
@@ -52,38 +79,24 @@ describe('findLayout', () => {
 
     const workbench = findLayout('/semantic/modeling-workbench', semantic)
     expect(workbench).toEqual({
-      secondarySidebar: false,
-      inspector: false,
-      hideBreadcrumbs: true,
+      secondarySidebar: true,
+      inspector: true,
+      hideBreadcrumbs: false,
     })
 
     const candidate = findLayout('/semantic/modeling-workbench/batch-project/candidate/fact-learning-activity', semantic)
     expect(candidate).toEqual({
-      secondarySidebar: false,
-      inspector: false,
-      hideBreadcrumbs: true,
-    })
-
-    const copilot = findLayout('/semantic/modeling-copilot/new', semantic)
-    expect(copilot).toEqual({
-      secondarySidebar: false,
-      inspector: false,
-      hideBreadcrumbs: true,
-    })
-
-    const batch = findLayout('/semantic/modeling-copilot/batch', semantic)
-    expect(batch).toEqual({
-      secondarySidebar: false,
-      inspector: false,
-      hideBreadcrumbs: true,
+      secondarySidebar: true,
+      inspector: true,
+      hideBreadcrumbs: false,
     })
   })
 
-  it('byPathPrefix 命中前缀完全相等也算', () => {
+  it('未注册旧语义建设路径时仍只归属 semantic 模块默认布局，不建立兼容路由规则', () => {
     const semantic = NAV_MODULES.find((m) => m.id === 'semantic')!
     const exact = findLayout('/semantic/modeling-copilot', semantic)
-    expect(exact.secondarySidebar).toBe(false)
-    expect(exact.hideBreadcrumbs).toBe(true)
+    expect(exact.secondarySidebar).toBe(true)
+    expect(exact.hideBreadcrumbs).toBe(false)
   })
 
   it('byPathPrefix 不命中时退回模块默认值', () => {
@@ -98,78 +111,132 @@ describe('findLayout', () => {
 })
 
 describe('findModule + findLayout 组合', () => {
-  it('/semantic/modeling-workbench 命中 semantic 模块并应用 fullBleed', () => {
+  it('/semantic/modeling-workbench 命中 semantic 模块并应用统一内嵌布局', () => {
     const module = findModule('/semantic/modeling-workbench')
     expect(module?.id).toBe('semantic')
     const layout = findLayout('/semantic/modeling-workbench', module!)
-    expect(layout.secondarySidebar).toBe(false)
-    expect(layout.inspector).toBe(false)
-    expect(layout.hideBreadcrumbs).toBe(true)
+    expect(layout.secondarySidebar).toBe(true)
+    expect(layout.inspector).toBe(true)
+    expect(layout.hideBreadcrumbs).toBe(false)
   })
 
-  it('/semantic/modeling-workbench/:projectId/candidate/:candidateId 命中 semantic 模块并应用 fullBleed', () => {
+  it('/semantic/modeling-workbench/:projectId/candidate/:candidateId 命中 semantic 模块并应用统一内嵌布局', () => {
     const module = findModule('/semantic/modeling-workbench/batch-project/candidate/fact-learning-activity')
     expect(module?.id).toBe('semantic')
     const layout = findLayout('/semantic/modeling-workbench/batch-project/candidate/fact-learning-activity', module!)
-    expect(layout.secondarySidebar).toBe(false)
-    expect(layout.inspector).toBe(false)
-    expect(layout.hideBreadcrumbs).toBe(true)
+    expect(layout.secondarySidebar).toBe(true)
+    expect(layout.inspector).toBe(true)
+    expect(layout.hideBreadcrumbs).toBe(false)
   })
 
-  it('/semantic/modeling-copilot/new 命中 semantic 模块并应用 fullBleed', () => {
-    const module = findModule('/semantic/modeling-copilot/new')
-    expect(module?.id).toBe('semantic')
-    const layout = findLayout('/semantic/modeling-copilot/new', module!)
-    expect(layout.secondarySidebar).toBe(false)
-    expect(layout.inspector).toBe(false)
-    expect(layout.hideBreadcrumbs).toBe(true)
+})
+
+describe('数据中心导航收敛', () => {
+  it('只保留一个数据中心模块，旧数据源/数据集/提取模块不再注册', () => {
+    expect(NAV_MODULES.map((module) => module.id)).toContain('data-center')
+    expect(NAV_MODULES.map((module) => module.id)).not.toContain('datasources')
+    expect(NAV_MODULES.map((module) => module.id)).not.toContain('datasets')
+    expect(NAV_MODULES.map((module) => module.id)).not.toContain('extraction')
+    expect(NAV_MODULES.map((module) => module.id)).not.toContain('data-center-demo')
   })
 
-  it('/semantic/modeling-copilot/batch 命中 semantic 模块并应用 fullBleed', () => {
-    const module = findModule('/semantic/modeling-copilot/batch')
-    expect(module?.id).toBe('semantic')
-    const layout = findLayout('/semantic/modeling-copilot/batch', module!)
-    expect(layout.secondarySidebar).toBe(false)
-    expect(layout.inspector).toBe(false)
-    expect(layout.hideBreadcrumbs).toBe(true)
+  it('数据中心二级语义由页面 Tab 承载，路径按连接/资产/同步/影响组织', () => {
+    const dataCenter = NAV_MODULES.find((module) => module.id === 'data-center')
+    expect(dataCenter?.label).toBe('数据中心')
+    expect(dataCenter?.description).toBe('连接、资产、同步与影响分析')
+    expect(dataCenter?.basePath).toBe('/data-center')
+    expect(dataCenter?.defaultPath).toBe('/data-center')
+    expect(dataCenter?.layout?.secondarySidebar).toBe(false)
+    expect(dataCenter?.subnav?.map((item) => item.label)).toEqual([
+      '概览',
+      '连接管理',
+      '资产目录',
+      '同步任务',
+      '影响分析',
+    ])
+    expect(dataCenter?.subnav?.map((item) => item.path)).toEqual([
+      '/data-center',
+      '/data-center/connections',
+      '/data-center/assets',
+      '/data-center/sync',
+      '/data-center/impact',
+    ])
+  })
+
+  it('新路径均命中 data-center 模块，旧路径不再命中模块入口', () => {
+    expect(findModule('/data-center')?.id).toBe('data-center')
+    expect(findModule('/data-center/connections/1')?.id).toBe('data-center')
+    expect(findModule('/data-center/assets/11')?.id).toBe('data-center')
+    expect(findModule('/data-center/sync/tasks/201')?.id).toBe('data-center')
+    expect(findModule('/data-center/impact')?.id).toBe('data-center')
+    expect(findModule('/extraction/tasks')).toBeNull()
   })
 })
 
-describe('数据资产底座导航', () => {
-  it('语义中心只保留数据资产底座分组和六个资产页面', () => {
+describe('语义中心导航降噪', () => {
+  it('正式版二级导航暴露语义中心核心能力，不依赖正文索引补入口', () => {
     const semantic = NAV_MODULES.find((module) => module.id === 'semantic')
-    const assetItems = semantic?.subnav?.filter((item) => item.section === '数据资产底座') ?? []
-    const buildItems = semantic?.subnav?.filter((item) => item.section === '语义构建') ?? []
+    const subnav = semantic?.subnav ?? []
 
-    expect(buildItems.map((item) => item.label)).toEqual(['语义建设'])
-    expect(buildItems.map((item) => item.path)).toEqual(['/semantic/modeling-workbench'])
-    expect(assetItems.map((item) => item.label)).toEqual([
-      '资产雷达',
-      '物理表',
-      '表画像',
-      '字段画像',
-      '血缘使用',
-      '元数据同步',
+    expect(subnav.map((item) => item.label)).toEqual([
+      '语义建设',
+      '语义资产',
+      'Cube',
+      '本体与关系',
+      '关系画布',
+      '业务上下文',
+      '诊断治理',
     ])
-    expect(assetItems.map((item) => item.path)).toEqual([
+    expect(subnav.map((item) => item.path)).toEqual([
+      '/semantic/modeling-workbench',
       '/semantic/assets',
+      '/semantic/cubes',
+      '/semantic/ontology',
+      '/semantic/relations',
+      '/semantic/domains',
+      '/semantic/workbench',
+    ])
+    expect(subnav.every((item) => item.section == null)).toBe(true)
+    expect(subnav.find((item) => item.path === '/semantic/modeling-workbench')?.matchPrefix).toBe(true)
+    expect(subnav.find((item) => item.path === '/semantic/assets')?.matchPrefix).toBe(true)
+    expect(subnav.find((item) => item.path === '/semantic/cubes')?.matchPrefix).toBe(true)
+    expect(subnav.find((item) => item.path === '/semantic/ontology')?.matchPrefix).toBe(true)
+    expect(subnav.find((item) => item.path === '/semantic/domains')?.matchPrefix).toBe(true)
+  })
+
+  it('资产与本体内部路由不在二级导航平铺，但仍归属 semantic 模块', () => {
+    const semantic = NAV_MODULES.find((module) => module.id === 'semantic')
+    const entryPaths = semantic?.subnav?.map((item) => item.path) ?? []
+    const innerPaths = [
       '/semantic/assets/tables',
       '/semantic/assets/table-profile',
       '/semantic/assets/field-profile',
       '/semantic/assets/lineage-usage',
       '/semantic/assets/sync',
-    ])
+      '/semantic/ontology/objects',
+      '/semantic/ontology/metrics',
+      '/semantic/ontology/relations',
+      '/semantic/ontology/governance',
+    ]
+
+    for (const path of innerPaths) {
+      expect(entryPaths).not.toContain(path)
+      expect(findModule(path)?.id).toBe('semantic')
+    }
   })
 })
 
 describe('semantic navigation i18n', () => {
-  it('zh/en 保留统一工作台入口和旧冷启动 key', () => {
+  it('zh 保留正式入口 key 和旧冷启动 key', () => {
     expect(zhMessages['nav.semantic.sub.modelingWorkbench']).toBe('语义建设')
-    expect(enMessages['nav.semantic.sub.modelingWorkbench']).toBe('Semantic modeling')
+    expect(zhMessages['nav.semantic.sub.assets']).toBe('语义资产')
+    expect(zhMessages['nav.semantic.sub.ontologyRelations']).toBe('本体与关系')
+    expect(zhMessages['nav.semantic.sub.diagnosticsGovernance']).toBe('诊断治理')
+    expect(zhMessages['nav.semantic.sub.cubes']).toBe('Cube')
+    expect(zhMessages['nav.semantic.sub.domains']).toBe('业务上下文')
+    expect(zhMessages['nav.semantic.sub.relationCanvas']).toBe('关系画布')
 
     expect(zhMessages).toHaveProperty('nav.semantic.sub.modelingBuilder')
     expect(zhMessages).toHaveProperty('nav.semantic.sub.batchColdStart')
-    expect(enMessages).toHaveProperty('nav.semantic.sub.modelingBuilder')
-    expect(enMessages).toHaveProperty('nav.semantic.sub.batchColdStart')
   })
 })

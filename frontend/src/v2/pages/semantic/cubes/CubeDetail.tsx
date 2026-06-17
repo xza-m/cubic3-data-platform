@@ -119,7 +119,7 @@ export default function CubeDetail() {
               size="sm"
               variant="ghost"
               className="justify-start w-full"
-              onClick={() => navigate('/semantic/workbench')}
+              onClick={() => navigate(`/semantic/workbench?tab=query&object=${encodeURIComponent(cube.name)}`)}
             >
               {t('nav.devtools', '语义诊断')}
             </Button>
@@ -133,7 +133,7 @@ export default function CubeDetail() {
   if (detailQuery.isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <span className="text-sm text-3">{t('loading', '加载中…')}</span>
+        <span className="text-sm text-3">{t('common.loading', '加载中…')}</span>
       </div>
     )
   }
@@ -185,7 +185,8 @@ export default function CubeDetail() {
           actions={{
             onOpenDesigner: () => navigate(`/semantic/cubes/${cube.name}/edit`),
             onJumpOntology: () => navigate('/semantic/ontology/objects'),
-            onRunDiagnose: () => navigate('/semantic/workbench'),
+            onRunDiagnose: () =>
+              navigate(`/semantic/workbench?tab=query&object=${encodeURIComponent(cube.name)}`),
           }}
         />
       </div>
@@ -228,7 +229,7 @@ function FieldValidationPanel({
           )}
           {result.ok
             ? t('cube.validateFields.ok', '字段校验通过')
-            : t('cube.validateFields.failed', `字段校验发现 ${grouped.error?.length ?? 0} 个错误`)}
+            : t('cube.validateFields.failed', '字段校验发现 {n} 个错误', { n: grouped.error?.length ?? 0 })}
           <Chip tone={result.ok ? 'success' : 'danger'}>
             {result.issues.length} {t('cube.validateFields.issues', '项')}
           </Chip>

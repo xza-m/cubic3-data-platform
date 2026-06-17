@@ -3,7 +3,7 @@ doc_type: architecture
 status: current
 source_of_truth: secondary
 owner: engineering
-last_reviewed: 2026-05-12
+last_reviewed: 2026-06-12
 ---
 
 # Agent-Ready 语义与权限架构
@@ -441,15 +441,16 @@ gateway 校验资源时以 `data_source_id + project + schema + table + column` 
 
 ### 5.6 Row Scope
 
-行级范围使用结构化约束表达，不直接保存 SQL 片段。
+> 本节已从规划升级为**已定设计**，详细 Schema、求值规则、属性来源（飞书部门同步 → `PrincipalDataScope`）与 `GatewayAccessContext.v2` 合约见 [semantic-binding-and-rls.md](semantic-binding-and-rls.md) §3。本节保留口径结论。
 
-```json
-{
-  "type": "organization_scope",
-  "field": "school_id",
-  "operator": "in",
-  "source": "principal.data_scope.school_ids"
-}
+行级范围使用结构化约束表达，不直接保存 SQL 片段。谓词模板引用**语义层维度**而非裸物理列，物理列在求值时经 manifest catalog 的 cube 绑定解析：
+
+```yaml
+row_scope:
+  - dimension_ref: comment_reports.school_id   # 语义层维度引用（cube.dimension）
+    operator: in
+    attribute: school_ids                      # PrincipalDataScope 属性名
+    on_missing: deny                           # 属性为空时 deny | unrestricted
 ```
 
 `Execution Compiler` 只负责 preview / simulation，展示将会追加的行级约束。
@@ -483,7 +484,7 @@ principal.data_scope.school_ids
 }
 ```
 
-求值责任在 `AccessPolicyDecisionService`，gateway 只消费具体约束值，不解析飞书部门、用户组或业务权限表达式。
+求值责任在 `AccessPolicyDecisionService`（落点为 post_compile 阶段），gateway 只消费具体约束值，不解析飞书部门、用户组或业务权限表达式。属性事实源是平台内同步落库的 `PrincipalDataScope`（飞书部门 → scope 映射），请求体 / JWT / feishu_context 携带的 `data_scope` 一律不作为授权事实源。
 
 ### 5.7 Column Scope
 
@@ -1365,6 +1366,7 @@ ticket_consumed
 物理隔离：MaxCompute RAM Role 或专用 RAM 用户
 审计主键：principal_id + policy_decision_id + compiler_sql_hash
 M3：必须审批
+行级安全：RLS 五构件已定设计（见 semantic-binding-and-rls.md），gateway 单点注入
 ```
 
 禁止项：

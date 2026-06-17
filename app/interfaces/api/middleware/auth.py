@@ -2,13 +2,25 @@
 认证中间件
 """
 from functools import wraps
-from typing import Iterable
-from flask import request, g, jsonify, current_app
+from datetime import timedelta
+from flask import request, g, current_app
 import jwt
 from app.shared.exceptions import AuthenticationError, AuthorizationError
 from app.shared.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _decode_access_payload(token: str) -> dict:
+    """解码并强制校验平台 Access Token 语义。"""
+    jwt_secret = current_app.config.get('JWT_SECRET', 'your-secret-key')
+    payload = jwt.decode(token, jwt_secret, algorithms=['HS256'])
+    if payload.get('token_use') != 'access':
+        raise AuthenticationError(
+            message="Invalid token type",
+            code="INVALID_TOKEN_TYPE"
+        )
+    return payload
 
 
 def require_auth(func):
@@ -36,10 +48,8 @@ def require_auth(func):
         token = auth_header.replace('Bearer ', '')
         
         try:
-            # 解码 JWT
-            jwt_secret = current_app.config.get('JWT_SECRET', 'your-secret-key')
-            payload = jwt.decode(token, jwt_secret, algorithms=['HS256'])
-            
+            payload = _decode_access_payload(token)
+
             # 将用户信息注入到 Flask g 对象
             g.user_id = payload.get('user_id')
             g.principal_id = payload.get('principal_id') or payload.get('user_id')
@@ -65,10 +75,6 @@ def require_auth(func):
     return wrapper
 
 
-# 与 JWT 链路兼容：访问控制相关 blueprint 使用 require_identity 命名（与 require_auth 等价）
-require_identity = require_auth
-
-
 def optional_auth(func):
     """
     可选认证装饰器（如果有 Token 则验证，没有则放行）
@@ -88,8 +94,7 @@ def optional_auth(func):
             token = auth_header.replace('Bearer ', '')
             
             try:
-                jwt_secret = current_app.config.get('JWT_SECRET', 'your-secret-key')
-                payload = jwt.decode(token, jwt_secret, algorithms=['HS256'])
+                payload = _decode_access_payload(token)
                 
                 g.user_id = payload.get('user_id')
                 g.principal_id = payload.get('principal_id') or payload.get('user_id')
@@ -247,32 +252,31 @@ def require_admin(func):
     return require_access_roles('platform_admin', 'governance_admin', 'admin')(func)
 
 
-def generate_token(user_id: str, user_name: str, roles: list = None, expiry_hours: int = 24) -> str:
-    """
-    生成 JWT Token
-    
-    Args:
-        user_id: 用户ID
-        user_name: 用户名
-        roles: 角色列表
-        expiry_hours: 过期时间（小时）
-    
-    Returns:
-        JWT Token 字符串
-    """
-    from datetime import datetime, timedelta
+def generate_access_token(
+    *,
+    principal_id: str,
+    user_name: str,
+    roles: list | None = None,
+    session_id: str | None = None,
+    expires_delta: timedelta | None = None,
+) -> str:
+    """生成平台 Access Token。"""
+    import secrets
     from app.shared.utils.time import utcnow
-    
+
     jwt_secret = current_app.config.get('JWT_SECRET', 'your-secret-key')
-    
+    now = utcnow()
+    expires_at = now + (expires_delta or timedelta(seconds=current_app.config.get('AUTH_ACCESS_TOKEN_TTL_SECONDS', 3600)))
     payload = {
-        'user_id': user_id,
+        'user_id': principal_id,
+        'principal_id': principal_id,
         'user_name': user_name,
         'roles': roles or [],
-        'iat': utcnow(),
-        'exp': utcnow() + timedelta(hours=expiry_hours)
+        'token_use': 'access',
+        'sid': session_id,
+        'jti': 'atk_' + secrets.token_hex(16),
+        'iat': now,
+        'exp': expires_at,
     }
-    
-    token = jwt.encode(payload, jwt_secret, algorithm='HS256')
-    
-    return token
+
+    return jwt.encode(payload, jwt_secret, algorithm='HS256')

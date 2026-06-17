@@ -50,7 +50,7 @@ class Query(db.Model):
     execute_count = Column(Integer, default=0)
     
     # 审计字段
-    created_by = Column(String(100), nullable=False, index=True)
+    created_by = Column(String(191), nullable=False, index=True)
     created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     last_executed_at = Column(DateTime, nullable=True)

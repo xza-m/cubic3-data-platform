@@ -18,7 +18,21 @@ import { obs } from '@v2/observability'
 import { AppError, type ApiErrorPayload } from './types'
 
 const ACCESS_TOKEN_KEY = 'v2.access_token'
+const REFRESH_TOKEN_KEY = 'v2.refresh_token'
+const ACCESS_EXPIRES_AT_KEY = 'v2.access_expires_at'
+const REFRESH_EXPIRES_AT_KEY = 'v2.refresh_expires_at'
 const tokenListeners = new Set<() => void>()
+let refreshPromise: Promise<string | null> | null = null
+
+export interface TokenPair {
+  access_token: string
+  refresh_token: string
+  expires_in?: number
+  refresh_expires_in?: number
+  access_expires_at?: string | null
+  refresh_expires_at?: string | null
+  token_type?: string
+}
 
 interface ApiClientOptions {
   browserE2eFixtures?: boolean
@@ -26,6 +40,10 @@ interface ApiClientOptions {
 
 export function getAccessToken(): string | null {
   return sessionStorage.getItem(ACCESS_TOKEN_KEY)
+}
+
+export function getRefreshToken(): string | null {
+  return sessionStorage.getItem(REFRESH_TOKEN_KEY)
 }
 
 export function subscribeAccessToken(listener: () => void): () => void {
@@ -37,8 +55,37 @@ export function setAccessToken(token: string | null): void {
   if (token) {
     sessionStorage.setItem(ACCESS_TOKEN_KEY, token)
   } else {
-    sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+    clearTokens()
+    return
   }
+  tokenListeners.forEach((listener) => listener())
+}
+
+export function setTokenPair(tokenPair: TokenPair | null): void {
+  if (!tokenPair) {
+    clearTokens()
+    return
+  }
+  sessionStorage.setItem(ACCESS_TOKEN_KEY, tokenPair.access_token)
+  sessionStorage.setItem(REFRESH_TOKEN_KEY, tokenPair.refresh_token)
+  if (tokenPair.access_expires_at) {
+    sessionStorage.setItem(ACCESS_EXPIRES_AT_KEY, tokenPair.access_expires_at)
+  } else {
+    sessionStorage.removeItem(ACCESS_EXPIRES_AT_KEY)
+  }
+  if (tokenPair.refresh_expires_at) {
+    sessionStorage.setItem(REFRESH_EXPIRES_AT_KEY, tokenPair.refresh_expires_at)
+  } else {
+    sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY)
+  }
+  tokenListeners.forEach((listener) => listener())
+}
+
+export function clearTokens(): void {
+  sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+  sessionStorage.removeItem(REFRESH_TOKEN_KEY)
+  sessionStorage.removeItem(ACCESS_EXPIRES_AT_KEY)
+  sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY)
   tokenListeners.forEach((listener) => listener())
 }
 
@@ -70,6 +117,12 @@ function toAppError(err: AxiosError<ApiErrorPayload>): AppError {
   return new AppError(code, status, message, payload?.details)
 }
 
+function isAuthEndpoint(url: string | undefined): boolean {
+  if (!url) return false
+  const path = normalizeFixturePath(url)
+  return path === '/auth/login' || path === '/auth/refresh' || path === '/auth/logout' || path === '/auth/feishu/exchange'
+}
+
 export function createApiClient(baseURL: string = '/api/v1', options: ApiClientOptions = {}): AxiosInstance {
   const useBrowserFixtures =
     options.browserE2eFixtures === true || import.meta.env.VITE_BROWSER_E2E_FIXTURES === '1'
@@ -84,10 +137,19 @@ export function createApiClient(baseURL: string = '/api/v1', options: ApiClientO
 
   instance.interceptors.response.use(
     (resp) => resp,
-    (err: AxiosError<ApiErrorPayload>) => {
+    async (err: AxiosError<ApiErrorPayload>) => {
       const status = err.response?.status ?? 0
       if (status === 401) {
-        setAccessToken(null)
+        const config = err.config as (InternalAxiosRequestConfig & { _tokenPairRetried?: boolean }) | undefined
+        if (config && !isAuthEndpoint(config.url) && !config._tokenPairRetried && getRefreshToken()) {
+          config._tokenPairRetried = true
+          const refreshedToken = await refreshAccessToken(baseURL)
+          if (refreshedToken) {
+            attachAuth(config)
+            return instance.request(config)
+          }
+        }
+        clearTokens()
         onLoginRedirect()
       }
       const appErr = toAppError(err)
@@ -102,6 +164,53 @@ export function createApiClient(baseURL: string = '/api/v1', options: ApiClientO
   )
 
   return instance
+}
+
+async function refreshAccessToken(baseURL: string): Promise<string | null> {
+  if (refreshPromise) return refreshPromise
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) return null
+  refreshPromise = axios
+    .post(resolveApiUrl(baseURL, '/auth/refresh'), { refresh_token: refreshToken })
+    .then((resp) => {
+      const tokenPair = extractTokenPairPayload(resp.data)
+      if (!tokenPair) return null
+      setTokenPair(tokenPair)
+      return tokenPair.access_token
+    })
+    .catch(() => {
+      clearTokens()
+      return null
+    })
+    .finally(() => {
+      refreshPromise = null
+    })
+  return refreshPromise
+}
+
+function resolveApiUrl(baseURL: string, path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  if (baseURL.startsWith('http://') || baseURL.startsWith('https://')) {
+    return `${baseURL.replace(/\/$/, '')}${normalizedPath}`
+  }
+  return `${baseURL.replace(/\/$/, '')}${normalizedPath}`
+}
+
+function extractTokenPairPayload(payload: unknown): TokenPair | null {
+  const candidate = isRecord(payload) && isRecord(payload.data) ? payload.data : payload
+  if (!isRecord(candidate)) return null
+  const accessToken = typeof candidate.access_token === 'string' ? candidate.access_token : ''
+  const refreshToken = typeof candidate.refresh_token === 'string' ? candidate.refresh_token : ''
+  if (!accessToken || !refreshToken) return null
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_in: typeof candidate.expires_in === 'number' ? candidate.expires_in : undefined,
+    refresh_expires_in: typeof candidate.refresh_expires_in === 'number' ? candidate.refresh_expires_in : undefined,
+    access_expires_at: typeof candidate.access_expires_at === 'string' ? candidate.access_expires_at : null,
+    refresh_expires_at: typeof candidate.refresh_expires_at === 'string' ? candidate.refresh_expires_at : null,
+    token_type: typeof candidate.token_type === 'string' ? candidate.token_type : undefined,
+  }
 }
 
 export const apiClient = createApiClient()
@@ -140,6 +249,25 @@ function parseFixtureBody(data: unknown): Record<string, unknown> {
 }
 
 function browserE2eFixtureData(method: string, path: string, body: Record<string, unknown>): unknown {
+  if (method === 'GET' && path === '/auth/me') {
+    return {
+      user_id: 'internal:test:test_admin',
+      principal_id: 'internal:test:test_admin',
+      user_name: 'E2E Admin',
+      roles: ['platform_admin', 'governance_admin', 'viewer'],
+      platform_roles: ['platform_admin', 'governance_admin', 'viewer'],
+      data_roles: ['data_m0_reader', 'data_m1_reader', 'data_m2_detail_reader'],
+      access_roles: [
+        'platform_admin',
+        'governance_admin',
+        'viewer',
+        'data_m0_reader',
+        'data_m1_reader',
+        'data_m2_detail_reader',
+      ],
+      permissions: ['access.read', 'access.write', 'access.audit.read', 'access.gateway.read'],
+    }
+  }
   if (method === 'GET' && path === '/access/me/preferences') {
     return {
       principal_id: 'internal:test:test_admin',

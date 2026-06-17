@@ -149,6 +149,7 @@ def delete_conversation(conversation_id):
     # 删除对话
     repo = container.conversation_repository()
     repo.delete(conversation_id)
+    repo.commit()
     
     return success()
 

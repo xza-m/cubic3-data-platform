@@ -64,6 +64,21 @@ class AppExecution(db.Model):
     # 业务逻辑方法
     # ========================================================================
     
+    def _compute_duration_ms(self) -> Optional[int]:
+        """计算耗时（毫秒）。
+
+        列类型是无时区 DateTime，ORM 回读后 started_at 会变 naive，
+        而 utcnow() 是 aware；两者统一按 UTC 对齐后再相减。
+        """
+        if not self.started_at or not self.ended_at:
+            return None
+        start, end = self.started_at, self.ended_at
+        if start.tzinfo is None and end.tzinfo is not None:
+            start = start.replace(tzinfo=end.tzinfo)
+        elif end.tzinfo is None and start.tzinfo is not None:
+            end = end.replace(tzinfo=start.tzinfo)
+        return int((end - start).total_seconds() * 1000)
+
     def start(self):
         """开始执行"""
         self.status = 'running'
@@ -89,11 +104,7 @@ class AppExecution(db.Model):
         self.status = 'success'
         self.ended_at = utcnow()
         self.output = output
-        
-        # 计算执行耗时
-        if self.started_at:
-            delta = self.ended_at - self.started_at
-            self.duration_ms = int(delta.total_seconds() * 1000)
+        self.duration_ms = self._compute_duration_ms()
         
         # 更新实例的最后执行状态
         if self.instance:
@@ -122,11 +133,7 @@ class AppExecution(db.Model):
         self.status = 'failed'
         self.ended_at = utcnow()
         self.error_message = error_message
-        
-        # 计算执行耗时
-        if self.started_at:
-            delta = self.ended_at - self.started_at
-            self.duration_ms = int(delta.total_seconds() * 1000)
+        self.duration_ms = self._compute_duration_ms()
         
         # 更新实例的最后执行状态
         if self.instance:

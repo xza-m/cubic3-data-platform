@@ -72,7 +72,7 @@ export function SecondarySidebar({ module, extraSections }: SecondarySidebarProp
                   <NavLink
                     key={s.path}
                     to={s.path}
-                    end
+                    end={!s.matchPrefix}
                     className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                   >
                     <ChevronRight size={12} className="text-3" />

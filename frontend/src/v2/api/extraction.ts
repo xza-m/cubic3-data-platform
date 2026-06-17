@@ -1,6 +1,6 @@
 // frontend/src/v2/api/extraction.ts
 //
-// 提取任务 & 执行记录 API 层。
+// 同步任务 & 同步记录 API 层。
 // 字段对齐：以 TaskListItemSchema / TaskDetailSchema / RunDetailSchema (task_schemas.py) 为准。
 // drop-frontend: demo 字段 source(string) / target(string) / owner / rows_synced / duration_sec(task级)
 //   / schedule(string) / next_run_at / failure_reason(task级) — 后端无设计 see plan §3.4
@@ -206,7 +206,7 @@ export async function listRunLogs(
 }
 
 // ── 调度配置（P10）────────────────────────────────────────────────────────────
-// 后端契约：PATCH /api/v1/extraction/tasks/:id  body: { schedule_config: { cron, enabled, timezone } }
+// 后端契约：PUT /api/v1/extraction/tasks/:id  body: { schedule_config: { cron, enabled, timezone } }
 // （app/application/extraction/handlers/update_task_handler.py）
 // 领域实体 ExtractionTask.schedule_config 以 JSON 字段承载调度定义；
 // 前端 UI 暴露 cron/enabled/timezone 三个扁平字段，仅在 API 层打包成 schedule_config。
@@ -226,6 +226,6 @@ export async function updateTaskSchedule(
     enabled: payload.schedule_enabled,
     timezone: payload.schedule_timezone ?? 'Asia/Shanghai',
   }
-  const resp = await apiClient.patch(`${TASKS_BASE}/${id}`, { schedule_config: scheduleConfig })
+  const resp = await apiClient.put(`${TASKS_BASE}/${id}`, { schedule_config: scheduleConfig })
   return resp.data.data
 }

@@ -24,7 +24,7 @@ v2/
     PeekPanel / ResourceListPage / EntityFormDialog / ...
     ErrorBoundary / Can / RouteGuard
   styles/                              # tokens.css + globals.css
-  i18n/                                # t() + zh.json/en.json
+  i18n/                                # t() + zh.json（中文单语言）
   lib/                                 # cn / format / telemetry
   pages/                               # 业务页面，按域分子目录
   test/                                # vitest setup

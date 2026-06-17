@@ -32,12 +32,21 @@ class UnknownFieldError(CompilationError):
 
 
 class CompileResult:
-    __slots__ = ("sql", "primary_cube", "joined_cubes")
+    __slots__ = ("sql", "primary_cube", "joined_cubes", "scoped_table_refs")
 
-    def __init__(self, sql: str, primary_cube: str, joined_cubes: List[str]):
+    def __init__(
+        self,
+        sql: str,
+        primary_cube: str,
+        joined_cubes: List[str],
+        scoped_table_refs: List[dict] | None = None,
+    ):
         self.sql = sql
         self.primary_cube = primary_cube
         self.joined_cubes = joined_cubes
+        # row_scope 注入锚点：[{table, alias, scan_anchor}]，供 gateway apply_scope
+        # 做 AST 级注入定位；不改 SQL 文本，canonical_sql_hash 口径不变。
+        self.scoped_table_refs = scoped_table_refs or []
 
 
 # ── filter 操作符 → SQL 模板 ──
@@ -112,12 +121,14 @@ class QueryCompiler:
         order_by_parts: List[str] = []
         join_on_parts: Dict[str, List[str]] = {edge.target: [] for edge in join_edges}
 
+        _qi = self._dialect.quote_identifier
+
         # 1. SELECT — dimensions
         for ref in dsl.dimensions:
             alias = self._ref_alias(ref)
             expr = self._resolve_dimension_expr(ref, cubes)
-            select_parts.append(f"  {expr} AS `{alias}`")
-            group_by_parts.append(f"`{alias}`")
+            select_parts.append(f"  {expr} AS {_qi(alias)}")
+            group_by_parts.append(_qi(alias))
 
         # 2. SELECT — time_dimensions
         for td in dsl.time_dimensions:
@@ -131,8 +142,8 @@ class QueryCompiler:
                 col_type = "string" if dim.type == "string" else "datetime"
                 expr = self._dialect.apply_granularity(raw_col, td.granularity, col_type)
                 alias = f"{dim_ref}__{td.granularity}"
-                select_parts.append(f"  {expr} AS `{alias}`")
-                group_by_parts.append(f"`{alias}`")
+                select_parts.append(f"  {expr} AS {_qi(alias)}")
+                group_by_parts.append(_qi(alias))
             else:
                 expr = raw_col
 
@@ -154,7 +165,7 @@ class QueryCompiler:
         for ref in dsl.measures:
             alias = self._ref_alias(ref)
             expr = self._resolve_measure_expr(ref, cubes)
-            select_parts.append(f"  {expr} AS `{alias}`")
+            select_parts.append(f"  {expr} AS {_qi(alias)}")
 
         # 4. WHERE — default_filters
         for cube in cubes.values():
@@ -211,7 +222,7 @@ class QueryCompiler:
             ref = pair[0]
             direction = pair[1] if len(pair) > 1 else "asc"
             alias = self._ref_alias(ref)
-            order_by_parts.append(f"`{alias}` {direction.upper()}")
+            order_by_parts.append(f"{_qi(alias)} {direction.upper()}")
 
         # ── 组装 SQL ──
         from_clause = self._aliased_source_relation(primary)
@@ -247,7 +258,23 @@ class QueryCompiler:
 
         sql = "\n".join(lines)
         joined = [e.target for e in join_edges]
-        return CompileResult(sql=sql, primary_cube=primary.name, joined_cubes=joined)
+        scoped_table_refs = [
+            {"table": primary.table, "alias": primary.name, "scan_anchor": "from"}
+        ]
+        for edge in join_edges:
+            scoped_table_refs.append(
+                {
+                    "table": cubes[edge.target].table,
+                    "alias": edge.target,
+                    "scan_anchor": "join",
+                }
+            )
+        return CompileResult(
+            sql=sql,
+            primary_cube=primary.name,
+            joined_cubes=joined,
+            scoped_table_refs=scoped_table_refs,
+        )
 
     # ── 私有辅助 ──
 
@@ -515,6 +542,12 @@ class QueryCompiler:
 
         raw = self._resolve_measure_refs(raw, cube_name, cubes)
 
+        # Agent 生成的 cube spec 可能把完整聚合表达式写进 measure.sql
+        # （如 sql="COUNT(`comment_id`)", type="count"），此时不再叠加聚合，
+        # 避免编译出 COUNT(COUNT(...)) 这类非法嵌套聚合。
+        if self._is_aggregate_expr(raw):
+            return raw
+
         if measure.type == "count":
             return f"COUNT({raw})"
         elif measure.type == "count_distinct":
@@ -549,8 +582,16 @@ class QueryCompiler:
                     expr = expr.replace(f"{{{ref_name}}}", sub_expr)
         return expr
 
-    @staticmethod
-    def _wrap_agg(mtype: str, expr: str) -> str:
+    _AGGREGATE_EXPR_RE = re.compile(r"^\s*(COUNT|SUM|AVG|MIN|MAX)\s*\(", re.IGNORECASE)
+
+    @classmethod
+    def _is_aggregate_expr(cls, expr: str) -> bool:
+        return bool(cls._AGGREGATE_EXPR_RE.match(expr or ""))
+
+    @classmethod
+    def _wrap_agg(cls, mtype: str, expr: str) -> str:
+        if cls._is_aggregate_expr(expr):
+            return expr
         if mtype == "count":
             return f"COUNT({expr})"
         elif mtype == "count_distinct":

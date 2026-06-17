@@ -24,27 +24,27 @@ export function Dialog({ open, onClose, title, footer, width = 480, className, c
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center cmdk-backdrop" onClick={onClose}>
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 cmdk-backdrop" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}
-        className={cn('surface rounded-xl border shadow-lg overflow-hidden', className)}
-        style={{ width, background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
+        className={cn('surface flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-xl border shadow-lg', className)}
+        style={{ width, maxWidth: 'calc(100vw - 2rem)', background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {title ? (
           <div
-            className="flex items-center justify-between px-4 py-3 border-b text-1 font-medium"
+            className="flex shrink-0 items-center justify-between px-4 py-3 border-b text-1 font-medium"
             style={{ borderColor: 'var(--border)' }}
           >
             <span>{title}</span>
           </div>
         ) : null}
-        <div className="px-4 py-3 text-1">{children}</div>
+        <div className="min-h-0 overflow-y-auto px-4 py-3 text-1">{children}</div>
         {footer ? (
           <div
-            className="flex items-center justify-end gap-2 px-4 py-3 border-t"
+            className="flex shrink-0 items-center justify-end gap-2 px-4 py-3 border-t"
             style={{ borderColor: 'var(--border)' }}
           >
             {footer}

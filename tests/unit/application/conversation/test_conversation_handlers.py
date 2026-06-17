@@ -29,6 +29,8 @@ class TestCreateConversationHandler:
         assert created.description == "desc"
         assert created.dataset_id == 10
         assert created.user_id == "u1"
+        # 仓储绑定容器 scoped_session，handler 必须在同一 session 上提交事务
+        conversation_repo.commit.assert_called_once()
 
     def test_handle_uses_custom_title(self):
         conversation_repo = MagicMock()

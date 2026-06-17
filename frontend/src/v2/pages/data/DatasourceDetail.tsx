@@ -1,6 +1,6 @@
 // frontend/src/v2/pages/data/DatasourceDetail.tsx
 //
-// 数据源详情全屏页（L3）。从 Peek ⤢ / 直接 URL / Tab 切回均落到此处。
+// 连接详情全屏页（L3）。从列表 / 直接 URL / Tab 切回均落到此处。
 // B-back-4: POST /datasources/:id/test 增强字段 — 测试结果只展示后端实际返回字段
 // B-back-5: GET /datasources/:id/schema — "结构" Tab 留占位
 
@@ -11,10 +11,13 @@ import { useDatasource, useDatasources, useTestConnection } from '@v2/hooks/data
 import type { Datasource, TestConnectionResult } from '@v2/api/datasources'
 import { RefreshButton } from '@v2/components/CommonControls'
 import { RetryState } from '@v2/components/LoadState'
+import { Tab, Tabs } from '@v2/components/ui/Tabs'
 import {
   connectionStatusChip,
+  datasourceTypeLabel,
   datasourceTabLabel,
   DatasourceDetailContent,
+  DatasourceTypeIcon,
 } from './_shared/datasource-detail-content'
 import { DatasourceSchemaBrowser } from './_shared/datasource-schema-browser'
 import { fmtDateTime } from '@v2/lib/format'
@@ -54,7 +57,7 @@ export default function DatasourceDetail() {
     if (!data) return
     setBreadcrumbs([
       t('datasourceDetail.breadcrumb.data', '数据'),
-      t('datasourceDetail.breadcrumb.datasources', '数据源'),
+      t('datasourceDetail.breadcrumb.datasources', '连接管理'),
       data.name,
     ])
   }, [data, setBreadcrumbs])
@@ -65,10 +68,10 @@ export default function DatasourceDetail() {
     openTab({
       id: `datasource:${data.id}`,
       label: datasourceTabLabel(data),
-      to: `/data-center/datasources/${data.id}`,
+      to: `/data-center/connections/${data.id}`,
       closeable: true,
       onClose: () => {
-        navigate('/data-center/datasources')
+        navigate('/data-center/connections')
         return true
       },
     })
@@ -80,7 +83,7 @@ export default function DatasourceDetail() {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => navigate('/data-center/datasources')}
+          onClick={() => navigate('/data-center/connections')}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
@@ -121,7 +124,7 @@ export default function DatasourceDetail() {
         ) : null}
         <button
           type="button"
-          onClick={() => navigate(`/data-center/datasources/${numericId}/edit`)}
+          onClick={() => navigate(`/data-center/connections/${numericId}/edit`)}
           className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
           style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
         >
@@ -154,7 +157,7 @@ export default function DatasourceDetail() {
           {data.name}
         </div>
       ),
-      subtitle: `${data.source_type} · #${data.id}`,
+      subtitle: `${datasourceTypeLabel(data.source_type)} · #${data.id}`,
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
@@ -182,7 +185,7 @@ export default function DatasourceDetail() {
                 disabled={!neighbors.prev}
                 onClick={
                   neighbors.prev
-                    ? () => navigate(`/data-center/datasources/${neighbors.prev!.id}`)
+                    ? () => navigate(`/data-center/connections/${neighbors.prev!.id}`)
                     : undefined
                 }
               />
@@ -191,26 +194,24 @@ export default function DatasourceDetail() {
                 disabled={!neighbors.next}
                 onClick={
                   neighbors.next
-                    ? () => navigate(`/data-center/datasources/${neighbors.next!.id}`)
+                    ? () => navigate(`/data-center/connections/${neighbors.next!.id}`)
                     : undefined
                 }
               />
             </div>
           </section>
           <section>
-            <CtxLabel>{t('datasourceDetail.ctx.downstream', '下游引用')}</CtxLabel>
+            <CtxLabel>{t('datasourceDetail.ctx.downstream', '影响分析')}</CtxLabel>
             <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-3)' }}>
-              {t('datasourceDetail.downstream.hint', '通过下列接口查询关联数据集：')}
-              <br />
-              <code className="text-[10px]">/api/v1/data-center/datasets?source_id={data.id}</code>
+              {t('datasourceDetail.downstream.hint', '查看基于该连接登记的数据资产、同步状态和后续语义建设入口。')}
             </p>
             <button
               type="button"
-              onClick={() => navigate(`/data-center/datasets?source_id=${data.id}`)}
+              onClick={() => navigate(`/data-center/assets?source_id=${data.id}`)}
               className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
               style={{ color: 'var(--text-2)' }}
             >
-              <ExternalLink size={11} /> {t('datasourceDetail.downstream.view', '查看关联数据集')}
+              <ExternalLink size={11} /> {t('datasourceDetail.downstream.view', '查看关联资产')}
             </button>
           </section>
         </div>
@@ -224,7 +225,7 @@ export default function DatasourceDetail() {
   if (!Number.isFinite(numericId)) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>
-        {t('datasourceDetail.state.invalidId', '非法的数据源 ID')}
+        {t('datasourceDetail.state.invalidId', '非法的连接 ID')}
       </div>
     )
   }
@@ -243,7 +244,7 @@ export default function DatasourceDetail() {
         className="flex-1"
         message={error instanceof Error ? error.message : t('datasourceDetail.state.loadFailed', '加载失败')}
         onRetry={() => refetch()}
-        retryAriaLabel={t('datasourceDetail.action.retry', '重试加载数据源')}
+        retryAriaLabel={t('datasourceDetail.action.retry', '重试加载连接')}
       />
     )
   }
@@ -256,12 +257,7 @@ export default function DatasourceDetail() {
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
         <div className="flex items-center gap-3">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[10px] font-semibold"
-            style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
-          >
-            DS
-          </div>
+          <DatasourceTypeIcon type={data.source_type} size="md" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
               <span className="truncate">{data.name}</span>
@@ -279,28 +275,32 @@ export default function DatasourceDetail() {
               </span>
             </div>
             <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-              {data.source_type} · #{data.id} · {t('datasourceDetail.subtitle', '连接配置与同步状态')}
+              {datasourceTypeLabel(data.source_type)} · #{data.id} · {t('datasourceDetail.subtitle', '连接配置与同步状态')}
             </div>
           </div>
         </div>
 
         {/* Tab 栏 */}
-        <div className="mt-3 flex items-center gap-1">
+        <Tabs
+          value={tab}
+          onChange={(value) => setTab(value as TabId)}
+          size="sm"
+          bordered={false}
+          aria-label={t('datasourceDetail.tabs.label', '连接详情导航')}
+          className="mt-3"
+        >
           {buildTabs().map((tb) => (
-            <button
+            <Tab
               key={tb.id}
-              type="button"
-              onClick={() => setTab(tb.id)}
-              className="rounded px-2.5 py-1 text-xs"
-              style={{
-                background: tab === tb.id ? 'var(--accent-soft)' : 'transparent',
-                color: tab === tb.id ? 'var(--accent)' : 'var(--text-2)',
-              }}
+              value={tb.id}
+              id={`datasource-detail-tab-${tb.id}`}
+              aria-controls={`datasource-detail-panel-${tb.id}`}
+              className="rounded px-2.5"
             >
               {tb.label}
-            </button>
+            </Tab>
           ))}
-        </div>
+        </Tabs>
       </header>
 
       {/* 测试结果提示 (B-back-4) */}
@@ -318,12 +318,24 @@ export default function DatasourceDetail() {
       {/* 内容 */}
       <div className="flex-1 overflow-hidden">
         {tab === 'overview' && (
-          <div className="h-full overflow-auto">
+          <div
+            id="datasource-detail-panel-overview"
+            role="tabpanel"
+            aria-labelledby="datasource-detail-tab-overview"
+            className="h-full overflow-auto"
+          >
             <DatasourceDetailContent item={data} />
           </div>
         )}
         {tab === 'structure' && (
-          <DatasourceSchemaBrowser datasourceId={data.id} />
+          <div
+            id="datasource-detail-panel-structure"
+            role="tabpanel"
+            aria-labelledby="datasource-detail-tab-structure"
+            className="h-full"
+          >
+            <DatasourceSchemaBrowser datasourceId={data.id} />
+          </div>
         )}
       </div>
     </div>

@@ -41,7 +41,13 @@ def _spec(status: str = "draft"):
             },
         },
         "ontology": {
-            "object": {"name": "student_comment", "status": status},
+            "object": {
+                "name": "student_comment",
+                "status": status,
+                "cube_bindings": [
+                    {"cube": "student_comments", "role": "primary", "entity_key": "school_id"}
+                ],
+            },
             "metrics": [
                 {
                     "name": "student_comment_total_count",
@@ -102,7 +108,7 @@ class _Builder:
 
     def create_spec_draft(self, payload):
         self.calls.append(("spec_draft", payload))
-        return {"spec": deepcopy(self.spec), "next_actions": {"default_publish_target": "cube_only"}}
+        return {"spec": deepcopy(self.spec), "next_actions": {"default_publish_target": "cube_and_ontology"}}
 
     def draft_from_spec(self, spec):
         self.calls.append(("draft_from_spec", spec))
@@ -115,7 +121,9 @@ class _Builder:
 
     def validate(self, spec):
         self.calls.append(("validate", spec))
-        refs = spec["ontology"]["metrics"][0].get("measure_refs") or []
+        from app.domain.ontology.entities import measure_ref_strings
+
+        refs = measure_ref_strings(spec["ontology"]["metrics"][0].get("measure_refs"))
         if refs == ["student_comments.total_count"]:
             return {"status": "ready", "issues": [], "checks": {"metric_binding": "passed"}}
         return {
@@ -729,6 +737,26 @@ def test_readiness_accepts_active_cube_ontology_and_policy():
     assert result["computed_by"] == "publish_readiness_checker"
     assert result["canonical_ready"] is True
     assert result["reasons"] == []
+    assert result["checks"]["binding_matrix"] == "passed"
+    assert result["binding_blockers"] == []
+
+
+def test_readiness_blocks_on_binding_matrix_broken_link():
+    checker = PublishReadinessChecker()
+    spec = _spec(status="active")
+    spec["ontology"]["object"]["cube_bindings"] = [
+        {"cube": "missing_cube", "role": "primary", "entity_key": "school_id"}
+    ]
+
+    result = checker.evaluate(spec)
+
+    assert result["canonical_ready"] is False
+    assert "binding_broken:object_binding_unresolved" in result["reasons"]
+    assert result["checks"]["binding_matrix"] == "failed"
+    assert any(
+        blocker["code"] == "object_binding_unresolved"
+        for blocker in result["binding_blockers"]
+    )
 
 
 def test_published_ready_proposal_exposes_backend_readiness_label():

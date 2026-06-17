@@ -55,7 +55,7 @@ class Subscription(db.Model):
     enabled = Column(Boolean, default=True)
     
     # 审计字段
-    created_by = Column(String(50))
+    created_by = Column(String(191))
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
     

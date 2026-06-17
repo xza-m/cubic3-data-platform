@@ -51,6 +51,7 @@ class FeishuChannel(ChannelAdapter):
             text = str(content_raw).strip()
 
         open_id = sender.get("sender_id", {}).get("open_id")
+        tenant_key = sender.get("tenant_key") or raw_input.get("tenant_key")
         chat_id = message.get("chat_id")
         message_id = message.get("message_id")
 
@@ -62,6 +63,7 @@ class FeishuChannel(ChannelAdapter):
                 open_id=open_id,
                 chat_id=chat_id,
                 message_id=message_id,
+                tenant_key=tenant_key,
             ),
         )
 

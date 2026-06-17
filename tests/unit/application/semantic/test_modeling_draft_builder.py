@@ -268,7 +268,9 @@ def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():
     assert spec["spec_version"] == "v1"
     assert spec["cube"]["name"] == "student_comments"
     assert spec["ontology"]["object"]["name"] == "student_comment"
-    assert spec["ontology"]["metrics"][0]["measure_refs"] == ["student_comments.total_count"]
+    assert spec["ontology"]["metrics"][0]["measure_refs"] == [
+        {"ref": "student_comments.total_count", "role": "primary"}
+    ]
     assert spec["ontology"]["metrics"][0]["binding_status"] == "approved"
     assert spec["ontology"]["metrics"][0]["grain"] == "comment_time,comment_id"
     assert spec["ontology"]["metrics"][0]["time_dimension"] == "comment_time"
@@ -276,7 +278,7 @@ def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():
     assert spec["ontology"]["glossary"][0]["term"] == "学生评论"
     assert spec["ontology"]["policies"][0]["visibility"] == "restricted"
     assert "comment_content" in spec["governance"]["sensitive_fields"]
-    assert result["next_actions"]["default_publish_target"] == "cube_only"
+    assert result["next_actions"]["default_publish_target"] == "cube_and_ontology"
 
 
 def test_spec_draft_preserves_field_candidate_trace_from_cube_draft():
@@ -504,7 +506,7 @@ def test_agent_ready_check_downgrades_when_cube_or_ontology_is_draft():
     assert any(issue["code"] == "ontology_not_active" for issue in result["issues"])
 
 
-def test_publish_defaults_to_cube_only():
+def test_publish_defaults_to_cube_and_ontology():
     cube_modeling_service = MagicMock()
     cube_modeling_service.activate_cube.return_value = SimpleNamespace(
         name="student_comments",
@@ -516,6 +518,73 @@ def test_publish_defaults_to_cube_only():
 
     result = builder.publish(spec)
 
-    assert result["publish_targets"] == {"cube": True, "ontology": False}
+    assert result["publish_targets"] == {"cube": True, "ontology": True}
     cube_modeling_service.activate_cube.assert_called_once_with("student_comments")
+    ontology_service.publish_entity.assert_called()
+
+
+def test_publish_cube_only_when_explicitly_requested():
+    cube_modeling_service = MagicMock()
+    cube_modeling_service.activate_cube.return_value = SimpleNamespace(
+        name="student_comments",
+        model_dump=lambda mode="json": {**_cube_draft(), "status": "active"},
+    )
+    ontology_service = MagicMock()
+    builder = _builder(cube_modeling_service=cube_modeling_service, ontology_service=ontology_service)
+    spec = builder.create_spec_draft({"source_kind": "physical_table", "source_id": 7, "database": "dw", "table": "dwd_student_comment_events", "business_subject": "学生评论"})["spec"]
+
+    result = builder.publish(spec, publish_targets={"cube": True, "ontology": False})
+
+    assert result["publish_targets"] == {"cube": True, "ontology": False}
     ontology_service.publish_entity.assert_not_called()
+
+
+def test_recommend_bindable_objects_matches_existing_object_by_name_and_entity_key():
+    ontology_service = MagicMock()
+    ontology_service.list_objects.return_value = {
+        "items": [
+            {
+                "name": "student_comment",
+                "title": "学生评论",
+                "status": "active",
+                "aliases": ["学生评论"],
+                "cube_bindings": [
+                    {"cube": "student_comment_legacy", "role": "primary", "entity_key": "comment_id"}
+                ],
+            },
+            {
+                "name": "purchase_order",
+                "title": "采购订单",
+                "status": "active",
+                "aliases": [],
+                "cube_bindings": [],
+            },
+        ],
+        "total": 2,
+    }
+    builder = _builder(ontology_service=ontology_service)
+
+    suggestions = builder.recommend_bindable_objects(_cube_draft(), subject="学生评论")
+
+    assert len(suggestions) == 1
+    suggestion = suggestions[0]
+    assert suggestion["object_name"] == "student_comment"
+    assert suggestion["suggested_binding"]["cube"] == "student_comments"
+    assert suggestion["suggested_binding"]["role"] == "detail"
+    assert suggestion["suggested_binding"]["entity_key"] == "comment_id"
+    assert suggestion["score"] > 0
+
+
+def test_recommend_bindable_objects_skips_deprecated_and_handles_empty_repo():
+    ontology_service = MagicMock()
+    ontology_service.list_objects.return_value = {
+        "items": [
+            {"name": "student_comment", "title": "学生评论", "status": "deprecated", "cube_bindings": []}
+        ],
+        "total": 1,
+    }
+    builder = _builder(ontology_service=ontology_service)
+    assert builder.recommend_bindable_objects(_cube_draft(), subject="学生评论") == []
+
+    ontology_service.list_objects.side_effect = RuntimeError("repo unavailable")
+    assert builder.recommend_bindable_objects(_cube_draft(), subject="学生评论") == []

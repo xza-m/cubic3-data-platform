@@ -79,6 +79,82 @@ def test_semantic_gateway_execute_blocks_denied_plan_without_gateway_call():
     assert gateway.calls == []
 
 
+def test_semantic_gateway_execute_fail_closed_on_effective_row_scope():
+    """过渡硬规则：非空 effective_row_scope 在 gateway 注入就绪前一律拒绝。"""
+    gateway = _GatewayClient()
+    service = SemanticGatewayExecuteService(
+        plan_handler=_PlanHandler(
+            {
+                "semantic_plan_id": "sp-rls",
+                "compiled_targets": [{"target_type": "sql", "status": "ready", "logical_sql": "select 1"}],
+                "policy_decision": {
+                    "decision": "allow",
+                    "effective_row_scope": {
+                        "version": "v1",
+                        "entries": [
+                            {"table": "dwd_comment_reports", "column": "school_id", "operator": "in", "values": ["s_001"]}
+                        ],
+                    },
+                },
+            }
+        ),
+        gateway_client_factory=lambda: gateway,
+    )
+
+    result = service.execute(
+        question="查看举报明细",
+        principal_context={"principal_id": "user:alice"},
+        viewer_roles=[],
+        runtime_options={},
+        idempotency_key=None,
+    )
+
+    assert result["status"] == "blocked"
+    assert result["reason_code"] == "scope_injection_unsupported"
+    assert gateway.calls == []
+
+
+def test_semantic_gateway_execute_observe_mode_submits_without_block():
+    """observe：effective_row_scope 为 advisory，不阻断提交（网关零感知）。"""
+    gateway = _GatewayClient()
+    service = SemanticGatewayExecuteService(
+        plan_handler=_PlanHandler(
+            {
+                "semantic_plan_id": "sp-observe",
+                "principal_context": {"principal_id": "user:alice"},
+                "compiled_targets": [{"target_type": "sql", "status": "ready", "logical_sql": "select 1"}],
+                "policy_decision": {
+                    "decision_id": "pd-observe",
+                    "decision": "allow",
+                    "rls_enforcement_mode": "observe",
+                    "execution_permit": {"access_context_preview": {"principal_id": "user:alice"}},
+                    "effective_row_scope": {
+                        "version": "v1",
+                        "entries": [
+                            {"table": "dwd_comment_reports", "column": "school_id", "operator": "in", "values": ["s_001"]}
+                        ],
+                    },
+                },
+            }
+        ),
+        gateway_client_factory=lambda: gateway,
+    )
+
+    result = service.execute(
+        question="查看举报明细",
+        principal_context={"principal_id": "user:alice"},
+        viewer_roles=[],
+        runtime_options={},
+        idempotency_key=None,
+    )
+
+    assert result["status"] == "submitted"
+    assert len(gateway.calls) == 1
+    # observe 下网关 context 维持 v1，不下发 row_scope。
+    assert gateway.calls[0]["access_context"]["schema"] == "GatewayAccessContext.v1"
+    assert "row_scope" not in gateway.calls[0]["access_context"]
+
+
 def test_semantic_gateway_execute_blocks_missing_sql_target():
     service = SemanticGatewayExecuteService(
         plan_handler=_PlanHandler({"policy_decision": {"decision": "allow"}, "compiled_targets": []}),

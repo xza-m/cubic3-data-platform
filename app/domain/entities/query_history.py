@@ -33,7 +33,7 @@ class QueryHistory(db.Model):
     error_message = Column(Text, nullable=True)
     
     # 审计字段
-    executed_by = Column(String(100), nullable=False, index=True)
+    executed_by = Column(String(191), nullable=False, index=True)
     executed_at = Column(DateTime, default=utcnow, nullable=False, index=True)
     
     def __repr__(self):

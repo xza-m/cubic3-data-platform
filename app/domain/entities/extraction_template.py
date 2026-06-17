@@ -27,7 +27,7 @@ class ExtractionTemplate(db.Model):
     tags = db.Column(JsonType, default=[])
 
     is_public = db.Column(db.Boolean, default=False)
-    created_by = db.Column(db.String(50))
+    created_by = db.Column(db.String(191))
     created_at = db.Column(db.DateTime, default=utcnow)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 

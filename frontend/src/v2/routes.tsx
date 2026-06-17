@@ -9,26 +9,23 @@ import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-do
 import { useMyPreferences } from '@v2/hooks/userPreferences'
 import { AppShell } from '@v2/layout/AppShell'
 import ProtectedRoute from '@v2/pages/ProtectedRoute'
+import { RouteGuard } from '@v2/components/RouteGuard'
 import { RouteErrorBoundary } from '@v2/components/RouteErrorBoundary'
 import { t } from '@v2/i18n'
 
 // ── Legacy URL redirects（Round 3 cutover · 2026-04-20） ───────────────────────
+// 只保留已上线数据 / 应用模块的历史深链；语义中心仍处于设计收敛期，路由以新 IA 为准。
 // Legacy 路径 → v2 等价路径。`:param` 占位符自动从 useParams 取值并替换。
-// 6 个月后清理零命中条目。详见 docs/.../04-cutover-and-migration.md §4.1。
 const LEGACY_REDIRECTS: Record<string, string> = {
   '/queries/console': '/queries',
   '/queries/editor': '/queries',
   '/queries/templates': '/queries',
-  '/semantic/overview': '/semantic/workbench',
-  '/semantic/tools': '/semantic/workbench',
-  '/semantic/ide': '/semantic/workbench',
-  '/semantic/devtools': '/semantic/workbench',
-  '/semantic/playground': '/semantic/cubes',
-  '/semantic/canvas': '/semantic/domains',
-  '/semantic/modeling': '/semantic/domains',
-  '/semantic/visual-model': '/semantic/domains',
-  '/semantic/visual-model/:id': '/semantic/domains/:id',
-  '/semantic/domains/:id/canvas': '/semantic/domains/:id',
+  // 数据域 top 高频旧路径（v1 顶级 IA → data-center 新 IA）
+  '/datasources': '/data-center/connections',
+  '/datasources/:id': '/data-center/connections/:id',
+  '/datasets': '/data-center/assets',
+  '/datasets/:id': '/data-center/assets/:id',
+  '/extraction': '/data-center/sync/tasks',
 }
 
 function LegacyRedirect({ to }: { to: string }) {
@@ -41,15 +38,6 @@ function LegacyRedirect({ to }: { to: string }) {
   return <Navigate to={`${resolved}${search}${hash}`} replace />
 }
 
-function ModelingCopilotSessionRedirect() {
-  const { sessionId } = useParams<{ sessionId?: string }>()
-  const { search, hash } = useLocation()
-  const nextSearch = new URLSearchParams(search)
-  if (sessionId) nextSearch.set('sessionId', sessionId)
-  const query = nextSearch.toString()
-  return <Navigate to={`/semantic/modeling-workbench/quick${query ? `?${query}` : ''}${hash}`} replace />
-}
-
 // ── 已实现的页面 ──────────────────────────────────────────────────────────────
 const Login = lazy(() => import('@v2/pages/Login'))
 const Dashboard = lazy(() => import('@v2/pages/Dashboard'))
@@ -58,11 +46,10 @@ const Forbidden = lazy(() => import('@v2/pages/Forbidden'))
 const SettingsPage = lazy(() => import('@v2/pages/settings/Settings'))
 const ProfilePage = lazy(() => import('@v2/pages/profile/Profile'))
 
-// ── Data 域（data-center / extraction） ────────────────────────────────────────
-const Datasources = lazy(() => import('@v2/pages/data/Datasources'))
+// ── Data 域（data-center） ─────────────────────────────────────────────────────
+const DataCenter = lazy(() => import('@v2/pages/data/DataCenter'))
 const DatasourceDetail = lazy(() => import('@v2/pages/data/DatasourceDetail'))
 const DatasourceCreate = lazy(() => import('@v2/pages/data/DatasourceCreate'))
-const Datasets = lazy(() => import('@v2/pages/data/Datasets'))
 const DatasetDetail = lazy(() => import('@v2/pages/data/DatasetDetail'))
 const DatasetCreate = lazy(() => import('@v2/pages/data/DatasetCreate'))
 const ExtractionTasks = lazy(() => import('@v2/pages/data/ExtractionTasks'))
@@ -118,6 +105,7 @@ const OntologyRelations = lazy(() => import('@v2/pages/semantic/ontology/Relatio
 const OntologyGovernance = lazy(() => import('@v2/pages/semantic/ontology/Governance'))
 const DevTools = lazy(() => import('@v2/pages/semantic/devtools/DevTools'))
 const SemanticModelingWorkbench = lazy(() => import('@v2/pages/semantic/modeling-copilot/SemanticModelingWorkbench'))
+const AssetLayout = lazy(() => import('@v2/pages/semantic/assets/_layout'))
 const Assets = lazy(() => import('@v2/pages/semantic/assets/Assets'))
 const AssetTables = lazy(() => import('@v2/pages/semantic/assets/Tables'))
 const AssetFields = lazy(() => import('@v2/pages/semantic/assets/Fields'))
@@ -160,21 +148,18 @@ export default function AppRoutes() {
           {/* 总览 */}
           <Route path="dashboard" element={wrap(<Dashboard />)} />
 
-          {/* ── 数据中心（数据源 + 数据集） ── */}
+          {/* ── 数据中心（概览 + 连接管理 + 资产目录 + 同步任务 + 影响分析） ── */}
           <Route path="data-center">
-            <Route index element={<Navigate to="/data-center/datasources" replace />} />
-
-            {/* 数据源；静态 new 必须在动态 :id 之前 */}
-            <Route path="datasources">
-              <Route index element={wrap(<Datasources />)} />
+            <Route index element={wrap(<DataCenter />)} />
+            <Route path="overview" element={<Navigate to="/data-center" replace />} />
+            <Route path="connections">
+              <Route index element={wrap(<DataCenter />)} />
               <Route path="new" element={wrap(<DatasourceCreate />)} />
+              <Route path=":id/edit" element={wrap(<DatasourceCreate mode="edit" />)} />
               <Route path=":id" element={wrap(<DatasourceDetail />)} />
             </Route>
-
-            {/* 数据集；静态 new / register 必须在动态 :id 之前 */}
-            <Route path="datasets">
-              <Route index element={wrap(<Datasets />)} />
-              <Route path="new" element={<Navigate to="/data-center/datasets/register" replace />} />
+            <Route path="assets">
+              <Route index element={wrap(<DataCenter />)} />
               <Route path="register">
                 <Route index element={wrap(<DatasetCreate />)} />
                 <Route path="table" element={wrap(<DatasetCreate />)} />
@@ -182,30 +167,20 @@ export default function AppRoutes() {
               </Route>
               <Route path=":id" element={wrap(<DatasetDetail />)} />
             </Route>
-          </Route>
-
-          {/* ── 提取（任务 + 执行记录 + 配置，统一在 /extraction 下） ── */}
-          <Route path="extraction">
-            <Route index element={<Navigate to="/extraction/tasks" replace />} />
-            <Route
-              path="config"
-              element={wrap(<ExtractionConfig />)}
-            />
-            <Route path="tasks">
-              <Route index element={wrap(<ExtractionTasks />)} />
-              <Route path="new" element={wrap(<ExtractionTaskCreate />)} />
-              <Route path=":id" element={wrap(<ExtractionTaskDetail />)} />
+            <Route path="sync">
+              <Route index element={wrap(<DataCenter />)} />
+              <Route path="tasks">
+                <Route index element={wrap(<ExtractionTasks />)} />
+                <Route path="new" element={wrap(<ExtractionTaskCreate />)} />
+                <Route path=":id" element={wrap(<ExtractionTaskDetail />)} />
+              </Route>
+              <Route path="runs">
+                <Route index element={wrap(<ExtractionRuns />)} />
+                <Route path=":id" element={wrap(<ExtractionRunDetail />)} />
+              </Route>
+              <Route path="config" element={wrap(<ExtractionConfig />)} />
             </Route>
-            <Route path="runs">
-              <Route index element={wrap(<ExtractionRuns />)} />
-              <Route path=":id" element={wrap(<ExtractionRunDetail />)} />
-            </Route>
-          </Route>
-
-          {/* Legacy 重定向：/extraction-tasks → /extraction/tasks（2026-04 前的旧 URL） */}
-          <Route path="extraction-tasks">
-            <Route index element={<Navigate to="/extraction/tasks" replace />} />
-            <Route path=":id" element={<LegacyRedirect to="/extraction/tasks/:id" />} />
+            <Route path="impact" element={wrap(<DataCenter />)} />
           </Route>
 
           {/* ── 数据对话 ── */}
@@ -264,9 +239,9 @@ export default function AppRoutes() {
             <Route index element={<Navigate to="/config/access" replace />} />
 
             <Route path="access">
-              <Route index element={wrap(<AccessIdentity view="permissions" />)} />
-              <Route path="audit" element={wrap(<AccessIdentity view="audit" />)} />
-              <Route path="observability" element={wrap(<AccessIdentity view="observability" />)} />
+              <Route index element={wrap(<RouteGuard required="access.read"><AccessIdentity view="permissions" /></RouteGuard>)} />
+              <Route path="audit" element={wrap(<RouteGuard required="access.audit.read"><AccessIdentity view="audit" /></RouteGuard>)} />
+              <Route path="observability" element={wrap(<RouteGuard required="access.gateway.read"><AccessIdentity view="observability" /></RouteGuard>)} />
             </Route>
 
             <Route path="channels">
@@ -311,22 +286,15 @@ export default function AppRoutes() {
             <Route path="modeling-workbench" element={wrap(<SemanticModelingWorkbench />)} />
             <Route path="modeling-workbench/quick" element={wrap(<SemanticModelingWorkbench />)} />
             <Route path="modeling-workbench/:projectId/candidate/:candidateId" element={wrap(<SemanticModelingWorkbench />)} />
-            <Route path="modeling-copilot/new" element={<Navigate to="/semantic/modeling-workbench/quick" replace />} />
-            <Route path="modeling-copilot/batch" element={<Navigate to="/semantic/modeling-workbench" replace />} />
-            <Route path="modeling-copilot/:sessionId" element={<ModelingCopilotSessionRedirect />} />
 
             {/* 数据资产底座 */}
-            <Route path="assets">
+            <Route path="assets" element={wrap(<AssetLayout />)}>
               <Route index element={wrap(<Assets />)} />
               <Route path="tables" element={wrap(<AssetTables />)} />
               <Route path="table-profile" element={wrap(<AssetQuality />)} />
               <Route path="field-profile" element={wrap(<AssetFields />)} />
               <Route path="lineage-usage" element={wrap(<AssetLineage />)} />
               <Route path="sync" element={wrap(<AssetSyncRuns />)} />
-              <Route path="fields" element={<Navigate to="/semantic/assets/field-profile" replace />} />
-              <Route path="lineage" element={<Navigate to="/semantic/assets/lineage-usage" replace />} />
-              <Route path="quality" element={<Navigate to="/semantic/assets/table-profile" replace />} />
-              <Route path="sync-runs" element={<Navigate to="/semantic/assets/sync" replace />} />
             </Route>
 
             {/* Cube：静态 new 在动态 :name 前；edit 作为 :name 的子路由 */}

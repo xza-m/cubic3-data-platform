@@ -21,6 +21,7 @@ class AgentContext:
     open_id: str | None = None
     chat_id: str | None = None
     message_id: str | None = None
+    tenant_key: str | None = None
 
     # DataChat 信道
     dataset_id: int | None = None
@@ -46,6 +47,18 @@ class AgentResponse:
     columns: list[str] | None = None
     error: str | None = None
     usage: dict[str, Any] | None = None
+    # 通道优先级合约 evidence：工具调用轨迹与降级原因（§4.2）
+    tool_trace: list[dict[str, Any]] | None = None
+    degradation: dict[str, Any] | None = None
+
+    def tool_trace_evidence(self) -> dict[str, Any] | None:
+        """组装写入 AgentQueryLog.tool_trace 的 evidence 负载。"""
+        if not self.tool_trace and not self.degradation:
+            return None
+        return {
+            "trace": self.tool_trace or [],
+            "degradation": self.degradation,
+        }
 
 
 @dataclass

@@ -5,22 +5,12 @@ import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Clock, KeyRound, Settings, ShieldCheck, UserCircle2, type LucideIcon } from 'lucide-react'
-import { apiClient, getAccessToken } from '@v2/api/client'
+import { getAccessToken } from '@v2/api/client'
+import { getCurrentUser } from '@v2/api/auth'
 import { Card, CardBody, CardHead, Chip, SkeletonRows } from '@v2/components/ui'
 import { RefreshButton } from '@v2/components/CommonControls'
 import { useAppShell } from '@v2/layout/AppShell'
 import { t } from '@v2/i18n'
-
-interface CurrentUser {
-  user_id?: string | null
-  user_name?: string | null
-  roles?: string[]
-}
-
-async function getCurrentUser(): Promise<CurrentUser> {
-  const res = await apiClient.get<{ data: CurrentUser }>('/auth/me')
-  return res.data.data
-}
 
 function tokenExpiry(): string {
   const token = getAccessToken()

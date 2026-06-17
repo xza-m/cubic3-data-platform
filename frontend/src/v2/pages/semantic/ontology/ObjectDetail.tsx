@@ -61,14 +61,14 @@ export default function ObjectDetail() {
         variant="ghost"
         className="mb-4 w-fit"
         onClick={() => navigate('/semantic/ontology/objects')}
-        aria-label={t('back', '返回')}
+        aria-label={t('common.action.back', '返回')}
       >
         <ArrowLeft size={12} />
         {t('nav.objects', '业务对象')}
       </Button>
 
       {overview.isLoading ? (
-        <div className="py-8 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+        <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
       ) : overview.isError ? (
         <div className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</div>
       ) : overview.data ? (

@@ -6,37 +6,34 @@
 //
 // 后端契约：app/interfaces/api/v1/semantic.py
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { qk } from '@v2/hooks/query-client'
 import { ev, obs } from '@v2/observability'
 import {
   activateCube,
   addCubeToDomain,
   acceptSemanticModelingCopilotCubeDraft,
-  applySemanticModelingProposal,
-  approveSemanticModelingProposal,
-  closeSemanticModelingProposal,
   compileDsl,
   confirmSemanticModelingCopilotAssumption,
   createCube,
   createDomain,
   createSemanticModelingCopilotSession,
-  createSemanticModelingProposal,
   deprecateCube,
   describeCube,
   describeDomain,
   describeView,
   draftCubeFromCandidates,
-  draftSemanticModelingProposal,
   draftCubeFromSource,
   getDomainCanvas,
   getDomainPublishHistory,
   getMaterializeStatus,
   getSemanticGraph,
+  getSemanticCubeBacklinks,
+  getSemanticMapperConsistencyReport,
+  getSemanticMapperStaleCheck,
+  getSemanticMeasureBacklinks,
   getSemanticModelingCopilotReview,
   getSemanticModelingCopilotSession,
-  getSemanticModelingProposal,
-  getSemanticModelingProposalGapView,
   getViewMaterializeRuns,
   listCatalogs,
   listCubes,
@@ -44,7 +41,6 @@ import {
   listViews,
   materializeView,
   publishDomain,
-  publishSemanticModelingProposal,
   previewSemanticModelingCopilotRelease,
   previewSemanticModelingCopilotSandbox,
   previewDomainContext,
@@ -54,13 +50,15 @@ import {
   publishSemanticModelingCopilotProposal,
   patchSemanticModelingCopilotSpec,
   previewFieldCandidates,
+  queryDsl,
   renameSemanticModelingCopilotSession,
+  startSemanticModelingCopilotRepairRun,
+  startSemanticModelingCopilotReviewRun,
   saveSemanticModelingCopilotProposal,
   schemaSyncCube,
   sendSemanticModelingCopilotMessage,
   updateCube,
   updateDomain,
-  validateSemanticModelingProposal,
   validateCubeFields,
   validateSemanticFile,
   writeSemanticFile,
@@ -71,16 +69,35 @@ import {
   type DomainSummary,
   type FieldCandidatePreviewBody,
   type FileType,
-  type SemanticModelingProposalApproveBody,
-  type SemanticModelingProposalCloseRequest,
-  type SemanticModelingProposalCreateBody,
-  type SemanticModelingProposalPublishRequest,
+  type QueryDslInput,
   type SemanticModelingCopilotCreateSessionBody,
   type SemanticModelingCopilotListSessionsParams,
   type SemanticModelingCopilotReview,
   type SemanticModelingCopilotSendMessageBody,
   type SemanticModelingCopilotSessionList,
 } from '@v2/api/semantic'
+
+// ─── 失效范围 helper（F7：按 qk() 细化，避免整域 ['semantic'] 粗失效） ────────
+
+/** Cube 资产变更后的标准失效范围：详情/YAML（可选）+ 列表 + 关系图。 */
+function invalidateCubeAsset(qc: QueryClient, name?: string) {
+  if (name) {
+    qc.invalidateQueries({ queryKey: qk('semantic', 'cube-detail', name) })
+    qc.invalidateQueries({ queryKey: qk('semantic', 'cube-yaml', name) })
+  }
+  qc.invalidateQueries({ queryKey: qk('semantic', 'cube-list') })
+  qc.invalidateQueries({ queryKey: qk('semantic', 'graph') })
+}
+
+/** Domain 结构变更后的标准失效范围：详情/画布（可选）+ 列表 + 关系图。 */
+function invalidateDomainAsset(qc: QueryClient, id?: string) {
+  if (id) {
+    qc.invalidateQueries({ queryKey: qk('semantic', 'domain-detail', id) })
+    qc.invalidateQueries({ queryKey: qk('semantic', 'domain-canvas', id) })
+  }
+  qc.invalidateQueries({ queryKey: qk('semantic', 'domain-list') })
+  qc.invalidateQueries({ queryKey: qk('semantic', 'graph') })
+}
 
 // ─── Cubes ──────────────────────────────────────────────────────────────────
 
@@ -118,7 +135,7 @@ export function useCreateCube() {
     mutationFn: (body: CubeCreateBody) => createCube(body),
     onSuccess: (_data, body) => {
       obs.track(ev.cubeCreated(body.name ?? '(unknown)'))
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+      invalidateCubeAsset(qc, body.name)
     },
   })
 }
@@ -128,7 +145,7 @@ export function useUpdateCube(name: string) {
   return useMutation({
     mutationFn: (body: Partial<CubeCreateBody>) => updateCube(name, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+      invalidateCubeAsset(qc, name)
     },
   })
 }
@@ -137,8 +154,8 @@ export function useActivateCube() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (name: string) => activateCube(name),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+    onSuccess: (_data, name) => {
+      invalidateCubeAsset(qc, name)
     },
   })
 }
@@ -147,8 +164,8 @@ export function useDeprecateCube() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (name: string) => deprecateCube(name),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+    onSuccess: (_data, name) => {
+      invalidateCubeAsset(qc, name)
     },
   })
 }
@@ -168,111 +185,6 @@ export function usePreviewFieldCandidates() {
 export function useDraftCubeFromCandidates() {
   return useMutation({
     mutationFn: (body: CubeDraftFromCandidatesBody) => draftCubeFromCandidates(body),
-  })
-}
-
-export function useSemanticModelingProposal(proposalId: string | undefined) {
-  return useQuery({
-    queryKey: qk('semantic', 'modeling-proposal', proposalId),
-    queryFn: () => getSemanticModelingProposal(proposalId!),
-    enabled: !!proposalId,
-    staleTime: 0,
-    refetchOnWindowFocus: false,
-  })
-}
-
-export function useSemanticModelingProposalGapView(proposalId: string | undefined) {
-  return useQuery({
-    queryKey: qk('semantic', 'modeling-proposal-gap-view', proposalId),
-    queryFn: () => getSemanticModelingProposalGapView(proposalId!),
-    enabled: !!proposalId,
-    staleTime: 0,
-    refetchOnWindowFocus: false,
-  })
-}
-
-export function useCreateSemanticModelingProposal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (body: SemanticModelingProposalCreateBody) => createSemanticModelingProposal(body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
-  })
-}
-
-export function useDraftSemanticModelingProposal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (proposalId: string) => draftSemanticModelingProposal(proposalId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
-  })
-}
-
-export function useValidateSemanticModelingProposal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (proposalId: string) => validateSemanticModelingProposal(proposalId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
-  })
-}
-
-export function useApproveSemanticModelingProposal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ proposalId, ...body }: { proposalId: string } & SemanticModelingProposalApproveBody) =>
-      approveSemanticModelingProposal(proposalId, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
-  })
-}
-
-export function useApplySemanticModelingProposal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (proposalId: string) => applySemanticModelingProposal(proposalId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
-  })
-}
-
-export function usePublishSemanticModelingProposal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      proposalId,
-      publishTargets,
-    }: {
-      proposalId: string
-      publishTargets?: NonNullable<SemanticModelingProposalPublishRequest['publish_targets']>
-    }) => publishSemanticModelingProposal(proposalId, publishTargets ? { publish_targets: publishTargets } : undefined),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
-  })
-}
-
-export function useCloseSemanticModelingProposal() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      proposalId,
-      closeReason,
-      ...body
-    }: {
-      proposalId: string
-      closeReason: SemanticModelingProposalCloseRequest['close_reason']
-    } & Omit<SemanticModelingProposalCloseRequest, 'close_reason'>) =>
-      closeSemanticModelingProposal(proposalId, { ...body, close_reason: closeReason }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
-    },
   })
 }
 
@@ -402,6 +314,32 @@ export function usePreviewSemanticModelingCopilotRelease() {
   })
 }
 
+export function useStartSemanticModelingCopilotReviewRun() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body?: Record<string, unknown> }) =>
+      startSemanticModelingCopilotReviewRun(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
+    },
+  })
+}
+
+export function useStartSemanticModelingCopilotRepairRun() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sessionId, body }: { sessionId: string; body?: Record<string, unknown> }) =>
+      startSemanticModelingCopilotRepairRun(sessionId, body),
+    onSuccess: (data) => {
+      qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
+      qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
+    },
+  })
+}
+
 export function useSaveSemanticModelingCopilotProposal() {
   const qc = useQueryClient()
   return useMutation({
@@ -411,7 +349,6 @@ export function useSaveSemanticModelingCopilotProposal() {
       qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
       qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
       qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
-      qc.invalidateQueries({ queryKey: ['semantic'] })
     },
   })
 }
@@ -425,7 +362,10 @@ export function usePublishSemanticModelingCopilotProposal() {
       qc.setQueryData(qk('semantic', 'modeling-copilot-session', data.id), data)
       qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-review', data.id) })
       qc.invalidateQueries({ queryKey: qk('semantic', 'modeling-copilot-sessions') })
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+      // 发布会落地 Cube / Ontology / Domain 资产
+      invalidateCubeAsset(qc)
+      invalidateDomainAsset(qc)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'view-list') })
     },
   })
 }
@@ -447,7 +387,7 @@ export function useWriteCubeYaml(name: string) {
   return useMutation({
     mutationFn: (content: string) => writeSemanticFile('cubes', name, content),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+      invalidateCubeAsset(qc, name)
     },
   })
 }
@@ -462,8 +402,8 @@ export function useSchemaSyncCube() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (name: string) => schemaSyncCube(name),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+    onSuccess: (_data, name) => {
+      invalidateCubeAsset(qc, name)
     },
   })
 }
@@ -502,8 +442,11 @@ export function useMaterializeView() {
   return useMutation({
     mutationFn: ({ name, sourceId }: { name: string; sourceId?: string }) =>
       materializeView(name, sourceId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: qk('semantic', 'view-detail', vars.name) })
+      qc.invalidateQueries({ queryKey: qk('semantic', 'view-materialize-status', vars.name) })
+      qc.invalidateQueries({ queryKey: qk('semantic', 'view-materialize-runs') })
+      qc.invalidateQueries({ queryKey: qk('semantic', 'view-list') })
     },
   })
 }
@@ -557,7 +500,7 @@ export function useCreateDomain() {
   return useMutation({
     mutationFn: (body: Partial<DomainSummary>) => createDomain(body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+      invalidateDomainAsset(qc)
     },
   })
 }
@@ -567,7 +510,7 @@ export function useUpdateDomain(id: string) {
   return useMutation({
     mutationFn: (body: Partial<DomainSummary>) => updateDomain(id, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+      invalidateDomainAsset(qc, id)
     },
   })
 }
@@ -577,8 +520,9 @@ export function usePublishDomain() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body?: { cubes?: string[] } }) =>
       publishDomain(id, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+    onSuccess: (_data, vars) => {
+      invalidateDomainAsset(qc, vars.id)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'domain-publish-history', vars.id) })
     },
   })
 }
@@ -588,17 +532,24 @@ export function useAddCubeToDomain() {
   return useMutation({
     mutationFn: ({ domainId, cubeName }: { domainId: string; cubeName: string }) =>
       addCubeToDomain(domainId, cubeName),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['semantic'] })
+    onSuccess: (_data, vars) => {
+      invalidateDomainAsset(qc, vars.domainId)
+      qc.invalidateQueries({ queryKey: qk('semantic', 'cube-list') })
     },
   })
 }
 
-// ─── Diagnose / Compile ──────────────────────────────────────────────────────
+// ─── Diagnose / Compile / Query ──────────────────────────────────────────────
 
 export function useCompileDsl() {
   return useMutation({
-    mutationFn: (dsl: string) => compileDsl(dsl),
+    mutationFn: (dsl: QueryDslInput) => compileDsl(dsl),
+  })
+}
+
+export function useQueryDsl() {
+  return useMutation({
+    mutationFn: (dsl: QueryDslInput) => queryDsl(dsl),
   })
 }
 
@@ -649,6 +600,46 @@ export function useSemanticGraph() {
     queryKey: qk('semantic', 'graph'),
     queryFn: getSemanticGraph,
     staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+// ─── Mapper · 影响分析 / 一致性风险 ─────────────────────────────────────────
+
+export function useSemanticMapperStaleCheck() {
+  return useQuery({
+    queryKey: qk('semantic', 'mapper-stale-check'),
+    queryFn: getSemanticMapperStaleCheck,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useSemanticMapperConsistencyReport() {
+  return useQuery({
+    queryKey: qk('semantic', 'mapper-consistency-report'),
+    queryFn: getSemanticMapperConsistencyReport,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useSemanticCubeBacklinks(cubeName: string | undefined) {
+  return useQuery({
+    queryKey: qk('semantic', 'mapper-cube-backlinks', cubeName),
+    queryFn: () => getSemanticCubeBacklinks(cubeName!),
+    enabled: !!cubeName,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useSemanticMeasureBacklinks(measureRef: string | undefined) {
+  return useQuery({
+    queryKey: qk('semantic', 'mapper-measure-backlinks', measureRef),
+    queryFn: () => getSemanticMeasureBacklinks(measureRef!),
+    enabled: !!measureRef,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
   })
 }

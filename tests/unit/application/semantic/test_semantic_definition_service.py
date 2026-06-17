@@ -363,6 +363,27 @@ def test_describe_cube_uses_recipe_truncation_and_enum_cache():
     assert calls == ["order_status", "order_status"]
 
 
+def test_invalidate_cache_reloads_file_backed_repositories():
+    """YAML 仓储持有文件级缓存；invalidate_cache 必须触发 reload，否则文件写入后读到旧定义。"""
+    from unittest.mock import MagicMock
+
+    cube_repo = MagicMock()
+    view_repo = MagicMock()
+    recipe_repo = MagicMock()
+    service = SemanticDefinitionService(
+        cube_repo=cube_repo,
+        view_repo=view_repo,
+        recipe_repo=recipe_repo,
+        enum_loader=lambda dict_type: None,
+    )
+
+    service.invalidate_cache()
+
+    cube_repo.reload.assert_called_once()
+    view_repo.reload.assert_called_once()
+    recipe_repo.reload.assert_called_once()
+
+
 def test_describe_view_handles_private_and_dependency_states():
     public_view = ViewDefinition(
         name="public_orders",

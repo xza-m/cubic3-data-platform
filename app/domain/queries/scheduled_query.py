@@ -27,7 +27,7 @@ class ScheduledQuery(db.Model):
     next_run_at = Column(DateTime, nullable=True)
     last_run_at = Column(DateTime, nullable=True)
     last_status = Column(String(16), nullable=True)
-    owner_id = Column(String(128), nullable=False)
+    owner_id = Column(String(191), nullable=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

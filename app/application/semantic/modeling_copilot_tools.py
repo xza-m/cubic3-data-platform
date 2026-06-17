@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Any, Dict, List, TYPE_CHECKING
 
 from app.domain.semantic.modeling_agent_session import AgentSession
+from app.domain.ontology.entities import measure_ref_strings
 
 if TYPE_CHECKING:
     from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
@@ -296,6 +297,26 @@ class ModelingToolRegistry:
             "next_actions": result.get("next_actions") or {},
         }
 
+    def _tool_recommend_bindable_objects(self, arguments: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+        """建模态推荐：来源确认后给出该 cube 可绑定的已有 object，避免重复建对象。"""
+        cube = arguments.get("cube")
+        if not isinstance(cube, dict) or not cube:
+            cube = (self._spec_from_context(context) or {}).get("cube") or {}
+        if not cube:
+            return {"summary": "暂无 cube 草稿，无法推荐可绑定对象", "suggestions": []}
+        recommend = getattr(self._builder, "recommend_bindable_objects", None)
+        if not callable(recommend):
+            return {"summary": "builder 不支持对象绑定推荐", "suggestions": []}
+        suggestions = recommend(cube, subject=str(arguments.get("subject") or "") or None)
+        return {
+            "summary": (
+                f"找到 {len(suggestions)} 个可绑定的已有业务对象"
+                if suggestions
+                else "未找到可绑定的已有业务对象，将按新对象建模"
+            ),
+            "suggestions": suggestions,
+        }
+
     def _tool_run_validation(self, arguments: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         spec = self._spec_from_context(context)
         if not spec:
@@ -511,7 +532,7 @@ class ModelingToolRegistry:
                 {"name": "published_at", "title": "发布时间"},
             ]
         for metric in metrics:
-            for ref in metric.get("measure_refs") or []:
+            for ref in measure_ref_strings(metric.get("measure_refs")):
                 bindings.append({"metric": metric.get("name"), "measure_ref": ref, "status": metric.get("binding_status") or "proposed"})
         if not bindings and ("评论" in user_message or "comment" in user_message.lower()):
             bindings = [

@@ -36,10 +36,11 @@ const OUT_SUMMARY = join(__dirname, 'i18n-keys.summary.md')
 
 const SOURCE_EXTS = new Set(['.ts', '.tsx'])
 const SKIP_DIR = new Set(['node_modules', 'dist', 'dist-v2', 'coverage', '.lighthouseci'])
-// 专门跳过 i18n 自身与类型声明 / 测试
+// 专门跳过 i18n 自身与类型声明 / 测试（testkit 是测试共享 fixture，不计入 i18n 债务）
 const SKIP_PATH_RE = [
   /\/i18n\//,
   /\.test\.[cm]?[jt]sx?$/,
+  /\.testkit\.[cm]?[jt]sx?$/,
   /\.spec\.[cm]?[jt]sx?$/,
   /\.d\.ts$/,
 ]

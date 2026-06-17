@@ -20,7 +20,7 @@ SWAGGER_UI_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CUBIC3 API 文档</title>
+    <title>CUBIC3 Data Platform API 文档</title>
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.10.0/swagger-ui.css">
     <style>
         body {
@@ -73,7 +73,7 @@ REDOC_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CUBIC3 API 文档 - ReDoc</title>
+    <title>CUBIC3 Data Platform API 文档 - ReDoc</title>
     <style>
         body {
             margin: 0;
@@ -164,7 +164,7 @@ def _get_schemas():
                 "code": {"type": "integer", "description": "状态码"},
                 "message": {"type": "string", "description": "响应消息"},
                 "data": {"type": "object", "description": "响应数据"},
-                "trace_id": {"type": "string", "description": "请求追踪 ID"}
+                "trace_id": {"type": "string", "nullable": True, "description": "请求追踪 ID"}
             }
         },
         "ErrorResponse": {
@@ -172,138 +172,8 @@ def _get_schemas():
             "properties": {
                 "code": {"type": "integer", "description": "错误码"},
                 "message": {"type": "string", "description": "错误消息"},
-                "trace_id": {"type": "string", "description": "请求追踪 ID"},
+                "trace_id": {"type": "string", "nullable": True, "description": "请求追踪 ID"},
                 "details": {"type": "object", "description": "错误详情"}
-            }
-        }
-    }
-
-
-def _get_paths():
-    """获取所有 API 路径（废弃）
-    
-    注意：此函数已被 scan_routes_to_openapi() 替代
-    保留仅作为示例参考
-    """
-    return {
-        "/api/v1/data-center/datasources": {
-            "get": {
-                "tags": ["数据源管理"],
-                "summary": "获取数据源列表",
-                "description": "支持分页、筛选和搜索",
-                "parameters": [
-                    {
-                        "name": "source_type",
-                        "in": "query",
-                        "description": "数据源类型",
-                        "schema": {"type": "string"}
-                    },
-                    {
-                        "name": "is_active",
-                        "in": "query",
-                        "description": "是否活跃",
-                        "schema": {"type": "boolean"}
-                    },
-                    {
-                        "name": "search",
-                        "in": "query",
-                        "description": "搜索关键词",
-                        "schema": {"type": "string"}
-                    },
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "页码",
-                        "schema": {"type": "integer", "default": 1}
-                    },
-                    {
-                        "name": "page_size",
-                        "in": "query",
-                        "description": "每页数量",
-                        "schema": {"type": "integer", "default": 20}
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "成功",
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/ApiResponse"}
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "服务器错误",
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "tags": ["数据源管理"],
-                "summary": "创建数据源",
-                "description": "创建新的数据源连接",
-                "requestBody": {
-                    "required": True,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "required": ["name", "source_type", "connection_config"],
-                                "properties": {
-                                    "name": {"type": "string", "description": "数据源名称"},
-                                    "source_type": {"type": "string", "description": "数据源类型"},
-                                    "connection_config": {"type": "object", "description": "连接配置"},
-                                    "description": {"type": "string", "description": "描述"}
-                                }
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "201": {
-                        "description": "创建成功",
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/ApiResponse"}
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "请求参数错误",
-                        "content": {
-                            "application/json": {
-                                "schema": {"$ref": "#/components/schemas/ErrorResponse"}
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/health": {
-            "get": {
-                "tags": ["健康检查"],
-                "summary": "健康检查",
-                "description": "检查系统运行状态",
-                "responses": {
-                    "200": {
-                        "description": "系统正常",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "status": {"type": "string", "example": "healthy"},
-                                        "timestamp": {"type": "string", "format": "date-time"}
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
     }

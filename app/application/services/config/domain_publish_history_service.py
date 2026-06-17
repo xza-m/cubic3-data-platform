@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.domain.entities.config.domain_publish_record import DomainPublishRecord
+from app.infrastructure.models.domain_publish_record import DomainPublishRecord
 from app.shared.utils.logger import get_logger
 from app.shared.utils.time import utcnow
 

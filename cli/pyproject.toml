@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cubic3-dp-cli"
+version = "0.1.0"
+description = "CUBIC3 Data Platform command line client"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "CUBIC3 Engineering" },
+]
+keywords = ["cubic3", "data-platform", "semantic-layer", "cli"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+  "click>=8.1,<9",
+  "requests>=2.32,<3",
+  "typer>=0.16,<1",
+]
+
+[project.scripts]
+cubic3-dp = "cubic3_dp_cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

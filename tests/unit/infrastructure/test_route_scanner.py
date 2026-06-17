@@ -92,6 +92,12 @@ class TestGetTagForPath:
     def test_unknown_path_returns_other(self):
         assert _get_tag_for_path("/api/unknown") == "其他"
 
+    def test_semantic_and_agent_tags(self):
+        assert _get_tag_for_path("/api/v1/semantic/assets/tables") == "语义资产"
+        assert _get_tag_for_path("/api/v1/semantic-router/route") == "语义路由"
+        assert _get_tag_for_path("/api/v1/agent/semantic/plan") == "Agent Runtime"
+        assert _get_tag_for_path("/api/v1/governance/audit-traces") == "治理与审计"
+
 
 # ============================================================================
 # _generate_parameters

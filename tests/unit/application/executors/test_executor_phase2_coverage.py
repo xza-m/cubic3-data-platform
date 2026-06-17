@@ -257,36 +257,50 @@ class TestBiDashboardPushExecutorHelpers:
         rendered = executor._render_message("销售看板", "http://superset/dashboard/1", {})
         assert "销售看板" in rendered
 
+        session = MagicMock()
         login_resp = MagicMock(status_code=200)
         login_resp.json.return_value = {"access_token": "token_123"}
-        with patch("app.executors.bi_dashboard_push_executor.requests.post", return_value=login_resp):
-            assert executor._get_superset_token("http://superset", "admin", "admin") == "token_123"
+        session.post.return_value = login_resp
+        assert executor._get_superset_token(session, base_url="http://superset", username="admin", password="admin") == "token_123"
 
-        failed_login = MagicMock(status_code=500)
-        failed_login.json.return_value = {}
-        with patch("app.executors.bi_dashboard_push_executor.requests.post", return_value=failed_login):
-            with pytest.raises(Exception, match="Superset 登录失败"):
-                executor._get_superset_token("http://superset", "admin", "admin")
+        failed_session = MagicMock()
+        failed_session.post.return_value = MagicMock(status_code=500)
+        with pytest.raises(Exception, match="Superset 登录失败"):
+            executor._get_superset_token(failed_session, base_url="http://superset", username="admin", password="admin")
 
-        screenshot_resp = MagicMock(status_code=200)
-        screenshot_resp.json.side_effect = [
-            {"task_id": "task_1"},
-            {"status": "success", "image": base64.b64encode(b"image_bytes").decode("utf-8")},
-        ]
-        with patch("app.executors.bi_dashboard_push_executor.requests.post", return_value=screenshot_resp):
-            with patch("app.executors.bi_dashboard_push_executor.requests.get", return_value=screenshot_resp):
-                with patch("app.executors.bi_dashboard_push_executor.time.sleep"):
-                    assert executor._request_screenshot("http://superset", 1, "token", timeout=1) == b"image_bytes"
+        # 截图端点可用：cache_dashboard_screenshot → 轮询拿到 image
+        shot_session = MagicMock()
+        csrf_resp = MagicMock(status_code=200)
+        csrf_resp.json.return_value = {"result": "csrf_token"}
+        cache_resp = MagicMock(status_code=202)
+        cache_resp.json.return_value = {"cache_key": "ck_1"}
+        image_resp = MagicMock(status_code=200, headers={"Content-Type": "image/png"}, content=b"image_bytes")
+        shot_session.get.side_effect = [csrf_resp, image_resp]
+        shot_session.post.return_value = cache_resp
+        with patch("app.executors.bi_dashboard_push_executor.time.sleep"):
+            data, note = executor._try_fetch_screenshot(
+                shot_session, base_url="http://superset", dashboard_id=1,
+                access_token="token", thumbnail_url=None, timeout=1,
+            )
+        assert data == b"image_bytes"
+        assert note == "screenshot_endpoint"
 
-        failed_status = MagicMock(status_code=200)
-        failed_status.json.side_effect = [{"task_id": "task_2"}, {"status": "failed", "error": "boom"}]
-        with patch("app.executors.bi_dashboard_push_executor.requests.post", return_value=failed_status):
-            with patch("app.executors.bi_dashboard_push_executor.requests.get", return_value=failed_status):
-                with patch("app.executors.bi_dashboard_push_executor.time.sleep"):
-                    with pytest.raises(Exception, match="Superset 截图失败"):
-                        executor._request_screenshot("http://superset", 1, "token", timeout=1)
+        # 截图与缩略图端点均不可用（feature flag 未开启）：降级返回 None + 原因
+        degraded_session = MagicMock()
+        csrf_resp2 = MagicMock(status_code=200)
+        csrf_resp2.json.return_value = {"result": "csrf_token"}
+        not_found = MagicMock(status_code=404, headers={"Content-Type": "application/json"})
+        degraded_session.get.side_effect = [csrf_resp2, not_found]
+        degraded_session.post.return_value = MagicMock(status_code=404)
+        data, note = executor._try_fetch_screenshot(
+            degraded_session, base_url="http://superset", dashboard_id=1,
+            access_token="token", thumbnail_url="/api/v1/dashboard/1/thumbnail/digest/", timeout=1,
+        )
+        assert data is None
+        assert "THUMBNAILS" in note or "screenshot" in note
 
+        info_session = MagicMock()
         info_resp = MagicMock(status_code=200)
         info_resp.json.return_value = {"result": {"dashboard_title": "销售看板"}}
-        with patch("app.executors.bi_dashboard_push_executor.requests.get", return_value=info_resp):
-            assert executor._get_dashboard_info("http://superset", 1, "token") == {"dashboard_title": "销售看板"}
+        info_session.get.return_value = info_resp
+        assert executor._get_dashboard_info(info_session, base_url="http://superset", dashboard_id=1, access_token="token") == {"dashboard_title": "销售看板"}

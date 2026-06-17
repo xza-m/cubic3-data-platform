@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, CheckCircle, Edit3, Power, PowerOff, Send, Trash2, XCircle } from 'lucide-react'
-import { Chip, Dialog, Input, Skeleton, Switch, useToast } from '@v2/components/ui'
+import { Chip, Dialog, Input, Skeleton, Switch, useToast, useConfirm } from '@v2/components/ui'
 import { ActionIconButton } from '@v2/components/ActionIconButton'
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
@@ -35,6 +35,7 @@ export default function ChannelDetail() {
   const numericId = Number(id)
   const navigate = useNavigate()
   const toast = useToast()
+  const confirm = useConfirm()
 
   const { data: channel, isLoading } = useChannel(numericId)
   const { data: listData } = useChannels()
@@ -67,7 +68,7 @@ export default function ChannelDetail() {
 
   const handleDelete = async () => {
     if (!channel) return
-    if (!window.confirm(t('channel.confirm.delete', `删除渠道「${channel.name}」？`))) return
+    if (!(await confirm({ title: t('channel.confirm.delete', '删除渠道「{name}」？', { name: channel.name }), tone: 'danger' }))) return
     await deleteMutation.mutateAsync(channel.id)
     toast.show({ tone: 'warning', title: t('channel.toast.deleted', '已删除'), description: channel.name })
     navigate('/config/channels')
@@ -112,7 +113,7 @@ export default function ChannelDetail() {
   if (!channel) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-red-500">
-        {t('channel.error.notFound', `未找到渠道 #${numericId}`)}
+        {t('channel.error.notFound', '未找到渠道 #{id}', { id: numericId })}
       </div>
     )
   }

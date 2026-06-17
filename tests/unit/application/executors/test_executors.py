@@ -145,14 +145,38 @@ class TestBiDashboardPushExecutor:
         })
 
         with patch.object(executor, "_get_superset_token", return_value="token123"):
-            with patch.object(executor, "_request_screenshot", return_value=b"fake_image_bytes"):
+            with patch.object(executor, "_try_fetch_screenshot", return_value=(b"fake_image_bytes", "screenshot_endpoint")):
                 with patch.object(executor, "_get_dashboard_info", return_value={"dashboard_title": "测试看板"}):
                     result = executor.execute(context)
 
         assert result.status == ExecutionStatus.SUCCESS
         assert result.output["dashboard_id"] == 1
         assert result.output["dashboard_name"] == "测试看板"
+        assert result.output["screenshot_available"] is True
         assert result.output["screenshot_base64"] == base64.b64encode(b"fake_image_bytes").decode("utf-8")
+
+    def test_screenshot_unavailable_degrades_to_link_push(self):
+        """Superset 未开启截图能力时降级为链接推送，不视为失败"""
+        executor = BiDashboardPushExecutor()
+        context = make_context(config={
+            "superset": {
+                "base_url": "http://superset:8088",
+                "dashboard_id": 1,
+                "username": "admin",
+                "password": "admin",
+            }
+        })
+
+        with patch.object(executor, "_get_superset_token", return_value="token123"):
+            with patch.object(executor, "_try_fetch_screenshot", return_value=(None, "需开启 THUMBNAILS")):
+                with patch.object(executor, "_get_dashboard_info", return_value={"dashboard_title": "测试看板"}):
+                    result = executor.execute(context)
+
+        assert result.status == ExecutionStatus.SUCCESS
+        assert result.output["screenshot_available"] is False
+        assert result.output["screenshot_base64"] is None
+        assert "THUMBNAILS" in result.output["screenshot_note"]
+        assert result.output["dashboard_url"].endswith("/superset/dashboard/1/")
 
     def test_failed_on_exception(self):
         """Superset API 异常时返回 FAILED"""

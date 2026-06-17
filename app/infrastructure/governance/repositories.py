@@ -218,6 +218,15 @@ class SqlAccessGovernanceRepository:
             "resource_scope": dict(data.get("resource_scope") or row.resource_scope or {}),
             "actions": list(data.get("actions") or row.actions or ["query"]),
             "effect": str(data.get("effect") or row.effect or "allow"),
+            "row_scope": [
+                dict(item)
+                for item in (
+                    data.get("row_scope")
+                    if data.get("row_scope") is not None
+                    else (row.row_scope or [])
+                )
+                if isinstance(item, dict)
+            ],
             "execution_profile_code": data.get("execution_profile_code"),
             "reason": data.get("reason"),
             "policy_version": str(data.get("policy_version") or row.policy_version or "v1"),
@@ -231,6 +240,7 @@ class SqlAccessGovernanceRepository:
         row.resource_scope = next_values["resource_scope"]
         row.actions = next_values["actions"]
         row.effect = next_values["effect"]
+        row.row_scope = next_values["row_scope"]
         row.execution_profile_code = next_values["execution_profile_code"]
         row.reason = next_values["reason"]
         row.policy_version = next_values["policy_version"]
@@ -304,6 +314,7 @@ class SqlAccessGovernanceRepository:
         row.resource_set = dict(data.get("resource_set") or {})
         row.sql_hashes = list(data.get("sql_hashes") or [])
         row.matched_policies = list(data.get("matched_policies") or [])
+        row.effective_row_scope = data.get("effective_row_scope") or None
         row.execution_profile_code = data.get("execution_profile_code")
         row.policy_version = data.get("policy_version")
         row.policy_epoch = int(data.get("policy_epoch") or 1)
@@ -367,6 +378,7 @@ class SqlAccessGovernanceRepository:
             resource_scope=dict(row.resource_scope or {}),
             actions=list(row.actions or []),
             effect=row.effect,
+            row_scope=[dict(item) for item in (row.row_scope or []) if isinstance(item, dict)],
             execution_profile_code=row.execution_profile_code,
             reason=row.reason,
             policy_version=row.policy_version,
@@ -384,6 +396,7 @@ class SqlAccessGovernanceRepository:
             "resource_scope": dict(row.resource_scope or {}),
             "actions": list(row.actions or []),
             "effect": row.effect,
+            "row_scope": [dict(item) for item in (row.row_scope or []) if isinstance(item, dict)],
             "execution_profile_code": row.execution_profile_code,
             "reason": row.reason,
             "policy_version": row.policy_version,
@@ -391,7 +404,7 @@ class SqlAccessGovernanceRepository:
 
     @staticmethod
     def _decision_to_dict(row: AccessPolicyDecisionORM) -> dict[str, Any]:
-        return {
+        payload = {
             "decision_id": row.decision_id,
             "principal_id": row.principal_id,
             "actor_id": row.actor_id,
@@ -409,3 +422,6 @@ class SqlAccessGovernanceRepository:
             "governance_required": bool(row.governance_required),
             "created_at": row.created_at.isoformat() if row.created_at else None,
         }
+        if row.effective_row_scope:
+            payload["effective_row_scope"] = row.effective_row_scope
+        return payload

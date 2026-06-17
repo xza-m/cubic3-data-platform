@@ -21,6 +21,7 @@ export interface Datasource {
   last_test_at: string | null
   last_test_error: string | null
   created_by: string
+  created_by_display_name?: string | null
   created_at: string
   updated_at: string
   // catalog_sync_job 仅在创建时临时返回，不在列表/详情中

@@ -139,7 +139,14 @@ class TestScheduledQueryCRUD:
     def test_list_with_non_numeric_subject_returns_empty_page(self, client, app):
         """boundary: 飞书 open_id 这类非数字主体不应触发 bigint 过滤 500。"""
         token = jwt.encode(
-            {"user_id": "ou_a233770c5639ea99ec09a3a5e148fee0", "roles": ["admin"]},
+            {
+                "user_id": "ou_a233770c5639ea99ec09a3a5e148fee0",
+                "principal_id": "ou_a233770c5639ea99ec09a3a5e148fee0",
+                "roles": ["admin"],
+                "token_use": "access",
+                "sid": "test-session",
+                "jti": "test-access-token",
+            },
             app.config.get("JWT_SECRET", "your-secret-key"),
             algorithm="HS256",
         )

@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Optional
 import uuid
 
 from app.application.governance.access import AccessPolicyDecisionService, PrincipalResolver
+from app.application.governance.row_scope import build_catalog_dimension_resolver
 from app.application.query.commands.execute_query import ExecuteQueryCommand
 from app.domain.ontology.entities import GovernanceAuditTrace
 
@@ -54,11 +55,14 @@ class ExecutionCompilerRuntimeService:
         retrieval_sources: Optional[list[str]] = None,
         tool_name: Optional[str] = None,
         tool_arguments: Optional[Dict[str, Any]] = None,
+        analysis_intent: Optional[Dict[str, Any]] = None,
         viewer_roles: Optional[list[str]] = None,
         principal_context: Optional[dict[str, Any]] = None,
         route_type: Optional[str] = None,
         approval_id: Optional[str] = None,
         semantic_plan_id: Optional[str] = None,
+        runtime_mode: Optional[str] = None,
+        runtime_manifest: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         preview = self._preview_service.compile_preview(
             target_type=target_type,
@@ -69,8 +73,11 @@ class ExecutionCompilerRuntimeService:
             retrieval_sources=retrieval_sources,
             tool_name=tool_name,
             tool_arguments=tool_arguments,
+            analysis_intent=analysis_intent,
             viewer_roles=viewer_roles,
             principal_context=principal_context,
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
         )
         principal = self._principal_resolver.resolve(
             principal_context=principal_context,
@@ -107,6 +114,10 @@ class ExecutionCompilerRuntimeService:
             principal=principal,
             compiled_targets=[preview],
             approval_id=approval_id,
+            dimension_resolver=self._dimension_resolver(
+                runtime_mode=runtime_mode,
+                runtime_manifest=runtime_manifest,
+            ),
         )
         preview["_policy_decision"] = policy_decision.to_dict()
         preview["_ticket_preview"] = policy_decision.ticket_preview
@@ -138,6 +149,61 @@ class ExecutionCompilerRuntimeService:
                 "audit_trace_id": audit_trace_id,
             }
 
+        # 执行边界硬规则（§6.3）：裁决出非空 effective_row_scope 的查询，
+        # 在 gateway apply_scope 注入能力就绪前一律 fail closed，
+        # 杜绝「有行级策略但未注入就出数」的越权窗口。
+        # 仅 deny/enforce 模式阻断；observe/off 下 effective_row_scope 为 advisory，放行。
+        row_scope_entries = list(
+            (policy_decision.effective_row_scope or {}).get("entries") or []
+        )
+        rls_enforcing = (
+            getattr(policy_decision, "rls_enforcement_mode", "deny") in ("deny", "enforce")
+        )
+        if row_scope_entries and resolved_target_type == "sql" and rls_enforcing:
+            credential_mode = str(
+                (policy_decision.execution_profile or {}).get("credential_mode") or ""
+            )
+            if credential_mode == "gateway_binding":
+                block_reason_code = "scope_injection_unsupported"
+                block_reason = (
+                    "该查询命中行级安全策略，gateway 注入能力（apply_scope）尚未就绪，"
+                    "按过渡规则拒绝执行"
+                )
+            else:
+                block_reason_code = "row_scope_engine_unsupported"
+                block_reason = "该查询命中行级安全策略，当前执行引擎不支持行级注入，拒绝执行"
+            preview["_policy_decision"] = {
+                **policy_decision.to_dict(),
+                "decision": "deny",
+                "reason_code": block_reason_code,
+                "reason": block_reason,
+            }
+            governance_trace = self._build_governance_trace(
+                preview=preview,
+                execution_status="blocked",
+                viewer_roles=viewer_roles,
+                principal_context=principal.to_dict(),
+            )
+            audit_trace_id = self._record_audit_trace(
+                preview=preview,
+                governance_trace=governance_trace,
+                route_type=route_type,
+            )
+            return {
+                "status": "blocked",
+                "target_type": resolved_target_type,
+                "reason": block_reason,
+                "reason_code": block_reason_code,
+                "execution_request": preview.get("execution_request"),
+                "bindings": preview.get("bindings", {}),
+                "policy": preview.get("policy"),
+                "policy_decision": preview.get("_policy_decision"),
+                "ticket_preview": policy_decision.ticket_preview,
+                "traceability": preview.get("traceability", {}),
+                "governance_trace": governance_trace,
+                "audit_trace_id": audit_trace_id,
+            }
+
         if resolved_target_type == "sql":
             return self._execute_sql(preview, viewer_roles=viewer_roles, route_type=route_type)
         if resolved_target_type == "retrieval":
@@ -145,6 +211,36 @@ class ExecutionCompilerRuntimeService:
         if resolved_target_type == "tool":
             return self._execute_tool(preview, viewer_roles=viewer_roles, route_type=route_type)
         raise ValueError(f"不支持的执行目标类型: {target_type}")
+
+    def _dimension_resolver(
+        self,
+        *,
+        runtime_mode: Optional[str],
+        runtime_manifest: Optional[Dict[str, Any]],
+    ):
+        """构造与编译同源 cube 仓储的 row_scope dimension_ref 解析器。
+
+        优先用 preview_service.dimension_resolver（official 用 manifest catalog、
+        非 official 回落 registry cube_repository，与编译取 cube 定义同源）；
+        老版本 preview_service 仅有 runtime_catalog 时退回 catalog 解析。
+        """
+
+        resolver_getter = getattr(self._preview_service, "dimension_resolver", None)
+        if callable(resolver_getter):
+            return resolver_getter(
+                runtime_mode=runtime_mode,
+                runtime_manifest=runtime_manifest,
+            )
+        catalog_getter = getattr(self._preview_service, "runtime_catalog", None)
+        if not callable(catalog_getter):
+            return None
+        catalog = catalog_getter(
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+        )
+        if catalog is None:
+            return None
+        return build_catalog_dimension_resolver(catalog)
 
     def _execute_sql(
         self,

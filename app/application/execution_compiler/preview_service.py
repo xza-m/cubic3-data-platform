@@ -9,6 +9,7 @@ from app.application.governance.access import (
     canonical_sql_hash,
     infer_data_level_for_resource,
 )
+from app.application.governance.row_scope import build_cube_repository_dimension_resolver
 from app.application.semantic.runtime_manifest_catalog import RuntimeSemanticCatalog
 from app.domain.semantic.compiler import CompilationError, QueryCompiler
 from app.domain.semantic.entities import QueryDSL
@@ -106,6 +107,7 @@ class ExecutionCompilerPreviewService:
         principal_context: Optional[dict[str, Any]] = None,
         runtime_mode: Optional[str] = None,
         runtime_manifest: Optional[dict[str, Any]] = None,
+        pinned_release_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         normalized_target_type = (target_type or "").strip().lower()
         if normalized_target_type == "sql":
@@ -120,6 +122,7 @@ class ExecutionCompilerPreviewService:
                 principal_context=principal_context,
                 runtime_mode=runtime_mode,
                 runtime_manifest=runtime_manifest,
+                pinned_release_id=pinned_release_id,
             )
         if normalized_target_type == "retrieval":
             return self.compile_retrieval_preview(
@@ -153,6 +156,7 @@ class ExecutionCompilerPreviewService:
         principal_context: Optional[dict[str, Any]] = None,
         runtime_mode: Optional[str] = None,
         runtime_manifest: Optional[dict[str, Any]] = None,
+        pinned_release_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         preview = self.compile_preview(
             target_type=target_type,
@@ -168,6 +172,7 @@ class ExecutionCompilerPreviewService:
             principal_context=principal_context,
             runtime_mode=runtime_mode,
             runtime_manifest=runtime_manifest,
+            pinned_release_id=pinned_release_id,
         )
         steps = {
             "sql": ["识别业务指标语义", "绑定分析层 Measure", "生成伪 SQL 执行预览"],
@@ -191,10 +196,12 @@ class ExecutionCompilerPreviewService:
         principal_context: Optional[dict[str, Any]] = None,
         runtime_mode: Optional[str] = None,
         runtime_manifest: Optional[dict[str, Any]] = None,
+        pinned_release_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         runtime_catalog = self._runtime_catalog(
             runtime_mode=runtime_mode,
             runtime_manifest=runtime_manifest,
+            pinned_release_id=pinned_release_id,
         )
         metric = runtime_catalog.get_metric(metric_name) if runtime_catalog else self._metric_repository.get(metric_name)
         if metric is None:
@@ -209,14 +216,14 @@ class ExecutionCompilerPreviewService:
                 bindings={"metric_name": metric.name},
                 policy=policy,
             )
-        if not metric.measure_refs:
+        measure_ref = metric.primary_measure_ref()
+        if not measure_ref:
             return self._blocked_metric_preview(
                 metric=metric,
-                reason="业务指标尚未绑定可执行 Measure",
-                bindings={"metric_name": metric.name},
+                reason="业务指标尚未绑定可执行的 primary Measure 引用",
+                bindings={"metric_name": metric.name, "failure_code": "metric_primary_ref_missing"},
                 policy=policy,
             )
-        measure_ref = metric.measure_refs[0]
         cube_name, _, measure_name = measure_ref.partition(".")
         cube = cube_repository.get(cube_name)
         if cube is None or measure_name not in cube.measures:
@@ -272,11 +279,13 @@ class ExecutionCompilerPreviewService:
         sql_hash = canonical_sql_hash(logical_sql)
         query_dsl_payload = dsl.model_dump(mode="json", exclude_none=True)
         runtime_trace = runtime_catalog.runtime_trace if runtime_catalog else {}
+        scoped_table_refs = [dict(item) for item in (getattr(compiled, "scoped_table_refs", None) or [])]
         ticket_material = {
             "target_type": "sql",
             "resource_set": resource_set,
             "sql_hash": sql_hash,
             "data_level": data_level,
+            "scoped_table_refs": scoped_table_refs,
         }
         if runtime_trace.get("version_pin"):
             ticket_material["runtime_version_pin"] = runtime_trace["version_pin"]
@@ -285,6 +294,7 @@ class ExecutionCompilerPreviewService:
                 "source": "query_compiler",
                 "primary_cube": compiled.primary_cube,
                 "joined_cubes": compiled.joined_cubes,
+                "scoped_table_refs": scoped_table_refs,
             },
             "business_metric": {
                 "name": metric.name,
@@ -725,17 +735,61 @@ class ExecutionCompilerPreviewService:
             },
         }
 
+    def runtime_catalog(
+        self,
+        *,
+        runtime_mode: str | None = None,
+        runtime_manifest: dict[str, Any] | None = None,
+        pinned_release_id: str | None = None,
+    ) -> RuntimeSemanticCatalog | None:
+        """暴露与编译同源的运行时 catalog（row_scope dimension_ref 解析等场景）。"""
+
+        return self._runtime_catalog(
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+            pinned_release_id=pinned_release_id,
+        )
+
+    def dimension_resolver(
+        self,
+        *,
+        runtime_mode: str | None = None,
+        runtime_manifest: dict[str, Any] | None = None,
+        pinned_release_id: str | None = None,
+    ):
+        """构造与编译同源的 row_scope dimension_ref 解析器。
+
+        official 模式用 manifest catalog 的 cube_repository；非 official 路径
+        回落到 registry cube_repository（与编译取 cube 定义同源），避免行级求值
+        因 runtime_mode 缺省而无法解析维度。
+        """
+
+        catalog = self._runtime_catalog(
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+            pinned_release_id=pinned_release_id,
+        )
+        cube_repository = (
+            catalog.cube_repository if catalog is not None else self._cube_repository
+        )
+        return build_cube_repository_dimension_resolver(cube_repository)
+
     def _runtime_catalog(
         self,
         *,
         runtime_mode: str | None,
         runtime_manifest: dict[str, Any] | None,
+        pinned_release_id: str | None = None,
     ) -> RuntimeSemanticCatalog | None:
         if runtime_mode != "official":
             return None
         manifest = runtime_manifest
         if manifest is None and self._runtime_snapshot_service is not None:
-            manifest = self._runtime_snapshot_service.get_active_manifest("default")
+            if pinned_release_id:
+                # §6.1 求值与编译同 release：pinned 消费方按不可变 release_id 解析
+                manifest = self._runtime_snapshot_service.get_manifest_for_release(pinned_release_id)
+            else:
+                manifest = self._runtime_snapshot_service.get_active_manifest("default")
         if not manifest or not manifest.get("ok"):
             return None
         return RuntimeSemanticCatalog.from_manifest(manifest)

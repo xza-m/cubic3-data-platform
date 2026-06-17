@@ -1,6 +1,6 @@
 // frontend/src/v2/pages/data/ExtractionRunDetail.tsx
 //
-// 提取执行记录详情全屏页（L3）。
+// 同步记录详情全屏页（L3）。
 // NOTE: 后端无 GET /extraction/runs/:id 单项接口；通过列表查询后 client-side find。
 //   待后端补充 detail 接口后，替换为直接查询。
 // 对接 GET /api/v1/extraction/runs + GET /api/v1/extraction/runs/:id/download
@@ -19,6 +19,7 @@ import {
 } from './_shared/extraction-run-detail-content'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
+import { DataCenterSyncTabs } from './_shared/data-center-nav'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
 import { useAppShell } from '@v2/layout/AppShell'
@@ -48,7 +49,8 @@ export default function ExtractionRunDetail() {
     if (!run) return
     setBreadcrumbs([
       t('extractionRunDetail.breadcrumb.data', '数据'),
-      t('extractionRunDetail.breadcrumb.runs', '执行记录'),
+      t('extractionRunDetail.breadcrumb.center', '数据中心'),
+      t('extractionRunDetail.breadcrumb.runs', '同步记录'),
       `#${run.id}`,
     ])
   }, [run, setBreadcrumbs])
@@ -58,10 +60,10 @@ export default function ExtractionRunDetail() {
     openTab({
       id: `extraction-run:${run.id}`,
       label: runTabLabel(run),
-      to: `/extraction/runs/${run.id}`,
+      to: `/data-center/sync/runs/${run.id}`,
       closeable: true,
       onClose: () => {
-        navigate('/extraction/runs')
+        navigate('/data-center/sync/runs')
         return true
       },
     })
@@ -72,7 +74,7 @@ export default function ExtractionRunDetail() {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => navigate('/extraction/runs')}
+          onClick={() => navigate('/data-center/sync/runs')}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
@@ -81,7 +83,7 @@ export default function ExtractionRunDetail() {
         <RefreshButton
           onClick={() => refetch()}
           loading={isFetching}
-          ariaLabel={t('extractionRunDetail.action.refresh', '刷新执行记录')}
+          ariaLabel={t('extractionRunDetail.action.refresh', '刷新同步记录')}
         />
       </div>,
     )
@@ -126,12 +128,12 @@ export default function ExtractionRunDetail() {
               <NeighborBtn
                 label={neighbors.prev ? `← Run #${neighbors.prev.id}` : t('extractionRunDetail.neighbor.noPrev', '没有上一项')}
                 disabled={!neighbors.prev}
-                onClick={neighbors.prev ? () => navigate(`/extraction/runs/${neighbors.prev!.id}`) : undefined}
+                onClick={neighbors.prev ? () => navigate(`/data-center/sync/runs/${neighbors.prev!.id}`) : undefined}
               />
               <NeighborBtn
                 label={neighbors.next ? `Run #${neighbors.next.id} →` : t('extractionRunDetail.neighbor.noNext', '没有下一项')}
                 disabled={!neighbors.next}
-                onClick={neighbors.next ? () => navigate(`/extraction/runs/${neighbors.next!.id}`) : undefined}
+                onClick={neighbors.next ? () => navigate(`/data-center/sync/runs/${neighbors.next!.id}`) : undefined}
               />
             </div>
           </section>
@@ -140,7 +142,7 @@ export default function ExtractionRunDetail() {
             <div className="mt-2 text-xs">
               <button
                 type="button"
-                onClick={() => navigate(`/extraction/tasks/${run.task_id}`)}
+                onClick={() => navigate(`/data-center/sync/tasks/${run.task_id}`)}
                 className="flex w-full rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
@@ -169,7 +171,9 @@ export default function ExtractionRunDetail() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <>
+      <DataCenterSyncTabs />
+      <div className="flex flex-1 flex-col overflow-hidden">
       <header className="border-b px-4 py-3" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <div className="flex items-center gap-3">
           <div
@@ -193,10 +197,11 @@ export default function ExtractionRunDetail() {
       <div className="flex-1 overflow-auto">
         <ExtractionRunDetailContent
           run={run}
-          onJumpTask={() => navigate(`/extraction/tasks/${run.task_id}`)}
+          onJumpTask={() => navigate(`/data-center/sync/tasks/${run.task_id}`)}
         />
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 

@@ -61,6 +61,29 @@ export interface UpdateSubscriptionPayload {
   enabled?: boolean
 }
 
+export interface TriggerSubscriptionPayload {
+  event_type?: string
+  event_data?: Record<string, unknown>
+}
+
+export interface TriggerSubscriptionResult {
+  event_type: string
+  total_subscriptions: number
+  successful: number
+  failed: number
+  details: Array<{
+    subscription_id: number
+    subscription_name: string
+    channel_id: number
+    duration_ms?: number
+    success: boolean
+    error?: string
+    detail?: string
+    message_id?: string | null
+    status_code?: number
+  }>
+}
+
 // ============================================================================
 // API 函数
 // ============================================================================
@@ -106,6 +129,17 @@ export async function enableSubscription(id: number): Promise<Subscription> {
 
 export async function disableSubscription(id: number): Promise<Subscription> {
   const res = await apiClient.post<{ data: Subscription }>(`/subscriptions/${id}/disable`)
+  return res.data.data
+}
+
+export async function triggerSubscription(
+  id: number,
+  payload: TriggerSubscriptionPayload = {},
+): Promise<TriggerSubscriptionResult> {
+  const res = await apiClient.post<{ data: TriggerSubscriptionResult }>(
+    `/subscriptions/${id}/trigger`,
+    payload,
+  )
   return res.data.data
 }
 

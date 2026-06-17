@@ -159,7 +159,7 @@ class ModelingProposalService:
         ):
             spec_result = {
                 "spec": deepcopy(embedded_spec),
-                "next_actions": {"default_publish_target": "cube_only"},
+                "next_actions": {"default_publish_target": "cube_and_ontology"},
             }
         else:
             spec_result = self._builder.create_spec_draft(payload)
@@ -284,7 +284,7 @@ class ModelingProposalService:
 
     def publish(self, proposal_id: str, publish_targets: Optional[Dict[str, bool]] = None) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
-        scope_hash = self._stable_hash(publish_targets or {"cube": True, "ontology": False})
+        scope_hash = self._stable_hash(publish_targets or {"cube": True, "ontology": True})
         if proposal.status == "published":
             existing_scope_hash = proposal.audit_snapshot.get("publish_scope_hash")
             if existing_scope_hash and existing_scope_hash != scope_hash:
@@ -354,7 +354,7 @@ class ModelingProposalService:
         publish_targets: Optional[Dict[str, bool]],
         scope_hash: str,
     ) -> Dict[str, Any]:
-        targets = publish_targets or {"cube": True, "ontology": False}
+        targets = publish_targets or {"cube": True, "ontology": True}
         if targets.get("cube") is False:
             raise ValueError("SQL Registry publish requires cube target")
 

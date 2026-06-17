@@ -141,10 +141,16 @@ class SubscriptionRepository(ISubscriptionRepository):
         Returns:
             匹配的订阅列表
         """
-        return self.session.query(Subscription) \
+        # event_types 是 ArrayOfString（impl=Text）：SQL 端 contains() 会退化成
+        # 字符串 LIKE，在 PostgreSQL ARRAY 列上报 malformed array literal。
+        # 订阅量级小，改为取启用订阅后在 Python 侧按事件类型过滤（PG/SQLite 行为一致）。
+        subscriptions = self.session.query(Subscription) \
             .filter(Subscription.enabled == True) \
-            .filter(Subscription.event_types.contains([event_type])) \
             .all()
+        return [
+            subscription for subscription in subscriptions
+            if event_type in (subscription.event_types or [])
+        ]
     
     def delete(self, subscription: Subscription) -> None:
         """

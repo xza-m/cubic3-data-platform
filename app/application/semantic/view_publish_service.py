@@ -54,6 +54,7 @@ class ViewPublishService:
         dataset_handler: Any = None,
         default_source_id_getter: Optional[Callable[[], Optional[int]]] = None,
         registry_repo: Optional[ISemanticRegistryRepository] = None,
+        runtime_snapshot_service: Any = None,
     ):
         if semantic_service is not None:
             definition_delegate = getattr(semantic_service, "__dict__", {}).get("_definition_service")
@@ -67,6 +68,7 @@ class ViewPublishService:
         self._dataset_handler = dataset_handler
         self._default_source_id_getter = default_source_id_getter
         self._registry_repo = registry_repo
+        self._runtime_snapshot_service = runtime_snapshot_service
 
     def publish_view(self, view_name: str, source_id: Optional[int] = None) -> Dict[str, Any]:
         view = self._definition_service._view_repo.get(view_name)
@@ -244,19 +246,40 @@ class ViewPublishService:
         definition_hash = hashlib.sha256(
             json.dumps(definition_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
+        metadata = {
+            "source_view": view_name,
+            "field_mappings": dsl_dict.get("field_mappings", []),
+            "definition_hash": definition_hash,
+            "definition_summary": {
+                "dimension_count": len(dsl_dict.get("dimensions", [])),
+                "measure_count": len(dsl_dict.get("measures", [])),
+                "field_count": len(field_list),
+            },
+            "published_at": datetime.utcnow().isoformat(),
+            "publish_status": "published",
+        }
+        metadata.update(self._release_pin_metadata())
+        return {"semantic_publish": metadata}
+
+    def _release_pin_metadata(self) -> Dict[str, Any]:
+        """§6.1 消费方 pin 最小落点：virtual dataset 记录发布时的 release 与 pin 策略。
+
+        当前 View 展开仍读建模态 YAML 仓储，运行时一律跟随 active release，
+        因此 pin_policy 固定为 track_active；release_id 仅作为发布时口径证据。
+        """
+        if self._runtime_snapshot_service is None:
+            return {}
+        try:
+            manifest = self._runtime_snapshot_service.get_active_manifest()
+        except Exception as exc:  # pragma: no cover - manifest 不可用不阻断 View 发布
+            logger.warning("view_publish_release_pin_unavailable", error=str(exc))
+            return {}
+        if not isinstance(manifest, dict) or not manifest.get("ok"):
+            return {}
         return {
-            "semantic_publish": {
-                "source_view": view_name,
-                "field_mappings": dsl_dict.get("field_mappings", []),
-                "definition_hash": definition_hash,
-                "definition_summary": {
-                    "dimension_count": len(dsl_dict.get("dimensions", [])),
-                    "measure_count": len(dsl_dict.get("measures", [])),
-                    "field_count": len(field_list),
-                },
-                "published_at": datetime.utcnow().isoformat(),
-                "publish_status": "published",
-            }
+            "pin_policy": "track_active",
+            "release_id": manifest.get("release_id"),
+            "snapshot_id": manifest.get("snapshot_id"),
         }
 
     @staticmethod

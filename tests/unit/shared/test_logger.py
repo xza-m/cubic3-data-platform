@@ -123,6 +123,29 @@ class TestStructuredFormatter:
         assert payload["dataset_id"] == 7
         assert "ValueError: bad" in payload["exception"]
 
+    def test_json_formatter_redacts_sensitive_values_from_message_and_exception(self):
+        formatter = StructuredFormatter(json_format=True)
+        try:
+            raise RuntimeError('params: {"access_key": "dummy_access_key", "project": "demo"}')
+        except RuntimeError:
+            record = logging.getLogger("tests.formatter.redaction").makeRecord(
+                name="tests.formatter.redaction",
+                level=logging.ERROR,
+                fn=__file__,
+                lno=52,
+                msg='failed with access_key="dummy_access_key"',
+                args=(),
+                exc_info=True,
+                func="test_json_formatter_redacts_sensitive_values_from_message_and_exception",
+            )
+            record.exc_info = __import__("sys").exc_info()
+
+        payload = json.loads(formatter.format(record))
+        assert "dummy_access_key" not in payload["message"]
+        assert "dummy_access_key" not in payload["exception"]
+        assert "access_key" in payload["exception"]
+        assert "project" in payload["exception"]
+
     def test_text_formatter_outputs_human_readable_message(self, monkeypatch):
         monkeypatch.setenv("LOG_FORMAT", "text")
         formatter = StructuredFormatter(json_format=False)

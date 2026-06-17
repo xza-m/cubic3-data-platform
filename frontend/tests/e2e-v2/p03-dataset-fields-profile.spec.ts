@@ -1,6 +1,6 @@
 // frontend/tests/e2e-v2/p03-dataset-fields-profile.spec.ts
 //
-// P3 — 数据集详情 "字段画像" Tab happy path.
+// P3 — 数据资产详情 "字段画像" Tab happy path.
 //
 // Asserts the detail page renders, the dataset name + a column from the
 // fixture profile is visible, and switching to the field-profile Tab keeps
@@ -21,9 +21,9 @@ test.beforeEach(async ({ page }) => {
   await mockJsonRoute(page, '**/api/v1/data-center/datasets/11/profile', envelope(dsetFx.profile))
 })
 
-test('P03 数据集详情 字段画像 Tab @p03', async ({ page }) => {
-  await gotoV2(page, '/data-center/datasets/11')
-  await expect(page).toHaveURL(/\/data-center\/datasets\/11/)
+test('P03 数据资产详情 字段画像 Tab @p03', async ({ page }) => {
+  await gotoV2(page, '/data-center/assets/11')
+  await expect(page).toHaveURL(/\/data-center\/assets\/11/)
   await expect(page.locator('body')).toBeVisible()
 
   const profileTab = page.getByRole('button', { name: /字段画像/ }).first()

@@ -159,7 +159,7 @@ export default function OntologyRelations() {
           </div>
           {isLoading ? (
             <div className="flex flex-1 items-center justify-center text-sm text-3">
-              {t('loading', '加载中…')}
+              {t('common.loading', '加载中…')}
             </div>
           ) : isError ? (
             <div className="flex flex-1 items-center justify-center text-sm text-danger">

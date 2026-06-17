@@ -9,20 +9,18 @@ import {
   createDataPolicy,
   createExecutionProfile,
   createServicePrincipal,
+  getM2Allowlist,
   getAccessPermissionPackages,
   getAccessPrincipal,
   getAccessRoleCatalog,
-  getGatewayRuntimeAlerts,
-  getGatewayTelemetrySummary,
+  getGatewayObservability,
   getServicePrincipal,
-  listGatewayQueryRuns,
   listAccessPrincipals,
   listDataPolicies,
   listExecutionProfiles,
   listPolicyDecisions,
   listServicePrincipals,
   putAccessPrincipalPermissionPackages,
-  putAccessPrincipalRoleBindings,
   resolvePrincipalDisplayNames,
   revokeApiKey,
   rotateApiKey,
@@ -43,24 +41,14 @@ export function useAccessRoleCatalog() {
   })
 }
 
-export function useGatewayTelemetrySummary() {
+export function useGatewayObservability(params: {
+  window?: string
+  bucket?: string
+  limit?: number
+} = {}) {
   return useQuery({
-    queryKey: qk('access', 'gateway', 'summary'),
-    queryFn: getGatewayTelemetrySummary,
-  })
-}
-
-export function useGatewayRuntimeAlerts() {
-  return useQuery({
-    queryKey: qk('access', 'gateway', 'alerts'),
-    queryFn: getGatewayRuntimeAlerts,
-  })
-}
-
-export function useGatewayQueryRuns(params: { limit?: number } = {}) {
-  return useQuery({
-    queryKey: qk('access', 'gateway', 'query-runs', params),
-    queryFn: () => listGatewayQueryRuns(params),
+    queryKey: qk('access', 'gateway', 'observability', params),
+    queryFn: () => getGatewayObservability(params),
   })
 }
 
@@ -69,6 +57,13 @@ export function useAccessPermissionPackages() {
     queryKey: qk('access', 'permission-packages'),
     queryFn: getAccessPermissionPackages,
     staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useM2Allowlist() {
+  return useQuery({
+    queryKey: qk('access', 'm2-allowlist'),
+    queryFn: getM2Allowlist,
   })
 }
 
@@ -94,23 +89,6 @@ export function usePrincipalDisplayNames(principalIds: string[]) {
     queryFn: () => resolvePrincipalDisplayNames(uniqueIds),
     enabled: uniqueIds.length > 0,
     staleTime: 5 * 60 * 1000,
-  })
-}
-
-export function useUpdateAccessRoleBindings() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      principalId,
-      bindings,
-    }: {
-      principalId: string
-      bindings: Array<{ role_code: string; role_type: 'platform' | 'data'; source: string; status: string }>
-    }) => putAccessPrincipalRoleBindings(principalId, bindings),
-    onSuccess: (_data, { principalId }) => {
-      qc.invalidateQueries({ queryKey: ['access'] })
-      qc.invalidateQueries({ queryKey: qk('access', 'principal', principalId) })
-    },
   })
 }
 

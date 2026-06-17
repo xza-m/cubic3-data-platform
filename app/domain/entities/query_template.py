@@ -34,7 +34,7 @@ class QueryTemplate(db.Model):
     use_count = Column(Integer, default=0)
     
     # 审计字段
-    created_by = Column(String(100), nullable=False)
+    created_by = Column(String(191), nullable=False)
     created_at = Column(DateTime, default=utcnow, nullable=False)
     
     def increment_use_count(self):

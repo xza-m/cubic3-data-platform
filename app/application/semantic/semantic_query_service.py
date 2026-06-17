@@ -3,8 +3,12 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from typing import Any, Callable, Dict, Optional
+
+from pydantic import ValidationError as PydanticValidationError
 
 from app.application.semantic.semantic_runtime_binding_service import (
     SemanticRuntimeBindingService,
@@ -53,20 +57,43 @@ class SemanticQueryService:
         self._validate_query_cubes(dsl)
         return self._build_compiler(dsl).compile(dsl)
 
+    def definition_hash(self, cube_name: str) -> Optional[str]:
+        """返回 Cube 当前定义版本标识（与 SemanticDefinitionService 同算法）。"""
+        if not cube_name:
+            return None
+        cube = self._cube_repo.get(cube_name)
+        if cube is None:
+            return None
+        return hashlib.sha256(
+            json.dumps(
+                cube.model_dump(mode="json"), ensure_ascii=False, sort_keys=True
+            ).encode("utf-8")
+        ).hexdigest()
+
     def query(self, dsl_dict: Dict[str, Any], adapter: Any = None) -> Dict[str, Any]:
         try:
             dsl = QueryDSL(**dsl_dict)
+        except PydanticValidationError as exc:
+            return {
+                "error": f"DSL 校验失败: {str(exc)}",
+                "error_code": "dsl_validate_error",
+                "hint": "DSL 结构不合法，请检查 measures / dimensions / filters 等字段格式。",
+                "retryable": True,
+            }
+        try:
             self._validate_query_cubes(dsl)
             compiled = self._build_compiler(dsl).compile(dsl)
         except CompilationError as exc:
             return {
                 "error": f"DSL 编译失败: {str(exc)}",
+                "error_code": "compile_error",
                 "hint": self._friendly_compile_hint(str(exc)),
                 "retryable": True,
             }
         except Exception as exc:
             return {
                 "error": f"查询准备失败: {str(exc)}",
+                "error_code": "datasource_binding_error",
                 "hint": "请检查 Cube 数据源绑定和状态是否正确。",
                 "retryable": False,
             }
@@ -87,8 +114,11 @@ class SemanticQueryService:
             retryable = self._is_retryable(error_msg)
             return {
                 "error": f"SQL 执行失败: {error_msg}",
+                "error_code": self._classify_execute_error(error_msg),
                 "hint": self._friendly_execute_hint(error_msg, retryable),
                 "sql": sql,
+                "primary_cube": compiled.primary_cube,
+                "definition_hash": self.definition_hash(compiled.primary_cube),
                 "execution_time_ms": elapsed,
                 "retryable": retryable,
             }
@@ -110,6 +140,7 @@ class SemanticQueryService:
             "sql": sql,
             "primary_cube": compiled.primary_cube,
             "joined_cubes": compiled.joined_cubes,
+            "definition_hash": self.definition_hash(compiled.primary_cube),
             "retryable": False,
         }
         if row_count == 0:
@@ -201,6 +232,20 @@ class SemanticQueryService:
         if dsl.time_dimensions:
             return dsl.time_dimensions[0].dimension.split(".", 1)[0]
         raise CompilationError("DSL must have at least one measure or dimension")
+
+    @staticmethod
+    def _classify_execute_error(error_msg: str) -> str:
+        """把执行期错误归类为稳定的 error_code 枚举，供前端证据包展示。"""
+        lower = error_msg.lower()
+        if "syntax error" in lower or "odps-0130" in lower:
+            return "sql_syntax_error"
+        if "permission" in lower:
+            return "permission_denied"
+        if "timeout" in lower or "timed out" in lower:
+            return "execute_timeout"
+        if "invalid table" in lower or "column not found" in lower:
+            return "schema_mismatch"
+        return "execute_error"
 
     @staticmethod
     def _is_retryable(error_msg: str) -> bool:

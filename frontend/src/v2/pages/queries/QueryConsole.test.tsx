@@ -138,6 +138,9 @@ describe('QueryConsole principal handoff', () => {
 
     renderConsole()
 
+    expect(screen.getAllByText('MaxCompute').length).toBeGreaterThan(0)
+    expect(screen.queryByText('maxcompute')).not.toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: '执行' }))
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(1))
     expect(execute).toHaveBeenCalledWith(

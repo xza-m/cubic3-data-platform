@@ -75,6 +75,39 @@ class SemanticGatewayExecuteService:
                 "plan": plan,
             }
 
+        # 过渡 fail closed（§6.3）：gateway apply_scope 注入能力就绪前，
+        # 非空 effective_row_scope 一律拒绝提交，防止未注入出数。
+        # 仅 deny/enforce 模式阻断；observe/off 下 effective_row_scope 为 advisory，放行。
+        row_scope_entries = list(
+            (policy_decision.get("effective_row_scope") or {}).get("entries") or []
+        )
+        rls_enforcing = (
+            str(policy_decision.get("rls_enforcement_mode") or "deny").strip().lower()
+            in {"deny", "enforce"}
+        )
+        if row_scope_entries and rls_enforcing:
+            block_reason = (
+                "该查询命中行级安全策略，gateway 注入能力（apply_scope）尚未就绪，"
+                "按过渡规则拒绝执行"
+            )
+            logger.info(
+                "agent_semantic_execute_blocked",
+                metric_event="agent_semantic_execute.blocked",
+                semantic_plan_id=plan.get("semantic_plan_id"),
+                decision="deny",
+                reason_code="scope_injection_unsupported",
+            )
+            return {
+                "status": "blocked",
+                "decision": "deny",
+                "reason": block_reason,
+                "reason_code": "scope_injection_unsupported",
+                "policy_decision": policy_decision,
+                "ticket_preview": plan.get("ticket_preview"),
+                "semantic_trace": plan.get("semantic_trace"),
+                "plan": plan,
+            }
+
         target = self._first_executable_target(plan.get("compiled_targets") or [])
         if target is None:
             return {

@@ -15,8 +15,12 @@ def _auth_headers(roles: list[str] | None = None) -> dict[str, str]:
     token = jwt.encode(
         {
             "user_id": "test_admin",
+            "principal_id": "test_admin",
             "user_name": "Test Admin",
             "roles": roles or ["admin"],
+            "token_use": "access",
+            "sid": "test-session",
+            "jti": "test-access-token",
             "exp": datetime.utcnow() + timedelta(hours=1),
         },
         "test-secret",

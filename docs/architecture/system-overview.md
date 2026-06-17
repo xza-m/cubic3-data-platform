@@ -71,7 +71,7 @@ graph LR
 - 数据资产底座：表、字段、快照、画像、证据包和 Schema drift 线索
 - 查询中心：SQL 编辑、模板、历史、异步查询、可视化构建
 - 智能问数：交互型问答能力，会话、消息、LLM 适配与 Web / 飞书信道复用
-- 语义中心：Ontology、Catalog、Cube、Domain、View、Recipe、编译与查询；其中 `/semantic/ontology` 是业务语义工作台主入口，`/semantic/workbench` 当前承接语义诊断，旧路径只保留兼容跳转
+- 语义中心：Ontology、Catalog、Cube、Domain、View、Recipe、编译与查询；其中 `/semantic/ontology` 是业务语义工作台主入口，`/semantic/workbench` 当前承接语义诊断，旧 Copilot UI 路径不再注册兼容重定向
 - 应用中心：运行型应用定义、实例、执行记录
 - 配置中心：信道、订阅、投递规则
 

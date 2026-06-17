@@ -7,17 +7,18 @@
 //
 // 画布渲染：纯 SVG 圆形资产布局（Placeholder，不依赖 react-flow）
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Boxes, CheckCircle2, Clock, History, Save, Search, XCircle } from 'lucide-react'
 // 等待 X-Crosscut：@v2/components/ui
-import { Button, Card, CardBody, CardHead, Chip, Input, Sheet, Skeleton } from '@v2/components/ui'
+import { Button, Card, CardBody, CardHead, Chip, Input, Sheet, Skeleton, useConfirm, useToast } from '@v2/components/ui'
 // 等待 X-Crosscut：@v2/layout/AppShell
 import { useAppShell } from '@v2/layout/AppShell'
+import { Can } from '@v2/components/Can'
 // 等待 X-Crosscut：@v2/i18n
 import { t } from '@v2/i18n'
-import { useDomainDetail, useDomainCanvas, usePublishDomain, useDomainPublishHistory } from '@v2/hooks/semantic'
-import type { DomainCanvasNode, DomainPublishRecord } from '@v2/api/semantic'
+import { useDomainDetail, useDomainCanvas, useDomainList, usePublishDomain, useDomainPublishHistory } from '@v2/hooks/semantic'
+import type { DomainCanvasNode, DomainPublishRecord, DomainSummary } from '@v2/api/semantic'
 
 // ---- 类型常量 ----
 
@@ -48,6 +49,8 @@ export default function DomainCanvas() {
   const domainId = id
   const navigate = useNavigate()
   const { setBreadcrumbs, setTopBarActions, setContextPanel } = useAppShell()
+  const toast = useToast()
+  const confirm = useConfirm()
 
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
@@ -56,6 +59,7 @@ export default function DomainCanvas() {
 
   const domainQuery = useDomainDetail(domainId)
   const canvasQuery = useDomainCanvas(domainId)
+  const domainListQuery = useDomainList({ page_size: 200 })
   const publishDomain = usePublishDomain()
   const historyQuery = useDomainPublishHistory(showHistory ? domainId : undefined)
 
@@ -63,6 +67,10 @@ export default function DomainCanvas() {
   const canvas = canvasQuery.data
   const nodes = useMemo<DomainCanvasNode[]>(() => canvas?.nodes ?? [], [canvas])
   const domainDisplayName = domain?.title || domain?.name || domain?.code || domain?.id || domainId || ''
+  const canonicalDomain = useMemo(() => {
+    if (!domainId) return null
+    return (domainListQuery.data?.domains ?? []).find((item) => domainMatchesRouteId(item, domainId)) ?? null
+  }, [domainId, domainListQuery.data?.domains])
 
   // ---- 面包屑 & TopBar ----
   useEffect(() => {
@@ -72,6 +80,33 @@ export default function DomainCanvas() {
       domainDisplayName,
     ])
   }, [setBreadcrumbs, domainDisplayName])
+
+  useEffect(() => {
+    if (!domainId || !domainQuery.isError || !canonicalDomain) return
+    const canonicalId = domainStableId(canonicalDomain)
+    if (canonicalId && canonicalId !== domainId) {
+      navigate(`/semantic/domains/${encodeURIComponent(canonicalId)}`, { replace: true })
+    }
+  }, [canonicalDomain, domainId, domainQuery.isError, navigate])
+
+  const handlePublish = useCallback(async () => {
+    if (!domainId) return
+    const ok = await confirm({
+      title: t('domain.publishConfirm', '发布域「{name}」？', { name: domainDisplayName }),
+      description: t('domain.publishConfirmDesc', '发布后该域的最新语义资产将对消费方可见。'),
+    })
+    if (!ok) return
+    try {
+      await publishDomain.mutateAsync({ id: domainId })
+      toast.show({ tone: 'success', title: t('domain.publishSuccess', '发布成功') })
+    } catch (err) {
+      toast.show({
+        tone: 'danger',
+        title: t('domain.publishFailed', '发布失败'),
+        description: err instanceof Error ? err.message : undefined,
+      })
+    }
+  }, [confirm, domainDisplayName, domainId, publishDomain, toast])
 
   useEffect(() => {
     setTopBarActions(
@@ -86,18 +121,20 @@ export default function DomainCanvas() {
         >
           <History size={12} /> {t('domain.publishHistory', '发布历史')}
         </Button>
-        <Button
-          size="sm"
-          variant="primary"
-          loading={publishDomain.isPending}
-          onClick={() => domainId && publishDomain.mutate({ id: domainId })}
-        >
-          <Save size={12} /> {t('action.publish', '发布域')}
-        </Button>
+        <Can action="semantic.write">
+          <Button
+            size="sm"
+            variant="primary"
+            loading={publishDomain.isPending}
+            onClick={handlePublish}
+          >
+            <Save size={12} /> {t('action.publish', '发布域')}
+          </Button>
+        </Can>
       </div>,
     )
     return () => setTopBarActions(null)
-  }, [setTopBarActions, navigate, domainId, publishDomain])
+  }, [setTopBarActions, navigate, handlePublish, publishDomain.isPending])
 
   // ---- 侧栏 Context Panel ----
   useEffect(() => {
@@ -183,8 +220,15 @@ export default function DomainCanvas() {
     })
   }, [nodes, filter, keyword])
 
-  if (domainQuery.isLoading || canvasQuery.isLoading) {
-    return <div className="py-8 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+  if (
+    domainQuery.isLoading ||
+    canvasQuery.isLoading ||
+    (domainQuery.isError && domainListQuery.isLoading)
+  ) {
+    return <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
+  }
+  if (domainQuery.isError && canonicalDomain) {
+    return <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
   }
   if (domainQuery.isError) {
     return <div className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</div>
@@ -329,6 +373,16 @@ export default function DomainCanvas() {
       </div>
     </div>
   )
+}
+
+function domainStableId(domain: DomainSummary): string {
+  return domain.id || domain.code || domain.name
+}
+
+function domainMatchesRouteId(domain: DomainSummary, routeId: string): boolean {
+  return [domain.id, domain.code, domain.name, domain.title]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .some((value) => value === routeId)
 }
 
 // ---- SVG 画布 ----

@@ -72,6 +72,9 @@ class SemanticLayerService:
     def compile_query(self, dsl_dict: Dict[str, Any]):
         return self._query_service.compile_query(dsl_dict)
 
+    def definition_hash(self, cube_name: str):
+        return self._query_service.definition_hash(cube_name)
+
     def expand_view_to_dsl(self, view: Any) -> Dict[str, Any]:
         return self._definition_service.expand_view_to_dsl(view)
 
