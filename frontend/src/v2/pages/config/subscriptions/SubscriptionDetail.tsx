@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Edit3, ExternalLink, PauseCircle, Play, PlayCircle, Trash2 } from 'lucide-react'
-import { Chip, Dialog, Input, Skeleton, Switch, useToast } from '@v2/components/ui'
+import { Chip, Dialog, Input, Skeleton, Switch, useToast, useConfirm } from '@v2/components/ui'
 import { ActionIconButton } from '@v2/components/ActionIconButton'
 import { RefreshButton } from '@v2/components/CommonControls'
 import { t } from '@v2/i18n'
@@ -16,6 +16,7 @@ import {
   useSubscription,
   useSubscriptions,
   useDeleteSubscription,
+  useTriggerSubscription,
   useUpdateSubscription,
   useSubscriptionHistory,
 } from '@v2/hooks/subscriptions'
@@ -25,7 +26,7 @@ import {
   SubscriptionDetailContent,
   SubscriptionContextBody,
 } from '../_shared/subscription-content'
-import { eventTypeLabel } from '../_shared/event-labels'
+import { eventTypeLabel, SUBSCRIPTION_EVENT_OPTIONS } from '../_shared/event-labels'
 
 // TODO: 等待 X-Crosscut 提供 useAppShell 布局 hook —— 当前用 document.title 占位
 // import { useAppShell } from '@v2/layout/AppShell'
@@ -44,6 +45,7 @@ export default function SubscriptionDetail() {
   const numericId = Number(id)
   const navigate = useNavigate()
   const toast = useToast()
+  const confirm = useConfirm()
   const [subTab, setSubTab] = useState<SubTabId>('overview')
 
   const { data: subscription, isLoading } = useSubscription(numericId)
@@ -58,6 +60,7 @@ export default function SubscriptionDetail() {
 
   const updateMutation = useUpdateSubscription()
   const deleteMutation = useDeleteSubscription()
+  const triggerMutation = useTriggerSubscription()
   const [editing, setEditing] = useState(false)
 
   useEffect(() => {
@@ -80,7 +83,7 @@ export default function SubscriptionDetail() {
 
   const handleDelete = async () => {
     if (!subscription) return
-    if (!window.confirm(t('subscription.confirm.delete', `删除订阅「${subscription.name}」？`))) return
+    if (!(await confirm({ title: t('subscription.confirm.delete', '删除订阅「{name}」？', { name: subscription.name }), tone: 'danger' }))) return
     await deleteMutation.mutateAsync(subscription.id)
     toast.show({ tone: 'warning', title: t('subscription.toast.deleted', '已删除'), description: subscription.name })
     navigate('/config/subscriptions')
@@ -98,12 +101,16 @@ export default function SubscriptionDetail() {
     })
   }
 
-  const handleTrigger = () => {
+  const handleTrigger = async () => {
     if (!subscription) return
+    const result = await triggerMutation.mutateAsync({ id: subscription.id })
+    const detail = result.details[0]
     toast.show({
-      tone: 'success',
-      title: t('subscription.toast.triggered', '已触发'),
-      description: subscription.name,
+      tone: result.successful > 0 ? 'success' : 'warning',
+      title: result.successful > 0
+        ? t('subscription.toast.triggered', '已立即触发')
+        : t('subscription.toast.triggerFailed', '触发失败'),
+      description: detail?.error ?? detail?.detail ?? subscription.name,
     })
   }
 
@@ -128,7 +135,7 @@ export default function SubscriptionDetail() {
   if (!subscription) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-red-500">
-        {t('subscription.error.notFound', `未找到订阅 #${numericId}`)}
+        {t('subscription.error.notFound', '未找到订阅 #{id}', { id: numericId })}
       </div>
     )
   }
@@ -182,7 +189,8 @@ export default function SubscriptionDetail() {
                 label={t('subscription.action.triggerFull', '立即触发此订阅')}
                 icon={Play}
                 variant="primary"
-                onClick={handleTrigger}
+                loading={triggerMutation.isPending}
+                onClick={() => void handleTrigger()}
               />
               <ActionIconButton
                 label={subscription.enabled ? t('subscription.action.pause', '停用') : t('subscription.action.enable', '启用')}
@@ -305,17 +313,25 @@ function SubscriptionEditDialog({
   onSubmit: (payload: UpdateSubscriptionPayload) => Promise<void>
 }) {
   const [name, setName] = useState(subscription.name)
-  const [eventTypesStr, setEventTypesStr] = useState(subscription.event_types.join(', '))
+  const [eventTypes, setEventTypes] = useState<string[]>(subscription.event_types)
   const [description, setDescription] = useState(subscription.description ?? '')
   const [enabled, setEnabled] = useState(subscription.enabled)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     setName(subscription.name)
-    setEventTypesStr(subscription.event_types.join(', '))
+    setEventTypes(subscription.event_types)
     setDescription(subscription.description ?? '')
     setEnabled(subscription.enabled)
   }, [subscription])
+
+  const toggleEventType = (eventType: string) => {
+    setEventTypes((current) =>
+      current.includes(eventType)
+        ? current.filter((item) => item !== eventType)
+        : [...current, eventType],
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -323,7 +339,7 @@ function SubscriptionEditDialog({
     try {
       await onSubmit({
         name,
-        event_types: eventTypesStr.split(',').map((s) => s.trim()).filter(Boolean),
+        event_types: eventTypes,
         description: description || undefined,
         enabled,
       })
@@ -347,16 +363,32 @@ function SubscriptionEditDialog({
           />
         </div>
         <div>
-          <label htmlFor="edit-sub-events" className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
+          <div className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
             {t('subscription.field.eventTypes', '订阅事件类型')} *
-          </label>
-          <Input
-            id="edit-sub-events"
-            value={eventTypesStr}
-            onChange={(e) => setEventTypesStr(e.target.value)}
-            required
-            placeholder="app.execution.completed, app.execution.failed"
-          />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {SUBSCRIPTION_EVENT_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className="flex min-h-9 items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
+                style={{
+                  borderColor: eventTypes.includes(option.value) ? 'var(--accent)' : 'var(--border)',
+                  background: eventTypes.includes(option.value) ? 'var(--accent-soft)' : 'var(--bg-surface)',
+                  color: 'var(--text-2)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={eventTypes.includes(option.value)}
+                  onChange={() => toggleEventType(option.value)}
+                />
+                <span className="truncate" title={option.value}>{option.label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
+            {t('subscription.form.eventTypesHint', '至少选择一个事件类型')}
+          </p>
         </div>
         <div>
           <label htmlFor="edit-sub-desc" className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
@@ -385,7 +417,7 @@ function SubscriptionEditDialog({
           </button>
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || eventTypes.length === 0}
             className="rounded-md bg-[color:var(--accent)] px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {submitting ? t('common.saving', '保存中…') : t('common.saveChanges', '保存修改')}

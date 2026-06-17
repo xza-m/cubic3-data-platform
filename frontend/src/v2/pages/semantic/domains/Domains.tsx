@@ -17,6 +17,7 @@ import { useAppShell } from '@v2/layout/AppShell'
 // 等待 X-Crosscut：@v2/i18n
 import { t } from '@v2/i18n'
 import { useDomainList, useCreateDomain } from '@v2/hooks/semantic'
+import type { DomainSummary } from '@v2/api/semantic'
 
 const LIST_PAGE_SIZE = 20
 
@@ -56,13 +57,13 @@ export default function Domains() {
       description: data.description || undefined,
     })
     setShowCreate(false)
-    navigate(`/semantic/domains/${res.name}/canvas`)
+    navigate(`/semantic/domains/${domainRouteSegment(res)}`)
   }
 
   return (
     <div className="flex flex-1 flex-col overflow-auto scroll-thin p-5">
       {domainsQuery.isLoading ? (
-        <div className="py-8 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+        <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
       ) : domainsQuery.isError ? (
         <div className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</div>
       ) : domains.length === 0 ? (
@@ -72,9 +73,9 @@ export default function Domains() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {pagedDomains.map((d) => (
               <DomainCard
-                key={d.name}
+                key={domainStableId(d)}
                 domain={d}
-                onClick={() => navigate(`/semantic/domains/${d.name}/canvas`)}
+                onClick={() => navigate(`/semantic/domains/${domainRouteSegment(d)}`)}
               />
             ))}
           </div>
@@ -107,12 +108,7 @@ function DomainCard({
   domain,
   onClick,
 }: {
-  domain: {
-    name: string
-    title?: string | null
-    description?: string | null
-    status?: string
-  }
+  domain: DomainSummary
   onClick: () => void
 }) {
   return (
@@ -133,10 +129,10 @@ function DomainCard({
         >
           <Network size={14} />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate font-semibold text-1">{domain.title || domain.name}</div>
-          <div className="font-mono text-xs text-3">{domain.name}</div>
-        </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-semibold text-1">{domain.title || domain.name}</div>
+            <div className="font-mono text-xs text-3">{domainStableId(domain)}</div>
+          </div>
         {domain.status === 'published' ? (
           <Chip tone="success">{t('status.published', '已发布')}</Chip>
         ) : (
@@ -164,6 +160,14 @@ function DomainCard({
       </div>
     </button>
   )
+}
+
+function domainStableId(domain: DomainSummary): string {
+  return domain.id || domain.code || domain.name
+}
+
+function domainRouteSegment(domain: DomainSummary): string {
+  return encodeURIComponent(domainStableId(domain))
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {

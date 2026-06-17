@@ -8,6 +8,7 @@
 
 import type { ReactNode } from 'react'
 import type { ExtractionTask, ExtractionTaskDetail } from '@v2/api/extraction'
+import { Can } from '@v2/components/Can'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 
@@ -88,36 +89,40 @@ export function TaskActionButtons({ task, actions }: { task: ExtractionTask; act
   return (
     <div className="flex flex-wrap items-center gap-2">
       {actions.onExecute ? (
-        <button
-          type="button"
-          onClick={actions.onExecute}
-          disabled={task.last_run_status === 'running' || actions.executePending}
-          className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
-          style={{
-            background: 'var(--accent)',
-            color: 'var(--on-accent)',
-            opacity: task.last_run_status === 'running' || actions.executePending ? 0.5 : 1,
-          }}
-        >
-          {actions.executePending
-            ? t('extractionTaskDetail.action.executePending', '提交中…')
-            : t('extractionTaskDetail.action.execute', '立即执行')}
-        </button>
+        <Can action="data.write">
+          <button
+            type="button"
+            onClick={actions.onExecute}
+            disabled={task.last_run_status === 'running' || actions.executePending}
+            className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
+            style={{
+              background: 'var(--accent)',
+              color: 'var(--on-accent)',
+              opacity: task.last_run_status === 'running' || actions.executePending ? 0.5 : 1,
+            }}
+          >
+            {actions.executePending
+              ? t('extractionTaskDetail.action.executePending', '提交中…')
+              : t('extractionTaskDetail.action.execute', '立即执行')}
+          </button>
+        </Can>
       ) : null}
       {actions.onToggleActive ? (
-        <button
-          type="button"
-          onClick={actions.onToggleActive}
-          className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium"
-          style={{
-            borderColor: 'var(--border)',
-            color: 'var(--text-2)',
-          }}
-        >
-          {task.is_active
-            ? t('extractionTaskDetail.action.deactivate', '停用')
-            : t('extractionTaskDetail.action.activate', '启用')}
-        </button>
+        <Can action="data.write">
+          <button
+            type="button"
+            onClick={actions.onToggleActive}
+            className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium"
+            style={{
+              borderColor: 'var(--border)',
+              color: 'var(--text-2)',
+            }}
+          >
+            {task.is_active
+              ? t('extractionTaskDetail.action.deactivate', '停用')
+              : t('extractionTaskDetail.action.activate', '启用')}
+          </button>
+        </Can>
       ) : null}
     </div>
   )
@@ -150,7 +155,7 @@ export function ExtractionTaskDetailContent({
         >
           <Row label={t('extractionTaskDetail.row.name', '任务名称')} value={task.task_name} />
           <Row label={t('extractionTaskDetail.row.code', '任务编码')} value={<code>{task.task_code}</code>} />
-          <Row label={t('extractionTaskDetail.row.datasetId', '数据集 ID')} value={task.dataset_id} />
+          <Row label={t('extractionTaskDetail.row.datasetId', '目标资产 ID')} value={task.dataset_id} />
           <Row label={t('extractionTaskDetail.row.type', '类型')} value={taskTypeChip(task.task_type)} />
           <Row
             label={t('extractionTaskDetail.row.active', '启用')}

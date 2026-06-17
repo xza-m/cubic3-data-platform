@@ -9,20 +9,15 @@ vi.mock('@v2/api/semantic', () => ({
   addCubeToDomain: vi.fn(),
   compileDsl: vi.fn(),
   acceptSemanticModelingCopilotCubeDraft: vi.fn(),
-  applySemanticModelingProposal: vi.fn(),
-  approveSemanticModelingProposal: vi.fn(),
-  closeSemanticModelingProposal: vi.fn(),
   confirmSemanticModelingCopilotAssumption: vi.fn(),
   createCube: vi.fn(),
   createDomain: vi.fn(),
   createSemanticModelingCopilotSession: vi.fn(),
-  createSemanticModelingProposal: vi.fn(),
   deprecateCube: vi.fn(),
   deleteSemanticModelingCopilotSession: vi.fn(),
   describeCube: vi.fn(),
   describeDomain: vi.fn(),
   describeView: vi.fn(),
-  draftSemanticModelingProposal: vi.fn(),
   draftCubeFromSource: vi.fn(),
   getDomainCanvas: vi.fn(),
   previewDomainContext: vi.fn(),
@@ -31,8 +26,6 @@ vi.mock('@v2/api/semantic', () => ({
   getSemanticGraph: vi.fn(),
   getSemanticModelingCopilotReview: vi.fn(),
   getSemanticModelingCopilotSession: vi.fn(),
-  getSemanticModelingProposal: vi.fn(),
-  getSemanticModelingProposalGapView: vi.fn(),
   getViewMaterializeRuns: vi.fn(),
   listCatalogs: vi.fn(),
   listCubes: vi.fn(),
@@ -43,7 +36,6 @@ vi.mock('@v2/api/semantic', () => ({
   patchSemanticModelingCopilotSpec: vi.fn(),
   publishDomain: vi.fn(),
   publishSemanticModelingCopilotProposal: vi.fn(),
-  publishSemanticModelingProposal: vi.fn(),
   previewSemanticModelingCopilotRelease: vi.fn(),
   previewSemanticModelingCopilotSandbox: vi.fn(),
   readSemanticFile: vi.fn(),
@@ -51,9 +43,10 @@ vi.mock('@v2/api/semantic', () => ({
   saveSemanticModelingCopilotProposal: vi.fn(),
   schemaSyncCube: vi.fn(),
   sendSemanticModelingCopilotMessage: vi.fn(),
+  startSemanticModelingCopilotRepairRun: vi.fn(),
+  startSemanticModelingCopilotReviewRun: vi.fn(),
   updateCube: vi.fn(),
   updateDomain: vi.fn(),
-  validateSemanticModelingProposal: vi.fn(),
   validateCubeFields: vi.fn(),
   validateSemanticFile: vi.fn(),
   writeSemanticFile: vi.fn(),
@@ -88,15 +81,6 @@ import {
   useAddCubeToDomain,
   useCompileDsl,
   useSemanticFile,
-  useSemanticModelingProposal,
-  useSemanticModelingProposalGapView,
-  useCreateSemanticModelingProposal,
-  useDraftSemanticModelingProposal,
-  useValidateSemanticModelingProposal,
-  useApproveSemanticModelingProposal,
-  useApplySemanticModelingProposal,
-  usePublishSemanticModelingProposal,
-  useCloseSemanticModelingProposal,
   useSemanticModelingCopilotSession,
   useSemanticModelingCopilotReview,
   useCreateSemanticModelingCopilotSession,
@@ -159,7 +143,9 @@ describe('semantic - cube mutations', () => {
     await act(async () => {
       await result.current.mutateAsync({ name: 'c' } as never)
     })
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['semantic'] })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['semantic', 'cube-detail', 'c'] })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['semantic', 'cube-list'] })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['semantic', 'graph'] })
   })
 
   it('useCreateCube handles missing name (unknown)', async () => {
@@ -385,9 +371,9 @@ describe('semantic - misc', () => {
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useCompileDsl(), { wrapper })
     await act(async () => {
-      await result.current.mutateAsync('dsl')
+      await result.current.mutateAsync({ measures: ['orders.total_count'] })
     })
-    expect(api.compileDsl).toHaveBeenCalledWith('dsl')
+    expect(api.compileDsl).toHaveBeenCalledWith({ measures: ['orders.total_count'] })
   })
 
   it('useSemanticFile gated', async () => {
@@ -444,80 +430,6 @@ describe('semantic - misc', () => {
     const { wrapper } = makeWrapper()
     const { result } = renderHook(() => useSemanticGraph(), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-  })
-})
-
-describe('semantic - modeling proposals', () => {
-  it('proposal queries gate on proposal id', async () => {
-    ok(api.getSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
-    ok(api.getSemanticModelingProposalGapView as ReturnType<typeof vi.fn>, { id: 'p1' })
-    const { wrapper } = makeWrapper()
-
-    renderHook(() => useSemanticModelingProposal(undefined), { wrapper })
-    renderHook(() => useSemanticModelingProposalGapView(undefined), { wrapper })
-    expect(api.getSemanticModelingProposal).not.toHaveBeenCalled()
-    expect(api.getSemanticModelingProposalGapView).not.toHaveBeenCalled()
-
-    const proposal = renderHook(() => useSemanticModelingProposal('p1'), { wrapper })
-    const gapView = renderHook(() => useSemanticModelingProposalGapView('p1'), { wrapper })
-    await waitFor(() => expect(proposal.result.current.isSuccess).toBe(true))
-    await waitFor(() => expect(gapView.result.current.isSuccess).toBe(true))
-  })
-
-  it('proposal mutations call API and invalidate semantic cache', async () => {
-    ok(api.createSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
-    ok(api.draftSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
-    ok(api.validateSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
-    ok(api.approveSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
-    ok(api.applySemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
-    ok(api.publishSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
-    ok(api.closeSemanticModelingProposal as ReturnType<typeof vi.fn>, { id: 'p1' })
-    const { qc, wrapper } = makeWrapper()
-    const spy = vi.spyOn(qc, 'invalidateQueries')
-
-    const create = renderHook(() => useCreateSemanticModelingProposal(), { wrapper })
-    await act(async () => {
-      await create.result.current.mutateAsync({ table: 'dwd_student_comment_events' } as never)
-    })
-
-    const draft = renderHook(() => useDraftSemanticModelingProposal(), { wrapper })
-    await act(async () => {
-      await draft.result.current.mutateAsync('p1')
-    })
-
-    const validate = renderHook(() => useValidateSemanticModelingProposal(), { wrapper })
-    await act(async () => {
-      await validate.result.current.mutateAsync('p1')
-    })
-
-    const approve = renderHook(() => useApproveSemanticModelingProposal(), { wrapper })
-    await act(async () => {
-      await approve.result.current.mutateAsync({ proposalId: 'p1', comment: 'ok' })
-    })
-
-    const apply = renderHook(() => useApplySemanticModelingProposal(), { wrapper })
-    await act(async () => {
-      await apply.result.current.mutateAsync('p1')
-    })
-
-    const publish = renderHook(() => usePublishSemanticModelingProposal(), { wrapper })
-    await act(async () => {
-      await publish.result.current.mutateAsync({ proposalId: 'p1', publishTargets: { cube: true } })
-    })
-
-    const close = renderHook(() => useCloseSemanticModelingProposal(), { wrapper })
-    await act(async () => {
-      await close.result.current.mutateAsync({ proposalId: 'p1', closeReason: 'abandoned', comment: 'later' })
-    })
-
-    expect(api.createSemanticModelingProposal).toHaveBeenCalledWith({ table: 'dwd_student_comment_events' })
-    expect(api.draftSemanticModelingProposal).toHaveBeenCalledWith('p1')
-    expect(api.validateSemanticModelingProposal).toHaveBeenCalledWith('p1')
-    expect(api.approveSemanticModelingProposal).toHaveBeenCalledWith('p1', { comment: 'ok' })
-    expect(api.applySemanticModelingProposal).toHaveBeenCalledWith('p1')
-    expect(api.publishSemanticModelingProposal).toHaveBeenCalledWith('p1', { publish_targets: { cube: true } })
-    expect(api.closeSemanticModelingProposal).toHaveBeenCalledWith('p1', { comment: 'later', close_reason: 'abandoned' })
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['semantic'] })
   })
 })
 

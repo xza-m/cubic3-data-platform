@@ -1,13 +1,12 @@
 // frontend/src/v2/i18n/index.ts
-// 极简 i18n 实现。
+// 极简 i18n 实现 —— 中文单语言。
 //
-// 设计约束（§03 §6.2）：
-// - 本期不做完整翻译，但所有用户可见字符串走 t(key, fallback?)
+// 设计约束：
+// - 产品收敛为中文单语言；不维护 en.json，也没有运行时语言切换
+// - 所有用户可见字符串仍走 t(key, fallback?)，保留键值层以统一文案治理
 // - 默认查 zh.json，找不到回退到 fallback，再回退到 key 本身
-// - vars 支持 {name} 模板替换
-// - 时间/数字格式化用 Intl，不在此处处理
-//
-// TODO(round-2): 接入完整 i18n（react-i18next 或等价方案），当前仅为 ADR 占位
+// - 静态 key 必须存在于 zh.json（scripts/i18n-keys-check.mjs 在 make lint 中校验）
+// - vars 支持 {name} 模板替换；时间/数字格式化用 Intl，不在此处处理
 import zhDict from './zh.json'
 
 type Dict = Record<string, string>

@@ -1,6 +1,6 @@
 // frontend/src/v2/pages/data/ExtractionTasks.tsx
 //
-// 提取任务列表（L0）。行点击 → 右侧 ContextPanel；"打开详情" → L3 ExtractionTaskDetail。
+// 同步任务列表（L0）。行点击 → 右侧 ContextPanel；"打开详情" → L3 ExtractionTaskDetail。
 // 对接 GET /api/v1/extraction/tasks
 // drop-frontend: owner / source(string) / target(string) / schedule(string) / rows_synced
 //   / next_run_at — 后端无设计 see plan §3.4
@@ -27,6 +27,7 @@ import {
 } from './_shared/extraction-task-detail-content'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
+import { DataCenterSyncTabs } from './_shared/data-center-nav'
 
 import { useAppShell } from '@v2/layout/AppShell'
 
@@ -84,7 +85,8 @@ export default function ExtractionTasks() {
   useEffect(() => {
     setBreadcrumbs([
       t('extractionTasks.breadcrumb.data', '数据'),
-      t('extractionTasks.breadcrumb.tasks', '提取任务'),
+      t('extractionTasks.breadcrumb.center', '数据中心'),
+      t('extractionTasks.breadcrumb.tasks', '同步任务'),
     ])
   }, [setBreadcrumbs])
 
@@ -95,7 +97,7 @@ export default function ExtractionTasks() {
           value={keyword}
           onChange={setKeyword}
           placeholder={t('extractionTasks.search.placeholder', '搜索任务名…')}
-          ariaLabel={t('extractionTasks.search.aria', '搜索提取任务')}
+          ariaLabel={t('extractionTasks.search.aria', '搜索同步任务')}
           width={180}
         />
         <ToolbarSelect
@@ -115,11 +117,11 @@ export default function ExtractionTasks() {
         <RefreshButton
           onClick={() => refetch()}
           loading={isFetching}
-          ariaLabel={t('extractionTasks.action.refreshList', '刷新提取任务')}
+          ariaLabel={t('extractionTasks.action.refreshList', '刷新同步任务')}
         />
         <CreateButton
           label={t('extractionTasks.action.create', '新建任务')}
-          onClick={() => navigate('/extraction/tasks/new')}
+          onClick={() => navigate('/data-center/sync/tasks/new')}
         />
       </Toolbar>,
     )
@@ -136,10 +138,10 @@ export default function ExtractionTasks() {
       openTab({
         id: `extraction-task:${row.id}`,
         label: taskTabLabel(row),
-        to: `/extraction/tasks/${row.id}`,
+        to: `/data-center/sync/tasks/${row.id}`,
         closeable: true,
       })
-      navigate(`/extraction/tasks/${row.id}`)
+      navigate(`/data-center/sync/tasks/${row.id}`)
     },
     [navigate, openTab],
   )
@@ -182,7 +184,7 @@ export default function ExtractionTasks() {
             {selectedRow.task_name}
           </div>
         ),
-        subtitle: t('extractionTasks.context.selected', '选中任务'),
+        subtitle: t('extractionTasks.context.selected', '选中同步任务'),
         body: (
           <div className="space-y-3">
             <div className="border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
@@ -215,7 +217,9 @@ export default function ExtractionTasks() {
   }, [executePendingId, handleExecute, openInTab, selectedRow, setContextPanel])
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden">
+    <>
+      <DataCenterSyncTabs />
+      <div className="relative flex flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b px-4 py-2" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
           {data ? `${rows.length} / ${data.total}` : '—'}
@@ -227,7 +231,7 @@ export default function ExtractionTasks() {
           <RetryState
             message={error instanceof Error ? error.message : t('extractionTasks.state.loadFailed', '加载失败')}
             onRetry={() => refetch()}
-            retryAriaLabel={t('extractionTasks.action.retry', '重试加载提取任务')}
+            retryAriaLabel={t('extractionTasks.action.retry', '重试加载同步任务')}
           />
         ) : rows.length === 0 ? (
           <EmptyState />
@@ -240,7 +244,8 @@ export default function ExtractionTasks() {
         )}
 
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -328,7 +333,7 @@ function EmptyState() {
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <Workflow size={20} style={{ color: 'var(--text-3)' }} />
       <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-        {t('extractionTasks.state.empty', '暂无提取任务')}
+        {t('extractionTasks.state.empty', '暂无同步任务')}
       </p>
     </div>
   )

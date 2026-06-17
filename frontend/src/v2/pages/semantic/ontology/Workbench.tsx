@@ -100,7 +100,7 @@ export default function OntologyWorkbench() {
 
       {/* 对象列表 */}
       {objectsQuery.isLoading ? (
-        <div className="py-8 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+        <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
       ) : objectsQuery.isError ? (
         <Card>
           <CardBody className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</CardBody>
@@ -153,7 +153,7 @@ function AgentPreviewPanel({
         }
         actions={
           <Button size="sm" variant="primary" onClick={onRun} disabled={isPending || !question.trim()}>
-            <Play size={12} /> {isPending ? t('loading', '加载中…') : t('ontology.agentPreview.run', '预演')}
+            <Play size={12} /> {isPending ? t('common.loading', '加载中…') : t('ontology.agentPreview.run', '预演')}
           </Button>
         }
       />

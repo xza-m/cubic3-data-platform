@@ -14,6 +14,9 @@ export interface ConversationMessage {
   query_result: unknown
   visualization_config: unknown
   error: string | null
+  /** Phase 5 可信标注：semantic | agent | legacy_llm（历史消息可能为 null） */
+  source?: 'semantic' | 'agent' | 'legacy_llm' | string | null
+  via_semantic_layer?: boolean | null
   created_at: string | null
 }
 

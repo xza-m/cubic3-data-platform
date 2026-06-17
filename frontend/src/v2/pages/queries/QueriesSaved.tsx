@@ -17,6 +17,7 @@ import type { SavedQuery } from '@v2/api/queries'
 import { ActionIconButton } from '@v2/components/ActionIconButton'
 import { RetryState } from '@v2/components/LoadState'
 import { IdentityName } from '@v2/components/IdentityName'
+import { useConfirm } from '@v2/components/ui'
 import { SavedQueryDetailContent } from './_shared/saved-query-content'
 import { openQueryWorkbenchWithPrefill } from './_shared/workbench-prefill'
 import { t } from '@v2/i18n'
@@ -38,6 +39,7 @@ function openSavedQueryInWorkbench(row: SavedQuery, navigate: NavigateFunction) 
 
 export default function QueriesSaved() {
   const navigate = useNavigate()
+  const confirm = useConfirm()
 
   const [search, setSearch] = useState('')
   const [isFavorite, setIsFavorite] = useState(false)
@@ -60,11 +62,12 @@ export default function QueriesSaved() {
 
   async function handleDelete(row: SavedQuery) {
     if (
-      !window.confirm(
-        t('queries.saved.confirm.delete', '删除查询「{name}」？此操作不可撤销。', {
+      !(await confirm({
+        title: t('queries.saved.confirm.delete', '删除查询「{name}」？此操作不可撤销。', {
           name: row.query_name,
         }),
-      )
+        tone: 'danger',
+      }))
     )
       return
     await deleteMut.mutateAsync(row.id)

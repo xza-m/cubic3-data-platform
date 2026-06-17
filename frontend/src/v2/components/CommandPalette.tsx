@@ -1,16 +1,13 @@
 // frontend/src/v2/components/CommandPalette.tsx
 //
 // P19: 全局搜索 + 键盘导航。
-// 搜索结果：客户端聚合 cubes / domains / metrics list 接口做 substring 过滤。
-// TODO(B-back-search): GET /api/v1/search?q=&types=cube,domain,metric 上线后
-//   替换 _useClientSearch 为真实 API hook。
+// 搜索结果：300ms 防抖后调用后端 GET /api/v1/search 聚合搜索（F8）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowRight, Command as CommandIcon, Database, Globe, Search as SearchIcon, TrendingUp, type LucideIcon } from 'lucide-react'
 import { Kbd } from '@v2/components/ui'
 import { NAV_MODULES, moduleHomePath, groupLabel } from '@v2/layout/navigation'
-import { useCubeList, useDomainList } from '@v2/hooks/semantic'
-import { useMetricList } from '@v2/hooks/ontology'
+import { useDebouncedValue, useGlobalSearch } from '@v2/hooks/search'
 import { t } from '@v2/i18n'
 
 interface PaletteItem {
@@ -22,64 +19,47 @@ interface PaletteItem {
   run: () => void
 }
 
-// ─── 客户端搜索 hook ──────────────────────────────────────────────────────────
-// TODO(B-back-search): 后端 /api/v1/search 上线后替换此 hook
+// ─── 后端搜索 hook（F8：300ms 防抖 + /api/v1/search）─────────────────────────
 
-function _useClientSearch(query: string, navigate: ReturnType<typeof useNavigate>, onClose: () => void): PaletteItem[] {
-  const cubeQuery = useCubeList({ page_size: 200 })
-  const domainQuery = useDomainList({ page_size: 200 })
-  const metricQuery = useMetricList()
-
-  const q = query.trim().toLowerCase()
+function _useBackendSearch(query: string, navigate: ReturnType<typeof useNavigate>, onClose: () => void): PaletteItem[] {
+  const debouncedQuery = useDebouncedValue(query.trim(), 300)
+  const searchQuery = useGlobalSearch(debouncedQuery)
 
   return useMemo(() => {
-    if (!q) return []
-    const results: PaletteItem[] = []
-
-    const cubes = cubeQuery.data?.cubes ?? []
-    for (const c of cubes) {
-      if (`${c.name} ${c.title ?? ''} ${c.description ?? ''}`.toLowerCase().includes(q)) {
-        results.push({
-          id: `cube:${c.name}`,
-          label: c.title || c.name,
-          hint: `Cube · ${c.name}`,
+    if (!debouncedQuery) return []
+    const items = searchQuery.data?.items ?? []
+    return items.map((item): PaletteItem => {
+      if (item.type === 'cube') {
+        return {
+          id: `cube:${item.name}`,
+          label: item.title || item.name,
+          hint: `Cube · ${item.name}`,
           icon: Database,
           group: t('palette.group.cube', 'Cube'),
-          run: () => { navigate(`/semantic/cubes/${c.name}`); onClose() },
-        })
+          run: () => { navigate(`/semantic/cubes/${item.name}`); onClose() },
+        }
       }
-    }
-
-    const domains = domainQuery.data?.domains ?? []
-    for (const d of domains) {
-      if (`${d.name} ${d.title ?? ''} ${d.description ?? ''}`.toLowerCase().includes(q)) {
-        results.push({
-          id: `domain:${d.name}`,
-          label: d.title || d.name,
-          hint: t('palette.domainHint', '业务上下文 · {name}', { name: d.name }),
+      if (item.type === 'domain') {
+        const domainId = item.id || item.name
+        return {
+          id: `domain:${domainId}`,
+          label: item.title || item.name,
+          hint: t('palette.domainHint', '业务上下文 · {name}', { name: item.name }),
           icon: Globe,
           group: t('palette.group.domain', '业务上下文'),
-          run: () => { navigate(`/semantic/domains/${d.id ?? d.name}`); onClose() },
-        })
+          run: () => { navigate(`/semantic/domains/${encodeURIComponent(domainId)}`); onClose() },
+        }
       }
-    }
-
-    const metrics = metricQuery.data?.items ?? []
-    for (const m of metrics) {
-      if (`${m.name} ${m.title ?? ''} ${m.object_name}`.toLowerCase().includes(q)) {
-        results.push({
-          id: `metric:${m.name}`,
-          label: m.title || m.name,
-          hint: t('palette.metricHint', '指标 · {obj}', { obj: m.object_name }),
-          icon: TrendingUp,
-          group: t('palette.group.metric', '指标'),
-          run: () => { navigate(`/semantic/ontology/objects/${m.object_name}`); onClose() },
-        })
+      return {
+        id: `metric:${item.name}`,
+        label: item.title || item.name,
+        hint: t('palette.metricHint', '指标 · {obj}', { obj: item.object_name ?? '' }),
+        icon: TrendingUp,
+        group: t('palette.group.metric', '指标'),
+        run: () => { navigate(`/semantic/ontology/objects/${item.object_name}`); onClose() },
       }
-    }
-
-    return results.slice(0, 20)
-  }, [q, cubeQuery.data, domainQuery.data, metricQuery.data, navigate, onClose])
+    })
+  }, [debouncedQuery, searchQuery.data, navigate, onClose])
 }
 
 interface CommandPaletteProps {
@@ -155,8 +135,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     return [...quick, ...fromNav]
   }, [navigate, stableOnClose])
 
-  // ── P19: 客户端语义搜索结果 ──
-  const searchResults = _useClientSearch(query, navigate, stableOnClose)
+  // ── P19/F8: 后端语义搜索结果（防抖）──
+  const searchResults = _useBackendSearch(query, navigate, stableOnClose)
 
   const allItems = useMemo<PaletteItem[]>(() => {
     const q = query.trim().toLowerCase()

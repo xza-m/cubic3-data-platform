@@ -83,11 +83,15 @@ export default function QueryVisual() {
 
   const handleRun = async () => {
     if (!dataset || dataset.source_id == null) {
-      alert(t('queryVisual.alert.noSource', '数据集未绑定数据源，无法执行'))
+      const msg = t('queryVisual.alert.noSource', '数据集未绑定数据源，无法执行')
+      setErrorMsg(msg)
+      toast.show({ tone: 'warning', title: msg })
       return
     }
     if (!dataset.physical_table) {
-      alert(t('queryVisual.alert.noTable', '数据集未绑定物理表，无法执行'))
+      const msg = t('queryVisual.alert.noTable', '数据集未绑定物理表，无法执行')
+      setErrorMsg(msg)
+      toast.show({ tone: 'warning', title: msg })
       return
     }
     setErrorMsg(null)

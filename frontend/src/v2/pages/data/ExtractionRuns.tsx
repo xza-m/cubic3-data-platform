@@ -1,6 +1,6 @@
 // frontend/src/v2/pages/data/ExtractionRuns.tsx
 //
-// 提取执行记录列表（L0）。行点击 → L2 Peek；Peek"打开详情" → L3 ExtractionRunDetail。
+// 同步记录列表（L0）。行点击 → L2 Peek；Peek"打开详情" → L3 ExtractionRunDetail。
 // 对接 GET /api/v1/extraction/runs
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -22,6 +22,7 @@ import { t } from '@v2/i18n'
 
 import { PeekPanel } from '@v2/components/PeekPanel'
 import { useAppShell } from '@v2/layout/AppShell'
+import { DataCenterSyncTabs } from './_shared/data-center-nav'
 
 function statusOptions() {
   return [
@@ -79,7 +80,8 @@ export default function ExtractionRuns() {
   useEffect(() => {
     setBreadcrumbs([
       t('extractionRuns.breadcrumb.data', '数据'),
-      t('extractionRuns.breadcrumb.runs', '执行记录'),
+      t('extractionRuns.breadcrumb.center', '数据中心'),
+      t('extractionRuns.breadcrumb.runs', '同步记录'),
     ])
   }, [setBreadcrumbs])
 
@@ -112,7 +114,7 @@ export default function ExtractionRuns() {
         <RefreshButton
           onClick={() => refetch()}
           loading={isFetching}
-          ariaLabel={t('extractionRuns.action.refresh', '刷新执行记录')}
+          ariaLabel={t('extractionRuns.action.refresh', '刷新同步记录')}
         />
       </div>,
     )
@@ -124,10 +126,10 @@ export default function ExtractionRuns() {
       title: (
         <div className="flex items-center gap-1.5">
           <Activity size={12} style={{ color: 'var(--text-3)' }} />
-          {t('extractionRuns.context.title', '执行记录')}
+          {t('extractionRuns.context.title', '同步记录')}
         </div>
       ),
-      subtitle: t('extractionRuns.context.subtitle', '查看最近抽取任务的执行状态'),
+      subtitle: t('extractionRuns.context.subtitle', '查看最近同步任务的执行状态'),
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
@@ -144,11 +146,11 @@ export default function ExtractionRuns() {
             <div className="mt-2 space-y-1.5 text-xs">
               <button
                 type="button"
-                onClick={() => navigate('/extraction/tasks')}
+                onClick={() => navigate('/data-center/sync/tasks')}
                 className="flex w-full rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
-                {t('extractionRuns.context.viewTasks', '查看任务列表')}
+                {t('extractionRuns.context.viewTasks', '查看同步任务')}
               </button>
             </div>
           </section>
@@ -168,10 +170,10 @@ export default function ExtractionRuns() {
       openTab({
         id: `extraction-run:${row.id}`,
         label: runTabLabel(row),
-        to: `/extraction/runs/${row.id}`,
+        to: `/data-center/sync/runs/${row.id}`,
         closeable: true,
       })
-      navigate(`/extraction/runs/${row.id}`)
+      navigate(`/data-center/sync/runs/${row.id}`)
     },
     [navigate, openTab],
   )
@@ -200,7 +202,9 @@ export default function ExtractionRuns() {
   )
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden">
+    <>
+      <DataCenterSyncTabs />
+      <div className="relative flex flex-1 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b px-4 py-2" style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}>
         <span className="text-[11px]" style={{ color: 'var(--text-3)' }}>
           {data ? `${rows.length} / ${data.total}` : '—'}
@@ -212,7 +216,7 @@ export default function ExtractionRuns() {
           <RetryState
             message={error instanceof Error ? error.message : t('extractionRuns.state.loadFailed', '加载失败')}
             onRetry={() => refetch()}
-            retryAriaLabel={t('extractionRuns.action.retry', '重试加载执行记录')}
+            retryAriaLabel={t('extractionRuns.action.retry', '重试加载同步记录')}
           />
         ) : rows.length === 0 ? (
           <EmptyState />
@@ -237,7 +241,7 @@ export default function ExtractionRuns() {
           {peekRow ? (
             <ExtractionRunDetailContent
               run={peekRow}
-              onJumpTask={() => navigate(`/extraction/tasks/${peekRow.task_id}`)}
+              onJumpTask={() => navigate(`/data-center/sync/tasks/${peekRow.task_id}`)}
               onRerunSuccess={(newRunId) => {
                 toast.show({
                   tone: 'success',
@@ -251,7 +255,8 @@ export default function ExtractionRuns() {
           ) : null}
         </PeekPanel>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
@@ -379,7 +384,7 @@ function EmptyState() {
     <div className="flex h-full flex-col items-center justify-center gap-2">
       <Activity size={20} style={{ color: 'var(--text-3)' }} />
       <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-        {t('extractionRuns.state.empty', '暂无执行记录')}
+        {t('extractionRuns.state.empty', '暂无同步记录')}
       </p>
     </div>
   )

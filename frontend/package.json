@@ -14,7 +14,7 @@
     "lint:css": "stylelint 'src/v2/**/*.css'",
     "check:v2-tokens": "node scripts/check-v2-tokens.mjs",
     "i18n:extract": "node scripts/i18n-extract.mjs",
-    "i18n:populate": "node scripts/i18n-populate.mjs",
+    "i18n:keys": "node scripts/i18n-keys-check.mjs",
     "i18n:coverage": "node scripts/i18n-coverage.mjs",
     "lint:all": "npm run lint && npm run lint:css && npm run check:v2-tokens",
     "test:unit": "vitest run",

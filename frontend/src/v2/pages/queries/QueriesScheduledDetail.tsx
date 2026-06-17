@@ -31,7 +31,7 @@ import {
 } from '@v2/hooks/queries'
 import { fmtDateTime, fmtNum, fmtRelative } from '@v2/lib/format'
 import { cronPresets, nextRuns, parseCron } from '@v2/lib/cron'
-import { Tabs, Tab, useToast } from '@v2/components/ui'
+import { Tabs, Tab, useToast, useConfirm } from '@v2/components/ui'
 import type { ScheduledQuery } from '@v2/api/queries'
 import { t } from '@v2/i18n'
 
@@ -42,6 +42,7 @@ export default function QueriesScheduledDetail() {
   const numericId = Number(id)
   const navigate = useNavigate()
   const toast = useToast()
+  const confirm = useConfirm()
 
   const [tab, setTab] = useState<TabKey>('overview')
   const [editing, setEditing] = useState(false)
@@ -101,13 +102,14 @@ export default function QueriesScheduledDetail() {
   async function handleDelete() {
     if (!row) return
     if (
-      !window.confirm(
-        t(
+      !(await confirm({
+        title: t(
           'queriesScheduledDetail.confirm.delete',
           '删除调度「{name}」？此操作将解除关联 APScheduler job。',
           { name: row.name },
         ),
-      )
+        tone: 'danger',
+      }))
     )
       return
     try {

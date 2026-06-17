@@ -26,6 +26,7 @@ import { RetryState } from '@v2/components/LoadState'
 import { useAppShell } from '@v2/layout/AppShell'
 import { useDashboardOverview } from '@v2/hooks/dashboard'
 import type { RecentQuery } from '@v2/api/dashboard'
+import { formatDatasetScaleSource, formatQueryHistorySource } from '@v2/lib/factSources'
 import { t } from '@v2/i18n'
 
 const formatNumber = (n: number | null | undefined): string => {
@@ -55,7 +56,7 @@ const learningModules = [
   },
   {
     title: '语义建模工作流',
-    subtitle: '用业务问题生成 Cube 与本体草稿，校验后发布给 Agent',
+    subtitle: '用业务问题生成 Cube 与本体草稿，校验后发布到语义中心，供 Agent / BI / 数据分析消费',
     href: '/tutorials/semantic-modeling.html',
     icon: Brain,
     level: '进阶',
@@ -176,11 +177,9 @@ export default function Dashboard() {
   const trends = data?.trends
   const health = data?.health
   const recent = data?.recent_queries ?? []
-  const datasetSourceLabel =
-    data?.sources?.dataset_total === 'datasets'
-      ? t('kpi.datasets.source.platform_dataset', '回退到平台 Dataset')
-      : t('kpi.datasets.source.data_assets', '资产事实层 · data_asset_tables')
-  const querySourceLabel = t('kpi.queries.source.interactive', '交互式查询 · query_histories')
+  const datasetSourceLabel = formatDatasetScaleSource(data?.sources?.dataset_total)
+  const querySourceLabel = formatQueryHistorySource(data?.sources?.today_query_count)
+  const recentQuerySourceLabel = formatQueryHistorySource(data?.sources?.recent_queries)
   const attentionItems: AttentionItem[] = [
     {
       label: t('dashboard.attention.datasource', '数据源健康'),
@@ -188,7 +187,7 @@ export default function Dashboard() {
       value: formatPercent(health?.datasource_connectivity),
       status: healthStatus(health?.datasource_connectivity),
       tone: healthTone(health?.datasource_connectivity),
-      href: '/data-center/datasources',
+      href: '/data-center/connections',
       icon: Database,
     },
     {
@@ -236,7 +235,7 @@ export default function Dashboard() {
                 {t('dashboard.heading', '语义优先的数据工作台')}
               </h1>
               <p className="mt-1 text-[12px] leading-5 text-2">
-                {t('dashboard.desc', '统一管理数据源、数据集、语义模型与对话式分析，实时掌握平台健康度与近期活动。')}
+                {t('dashboard.overview.desc', '统一管理数据源、平台数据集、数据资产事实源与语义模型，实时掌握平台健康度与近期活动。')}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -329,8 +328,8 @@ export default function Dashboard() {
                   {t('dashboard.quicklinks', '快捷入口')}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
-                  <QuickLink to="/data-center/datasources/new" icon={Database} label={t('quick.datasource', '新建数据源')} />
-                  <QuickLink to="/data-center/datasets/register" icon={Plus} label={t('quick.dataset', '登记数据集')} />
+                  <QuickLink to="/data-center/connections/new" icon={Database} label={t('quick.datasource', '新建连接')} />
+                  <QuickLink to="/data-center/assets/register" icon={Plus} label={t('quick.dataset', '登记数据资产')} />
                   <QuickLink to="/queries" icon={Search} label={t('quick.query', '编写查询')} />
                   <QuickLink to="/semantic/ontology" icon={Brain} label={t('quick.semantic', '维护本体')} />
                 </div>
@@ -343,7 +342,7 @@ export default function Dashboard() {
           <Card className="xl:col-span-2">
             <CardHead
               title={t('dashboard.recent.queries', '最近查询')}
-              extra={<span className="text-[11px] text-3">{t('dashboard.recent.source', '平台交互式查询 · query_histories')}</span>}
+              extra={<span className="text-[11px] text-3">{recentQuerySourceLabel}</span>}
             />
             <CardBody className="!p-0">
               {isLoading ? (

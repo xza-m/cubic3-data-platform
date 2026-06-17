@@ -1,6 +1,6 @@
 // frontend/tests/e2e-v2/p17-extraction-run-rerun.spec.ts
 //
-// Round 4 · R-001-P17d — 抽取 Run 重跑 + 日志面板 happy path.
+// Round 4 · R-001-P17d — 同步 Run 重跑 + 日志面板 happy path.
 //
 // Upstream changes that unblock this spec (all landed 2026-04-22):
 //   • R-001-P17a  `重跑` 按钮（列表行 / PeekPanel 内 / 详情页）
@@ -33,7 +33,7 @@ test.beforeEach(async ({ page }) => {
   await mockJsonRoute(page, /\/api\/v1\/extraction\/runs\/9002\/logs/, envelope({ items: [], total: 0, page: 1, page_size: 50 }))
 })
 
-test('P17 抽取 Run 日志可见 + 重跑 @p17', async ({ page }) => {
+test('P17 同步 Run 日志可见 + 重跑 @p17', async ({ page }) => {
   // ── Arrange: 重跑 POST 返回 9002 + 之后列表切到 2 条 ─────────────────────
   let rerunPostCount = 0
   await page.route('**/api/v1/extraction/runs/9001/rerun', async (route) => {
@@ -48,7 +48,7 @@ test('P17 抽取 Run 日志可见 + 重跑 @p17', async ({ page }) => {
   })
 
   // ── Act: 进入 runs 列表 ─────────────────────────────────────────────────
-  await gotoV2(page, '/extraction/runs')
+  await gotoV2(page, '/data-center/sync/runs')
 
   // 渲染 Run #9001 行 + 行内 `重跑` 按钮（对 failed 允许点击）
   const row9001 = page.getByText(/^#9001$/)
@@ -64,7 +64,7 @@ test('P17 抽取 Run 日志可见 + 重跑 @p17', async ({ page }) => {
 
   const logList = peek.getByTestId('run-logs')
   await expect(logList).toBeVisible()
-  await expect(logList.getByText('starting extraction')).toBeVisible()
+  await expect(logList.getByText('starting sync')).toBeVisible()
   await expect(logList.getByText('retry #1 due to timeout')).toBeVisible()
   await expect(logList.getByText('connection refused').first()).toBeVisible()
   await expect(logList.getByText('INFO', { exact: true })).toBeVisible()

@@ -1,6 +1,7 @@
 // frontend/src/v2/api/agent.ts
 //
-// Agent 编排域 API。正式入口固定 official Runtime，只返回规划、Binding 与治理材料，不直接执行查询。
+// Agent 编排域 API。正式入口固定 official Runtime，plan 返回规划 / Binding / 治理材料；
+// execute 在治理允许时提交 dw-query-gateway。
 
 import { apiClient } from '@v2/api/client'
 
@@ -41,3 +42,27 @@ export interface AgentSemanticPlanResponse {
 
 export const createAgentSemanticPlan = (body: AgentSemanticPlanRequest) =>
   post<AgentSemanticPlanResponse>('/agent/semantic/plan', body)
+
+export interface AgentSemanticExecuteRequest {
+  question: string
+  viewer_roles?: string[]
+  principal_context?: Record<string, unknown>
+  runtime_options?: Record<string, unknown>
+  idempotency_key?: string
+}
+
+export interface AgentSemanticExecuteResponse {
+  status: 'submitted' | 'blocked' | 'approval_required' | string
+  gateway_query_id?: string | number | null
+  gateway?: Record<string, unknown>
+  decision?: string | null
+  reason?: string | null
+  reason_code?: string | null
+  policy_decision?: Record<string, unknown>
+  ticket_preview?: Record<string, unknown>
+  semantic_trace?: Record<string, unknown>
+  plan?: AgentSemanticPlanResponse | Record<string, unknown>
+}
+
+export const executeAgentSemanticPlan = (body: AgentSemanticExecuteRequest) =>
+  post<AgentSemanticExecuteResponse>('/agent/semantic/execute', body)

@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { createApiClient } from './client'
+import axios, { AxiosError, type AxiosResponse } from 'axios'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { clearTokens, createApiClient, setTokenPair } from './client'
+
+beforeEach(() => {
+  clearTokens()
+  vi.restoreAllMocks()
+})
 
 describe('browser E2E fixture client', () => {
   it('serves modeling-copilot session APIs without a live backend', async () => {
@@ -28,5 +34,30 @@ describe('browser E2E fixture client', () => {
     expect(releasePreview.data.data.workbench_state.release_preview.target).toBe('semantic_center')
     expect(releasePreview.data.data.workbench_state.release_preview.compiled_sql).toBe('')
     expect(releasePreview.data.data.workbench_state.release_preview.gateway_validation.status).toBe('not_configured')
+  })
+})
+
+describe('api client token-pair refresh', () => {
+  it('does not refresh auth endpoints after 401', async () => {
+    const refreshSpy = vi.spyOn(axios, 'post')
+    const client = createApiClient('/api/v1')
+    window.history.pushState({}, '', '/login')
+    client.defaults.adapter = async (config) => {
+      const response = {
+        data: { code: 'INVALID_AUTHORIZATION_CODE', message: '授权码无效' },
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config,
+        request: {},
+      } as AxiosResponse
+      throw new AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, {}, response)
+    }
+    setTokenPair({ access_token: 'expired-access', refresh_token: 'refresh-token' })
+
+    await expect(client.post('/auth/feishu/exchange', { code: 'bad-code' })).rejects.toMatchObject({
+      httpStatus: 401,
+    })
+    expect(refreshSpy).not.toHaveBeenCalled()
   })
 })

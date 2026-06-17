@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bot, Loader2, MessageSquarePlus, Send, Sparkles } from 'lucide-react'
 import { useDatasets } from '@v2/hooks/datasets'
+import { useAgentSemanticExecute } from '@v2/hooks/agent'
 import {
   useConversation,
   useConversations,
@@ -13,6 +14,7 @@ import {
   useSendConversationMessage,
 } from '@v2/hooks/conversations'
 import type { Conversation, ConversationMessage } from '@v2/api/conversations'
+import type { AgentSemanticExecuteResponse } from '@v2/api/agent'
 import { Button, Card, CardBody, CardHead, Chip, Select, Textarea, useToast } from '@v2/components/ui'
 import { RefreshButton } from '@v2/components/CommonControls'
 import { useAppShell } from '@v2/layout/AppShell'
@@ -38,12 +40,14 @@ export default function DataChat() {
   const conversationsQ = useConversations(DEFAULT_CONVERSATION_PARAMS)
   const createConversationMut = useCreateConversation()
   const sendMessageMut = useSendConversationMessage()
+  const executeSemanticMut = useAgentSemanticExecute()
 
   const datasets = useMemo(() => datasetsQ.data?.items ?? [], [datasetsQ.data?.items])
   const conversations = useMemo(() => conversationsQ.data?.items ?? [], [conversationsQ.data?.items])
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null)
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
+  const [executeConversationId, setExecuteConversationId] = useState<number | null>(null)
 
   const activeConversationQ = useConversation(activeConversationId)
   const {
@@ -155,6 +159,51 @@ export default function DataChat() {
     }
   }
 
+  const handleExecuteSemanticPlan = useCallback(
+    async (plan: Record<string, unknown>) => {
+      const planQuestion = typeof plan.question === 'string' ? plan.question.trim() : ''
+      const question = planQuestion || activeConversation?.title?.trim() || ''
+      if (!question) {
+        toast.show({
+          tone: 'warning',
+          title: t('dataChat.execute.noQuestion', '缺少可执行问题'),
+        })
+        return
+      }
+      const planId = typeof plan.semantic_plan_id === 'string' ? plan.semantic_plan_id : question
+      try {
+        setExecuteConversationId(activeConversationId)
+        const result = await executeSemanticMut.mutateAsync({
+          question,
+          runtime_options: { source: 'data_chat' },
+          idempotency_key: ['data-chat', activeConversationId ?? 'draft', planId].join(':').slice(0, 180),
+        })
+        if (result.status === 'submitted') {
+          toast.show({
+            tone: 'success',
+            title: t('dataChat.execute.submitted', '已提交正式执行'),
+            description: result.gateway_query_id
+              ? t('dataChat.execute.gatewayQuery', 'Gateway Query ID：{id}', { id: String(result.gateway_query_id) })
+              : undefined,
+          })
+        } else {
+          toast.show({
+            tone: 'warning',
+            title: t('dataChat.execute.blocked', '执行未提交'),
+            description: result.reason ?? result.decision ?? result.status,
+          })
+        }
+      } catch (err) {
+        toast.show({
+          tone: 'danger',
+          title: t('dataChat.execute.failed', '执行提交失败'),
+          description: err instanceof Error ? err.message : String(err),
+        })
+      }
+    },
+    [activeConversation?.title, activeConversationId, executeSemanticMut, toast],
+  )
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden" data-testid="v2-data-chat">
       <div
@@ -249,6 +298,12 @@ export default function DataChat() {
                   extra={<Chip tone="accent">{t('dataChat.api', 'conversations')}</Chip>}
                 />
                 <CardBody className="space-y-3">
+                  <SemanticPlanTrace
+                    context={activeConversationData?.context}
+                    executeResult={executeConversationId === activeConversationId ? executeSemanticMut.data ?? null : null}
+                    executing={executeSemanticMut.isPending}
+                    onExecute={handleExecuteSemanticPlan}
+                  />
                   {messages.length > 0 ? (
                     messages.map((message) => <MessageBubble key={message.id} message={message} />)
                   ) : (
@@ -328,11 +383,110 @@ function ConversationButton({
   )
 }
 
+/** 最近一次语义路由 trace 摘要（conversation.context.semantic_plan） */
+function SemanticPlanTrace({
+  context,
+  executeResult,
+  executing,
+  onExecute,
+}: {
+  context?: Record<string, unknown> | null
+  executeResult?: AgentSemanticExecuteResponse | null
+  executing?: boolean
+  onExecute?: (plan: Record<string, unknown>) => void
+}) {
+  const plan = (context as { semantic_plan?: Record<string, unknown> } | null | undefined)?.semantic_plan
+  if (!plan) return null
+  const route = (plan.route ?? {}) as Record<string, unknown>
+  const primary = (plan.primary_traceability ?? {}) as Record<string, unknown>
+  const metric = (primary.business_metric ?? {}) as Record<string, unknown>
+  const measure = (primary.analysis_measure ?? {}) as Record<string, unknown>
+  const decision = decisionLabel((plan.policy_decision ?? {}) as Record<string, unknown>)
+  const parts: string[] = []
+  if (typeof route.route_type === 'string') {
+    parts.push(t('dataChat.trace.routeValue', '路由：{value}', { value: route.route_type }))
+  }
+  const metricTitle = metric.title ?? metric.name
+  if (typeof metricTitle === 'string') {
+    parts.push(t('dataChat.trace.metricValue', '指标：{value}', { value: metricTitle }))
+  }
+  if (typeof measure.cube_name === 'string') {
+    parts.push(t('dataChat.trace.cubeValue', '分析实体：{value}', { value: measure.cube_name }))
+  }
+  if (decision) {
+    parts.push(t('dataChat.trace.decisionValue', '治理：{value}', { value: decision }))
+  }
+  const canSubmit = typeof onExecute === 'function'
+  if (parts.length === 0 && !canSubmit) return null
+  return (
+    <div
+      className="rounded border px-3 py-2 text-[11px] text-3"
+      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+      data-testid="semantic-plan-trace"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span>
+          {t('dataChat.trace.title', '语义路由 trace')}
+          {parts.length > 0 ? ` · ${parts.join(' · ')}` : ''}
+        </span>
+        {canSubmit ? (
+          <Button size="sm" variant="ghost" disabled={executing} onClick={() => onExecute(plan)}>
+            {executing ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            {t('dataChat.execute.action', '提交执行')}
+          </Button>
+        ) : null}
+      </div>
+      {executeResult ? <SemanticExecuteResult result={executeResult} /> : null}
+    </div>
+  )
+}
+
+function decisionLabel(policyDecision: Record<string, unknown>): string | null {
+  const raw = policyDecision.decision ?? policyDecision.effect
+  return typeof raw === 'string' && raw ? raw : null
+}
+
+function SemanticExecuteResult({ result }: { result: AgentSemanticExecuteResponse }) {
+  const submitted = result.status === 'submitted'
+  return (
+    <div className="mt-2 rounded border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip tone={submitted ? 'success' : 'warning'}>
+          {submitted ? t('dataChat.execute.statusSubmitted', '已提交') : t('dataChat.execute.statusBlocked', '未提交')}
+        </Chip>
+        <span className="text-3">
+          {submitted && result.gateway_query_id
+            ? t('dataChat.execute.gatewayQuery', 'Gateway Query ID：{id}', { id: String(result.gateway_query_id) })
+            : result.reason ?? result.decision ?? result.status}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/** Phase 5 可信标注：把后端 source 字段映射为来源徽标 */
+function sourceBadge(source: string | null | undefined): { label: string; tone: 'success' | 'accent' | 'warning' } | null {
+  switch (source) {
+    case 'semantic':
+      return { label: t('dataChat.source.semantic', '语义层'), tone: 'success' }
+    case 'agent':
+      return { label: t('dataChat.source.agent', 'Agent'), tone: 'accent' }
+    case 'legacy_llm':
+      return { label: t('dataChat.source.legacy', '直连 LLM · 未验证'), tone: 'warning' }
+    default:
+      return null
+  }
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
+  const badge = message.role === 'assistant' ? sourceBadge(message.source) : null
   return (
     <div className="rounded border px-4 py-3" style={{ borderColor: 'var(--border)' }}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <Chip tone={messageTone(message.role)}>{message.role === 'user' ? 'User' : 'Assistant'}</Chip>
+        <div className="flex items-center gap-1.5">
+          <Chip tone={messageTone(message.role)}>{message.role === 'user' ? 'User' : 'Assistant'}</Chip>
+          {badge ? <Chip tone={badge.tone}>{badge.label}</Chip> : null}
+        </div>
         <span className="text-[11px] text-3">{fmtDateTime(message.created_at)}</span>
       </div>
       <div className="whitespace-pre-wrap text-sm leading-6 text-1">{message.content}</div>

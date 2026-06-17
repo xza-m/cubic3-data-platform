@@ -4,9 +4,9 @@
 //
 // 触发背景：2026-04-22 人工验证发现 5 个基础功能问题（见会话记录）：
 //   - 总览数据空（res.data vs res.data.data）
-//   - 数据源 /new 被 :id 吃掉 → 空白页 + 非法 ID
-//   - 数据集 /new 进空白 + SQL 列过长
-//   - 提取任务 /new 不可达
+//   - 连接 /new 被 :id 吃掉 → 空白页 + 非法 ID
+//   - 资产登记页进空白 + SQL 列过长
+//   - 同步任务 /new 不可达
 //   - 查询中心 t.find is not a function（React Query cache key 冲突 + API 前缀错）
 //
 // 这些都属于"组件内部逻辑对但装配层有缝"的一类 bug，单测不易覆盖。
@@ -22,6 +22,7 @@ import {
   prepareV2Page,
 } from '../helpers'
 import dsFx from '../fixtures/datasources.json' with { type: 'json' }
+import dsetFx from '../fixtures/datasets.json' with { type: 'json' }
 import prefFx from '../fixtures/preferences.json' with { type: 'json' }
 
 // Dashboard 直接消费 res.data.data（backend envelope 解包后的真实 payload）。
@@ -62,53 +63,116 @@ test('R01 /dashboard KPI 渲染真实数字（res.data.data 对齐）@smoke', as
   await expect(page.getByText('137').first()).toBeVisible()
 })
 
-// ── R02  /data-center/datasources/new 可达且渲染表单（不被 :id 捕获）──────────
-test('R02 /data-center/datasources/new 表单可达 @smoke', async ({ page }) => {
+// ── R02  /data-center/connections/new 可达且渲染表单（不被 :id 捕获）──────────
+test('R02 /data-center/connections/new 表单可达 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources/types', envelope(dsFx.types))
 
-  await gotoV2(page, '/data-center/datasources/new')
+  await gotoV2(page, '/data-center/connections/new')
 
-  // 若 :id 误吃了 new，会触发 "非法数据源 ID" 的错误态，看不到创建表单标题。
-  await expect(page.getByRole('heading', { name: /新建数据源/ })).toBeVisible()
+  // 若 :id 误吃了 new，会触发 "非法连接 ID" 的错误态，看不到创建表单标题。
+  await expect(page.getByRole('heading', { name: /新建连接/ })).toBeVisible()
 })
 
-// ── R03  /data-center/datasets/register 可达 + /new → /register 兼容跳转 ─────
-test('R03 /data-center/datasets/register 注册表单可达 @smoke', async ({ page }) => {
+// ── R02b /data-center/connections/new MaxCompute 提交映射 ───────────────────
+test('R02b /data-center/connections/new 提交 MaxCompute 创建请求 @smoke', async ({ page }) => {
+  await prepareV2Page(page)
+  await installApiCatchAll(page)
+  await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(
+    page,
+    '**/api/v1/data-center/datasources/types',
+    envelope([
+      { type: 'postgresql', display_name: 'PostgreSQL', description: 'PostgreSQL 连接' },
+      { type: 'maxcompute', display_name: 'MaxCompute', description: 'MaxCompute 连接' },
+    ]),
+  )
+
+  let submittedPayload: unknown = null
+  await page.route('**/api/v1/data-center/datasources', async (route) => {
+    expect(route.request().method()).toBe('POST')
+    submittedPayload = route.request().postDataJSON()
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        envelope({
+          id: 99,
+          name: 'prod-maxcompute',
+          source_type: 'maxcompute',
+          description: '生产算法数仓',
+          connection_config: {
+            endpoint: 'https://service.local/api',
+            project: 'df_ci',
+            access_id: 'dum*********_id',
+            access_key: 'dum*********key',
+          },
+          extra_config: { catalog_sync: { status: 'pending' } },
+          is_active: true,
+          connection_status: 'unknown',
+          created_by: 'feishu:tenant:on_ci',
+          created_at: '2026-06-09T10:00:00+08:00',
+          updated_at: '2026-06-09T10:00:00+08:00',
+        }),
+      ),
+    })
+  })
+
+  await gotoV2(page, '/data-center/connections/new')
+  await page.locator('input[placeholder="如 prod-maxcompute"]').fill('prod-maxcompute')
+  await page.locator('select').selectOption('maxcompute')
+  await page.locator('input[placeholder="可选"]').fill('生产算法数仓')
+  await page.locator('input[placeholder="endpoint"]').fill('https://service.local/api')
+  await page.locator('input[placeholder="project"]').fill('df_ci')
+  await page.locator('input[placeholder="access_id"]').fill('dummy_access_id')
+  await page.locator('input[placeholder="access_key"]').fill('dummy_access_key')
+  await page.getByRole('button', { name: '创建连接' }).click()
+
+  expect(submittedPayload).toMatchObject({
+    name: 'prod-maxcompute',
+    source_type: 'maxcompute',
+    description: '生产算法数仓',
+    connection_config: {
+      endpoint: 'https://service.local/api',
+      project: 'df_ci',
+      access_id: 'dummy_access_id',
+      access_key: 'dummy_access_key',
+    },
+  })
+  await expect(page.getByText('连接创建成功')).toBeVisible()
+})
+
+// ── R03  /data-center/assets/register 可达 ────────────────────────────────
+test('R03 /data-center/assets/register 资产登记表单可达 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
   await mockJsonRoute(page, '**/api/v1/data-center/datasources', envelope(dsFx.list))
 
-  // 注册页先渲染一个 mode 选择器（库表 / 文件），这就足以证明路由没被 :id 吃掉、
+  // 资产登记页先渲染一个 mode 选择器（库表 / 文件），这就足以证明路由没被 :id 吃掉、
   // 组件正常挂载。后续步骤属于业务流，交给 p03 专项覆盖。
-  await gotoV2(page, '/data-center/datasets/register')
-  await expect(page.getByText(/从已接入的库表注册/).first()).toBeVisible()
-  await expect(page.getByText(/从文件上传注册/).first()).toBeVisible()
-
-  // Legacy 兼容：/datasets/new 应 redirect 到 /register。
-  await gotoV2(page, '/data-center/datasets/new')
-  await page.waitForURL(/\/data-center\/datasets\/register/, { timeout: 5000 })
-  await expect(page.getByText(/从已接入的库表注册/).first()).toBeVisible()
+  await gotoV2(page, '/data-center/assets/register')
+  await expect(page.getByText(/从已接入的库表登记/).first()).toBeVisible()
+  await expect(page.getByText(/从文件上传登记/).first()).toBeVisible()
 })
 
-// ── R04  /extraction/tasks/new 可达（提取任务新建入口）──────────────────────
-test('R04 /extraction/tasks/new 提取任务表单可达 @smoke', async ({ page }) => {
+// ── R04  /data-center/sync/tasks/new 可达（同步任务新建入口）────────────────
+test('R04 /data-center/sync/tasks/new 同步任务表单可达 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
 
-  await gotoV2(page, '/extraction/tasks/new')
+  await gotoV2(page, '/data-center/sync/tasks/new')
 
-  await expect(page.getByText('新建提取任务').first()).toBeVisible()
+  await expect(page.getByText('新建同步任务').first()).toBeVisible()
 })
 
 // ── R05  /queries 查询中心不崩溃（t.find 回归防线）──────────────────────────
 //
-// 关键点：同一浏览器上下文里先访问 /data-center/datasources（让 useDatasources
+// 关键点：同一浏览器上下文里先访问 /data-center/connections（让 useDatasources
 // 以分页对象形状落入 react-query 缓存），再跳到 /queries（useDatasourcesForConsole
 // 期望数组形状）。修复后两者的 cache key 应该是独立的，不应出现
 // "sources.data.find is not a function" 报错。
@@ -130,6 +194,7 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
   }))
   // 列表分页形状（useDatasources 用）
   await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
+  await mockJsonRoute(page, '**/api/v1/data-center/datasets?**', envelope(dsetFx.list))
   // QueryConsole 用同一路径但以 source_type 简表形式返回数组
   await mockJsonRoute(
     page,
@@ -187,7 +252,7 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
   page.on('pageerror', (err) => errors.push(err.message))
 
   // 先经过列表（触发 useDatasources 落 cache）。
-  await gotoV2(page, '/data-center/datasources')
+  await gotoV2(page, '/data-center/connections')
   await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
 
   // 再进 QueryConsole。若 cache key 冲突，这里会 t.find is not a function。
@@ -212,11 +277,11 @@ test('R05 /queries QueryConsole 不报 t.find @smoke', async ({ page }) => {
   expect(fatal, `pageerror:\n${errors.join('\n')}`).toEqual([])
 })
 
-// ── R06  /data-center/datasets 虚拟表行显示"查看 SQL"按钮 ─────────────────
+// ── R06  /data-center/assets 虚拟表行不直接铺开 SQL 全文 ─────────────────
 //
-// 修复前：虚拟表行直接把完整 SQL 文本铺在列里。修复后应显示一个可点的
-// "查看 SQL" 按钮，点击后弹出 SqlViewerDialog。
-test('R06 /data-center/datasets 虚拟表行显示查看 SQL 按钮 @smoke', async ({ page }) => {
+// 修复前：虚拟表行直接把完整 SQL 文本铺在列里。正式 IA 下资产目录只展示资产摘要，
+// SQL 预览进入详情/专用面板，不在列表列中展开。
+test('R06 /data-center/assets 虚拟表行不直接铺开 SQL 全文 @smoke', async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
@@ -250,14 +315,13 @@ test('R06 /data-center/datasets 虚拟表行显示查看 SQL 按钮 @smoke', asy
       total_pages: 1,
     }),
   )
+  await mockJsonRoute(page, '**/api/v1/data-center/datasources?**', envelope(dsFx.list))
+  await mockJsonRoute(page, '**/api/v1/data-center/datasources', envelope(dsFx.list))
 
-  await gotoV2(page, '/data-center/datasets')
+  await gotoV2(page, '/data-center/assets')
 
   await expect(page.getByText('virtual_kpi_view').first()).toBeVisible()
-  // 查看 SQL 按钮可见且可点（不直接展示 SQL 全文）。
-  const viewSqlBtn = page.getByRole('button', { name: /查看\s*SQL/ }).first()
-  await expect(viewSqlBtn).toBeVisible()
-  await expect(viewSqlBtn).toBeEnabled()
+  await expect(page.getByText(/SELECT order_id, SUM\(amount\)/)).toHaveCount(0)
 })
 
 // ── R07  /config/channels/new 可达（静态 new 不被 :id 捕获）────────────────

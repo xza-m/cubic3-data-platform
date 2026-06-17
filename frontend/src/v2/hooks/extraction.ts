@@ -1,6 +1,6 @@
 // frontend/src/v2/hooks/extraction.ts
 //
-// 提取任务 & 执行记录 react-query hooks。
+// 同步任务 & 同步记录 react-query hooks。
 // query key 规范：
 //   ['extraction-tasks', 'list', params]
 //   ['extraction-runs', 'list', params]
@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { qk } from './query-client'
 import * as api from '@v2/api/extraction'
 
-// ── 提取任务查询 ──────────────────────────────────────────────────────────────
+// ── 同步任务查询 ──────────────────────────────────────────────────────────────
 
 export function useExtractionTasks(params?: api.ListTasksParams) {
   return useQuery({
@@ -19,7 +19,7 @@ export function useExtractionTasks(params?: api.ListTasksParams) {
   })
 }
 
-// ── 提取任务 mutation ─────────────────────────────────────────────────────────
+// ── 同步任务 mutation ─────────────────────────────────────────────────────────
 
 export function useCreateExtractionTask() {
   const qc = useQueryClient()

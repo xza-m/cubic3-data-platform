@@ -1,6 +1,6 @@
 // frontend/src/v2/pages/data/DatasetCreate.tsx
 //
-// 注册数据集（/datasets/new）。多步向导：
+// 登记数据资产（/data-center/assets/register）。多步向导：
 //   Step 0 选择源  →  Step 1 选择表（物理）/ 上传文件（文件）  →  Step 2 字段确认 + 命名  →  Step 3 完成
 // 对接：
 //   POST /api/v1/data-center/datasets (create)
@@ -13,6 +13,7 @@ import { ArrowLeft, ArrowRight, Check, FileUp, Table } from 'lucide-react'
 import { useCreateDataset, usePreviewDataset } from '@v2/hooks/datasets'
 import { useDatasources } from '@v2/hooks/datasources'
 import type { DatasetField } from '@v2/api/datasets'
+import { datasourceTypeLabel } from '@v2/lib/datasourceTypes'
 import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
@@ -22,7 +23,7 @@ type Mode = 'choose' | 'physical' | 'file'
 
 function stepsPhysical() {
   return [
-    t('datasetCreate.step.pickSource', '选择数据源'),
+    t('datasetCreate.step.pickSource', '选择连接'),
     t('datasetCreate.step.pickTable', '选择表'),
     t('datasetCreate.step.confirmFields', '字段确认'),
     t('datasetCreate.step.done', '完成'),
@@ -61,13 +62,13 @@ export default function DatasetCreate() {
   useEffect(() => {
     setBreadcrumbs([
       t('datasetCreate.breadcrumb.data', '数据'),
-      t('datasetCreate.breadcrumb.datasets', '数据集'),
-      t('datasetCreate.breadcrumb.register', '注册'),
+      t('datasetCreate.breadcrumb.datasets', '资产目录'),
+      t('datasetCreate.breadcrumb.register', '登记'),
     ])
     setTopBarActions(
       <button
         type="button"
-        onClick={() => navigate('/data-center/datasets')}
+        onClick={() => navigate('/data-center/assets')}
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
         style={{ color: 'var(--text-2)' }}
       >
@@ -123,19 +124,32 @@ export default function DatasetCreate() {
   if (mode === 'choose') {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
-        <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
-          <ModeCard
-            icon={<Table size={24} style={{ color: 'var(--accent)' }} />}
-            title={t('datasetCreate.mode.physicalTitle', '从已接入的库表注册')}
-            description={t('datasetCreate.mode.physicalDesc', '从 MaxCompute / MySQL / PG 等数据源选择物理表')}
-            onClick={() => setMode('physical')}
-          />
-          <ModeCard
-            icon={<FileUp size={24} style={{ color: 'var(--violet)' }} />}
-            title={t('datasetCreate.mode.fileTitle', '从文件上传注册')}
-            description={t('datasetCreate.mode.fileDesc', '支持 CSV / Excel，自动推断 schema')}
-            onClick={() => setMode('file')}
-          />
+        <div className="w-full max-w-2xl">
+          <div className="mb-5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-3">
+              {t('datasetCreate.eyebrow', '数据资产登记')}
+            </p>
+            <h1 className="mt-1 text-[20px] font-semibold text-1">
+              {t('datasetCreate.title', '登记数据资产')}
+            </h1>
+            <p className="mt-1 text-[12px] leading-5 text-2">
+              {t('datasetCreate.desc', '选择物理表或文件作为事实源，补齐字段与负责人信息后沉淀到资产目录。')}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <ModeCard
+              icon={<Table size={24} style={{ color: 'var(--accent)' }} />}
+              title={t('datasetCreate.mode.physicalTitle', '从已接入的库表登记')}
+              description={t('datasetCreate.mode.physicalDesc', '从 MaxCompute / MySQL / PG 等连接选择物理表')}
+              onClick={() => setMode('physical')}
+            />
+            <ModeCard
+              icon={<FileUp size={24} style={{ color: 'var(--violet)' }} />}
+              title={t('datasetCreate.mode.fileTitle', '从文件上传登记')}
+              description={t('datasetCreate.mode.fileDesc', '支持 CSV / Excel，自动推断 schema')}
+              onClick={() => setMode('file')}
+            />
+          </div>
         </div>
       </div>
     )
@@ -154,8 +168,8 @@ export default function DatasetCreate() {
         >
           <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
             {mode === 'physical'
-              ? t('datasetCreate.title.physical', '从库表注册数据集')
-              : t('datasetCreate.title.file', '从文件注册数据集')}
+              ? t('datasetCreate.title.physical', '从库表登记数据资产')
+              : t('datasetCreate.title.file', '从文件登记数据资产')}
           </span>
           <ol className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-3)' }}>
             {steps.map((s, i) => (
@@ -180,7 +194,7 @@ export default function DatasetCreate() {
         <div className="flex-1 overflow-auto p-4">
           {mode === 'physical' && step === 0 && (
             <div className="space-y-3">
-              <Field label={t('datasetCreate.field.source', '选择数据源')}>
+              <Field label={t('datasetCreate.field.source', '选择连接')}>
                 <select
                   value={sourceId ?? ''}
                   onChange={(e) => setSourceId(Number(e.target.value))}
@@ -189,7 +203,7 @@ export default function DatasetCreate() {
                   <option value="">{t('datasetCreate.field.pickPlaceholder', '请选择…')}</option>
                   {sources.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.source_type})
+                      {s.name} ({datasourceTypeLabel(s.source_type)})
                     </option>
                   ))}
                 </select>
@@ -227,7 +241,7 @@ export default function DatasetCreate() {
 
           {step === 2 && (
             <div className="space-y-3">
-              <Field label={t('datasetCreate.field.datasetName', '数据集名称')}>
+              <Field label={t('datasetCreate.field.datasetName', '数据资产名称')}>
                 <input value={datasetName} onChange={(e) => setDatasetName(e.target.value)} style={inputStyle} />
               </Field>
               <Field label={t('datasetCreate.field.owner', '负责人')}>
@@ -273,15 +287,15 @@ export default function DatasetCreate() {
               </div>
               <p className="max-w-sm text-xs" style={{ color: 'var(--text-3)' }}>
                 <strong>{datasetName}</strong>{' '}
-                {t('datasetCreate.done.descSuffix', '已成功注册为数据集。')}
+                {t('datasetCreate.done.descSuffix', '已成功登记为数据资产。')}
               </p>
               <button
                 type="button"
-                onClick={() => navigate('/data-center/datasets')}
+                onClick={() => navigate('/data-center/assets')}
                 className="rounded-md px-4 py-2 text-xs font-medium"
                 style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
               >
-                {t('datasetCreate.done.backToList', '返回数据集列表')}
+                {t('datasetCreate.done.backToList', '返回资产目录')}
               </button>
             </div>
           )}

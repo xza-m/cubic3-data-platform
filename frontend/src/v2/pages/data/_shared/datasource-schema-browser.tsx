@@ -5,7 +5,15 @@
 // 数据源：useDatasourceSchema / useDatasourceSchemaTables / useDatasourceSchemaTableColumns。
 
 import { useEffect, useState } from 'react'
-import { Database, Table as TableIcon, Columns as ColumnsIcon, Loader2, RefreshCcw } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Columns as ColumnsIcon,
+  Database,
+  Loader2,
+  RefreshCcw,
+  Table as TableIcon,
+} from 'lucide-react'
 import {
   useDatasourceSchema,
   useDatasourceSchemaTables,
@@ -17,6 +25,8 @@ import { t } from '@v2/i18n'
 interface Props {
   datasourceId: number
 }
+
+const TABLE_PAGE_SIZE = 20
 
 export function DatasourceSchemaBrowser({ datasourceId }: Props) {
   const [activeDb, setActiveDb] = useState<string | null>(null)
@@ -127,6 +137,17 @@ function TableColumn(props: {
   isRefreshing: boolean
   fetchedAt?: string
 }) {
+  const [page, setPage] = useState(1)
+  const total = props.items.length
+  const pageCount = Math.max(1, Math.ceil(total / TABLE_PAGE_SIZE))
+  const safePage = Math.min(page, pageCount)
+  const start = (safePage - 1) * TABLE_PAGE_SIZE
+  const visibleItems = props.items.slice(start, start + TABLE_PAGE_SIZE)
+
+  useEffect(() => {
+    setPage(1)
+  }, [props.database, total])
+
   return (
     <ColumnShell
       title={
@@ -139,6 +160,19 @@ function TableColumn(props: {
       isRefreshing={props.isRefreshing}
       fetchedAt={props.fetchedAt}
       width="w-64"
+      footer={
+        props.database && !props.loading && !props.error && total > 0 ? (
+          <TablePagination
+            page={safePage}
+            pageCount={pageCount}
+            total={total}
+            start={start + 1}
+            end={Math.min(start + TABLE_PAGE_SIZE, total)}
+            onPrev={() => setPage((current) => Math.max(1, current - 1))}
+            onNext={() => setPage((current) => Math.min(pageCount, current + 1))}
+          />
+        ) : null
+      }
     >
       <ColumnBody
         loading={props.loading}
@@ -149,7 +183,7 @@ function TableColumn(props: {
             : !props.items.length && t('schemaBrowser.empty.table', '无表')
         }
       >
-        {props.items.map((it) => (
+        {visibleItems.map((it) => (
           <RowItem
             key={it.table_name}
             label={it.table_name}
@@ -165,6 +199,63 @@ function TableColumn(props: {
         ))}
       </ColumnBody>
     </ColumnShell>
+  )
+}
+
+function TablePagination({
+  page,
+  pageCount,
+  total,
+  start,
+  end,
+  onPrev,
+  onNext,
+}: {
+  page: number
+  pageCount: number
+  total: number
+  start: number
+  end: number
+  onPrev: () => void
+  onNext: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 text-[11px]">
+      <span className="truncate" style={{ color: 'var(--text-3)' }}>
+        {t('schemaBrowser.tablePage.range', '{start}-{end} / {total} 张表', {
+          start: fmtNum(start),
+          end: fmtNum(end),
+          total: fmtNum(total),
+        })}
+      </span>
+      {pageCount > 1 ? (
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onPrev}
+            disabled={page <= 1}
+            className="inline-flex h-6 w-6 items-center justify-center rounded border disabled:opacity-40"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+            aria-label={t('schemaBrowser.tablePage.prev', '上一页表')}
+          >
+            <ChevronLeft size={13} />
+          </button>
+          <span className="min-w-10 text-center" style={{ color: 'var(--text-3)' }}>
+            {page}/{pageCount}
+          </span>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={page >= pageCount}
+            className="inline-flex h-6 w-6 items-center justify-center rounded border disabled:opacity-40"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+            aria-label={t('schemaBrowser.tablePage.next', '下一页表')}
+          >
+            <ChevronRight size={13} />
+          </button>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -253,6 +344,7 @@ function ColumnShell({
   onRefresh,
   isRefreshing,
   fetchedAt,
+  footer,
   children,
 }: {
   title: React.ReactNode
@@ -262,6 +354,7 @@ function ColumnShell({
   onRefresh: () => unknown
   isRefreshing: boolean
   fetchedAt?: string
+  footer?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
@@ -294,6 +387,11 @@ function ColumnShell({
         </button>
       </div>
       <div className="flex-1 overflow-auto">{children}</div>
+      {footer ? (
+        <div className="border-t" style={{ borderColor: 'var(--border)' }}>
+          {footer}
+        </div>
+      ) : null}
     </div>
   )
 }

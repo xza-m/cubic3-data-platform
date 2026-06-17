@@ -8,10 +8,9 @@
 //   • wrapped  = 已走 t('key','中文',...) 的字面（视为已覆盖）
 //   • coverage = wrapped / (wrapped + bare)
 //
-// 同时校验字典健康度：
-//   1. zh.json / en.json 的 key 必须符合 NAMING.md 正则
-//   2. zh 与 en 的 key 集合必须一致（允许 en 为空字符串，但 key 必须存在）
-//   3. 非动态 key（不含 ${}）不得缺失于 zh.json
+// 同时校验字典健康度（中文单语言；en.json 已删除）：
+//   1. zh.json 的 key 必须符合 NAMING.md 正则
+//   2. t() 静态 key 必须存在于 zh.json —— 由 scripts/i18n-keys-check.mjs 负责（npm run i18n:keys）
 //
 // 退出码：
 //   0  全部检查通过
@@ -36,10 +35,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const FRONTEND_ROOT = join(__dirname, '..')
 const EXTRACT_OUT = join(__dirname, 'i18n-keys.json')
 const ZH = join(FRONTEND_ROOT, 'src/v2/i18n/zh.json')
-const EN = join(FRONTEND_ROOT, 'src/v2/i18n/en.json')
 const REPORT = join(__dirname, 'i18n-coverage.report.md')
 
-// 与 NAMING.md / i18n-populate.mjs 对齐
+// 与 NAMING.md / i18n-keys-check.mjs 对齐
 const KEY_RE = /^[a-z0-9][A-Za-z0-9_]*(\.[a-z0-9][A-Za-z0-9_]*){1,3}$/
 
 // ── args ─────────────────────────────────────────────────────────────────────
@@ -86,7 +84,6 @@ async function main() {
 
   const extract = await readJson(EXTRACT_OUT)
   const zh = await readJson(ZH)
-  const en = await readJson(EN)
 
   const bare = extract.totals?.bare ?? -1
   const wrapped = extract.totals?.wrapped ?? -1
@@ -98,14 +95,7 @@ async function main() {
 
   // dict health ──────────────────────────────────────────────────────────────
   const zhKeys = Object.keys(zh)
-  const enKeys = Object.keys(en)
-  const zhSet = new Set(zhKeys)
-  const enSet = new Set(enKeys)
-
   const badZhKeys = zhKeys.filter((k) => !KEY_RE.test(k))
-  const badEnKeys = enKeys.filter((k) => !KEY_RE.test(k))
-  const missingInEn = zhKeys.filter((k) => !enSet.has(k))
-  const extraInEn = enKeys.filter((k) => !zhSet.has(k))
 
   // gates ────────────────────────────────────────────────────────────────────
   const failures = []
@@ -117,15 +107,6 @@ async function main() {
   }
   if (badZhKeys.length > 0) {
     failures.push(`zh.json 有 ${badZhKeys.length} 个 key 不符合 NAMING.md 正则: ${badZhKeys.slice(0, 5).join(', ')}${badZhKeys.length > 5 ? ' …' : ''}`)
-  }
-  if (badEnKeys.length > 0) {
-    failures.push(`en.json 有 ${badEnKeys.length} 个 key 不符合 NAMING.md 正则: ${badEnKeys.slice(0, 5).join(', ')}${badEnKeys.length > 5 ? ' …' : ''}`)
-  }
-  if (missingInEn.length > 0) {
-    failures.push(`en.json 缺失 ${missingInEn.length} 个 zh 存在的 key（可留空字符串）: ${missingInEn.slice(0, 5).join(', ')}${missingInEn.length > 5 ? ' …' : ''}`)
-  }
-  if (extraInEn.length > 0) {
-    failures.push(`en.json 多出 ${extraInEn.length} 个 zh 不存在的 key: ${extraInEn.slice(0, 5).join(', ')}${extraInEn.length > 5 ? ' …' : ''}`)
   }
 
   const result = {
@@ -139,11 +120,7 @@ async function main() {
     },
     dict: {
       zhKeyCount: zhKeys.length,
-      enKeyCount: enKeys.length,
       badZhKeys,
-      badEnKeys,
-      missingInEn,
-      extraInEn,
     },
     thresholds: { baseline: args.baseline, min: args.min },
     ok: failures.length === 0,
@@ -159,7 +136,7 @@ async function main() {
     console.log(`bare     ${bare}     (baseline ${args.baseline})`)
     console.log(`wrapped  ${wrapped}`)
     console.log(`coverage ${(coverage * 100).toFixed(2)}%   (min ${(args.min * 100).toFixed(2)}%)`)
-    console.log(`zh keys  ${zhKeys.length} · en keys ${enKeys.length}`)
+    console.log(`zh keys  ${zhKeys.length}`)
     if (failures.length > 0) {
       console.error('')
       console.error('❌ FAIL:')
@@ -177,9 +154,8 @@ async function main() {
     `- 生成时间: ${result.generatedAt}`,
     `- bare / wrapped: **${bare}** / **${wrapped}**    coverage: **${(coverage * 100).toFixed(2)}%**`,
     `- baseline bare: ${args.baseline}    min coverage: ${(args.min * 100).toFixed(2)}%`,
-    `- zh.json / en.json keys: ${zhKeys.length} / ${enKeys.length}`,
-    `- bad zh keys: ${badZhKeys.length} · bad en keys: ${badEnKeys.length}`,
-    `- en 缺失: ${missingInEn.length} · en 多余: ${extraInEn.length}`,
+    `- zh.json keys: ${zhKeys.length}`,
+    `- bad zh keys: ${badZhKeys.length}`,
     '',
     result.ok ? '**结果：✅ PASS**' : '**结果：❌ FAIL**',
   ].join('\n')

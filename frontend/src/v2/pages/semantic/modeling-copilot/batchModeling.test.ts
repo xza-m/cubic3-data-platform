@@ -9,6 +9,11 @@ import {
   buildBatchModelingPlan,
   canOpenBatchQueueBuilder,
   getBatchQueuePrimaryAction,
+  isRealSourceScope,
+  summarizeRiskLevel,
+  triageBucketForStatus,
+  BATCH_TRIAGE_BUCKET_LABELS,
+  BATCH_TRIAGE_BUCKET_ORDER,
   type BatchModelingPlan,
   type BatchModelingQueueItem,
 } from './batchModeling'
@@ -17,7 +22,7 @@ describe('batch modeling plan', () => {
   it('生成面向语义中心的批量建设计划', () => {
     const plan: BatchModelingPlan = buildBatchModelingPlan(BATCH_MODELING_DEFAULT_SCOPE)
 
-    expect(plan.title).toBe('学情分析批量语义建设')
+    expect(plan.title).toBe('学情分析语义冷启动项目')
     expect(plan.target).toBe('semantic_center')
     expect(plan.guardrails).toContain('批量模式只生成待审阅候选队列，不直接发布语义中心。')
     expect(plan.guardrails).toContain('Data Agent、BI、数据分析只消费语义中心已发布资产，不作为本模式发布目标。')
@@ -38,7 +43,7 @@ describe('batch modeling plan', () => {
       includeExistingSemantics: true,
     })
 
-    expect(plan.title).toBe('学情分析批量语义建设')
+    expect(plan.title).toBe('学情分析语义冷启动项目')
     expect(plan.queueItems.length).toBeGreaterThanOrEqual(3)
     expect(plan.queueItems.every((item) => item.target === 'semantic_center')).toBe(true)
     expect(findQueueItem(plan, 'fact-learning-activity')).toMatchObject({
@@ -99,7 +104,7 @@ describe('batch modeling plan', () => {
     })
 
     expect(plan.scope.businessDomain).toBe(BATCH_MODELING_DEFAULT_SCOPE.businessDomain)
-    expect(plan.title).toBe(`${BATCH_MODELING_DEFAULT_SCOPE.businessDomain}批量语义建设`)
+    expect(plan.title).toBe(`${BATCH_MODELING_DEFAULT_SCOPE.businessDomain}语义冷启动项目`)
     expect(findQueueItem(plan, 'dim-school').title).toBe(`${BATCH_MODELING_DEFAULT_SCOPE.businessDomain}学校维度候选`)
   })
 
@@ -168,6 +173,46 @@ describe('batch modeling plan', () => {
     expect(batchQueueStatusTone('needs_scope')).toBe('warning')
     expect(batchQueueStatusTone('high_risk')).toBe('danger')
     expect(batchQueueStatusTone('deferred')).toBe('neutral')
+  })
+
+  it('groups candidate statuses into ready/attention/parked triage buckets', () => {
+    expect(triageBucketForStatus('ready_for_review')).toBe('ready')
+    expect(triageBucketForStatus('needs_scope')).toBe('attention')
+    expect(triageBucketForStatus('high_risk')).toBe('attention')
+    expect(triageBucketForStatus('deferred')).toBe('parked')
+    expect(triageBucketForStatus('duplicate_candidate')).toBe('parked')
+    // 未知/兜底归入就绪桶
+    expect(triageBucketForStatus('published')).toBe('ready')
+
+    expect(BATCH_TRIAGE_BUCKET_ORDER).toEqual(['ready', 'attention', 'parked'])
+    expect(BATCH_TRIAGE_BUCKET_LABELS.attention).toContain('高风险')
+  })
+
+  it('selecting a real source rewrites the scan plan with source/db and table cap', () => {
+    const plan = buildBatchModelingPlan({
+      ...BATCH_MODELING_DEFAULT_SCOPE,
+      sourceId: 7,
+      sourceLabel: 'MaxCompute 生产',
+      database: 'edu_dw',
+      maxTables: 40,
+    })
+    const scanCopy = plan.scanPlan.join('\n')
+
+    expect(isRealSourceScope({ ...BATCH_MODELING_DEFAULT_SCOPE, sourceId: 7, database: 'edu_dw' })).toBe(true)
+    expect(scanCopy).toContain('MaxCompute 生产')
+    expect(scanCopy).toContain('edu_dw')
+    expect(scanCopy).toContain('最多扫描 40 张表')
+    expect(scanCopy).toContain('带列快照')
+    // 未选库时回退演示口径
+    expect(isRealSourceScope({ ...BATCH_MODELING_DEFAULT_SCOPE, sourceId: 7, database: null })).toBe(false)
+  })
+
+  it('summarizes the highest non-zero risk bucket from a scanned project', () => {
+    expect(summarizeRiskLevel({ low: 3, medium: 0, high: 0 })).toBe('low')
+    expect(summarizeRiskLevel({ low: 1, medium: 2, high: 0 })).toBe('medium')
+    expect(summarizeRiskLevel({ low: 1, medium: 2, high: 1 })).toBe('high')
+    expect(summarizeRiskLevel(null)).toBe('low')
+    expect(summarizeRiskLevel({})).toBe('low')
   })
 
   it('only allows open_builder candidates to enter the asset builder canvas', () => {

@@ -3,10 +3,9 @@
 //
 // 访问网关工作台：权限配置、权限审计和网关观测。
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import {
   AlertTriangle,
-  Bot,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -14,21 +13,21 @@ import {
   FileSearch,
   KeyRound,
   Pencil,
-  Plus,
   PowerOff,
   RotateCw,
   Search,
   ShieldCheck,
   UserRound,
+  X,
 } from 'lucide-react'
 import { IdentityName } from '@v2/components/IdentityName'
-import { Button, Chip, Dialog, Input, Skeleton, useToast } from '@v2/components/ui'
+import { Can } from '@v2/components/Can'
+import { Button, Chip, Dialog, Input, Skeleton, useToast, useConfirm } from '@v2/components/ui'
 import {
   CreateButton,
   RefreshButton,
   Toolbar,
   ToolbarSearch,
-  ToolbarSelect,
 } from '@v2/components/CommonControls'
 import { ListPagination } from '@v2/components/ListPagination'
 import { fmtDateTime } from '@v2/lib/format'
@@ -40,14 +39,12 @@ import {
   useAccessPermissionPackages,
   useAccessRoleCatalog,
   useCreateDataPolicy,
-  useCreateExecutionProfile,
   useCreateApiKey,
   useCreateServicePrincipal,
+  useGatewayObservability,
   useDataPolicies,
   useExecutionProfiles,
-  useGatewayQueryRuns,
-  useGatewayRuntimeAlerts,
-  useGatewayTelemetrySummary,
+  useM2Allowlist,
   usePolicyDecisions,
   useRevokeApiKey,
   useRotateApiKey,
@@ -69,11 +66,16 @@ import type {
   GatewayRuntimeAlerts,
   GatewayQueryRun,
   GatewayTelemetrySummary,
+  GatewayObservabilitySnapshot,
+  GatewayContractCompleteness,
+  GatewayTimeseriesPoint,
   CreatedApiKey,
+  M2AllowlistItem,
+  M2AllowlistPrincipal,
 } from '@v2/api/access'
 import { AppError } from '@v2/api/types'
 
-type TabId = 'principals' | 'services' | 'policies'
+type TabId = 'principals' | 'allowlist' | 'policies'
 
 type AccessViewId = 'permissions' | 'audit' | 'observability'
 
@@ -90,18 +92,86 @@ const EMPTY_GATEWAY_ALERTS: GatewayRuntimeAlerts = {
   evaluated_at: null,
 }
 
+const EMPTY_GATEWAY_SUMMARY: GatewayTelemetrySummary = {
+  query_count: 0,
+  success_count: 0,
+  failed_count: 0,
+  physical_denied_count: 0,
+  stability: 100,
+  success_rate: 100,
+  timeout_rate: 0,
+  by_data_level: {},
+  queued_count: 0,
+  running_count: 0,
+  pending_count: 0,
+  avg_queue_wait_ms: 0,
+  max_current_queue_wait_ms: 0,
+  queue_wait_p95_ms: 0,
+  avg_execute_ms: 0,
+  execute_p95_ms: 0,
+  remote_timeout_count: 0,
+  client_wait_timeout_count: 0,
+  timeout_count: 0,
+  rejected_count: 0,
+  export_request_count: 0,
+  export_started_count: 0,
+  export_not_ready_count: 0,
+  export_success_count: 0,
+  export_failure_count: 0,
+  export_failure_by_reason: {},
+  publish_conflict_count: 0,
+  result_rejected_count: 0,
+  result_rejected_by_reason: {},
+  result_too_large_rejected_count: 0,
+  result_row_too_large_rejected_count: 0,
+  max_result_rejected_bytes: 0,
+  max_result_rejected_row_bytes: 0,
+  result_object_count: 0,
+  spool_object_count: 0,
+  spool_result_total_bytes: 0,
+  spool_age_buckets: {},
+  cleanup_lag_seconds: 0,
+  auth_denied_count: 0,
+  invalid_token_count: 0,
+  missing_token_count: 0,
+  legacy_protocol_count: 0,
+  sql_guard_rejected_count: 0,
+  credential_missing_count: 0,
+  credential_invalid_count: 0,
+  worker_heartbeat_stale_count: 0,
+  worker_orphan_lease_reclaimed_count: 0,
+  worker_housekeeping_completed_count: 0,
+  gateway_readyz_degraded_count: 0,
+  active_worker_count: 0,
+  live_worker_count: 0,
+  draining_worker_count: 0,
+  worker_capacity: 0,
+  generated_at: null,
+  metric_version: null,
+  source: null,
+}
+
+const GATEWAY_OBSERVABILITY_PARAMS = { window: '24h', bucket: '1h', limit: 200 }
 const GATEWAY_RECORD_PAGE_SIZE = 10
+const DATA_LEVEL_OPTIONS = ['M0', 'M1', 'M2', 'M3']
+const TABLE_LAYER_OPTIONS = ['dim', 'dws', 'ads', 'dwd', 'ods', 'raw']
+const POLICY_ACTION_OPTIONS = ['metadata.read', 'semantic.plan', 'query']
+const PIXEL_SUBJECT_ICON_SIZE = 16
+
+type PrincipalSubjectRow =
+  | { kind: 'human'; id: string; principal: AccessPrincipal }
+  | { kind: 'service'; id: string; service: AccessServicePrincipal }
 
 export default function AccessIdentity({ view = 'permissions' }: AccessIdentityProps) {
   const [tab, setTab] = useState<TabId>('principals')
   const header = {
     principals: {
-      title: t('access.principals.title', '成员权限'),
-      subtitle: t('access.principals.subtitle', '平台角色决定能做什么，数据访问权限决定最多能读到哪层数据'),
+      title: t('access.principals.title', '主体权限'),
+      subtitle: t('access.principals.subtitle', '统一管理碳基成员和硅基机器人，平台角色决定能做什么，数据访问权限决定最多能读到哪层数据'),
     },
-    services: {
-      title: t('access.services.title', '机器人接入'),
-      subtitle: t('access.services.subtitle', '为 Agent、Bot 和任务签发服务账号与 API Key'),
+    allowlist: {
+      title: t('access.allowlist.title', 'M2 白名单'),
+      subtitle: t('access.allowlist.subtitle', '解释默认 M2 权限来源、匹配状态和当前授权结果'),
     },
     policies: {
       title: t('access.policies.title', '数据访问规则'),
@@ -115,7 +185,7 @@ export default function AccessIdentity({ view = 'permissions' }: AccessIdentityP
     },
     audit: {
       title: t('access.audit.title', '权限审计'),
-      subtitle: t('access.audit.subtitle', '集中查看权限审批、策略判定和治理要求'),
+      subtitle: t('access.audit.subtitle', '集中查看策略判定、治理要求和访问拦截记录'),
     },
     observability: {
       title: t('access.observability.title', '网关观测'),
@@ -140,12 +210,17 @@ export default function AccessIdentity({ view = 'permissions' }: AccessIdentityP
           </div>
           {view === 'permissions' ? (
             <div className="flex flex-col items-end gap-2">
-              <div className="flex items-center gap-1 rounded-md border p-1" style={{ borderColor: 'var(--border)' }}>
+              <div
+                role="tablist"
+                aria-label={t('access.permissions.innerTabs', '权限管理分组')}
+                className="flex items-center gap-1 rounded-md border p-1"
+                style={{ borderColor: 'var(--border)' }}
+              >
                 <TabButton active={tab === 'principals'} onClick={() => setTab('principals')}>
-                  <UserRound size={12} /> {t('access.tab.principals', '成员权限')}
+                  <UserRound size={12} /> {t('access.tab.principals', '主体权限')}
                 </TabButton>
-                <TabButton active={tab === 'services'} onClick={() => setTab('services')}>
-                  <Bot size={12} /> {t('access.tab.services', '机器人接入')}
+                <TabButton active={tab === 'allowlist'} onClick={() => setTab('allowlist')}>
+                  <ShieldCheck size={12} /> {t('access.tab.allowlist', 'M2 白名单')}
                 </TabButton>
                 <TabButton active={tab === 'policies'} onClick={() => setTab('policies')}>
                   <ShieldCheck size={12} /> {t('access.tab.policies', '数据访问规则')}
@@ -155,7 +230,15 @@ export default function AccessIdentity({ view = 'permissions' }: AccessIdentityP
           ) : null}
         </header>
         {view === 'permissions'
-          ? (tab === 'principals' ? <PrincipalWorkspace /> : tab === 'services' ? <ServiceWorkspace /> : <PolicyWorkspace />)
+          ? (
+            tab === 'principals'
+              ? <PrincipalWorkspace />
+              : tab === 'allowlist'
+                ? <M2AllowlistWorkspace />
+                : tab === 'policies'
+                  ? <PolicyWorkspace />
+                  : null
+          )
           : view === 'audit' ? <PermissionAuditWorkspace /> : <GatewayObservabilityWorkspace />}
       </div>
     </div>
@@ -174,6 +257,8 @@ function TabButton({
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
       className="inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs"
       style={{
@@ -189,30 +274,69 @@ function TabButton({
 function PrincipalWorkspace() {
   const toast = useToast()
   const [q, setQ] = useState('')
-  const [principalType, setPrincipalType] = useState('')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editingPrincipalId, setEditingPrincipalId] = useState<string | null>(null)
+  const [creatingService, setCreatingService] = useState(false)
   const [manualRefreshing, setManualRefreshing] = useState(false)
-  const params = { q: q || undefined, principal_type: principalType as '' | 'human' | 'service', page, page_size: 20 }
-  const { data, isLoading, isError, refetch, isFetching } = useAccessPrincipals(params)
-  const rows = data?.items ?? []
-  const total = data?.total ?? 0
-  const selectedPrincipal = rows.find((row) => row.principal_id === selectedId)
+  const params = { q: q || undefined, principal_type: 'human' as const, page: 1, page_size: 200 }
+  const {
+    data: principalData,
+    isLoading: loadingPrincipals,
+    isError: principalError,
+    refetch: refetchPrincipals,
+    isFetching: fetchingPrincipals,
+  } = useAccessPrincipals(params)
+  const {
+    data: serviceData,
+    isLoading: loadingServices,
+    isError: serviceError,
+    refetch: refetchServices,
+    isFetching: fetchingServices,
+  } = useServicePrincipals()
+  const { data: packageCatalog } = useAccessPermissionPackages()
+  const humanRows = useMemo(() => principalData?.items ?? [], [principalData?.items])
+  const serviceRows = useMemo(
+    () => filterServicePrincipals(serviceData ?? [], q),
+    [q, serviceData],
+  )
+  const rows = useMemo<PrincipalSubjectRow[]>(() => [
+    ...humanRows.map((principal) => ({ kind: 'human' as const, id: principal.principal_id, principal })),
+    ...serviceRows.map((service) => ({ kind: 'service' as const, id: service.principal_id, service })),
+  ], [humanRows, serviceRows])
+  const total = rows.length
+  const paginated = useMemo(
+    () => paginatePrincipalSubjects(rows, page, 20),
+    [page, rows],
+  )
+  const selectedSubject = rows.find((row) => row.id === selectedId) ?? null
+  const selectedPrincipal = selectedSubject?.kind === 'human' ? selectedSubject.principal : null
+  const selectedService = selectedSubject?.kind === 'service' ? selectedSubject.service : null
+  const isLoading = loadingPrincipals || loadingServices
+  const isError = principalError || serviceError
 
   const handleRefresh = async () => {
     setManualRefreshing(true)
     try {
-      const result = await refetch()
-      if (result.isError) throw result.error
-      toast.show({ tone: 'success', title: t('access.refresh.principalsSuccess', '成员权限已刷新') })
+      const results = await Promise.all([refetchPrincipals(), refetchServices()])
+      if (results.some((result) => result.isError)) throw new Error('主体权限刷新失败')
+      toast.show({ tone: 'success', title: t('access.refresh.principalsSuccess', '主体权限已刷新') })
     } catch {
-      toast.show({ tone: 'danger', title: t('access.refresh.principalsFailed', '成员权限刷新失败') })
+      toast.show({ tone: 'danger', title: t('access.refresh.principalsFailed', '主体权限刷新失败') })
     } finally {
       setManualRefreshing(false)
     }
   }
-  const refreshing = manualRefreshing || isFetching
+  const refreshing = manualRefreshing || fetchingPrincipals || fetchingServices
+
+  useEffect(() => {
+    setPage(1)
+    setSelectedId(null)
+  }, [q])
+
+  useEffect(() => {
+    if (page > paginated.totalPages) setPage(paginated.totalPages)
+  }, [page, paginated.totalPages])
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -223,91 +347,108 @@ function PrincipalWorkspace() {
               value={q}
               onChange={(value) => {
                 setQ(value)
-                setPage(1)
               }}
-              placeholder={t('access.principals.search', '搜索 ID / 姓名 / 邮箱')}
-              ariaLabel={t('access.principals.searchAria', '搜索成员权限')}
+              placeholder={t('access.principals.search', '搜索主体 / 姓名 / 邮箱 / 机器人')}
+              ariaLabel={t('access.principals.searchAria', '搜索主体权限')}
               width={240}
-            />
-            <ToolbarSelect
-              value={principalType}
-              onChange={(value) => {
-                setPrincipalType(value)
-                setPage(1)
-              }}
-              options={[
-                { value: '', label: t('access.principals.allTypes', '全部来源') },
-                { value: 'human', label: t('access.principals.human', '真人用户') },
-                { value: 'service', label: t('access.principals.service', '机器人/服务账号') },
-              ]}
-              ariaLabel={t('access.principals.filter.type', '筛选成员来源')}
-              width={132}
             />
             <RefreshButton
               onClick={() => void handleRefresh()}
               loading={refreshing}
-              ariaLabel={t('access.refresh.principals', '刷新成员权限')}
+              ariaLabel={t('access.refresh.principals', '刷新主体权限')}
             />
           </Toolbar>
-          <Button
-            size="sm"
-            disabled={!selectedId}
-            onClick={() => setEditingPrincipalId(selectedId)}
-          >
-            <Pencil size={12} /> {t('access.detail.adjustPackages', '调整权限')}
-          </Button>
+          <Can action="access.write" disabledTip={t('access.permissions.writeRequired', '需要权限管理员才能修改访问规则')}>
+            <Button
+              size="sm"
+              disabled={selectedSubject?.kind !== 'human'}
+              onClick={() => setEditingPrincipalId(selectedPrincipal?.principal_id ?? null)}
+            >
+              <Pencil size={12} /> {t('access.detail.adjustPackages', '调整权限')}
+            </Button>
+          </Can>
+          <Can action="access.write" disabledTip={t('access.permissions.writeRequired', '需要权限管理员才能修改访问规则')}>
+            <CreateButton
+              label={t('access.services.create', '新建机器人')}
+              onClick={() => setCreatingService(true)}
+            />
+          </Can>
           <span className="ml-auto text-xs" style={{ color: 'var(--text-3)' }}>
-            {t('access.principals.total', '共 {n} 个成员/主体', { n: total })}
+            {t('access.principals.totalSubjects', '共 {n} 个主体', { n: total })}
           </span>
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           {isLoading ? (
             <LoadingRows />
           ) : isError ? (
-            <EmptyState tone="danger" text={t('access.principals.loadFailed', '成员权限加载失败')} />
+            <EmptyState tone="danger" text={t('access.principals.loadFailed', '主体权限加载失败')} />
           ) : rows.length === 0 ? (
-            <EmptyState text={t('access.principals.empty', '暂无成员权限')} />
+            <EmptyState text={t('access.principals.empty', '暂无主体权限')} />
           ) : (
-            <PrincipalTable rows={rows} selectedId={selectedId} onSelect={setSelectedId} />
+            <PrincipalTable
+              rows={paginated.items}
+              packages={packageCatalog?.items ?? []}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
           )}
         </div>
         <div className="border-t px-4 pb-3" style={{ borderColor: 'var(--border)' }}>
           <ListPagination page={page} pageSize={20} total={total} onPageChange={setPage} />
         </div>
       </section>
-      <aside
-        role="complementary"
-        aria-label={t('access.detail.ariaLabel', '成员权限配置')}
-        className="flex w-[420px] shrink-0 flex-col border-l"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
-      >
-        <div className="border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="truncate text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-            {selectedPrincipal
-              ? identityDisplayName(selectedPrincipal.display_name, selectedPrincipal.principal_id)
-              : t('access.detail.title', '成员权限配置')}
-          </h2>
-          <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>
-            {selectedPrincipal
-              ? `${principalTypeLabel(selectedPrincipal.principal_type)} · ${selectedPrincipal.tenant_key}`
-              : t('access.detail.pickPrincipal', '选择一个成员查看权限配置')}
-          </p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto">
-          <PrincipalDetailPanel principalId={selectedId} />
-        </div>
-      </aside>
+      {selectedSubject ? (
+        <aside
+          role="complementary"
+          aria-label={t('access.detail.ariaLabel', '主体权限配置')}
+          className="flex w-[420px] shrink-0 flex-col border-l"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+        >
+          <div className="flex items-start gap-3 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+            <PixelSubjectIcon kind={selectedSubject.kind} size={24} />
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                {selectedPrincipal
+                  ? identityDisplayName(selectedPrincipal.display_name, selectedPrincipal.principal_id)
+                  : identityDisplayName(selectedService?.display_name, selectedService?.principal_id ?? '')}
+              </h2>
+              <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>
+                {selectedSubject.kind === 'human'
+                  ? `${t('access.principals.carbon', '碳基生物')} · ${selectedPrincipal?.tenant_key ?? ''}`
+                  : `${t('access.principals.silicon', '硅基生物')} · ${selectedService?.service_type ?? ''}`}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border transition-colors hover:bg-[color:var(--bg-hover)]"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+              aria-label={t('access.detail.close', '关闭详情')}
+              onClick={() => setSelectedId(null)}
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {selectedSubject.kind === 'human'
+              ? <PrincipalDetailPanel principalId={selectedSubject.id} />
+              : <ServiceDetailPanel principalId={selectedSubject.id} />}
+          </div>
+        </aside>
+      ) : null}
       <PermissionPackageDialog principalId={editingPrincipalId} onClose={() => setEditingPrincipalId(null)} />
+      <CreateServiceDialog open={creatingService} onClose={() => setCreatingService(false)} />
     </div>
   )
 }
 
 function PrincipalTable({
   rows,
+  packages,
   selectedId,
   onSelect,
 }: {
-  rows: AccessPrincipal[]
+  rows: PrincipalSubjectRow[]
+  packages: AccessPermissionPackage[]
   selectedId: string | null
   onSelect: (id: string) => void
 }) {
@@ -315,46 +456,227 @@ function PrincipalTable({
     <table className="w-full border-collapse text-xs">
       <thead className="sticky top-0 z-10">
         <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-          <Th>{t('access.principals.col.principal', '成员')}</Th>
-          <Th>{t('access.principals.col.type', '来源')}</Th>
-          <Th>{t('access.principals.col.tenant', '租户')}</Th>
+          <Th>{t('access.principals.col.principal', '主体')}</Th>
+          <Th>{t('access.principals.col.kind', '身份类别')}</Th>
+          <Th>{t('access.principals.col.platformRole', '平台角色 / 接入类型')}</Th>
+          <Th>{t('access.principals.col.dataAccess', '数据权限 / 凭证')}</Th>
+          <Th>{t('access.principals.col.permissionSource', '权限来源 / 负责人')}</Th>
           <Th>{t('access.principals.col.lastSeen', '最近出现')}</Th>
           <Th>{t('access.principals.col.status', '状态')}</Th>
         </tr>
       </thead>
       <tbody>
-        {rows.map((row) => (
-          <tr
-            key={row.principal_id}
-            className="cursor-pointer transition-colors hover:bg-[color:var(--bg-hover)]"
-            style={{
-              borderBottom: '1px solid var(--border)',
-              background: selectedId === row.principal_id ? 'var(--accent-soft)' : 'transparent',
-            }}
-            onClick={() => onSelect(row.principal_id)}
-          >
-            <td className="max-w-[320px] px-4 py-2.5">
-              <div className="flex min-w-0 items-center gap-2">
-                {row.principal_type === 'service' ? <Bot size={13} /> : <UserRound size={13} />}
-                <div className="min-w-0">
-                  <div className="truncate font-medium" style={{ color: 'var(--text-1)' }}>
-                    {identityDisplayName(row.display_name, row.principal_id)}
-                  </div>
-                  <div className="truncate text-[11px]" style={{ color: 'var(--text-3)' }}>
-                    {principalTypeLabel(row.principal_type)} · {row.idp === 'feishu' ? '飞书同步' : row.idp}
+        {rows.map((row) => {
+          const isHuman = row.kind === 'human'
+          const principal = isHuman ? row.principal : null
+          const service = row.kind === 'service' ? row.service : null
+          const platformSummary = principal ? summarizePrincipalPlatformPackages(principal, packages) : service?.service_type ?? ''
+          const dataSummary = principal ? summarizePrincipalDataPackage(principal, packages) : formatServiceCredentialSummary(service)
+          const sourceSummary = principal ? summarizePrincipalPermissionSource(principal) : null
+          const displayName = principal
+            ? identityDisplayName(principal.display_name, principal.principal_id)
+            : identityDisplayName(service?.display_name, service?.principal_id ?? '')
+          const principalId = principal?.principal_id ?? service?.principal_id ?? row.id
+          const handleOpen = () => onSelect(row.id)
+          const handleKeyDown = (event: KeyboardEvent<HTMLTableRowElement>) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return
+            event.preventDefault()
+            handleOpen()
+          }
+          return (
+            <tr
+              key={`${row.kind}:${row.id}`}
+              className="cursor-pointer transition-colors hover:bg-[color:var(--bg-hover)]"
+              role="button"
+              tabIndex={0}
+              aria-label={t('access.principals.openDetailAria', '查看主体权限详情 {name}', { name: displayName })}
+              style={{
+                borderBottom: '1px solid var(--border)',
+                background: selectedId === row.id ? 'var(--accent-soft)' : 'transparent',
+              }}
+              onClick={handleOpen}
+              onKeyDown={handleKeyDown}
+            >
+              <td className="max-w-[300px] px-4 py-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <PixelSubjectIcon kind={row.kind} />
+                  <div className="min-w-0">
+                    <div className="truncate font-medium" style={{ color: 'var(--text-1)' }}>
+                      {displayName}
+                    </div>
+                    <div className="truncate font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>
+                      {principalId}
+                    </div>
+                    {service?.description ? (
+                      <div className="truncate text-[11px]" style={{ color: 'var(--text-3)' }}>{service.description}</div>
+                    ) : null}
                   </div>
                 </div>
-              </div>
-            </td>
-            <td className="px-4 py-2.5"><TypeChip type={row.principal_type} /></td>
-            <td className="px-4 py-2.5 font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.tenant_key}</td>
-            <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--text-3)' }}>{row.last_seen_at ? fmtDateTime(row.last_seen_at) : '—'}</td>
-            <td className="px-4 py-2.5"><StatusChip status={row.status} /></td>
-          </tr>
-        ))}
+              </td>
+              <td className="px-4 py-2.5">
+                <PrincipalKindChip kind={row.kind} />
+              </td>
+              <td className="px-4 py-2.5">
+                <Chip tone={isHuman ? 'accent' : 'violet'}>{platformSummary}</Chip>
+              </td>
+              <td className="px-4 py-2.5">
+                {dataSummary ? (
+                  <Chip tone={isHuman ? 'warning' : 'neutral'}>{dataSummary}</Chip>
+                ) : (
+                  <span style={{ color: 'var(--text-3)' }}>{t('access.detail.noDataAccess', '无数据访问权限')}</span>
+                )}
+              </td>
+              <td className="px-4 py-2.5">
+                {sourceSummary ? (
+                  <Chip tone={sourceSummary.tone}>{sourceSummary.label}</Chip>
+                ) : service ? (
+                  <IdentityName value={service.owner_principal_id} displayName={service.owner_display_name} />
+                ) : null}
+              </td>
+              <td className="px-4 py-2.5 tabular-nums" style={{ color: 'var(--text-3)' }}>
+                {principal?.last_seen_at ? fmtDateTime(principal.last_seen_at) : service?.created_at ? fmtDateTime(service.created_at) : '—'}
+              </td>
+              <td className="px-4 py-2.5"><StatusChip status={principal?.status ?? service?.status ?? 'active'} /></td>
+            </tr>
+          )
+        })}
       </tbody>
     </table>
   )
+}
+
+function PrincipalKindChip({ kind }: { kind: PrincipalSubjectRow['kind'] }) {
+  if (kind === 'service') {
+    return (
+      <Chip tone="violet" className="inline-flex items-center gap-1.5">
+        <PixelSubjectIcon kind="service" />
+        {t('access.principals.silicon', '硅基生物')}
+      </Chip>
+    )
+  }
+  return (
+    <Chip tone="success" className="inline-flex items-center gap-1.5">
+      <PixelSubjectIcon kind="human" />
+      {t('access.principals.carbon', '碳基生物')}
+    </Chip>
+  )
+}
+
+function PixelSubjectIcon({
+  kind,
+  size = PIXEL_SUBJECT_ICON_SIZE,
+}: {
+  kind: PrincipalSubjectRow['kind']
+  size?: number
+}) {
+  const rows = kind === 'human'
+    ? [
+      '..1111..',
+      '.122221.',
+      '.12CC21.',
+      '.122221.',
+      '..1111..',
+      '.133331.',
+      '11333311',
+      '11....11',
+    ]
+    : [
+      '...2....',
+      '..222...',
+      '.111111.',
+      '12C22C21',
+      '12222221',
+      '.111111.',
+      '..1..1..',
+      '.11..11.',
+    ]
+  const palette: Record<string, string> = kind === 'human'
+    ? {
+      1: '#0f766e',
+      2: '#5eead4',
+      3: '#22d3ee',
+      C: '#0f3d5e',
+    }
+    : {
+      1: '#0f4c81',
+      2: '#38bdf8',
+      C: '#0f766e',
+    }
+  const auraColor = kind === 'human' ? '#14b8a6' : '#38bdf8'
+
+  return (
+    <span
+      aria-hidden="true"
+      data-subject-icon={kind}
+      className="inline-grid shrink-0 overflow-hidden rounded-[2px]"
+      style={{
+        width: size,
+        height: size,
+        gridTemplateColumns: 'repeat(8, minmax(0, 1fr))',
+        gridTemplateRows: 'repeat(8, minmax(0, 1fr))',
+        boxShadow: `0 0 0 1px color-mix(in srgb, ${auraColor} 32%, transparent), 0 0 0 3px color-mix(in srgb, ${auraColor} 10%, transparent)`,
+      }}
+    >
+      {rows.flatMap((row, rowIndex) => row.split('').map((cell, cellIndex) => (
+        <span
+          key={`${rowIndex}-${cellIndex}`}
+          style={{
+            background: cell === '.' ? 'transparent' : palette[cell],
+          }}
+        />
+      )))}
+    </span>
+  )
+}
+
+function filterServicePrincipals(rows: AccessServicePrincipal[], q: string): AccessServicePrincipal[] {
+  const keyword = q.trim().toLowerCase()
+  if (!keyword) return rows
+  return rows.filter((row) => [
+    row.principal_id,
+    row.display_name,
+    row.service_type,
+    row.owner_display_name,
+    row.owner_principal_id,
+    row.owner_team,
+    row.description,
+    row.allowed_tenants.join(','),
+  ].some((value) => String(value || '').toLowerCase().includes(keyword)))
+}
+
+function formatServiceCredentialSummary(service: AccessServicePrincipal | null): string | null {
+  if (!service) return null
+  const apiKeyCount = service.api_keys?.length
+  if (typeof apiKeyCount === 'number') {
+    return apiKeyCount > 0
+      ? t('access.services.apiKeyCount', '{n} 个 API Key', { n: apiKeyCount })
+      : t('access.apiKeys.empty', '暂无 API Key')
+  }
+  return t('access.services.apiKeyManaged', 'API Key 管理')
+}
+
+function paginatePrincipalSubjects(
+  rows: PrincipalSubjectRow[],
+  page: number,
+  pageSize = 20,
+): {
+  items: PrincipalSubjectRow[]
+  page: number
+  pageSize: number
+  total: number
+  totalPages: number
+} {
+  const total = rows.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(Math.max(page, 1), totalPages)
+  const start = (safePage - 1) * pageSize
+  return {
+    items: rows.slice(start, start + pageSize),
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+  }
 }
 
 function PrincipalDetailPanel({ principalId }: { principalId: string | null }) {
@@ -383,7 +705,7 @@ function PrincipalDetailPanel({ principalId }: { principalId: string | null }) {
       <InfoGrid items={[
         [t('access.principals.col.type', '来源'), <TypeChip type={data.principal_type} />],
         [t('access.principals.col.status', '状态'), <StatusChip status={data.status} />],
-        [t('access.detail.idp', '身份来源'), data.idp === 'feishu' ? '飞书' : data.idp],
+        [t('access.detail.idp', '身份来源'), data.idp === 'feishu' ? t('access.detail.idpFeishu', '飞书') : data.idp],
         [t('access.detail.tenant', '租户'), data.tenant_key],
         [t('access.detail.lastSeen', '最近出现'), data.last_seen_at ? fmtDateTime(data.last_seen_at) : '—'],
       ]} />
@@ -417,134 +739,203 @@ function PrincipalDetailPanel({ principalId }: { principalId: string | null }) {
   )
 }
 
-function ServiceWorkspace() {
+function M2AllowlistWorkspace() {
   const toast = useToast()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [creatingService, setCreatingService] = useState(false)
   const [manualRefreshing, setManualRefreshing] = useState(false)
-  const { data, isLoading, isError, refetch, isFetching } = useServicePrincipals()
-  const rows = data ?? []
-  const selectedService = rows.find((row) => row.principal_id === selectedId)
+  const { data, isLoading, isError, isFetching, refetch } = useM2Allowlist()
+  const refreshing = manualRefreshing || isFetching
+  const summary = data?.summary ?? {
+    configured_count: 0,
+    matched_count: 0,
+    unmatched_count: 0,
+    current_m2_count: 0,
+    sync_cubic3_allowlist: false,
+  }
+  const items = data?.items ?? []
+  const currentPrincipals = data?.current_principals ?? []
 
-  const handleRefresh = async () => {
+  const refresh = async () => {
     setManualRefreshing(true)
     try {
       const result = await refetch()
       if (result.isError) throw result.error
-      toast.show({ tone: 'success', title: t('access.refresh.servicesSuccess', '机器人接入已刷新') })
+      toast.show({ tone: 'success', title: t('access.allowlist.refreshSuccess', 'M2 白名单预览已刷新') })
     } catch {
-      toast.show({ tone: 'danger', title: t('access.refresh.servicesFailed', '机器人接入刷新失败') })
+      toast.show({ tone: 'danger', title: t('access.allowlist.refreshFailed', 'M2 白名单预览刷新失败') })
     } finally {
       setManualRefreshing(false)
     }
   }
-  const refreshing = manualRefreshing || isFetching
 
   return (
     <div className="flex min-h-0 flex-1">
       <section className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-2 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
-          <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-            {t('access.services.title', '机器人接入 / API Key')}
-          </span>
-          <span className="text-xs" style={{ color: 'var(--text-3)' }}>
-            {t('access.services.total', '共 {n} 个', { n: rows.length })}
-          </span>
-          <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+              {t('access.allowlist.heading', '默认 M2 查询权限')}
+            </h2>
+            <p className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
+              {t('access.allowlist.helper', '白名单只决定 data-platform DataPolicy 是否放行 M2；真实执行仍经过 gateway SQL guard 和 MaxCompute RAM。')}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
             <RefreshButton
-              onClick={() => void handleRefresh()}
+              onClick={() => void refresh()}
               loading={refreshing}
-              ariaLabel={t('access.refresh.services', '刷新机器人接入')}
-            />
-            <CreateButton
-              label={t('access.services.create', '新建机器人')}
-              onClick={() => setCreatingService(true)}
+              label={t('access.allowlist.refreshPreview', '刷新预览')}
+              loadingLabel={t('access.allowlist.refreshPreviewing', '刷新中…')}
+              ariaLabel={t('access.allowlist.refresh', '刷新 M2 白名单预览')}
             />
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto">
-          {isLoading ? (
-            <LoadingRows />
-          ) : isError ? (
-            <EmptyState tone="danger" text={t('access.services.loadFailed', '机器人接入加载失败')} />
-          ) : rows.length === 0 ? (
-            <EmptyState text={t('access.services.empty', '暂无机器人接入')} />
-          ) : (
-            <ServiceTable rows={rows} selectedId={selectedId} onSelect={setSelectedId} />
-          )}
+
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {isError ? (
+            <div className="mb-3">
+              <EmptyState tone="danger" text={t('access.allowlist.loadFailed', 'M2 白名单加载失败')} />
+            </div>
+          ) : null}
+          <div className="grid gap-3 md:grid-cols-4">
+            <GatewayMetricCard
+              label={t('access.allowlist.metric.configured', '配置标识')}
+              value={isLoading ? '—' : summary.configured_count}
+              detail={t('access.allowlist.metric.configuredDetail', 'open_id / union_id / principal_id 去重后数量')}
+            />
+            <GatewayMetricCard
+              label={t('access.allowlist.metric.matched', '已匹配主体')}
+              value={isLoading ? '—' : summary.matched_count}
+              detail={t('access.allowlist.metric.matchedDetail', '已能解析为 access principal')}
+            />
+            <GatewayMetricCard
+              label={t('access.allowlist.metric.unmatched', '待首次登录')}
+              value={isLoading ? '—' : summary.unmatched_count}
+              tone={summary.unmatched_count > 0 ? 'warning' : 'neutral'}
+              detail={t('access.allowlist.metric.unmatchedDetail', '未匹配主体时需等待飞书 SSO 登录')}
+            />
+            <GatewayMetricCard
+              label={t('access.allowlist.metric.currentM2', '当前 M2 成员')}
+              value={isLoading ? '—' : summary.current_m2_count}
+              detail={t('access.allowlist.metric.currentM2Detail', '已绑定 data_m2_detail_reader 的成员')}
+            />
+          </div>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="min-w-0 space-y-4">
+              <AllowlistSourcePanel syncCubic3={summary.sync_cubic3_allowlist} rawEnv={data?.sources.feishu_m2_reader_open_ids ?? ''} />
+              <section className="rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
+                <PanelTitle title={t('access.allowlist.items.section', '配置标识匹配结果')} count={items.length} />
+                {isLoading ? (
+                  <LoadingRows />
+                ) : items.length === 0 ? (
+                  <EmptyState text={t('access.allowlist.items.empty', '暂无 M2 白名单配置')} />
+                ) : (
+                  <AllowlistIdentifierTable rows={items} />
+                )}
+              </section>
+            </section>
+
+            <aside className="space-y-4">
+              <section className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--border)' }}>
+                <div className="font-semibold" style={{ color: 'var(--text-1)' }}>
+                  {t('access.allowlist.confirm.section', '确认策略')}
+                </div>
+                <div className="mt-3 space-y-2">
+                  <GatewayCheckRow
+                    label={t('access.allowlist.confirm.login', '首次登录')}
+                    text={t('access.allowlist.confirm.loginText', '自动落 Principal')}
+                  />
+                  <GatewayCheckRow
+                    label={t('access.allowlist.confirm.grant', '命中白名单')}
+                    text={t('access.allowlist.confirm.grantText', '授予 M0/M1/M2')}
+                  />
+                  <GatewayCheckRow
+                    label={t('access.allowlist.confirm.gateway', '真实执行')}
+                    text={t('access.allowlist.confirm.gatewayText', '仍走 gateway')}
+                  />
+                  <GatewayCheckRow
+                    label={t('access.allowlist.confirm.m3', 'M3 / RAW')}
+                    text={t('access.allowlist.confirm.m3Text', '默认阻断')}
+                  />
+                </div>
+              </section>
+              <section className="rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
+                <PanelTitle title={t('access.allowlist.current.section', '当前 M2 成员')} count={currentPrincipals.length} />
+                {isLoading ? (
+                  <LoadingRows />
+                ) : currentPrincipals.length === 0 ? (
+                  <EmptyState text={t('access.allowlist.current.empty', '暂无已绑定 M2 的成员')} />
+                ) : (
+                  <AllowlistCurrentPrincipalList rows={currentPrincipals} />
+                )}
+              </section>
+            </aside>
+          </div>
         </div>
       </section>
-      <aside
-        role="complementary"
-        aria-label={t('access.services.detailAriaLabel', '机器人接入配置')}
-        className="flex w-[420px] shrink-0 flex-col border-l"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
-      >
-        <div className="border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="truncate text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-            {selectedService
-              ? identityDisplayName(selectedService.display_name, selectedService.principal_id)
-              : t('access.services.detailTitle', '机器人接入配置')}
-          </h2>
-          <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>
-            {selectedService
-              ? `${selectedService.service_type} · ${selectedService.owner_team || t('access.services.noTeam', '未设置团队')}`
-              : t('access.services.pick', '选择机器人查看接入凭证')}
-          </p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto">
-          <ServiceDetailPanel principalId={selectedId} />
-        </div>
-      </aside>
-      <CreateServiceDialog open={creatingService} onClose={() => setCreatingService(false)} />
     </div>
   )
 }
 
-function ServiceTable({
-  rows,
-  selectedId,
-  onSelect,
+function AllowlistSourcePanel({
+  syncCubic3,
+  rawEnv,
 }: {
-  rows: AccessServicePrincipal[]
-  selectedId: string | null
-  onSelect: (id: string) => void
+  syncCubic3: boolean
+  rawEnv: string
 }) {
+  return (
+    <section className="grid gap-3 md:grid-cols-2">
+      <div className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+        <div className="font-semibold" style={{ color: 'var(--text-1)' }}>FEISHU_M2_READER_OPEN_IDS</div>
+        <div className="mt-1" style={{ color: 'var(--text-3)' }}>
+          {rawEnv ? t('access.allowlist.source.envConfigured', '已配置环境变量名单') : t('access.allowlist.source.envEmpty', '未配置环境变量名单')}
+        </div>
+      </div>
+      <div className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+        <div className="font-semibold" style={{ color: 'var(--text-1)' }}>CUBIC3 allowed_user_ids</div>
+        <div className="mt-1" style={{ color: 'var(--text-3)' }}>
+          {syncCubic3
+            ? t('access.allowlist.source.cubic3Enabled', '已启用复用，作为默认 M2 白名单来源')
+            : t('access.allowlist.source.cubic3Disabled', '未启用复用，默认 M2 只看环境变量名单')}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function AllowlistIdentifierTable({ rows }: { rows: M2AllowlistItem[] }) {
   return (
     <table className="w-full border-collapse text-xs">
       <thead className="sticky top-0 z-10">
         <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-          <Th>{t('access.services.col.principal', '机器人')}</Th>
-          <Th>{t('access.services.col.type', '类型')}</Th>
-          <Th>{t('access.services.col.owner', '负责人')}</Th>
-          <Th>{t('access.services.col.tenants', '允许租户')}</Th>
-          <Th>{t('access.services.col.status', '状态')}</Th>
+          <Th>{t('access.allowlist.item_col.identifier', '标识')}</Th>
+          <Th>{t('access.allowlist.item_col.source', '来源')}</Th>
+          <Th>{t('access.allowlist.item_col.principal', '匹配主体')}</Th>
+          <Th>{t('access.allowlist.item_col.result', '授权结果')}</Th>
+          <Th>{t('access.allowlist.item_col.risk', '风险')}</Th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr
-            key={row.principal_id}
-            className="cursor-pointer transition-colors hover:bg-[color:var(--bg-hover)]"
-            style={{
-              borderBottom: '1px solid var(--border)',
-              background: selectedId === row.principal_id ? 'var(--accent-soft)' : 'transparent',
-            }}
-            onClick={() => onSelect(row.principal_id)}
-          >
-            <td className="max-w-[320px] px-4 py-2.5">
-              <div className="truncate font-medium" style={{ color: 'var(--text-1)' }}>
-                {identityDisplayName(row.display_name, row.principal_id)}
-              </div>
-              <div className="truncate font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.principal_id}</div>
-              <div className="truncate text-[11px]" style={{ color: 'var(--text-3)' }}>{row.description || '—'}</div>
+          <tr key={`${row.source}:${row.identifier}`} style={{ borderBottom: '1px solid var(--border)' }}>
+            <td className="max-w-[260px] px-4 py-2.5 font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.identifier}</td>
+            <td className="px-4 py-2.5"><Chip tone="neutral">{allowlistSourceLabel(row.source)}</Chip></td>
+            <td className="max-w-[260px] px-4 py-2.5">
+              {row.principal_id ? (
+                <IdentityName value={row.principal_id} displayName={row.display_name} />
+              ) : (
+                <span style={{ color: 'var(--text-3)' }}>{t('access.allowlist.items.unmatched', '等待首次 SSO 登录')}</span>
+              )}
             </td>
-            <td className="px-4 py-2.5"><Chip tone="violet">{row.service_type}</Chip></td>
-            <td className="max-w-[220px] truncate px-4 py-2.5" style={{ color: 'var(--text-2)' }}>
-              <IdentityName value={row.owner_principal_id} displayName={row.owner_display_name} />
+            <td className="px-4 py-2.5"><Chip tone={allowlistGrantTone(row.grant_status)}>{allowlistGrantLabel(row.grant_status)}</Chip></td>
+            <td className="px-4 py-2.5">
+              {row.risk ? (
+                <Chip tone="warning">{allowlistRiskLabel(row.risk)}</Chip>
+              ) : (
+                <span style={{ color: 'var(--text-3)' }}>—</span>
+              )}
             </td>
-            <td className="px-4 py-2.5" style={{ color: 'var(--text-2)' }}>{row.allowed_tenants.join(', ') || '—'}</td>
-            <td className="px-4 py-2.5"><StatusChip status={row.status} /></td>
           </tr>
         ))}
       </tbody>
@@ -552,8 +943,37 @@ function ServiceTable({
   )
 }
 
+function AllowlistCurrentPrincipalList({ rows }: { rows: M2AllowlistPrincipal[] }) {
+  return (
+    <div className="space-y-2">
+      {rows.slice(0, 8).map((row) => (
+        <div key={row.principal_id} className="rounded border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate font-medium" style={{ color: 'var(--text-1)' }}>
+              {row.display_name || row.principal_id}
+            </span>
+            <Chip tone={row.in_configured_allowlist ? 'success' : 'neutral'}>
+              {row.in_configured_allowlist ? t('access.allowlist.current.configured', '白名单') : bindingSourceLabel(row.source)}
+            </Chip>
+          </div>
+          <div className="mt-1 truncate font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.principal_id}</div>
+          <div className="mt-1 text-[11px]" style={{ color: 'var(--text-3)' }}>
+            {row.last_bound_at ? fmtDateTime(row.last_bound_at) : t('access.allowlist.current.noBoundAt', '暂无绑定时间')}
+          </div>
+        </div>
+      ))}
+      {rows.length > 8 ? (
+        <div className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+          {t('access.allowlist.current.more', '另有 {count} 个 M2 成员未在此处展开', { count: rows.length - 8 })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function ServiceDetailPanel({ principalId }: { principalId: string | null }) {
   const toast = useToast()
+  const confirm = useConfirm()
   const [creatingKey, setCreatingKey] = useState(false)
   const [revealedKey, setRevealedKey] = useState<CreatedApiKey | null>(null)
   const { data, isLoading, isError } = useServicePrincipal(principalId)
@@ -567,7 +987,7 @@ function ServiceDetailPanel({ principalId }: { principalId: string | null }) {
   }
 
   const handleRevoke = async (keyId: string) => {
-    if (!window.confirm(t('access.apiKeys.revokeConfirm', '吊销这个 API Key？'))) return
+    if (!(await confirm({ title: t('access.apiKeys.revokeConfirm', '吊销这个 API Key？'), tone: 'danger' }))) return
     await revoke.mutateAsync(keyId)
     toast.show({ tone: 'warning', title: t('access.apiKeys.revoked', 'API Key 已吊销') })
   }
@@ -643,8 +1063,8 @@ function ServiceDetailPanel({ principalId }: { principalId: string | null }) {
 
 function PolicyWorkspace() {
   const toast = useToast()
+  const confirm = useConfirm()
   const [creatingPolicy, setCreatingPolicy] = useState(false)
-  const [creatingProfile, setCreatingProfile] = useState(false)
   const [showAdvancedProfiles, setShowAdvancedProfiles] = useState(false)
   const [manualRefreshing, setManualRefreshing] = useState(false)
   const [editingPolicy, setEditingPolicy] = useState<AccessDataPolicy | null>(null)
@@ -693,7 +1113,7 @@ function PolicyWorkspace() {
   const refreshing = manualRefreshing || fetchingPolicies || fetchingProfiles || fetchingDecisions
 
   const disablePolicy = async (policy: AccessDataPolicy) => {
-    if (!window.confirm(t('access.policies.disableConfirm', '停用这个访问规则？'))) return
+    if (!(await confirm({ title: t('access.policies.disableConfirm', '停用这个访问规则？'), tone: 'danger' }))) return
     await updatePolicy.mutateAsync({
       policyCode: policy.policy_code,
       payload: { status: 'disabled' },
@@ -702,7 +1122,7 @@ function PolicyWorkspace() {
   }
 
   const disableProfile = async (profile: AccessExecutionProfile) => {
-    if (!window.confirm(t('access.profiles.disableConfirm', '停用这个执行配置？'))) return
+    if (!(await confirm({ title: t('access.profiles.disableConfirm', '停用这个执行配置？'), tone: 'danger' }))) return
     await updateProfile.mutateAsync({
       profileCode: profile.profile_code,
       payload: { status: 'disabled' },
@@ -720,10 +1140,12 @@ function PolicyWorkspace() {
               loading={refreshing}
               ariaLabel={t('access.refresh.policies', '刷新数据访问规则')}
             />
-            <CreateButton
-              label={t('access.policies.create', '新建访问规则')}
-              onClick={() => setCreatingPolicy(true)}
-            />
+            <Can action="access.write" disabledTip={t('access.permissions.writeRequired', '需要权限管理员才能修改访问规则')}>
+              <CreateButton
+                label={t('access.policies.create', '新建访问规则')}
+                onClick={() => setCreatingPolicy(true)}
+              />
+            </Can>
           </div>
           <PanelTitle title={t('access.policies.section', '访问规则')} count={policies?.total ?? 0} />
           {loadingPolicies ? (
@@ -763,25 +1185,16 @@ function PolicyWorkspace() {
                 {showAdvancedProfiles ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 <div className="min-w-0">
                   <div className="text-xs font-semibold" style={{ color: 'var(--text-1)' }}>
-                    {t('access.profiles.section', '执行方式（高级）')}
+                    {t('access.profiles.section', '执行护栏（高级）')}
                     <span className="ml-2 font-normal" style={{ color: 'var(--text-3)' }}>{profiles?.total ?? 0}</span>
                   </div>
                   <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-                    {t('access.profiles.helper', '只控制行数、超时、导出和审计；真实 RAM 绑定由 gateway 维护')}
+                    {t('access.profiles.helper', '仅调整 data-platform 侧行数、超时、审计和状态；真实 CredentialBinding / RAM 由 gateway 维护')}
                   </div>
                 </div>
               </div>
               {showAdvancedProfiles ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setCreatingProfile(true)
-                  }}
-                >
-                  <Plus size={12} /> {t('access.profiles.create', '新建执行方式')}
-                </Button>
+                <Chip tone="neutral">{t('access.profiles.controlled', '受控配置')}</Chip>
               ) : (
                 <Chip tone="neutral">{t('access.profiles.collapsed', '默认收起')}</Chip>
               )}
@@ -807,7 +1220,6 @@ function PolicyWorkspace() {
           </section>
         </section>
       </div>
-      <ExecutionProfileDialog open={creatingProfile} onClose={() => setCreatingProfile(false)} />
       <ExecutionProfileDialog
         open={Boolean(editingProfile)}
         profile={editingProfile}
@@ -834,7 +1246,7 @@ function PermissionAuditWorkspace() {
     refetch,
   } = usePolicyDecisions({ limit: 50 })
   const rows = decisions?.items ?? []
-  const approvalRows = rows.filter((row) => row.governance_required)
+  const governanceRows = rows.filter((row) => row.governance_required)
   const deniedRows = rows.filter((row) => row.decision !== 'allow')
   const refreshing = manualRefreshing || isFetching
 
@@ -862,9 +1274,9 @@ function PermissionAuditWorkspace() {
       </div>
       <div className="grid gap-3 md:grid-cols-3">
         <GatewayMetricCard
-          label={t('access.audit.metric.approvals', '权限审批记录')}
-          value={approvalRows.length}
-          detail={t('access.audit.metric.approvalsDetail', '需要治理或人工确认的访问判定')}
+          label={t('access.audit.metric.governanceRequired', '需治理记录')}
+          value={governanceRows.length}
+          detail={t('access.audit.metric.governanceRequiredDetail', '需要治理、阻断或人工复核的访问判定')}
         />
         <GatewayMetricCard
           label={t('access.audit.metric.decisions', '权限判定记录')}
@@ -881,15 +1293,15 @@ function PermissionAuditWorkspace() {
 
       <div className="mt-4 space-y-4">
         <section className="rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
-          <PanelTitle title={t('access.audit.approvals.section', '权限审批记录')} count={approvalRows.length} />
+          <PanelTitle title={t('access.audit.governance.section', '治理要求记录')} count={governanceRows.length} />
           {isLoading ? (
             <LoadingRows />
           ) : isError ? (
             <EmptyState tone="danger" text={t('access.audit.loadFailed', '权限审计加载失败')} />
-          ) : approvalRows.length === 0 ? (
-            <EmptyState text={t('access.audit.approvals.empty', '暂无需要审批的权限记录')} />
+          ) : governanceRows.length === 0 ? (
+            <EmptyState text={t('access.audit.governance.empty', '暂无需要治理或复核的访问记录')} />
           ) : (
-            <ApprovalRecordTable rows={approvalRows} />
+            <GovernanceRecordTable rows={governanceRows} />
           )}
         </section>
         <section className="rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
@@ -912,56 +1324,34 @@ function PermissionAuditWorkspace() {
 function GatewayObservabilityWorkspace() {
   const [traceRun, setTraceRun] = useState<GatewayQueryRun | null>(null)
   const [recordPage, setRecordPage] = useState(1)
-  const summaryQuery = useGatewayTelemetrySummary()
-  const alertsQuery = useGatewayRuntimeAlerts()
-  const runsQuery = useGatewayQueryRuns({ limit: 200 })
-  const summary = summaryQuery.data ?? {
-    query_count: 0,
-    success_count: 0,
-    failed_count: 0,
-    physical_denied_count: 0,
-    stability: 100,
-    by_data_level: {},
-    queued_count: 0,
-    running_count: 0,
-    pending_count: 0,
-    avg_queue_wait_ms: 0,
-    max_current_queue_wait_ms: 0,
-    avg_execute_ms: 0,
-    remote_timeout_count: 0,
-    client_wait_timeout_count: 0,
-    timeout_count: 0,
-    rejected_count: 0,
-    export_request_count: 0,
-    export_success_count: 0,
-    export_failure_count: 0,
-    publish_conflict_count: 0,
-    result_object_count: 0,
-    spool_object_count: 0,
-    spool_result_total_bytes: 0,
-    generated_at: null,
-  }
-  const alertEvaluation = alertsQuery.data ?? EMPTY_GATEWAY_ALERTS
-  const rows = useMemo(() => runsQuery.data?.items ?? [], [runsQuery.data?.items])
-  const isLoading = summaryQuery.isLoading || alertsQuery.isLoading || runsQuery.isLoading
-  const isError = summaryQuery.isError || alertsQuery.isError || runsQuery.isError
-  const dataQuality = useMemo(() => summarizeGatewayDataQuality(rows), [rows])
-  const trendRows = useMemo(() => buildGatewayTrend(rows), [rows])
+  const snapshotQuery = useGatewayObservability(GATEWAY_OBSERVABILITY_PARAMS)
+  const snapshot = snapshotQuery.data
+  const summary = snapshot?.summary ?? EMPTY_GATEWAY_SUMMARY
+  const alertEvaluation = snapshot?.alerts ?? EMPTY_GATEWAY_ALERTS
+  const rows = useMemo(() => snapshot?.query_runs.items ?? [], [snapshot?.query_runs.items])
+  const isLoading = snapshotQuery.isLoading
+  const isError = snapshotQuery.isError
+  const dataQuality = useMemo(
+    () => summarizeGatewayDataQuality(rows, snapshot?.contract_completeness),
+    [rows, snapshot?.contract_completeness],
+  )
+  const trendRows = useMemo(
+    () => buildGatewayTrendFromTimeseries(snapshot?.timeseries.points ?? []) || buildGatewayTrend(rows),
+    [rows, snapshot?.timeseries.points],
+  )
   const trendSummary = useMemo(() => summarizeGatewayTrend(trendRows), [trendRows])
   const paginatedRows = useMemo(
     () => paginateGatewayRows(rows, recordPage, GATEWAY_RECORD_PAGE_SIZE),
     [recordPage, rows],
   )
   const breakdownRows = useMemo(
-    () => Object.entries(summary.by_data_level ?? {}).map(([level, count]) => ({ level, count: Number(count) })),
-    [summary.by_data_level],
+    () => gatewayBreakdownRows(snapshot, summary),
+    [snapshot, summary],
   )
-  const credentialIssueCount = rows.filter((row) => isCredentialReason(row.reason_code || '')).length
-  const gatewayDeniedCount = rows.filter((row) => row.status === 'FAILED' && !row.physical_denied).length
+  const credentialIssueCount = Number(summary.credential_missing_count ?? 0) + Number(summary.credential_invalid_count ?? 0)
+  const gatewayDeniedCount = Number(summary.sql_guard_rejected_count ?? summary.rejected_count ?? 0)
   const refresh = () => {
-    void summaryQuery.refetch()
-    void alertsQuery.refetch()
-    void runsQuery.refetch()
+    void snapshotQuery.refetch()
   }
   return (
     <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -971,7 +1361,7 @@ function GatewayObservabilityWorkspace() {
         </div>
         <RefreshButton
           onClick={refresh}
-          loading={summaryQuery.isFetching || alertsQuery.isFetching || runsQuery.isFetching}
+          loading={snapshotQuery.isFetching}
           ariaLabel={t('access.gateway.refresh', '刷新网关观测')}
         />
       </div>
@@ -980,8 +1370,7 @@ function GatewayObservabilityWorkspace() {
           <EmptyState tone="danger" text={t('access.gateway.loadFailed', '网关观测加载失败，请检查 data-platform 到 dw-query-gateway 的服务令牌和网络连通性')} />
         </div>
       ) : null}
-      <GatewayAlertPanel evaluation={alertEvaluation} loading={alertsQuery.isLoading} />
-      <GatewayDataQualityPanel quality={dataQuality} loading={runsQuery.isLoading} />
+      <GatewayAlertPanel evaluation={alertEvaluation} loading={snapshotQuery.isLoading} />
       <div className="grid gap-3 md:grid-cols-4">
         <GatewayMetricCard
           label={t('access.gateway.runtime.queue', '排队 / 运行 / 等待')}
@@ -991,14 +1380,20 @@ function GatewayObservabilityWorkspace() {
         />
         <GatewayMetricCard
           label={t('access.gateway.runtime.queueWait', '排队等待')}
-          value={isLoading ? '—' : `${formatDurationMs(summary.avg_queue_wait_ms)} / ${formatDurationMs(summary.max_current_queue_wait_ms)}`}
-          detail={t('access.gateway.runtime.queueWaitDetail', '平均等待 / 当前最大等待')}
+          value={isLoading
+            ? '—'
+            : `${formatDurationMs(summary.avg_queue_wait_ms)} / ${formatDurationMs(summary.max_current_queue_wait_ms)}`}
+          detail={t('access.gateway.runtime.queueWaitDetail', '平均等待 / 当前最大等待，P95 {p95}', {
+            p95: formatDurationMs(summary.queue_wait_p95_ms ?? 0),
+          })}
           tone={summary.max_current_queue_wait_ms > 0 ? 'warning' : 'neutral'}
         />
         <GatewayMetricCard
           label={t('access.gateway.runtime.executeMs', '执行耗时')}
-          value={isLoading ? '—' : formatDurationMs(summary.avg_execute_ms)}
-          detail={t('access.gateway.runtime.executeMsDetail', '平均执行耗时')}
+          value={isLoading
+            ? '—'
+            : `${formatDurationMs(summary.avg_execute_ms)} / ${formatDurationMs(summary.execute_p95_ms ?? 0)}`}
+          detail={t('access.gateway.runtime.executeMsDetail', '平均 / P95 执行耗时')}
         />
         <GatewayMetricCard
           label={t('access.gateway.runtime.timeouts', '超时 / 拒绝')}
@@ -1035,49 +1430,21 @@ function GatewayObservabilityWorkspace() {
           detail={formatGatewayStabilityBasis(summary)}
         />
       </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
-        <GatewayMetricCard
-          label={t('access.gateway.runtime.timeoutBreakdown', '超时拆分')}
-          value={isLoading ? '—' : `${summary.remote_timeout_count} / ${summary.client_wait_timeout_count}`}
-          detail={t('access.gateway.runtime.timeoutBreakdownDetail', '远端超时 / 客户端等待超时')}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.runtime.resultObjects', '结果对象')}
-          value={isLoading ? '—' : summary.result_object_count}
-          detail={t('access.gateway.runtime.resultObjectsDetail', 'gateway 管理的结果对象数量')}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.runtime.spoolObjects', 'Spool 对象')}
-          value={isLoading ? '—' : summary.spool_object_count}
-          detail={summary.generated_at ? t('access.gateway.runtime.generatedAt', '更新时间 {time}', { time: fmtDateTime(summary.generated_at) }) : t('access.gateway.runtime.generatedAtEmpty', '等待 gateway 汇总时间')}
-        />
-      </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="min-w-0">
-          <AccessTrendPanel rows={trendRows} summary={trendSummary} quality={dataQuality} />
-          <section className="mt-4 rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
-            <PanelTitle title={t('access.gateway.records.section', '全平台访问记录')} count={rows.length} />
-            {isLoading ? (
-              <LoadingRows />
-            ) : rows.length === 0 ? (
-              <EmptyState text={t('access.gateway.records.empty', '暂无网关执行记录')} />
-            ) : (
-              <>
-                <GatewayExecutionRecordTable rows={paginatedRows.items} onOpenTrace={setTraceRun} />
-                <ListPagination
-                  page={paginatedRows.page}
-                  pageSize={paginatedRows.pageSize}
-                  total={paginatedRows.total}
-                  onPageChange={setRecordPage}
-                />
-              </>
-            )}
-          </section>
+          <AccessTrendPanel
+            rows={trendRows}
+            summary={trendSummary}
+            quality={dataQuality}
+            windowLabel={snapshot?.window ?? GATEWAY_OBSERVABILITY_PARAMS.window}
+          />
         </section>
 
         <aside className="space-y-4">
+          <GatewayRuntimeObjectPanel summary={summary} loading={isLoading} />
           <GatewayBreakdownPanel rows={breakdownRows} total={summary.query_count} />
+          <GatewayContractPanel contract={snapshot?.contract_completeness} loading={isLoading} />
           <PhysicalPermissionPanel
             physicalDeniedCount={summary.physical_denied_count}
             credentialIssueCount={credentialIssueCount}
@@ -1086,6 +1453,25 @@ function GatewayObservabilityWorkspace() {
           />
         </aside>
       </div>
+      <section className="mt-4 rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
+        <PanelTitle title={t('access.gateway.records.section', '全平台访问记录')} count={snapshot?.query_runs.total ?? rows.length} />
+        <GatewayDataQualityPanel quality={dataQuality} loading={snapshotQuery.isLoading} />
+        {isLoading ? (
+          <LoadingRows />
+        ) : rows.length === 0 ? (
+          <EmptyState text={t('access.gateway.records.empty', '暂无网关执行记录')} />
+        ) : (
+          <>
+            <GatewayExecutionRecordTable rows={paginatedRows.items} onOpenTrace={setTraceRun} />
+            <ListPagination
+              page={paginatedRows.page}
+              pageSize={paginatedRows.pageSize}
+              total={paginatedRows.total}
+              onPageChange={setRecordPage}
+            />
+          </>
+        )}
+      </section>
       <GatewayTraceDialog run={traceRun} onClose={() => setTraceRun(null)} />
     </div>
   )
@@ -1095,6 +1481,18 @@ function formatDurationMs(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0ms'
   if (value < 1000) return `${Math.round(value)}ms`
   return `${(value / 1000).toFixed(1)}s`
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let current = value
+  let index = 0
+  while (current >= 1024 && index < units.length - 1) {
+    current /= 1024
+    index += 1
+  }
+  return `${current >= 10 || index === 0 ? current.toFixed(0) : current.toFixed(1)} ${units[index]}`
 }
 
 function GatewayAlertPanel({
@@ -1119,17 +1517,19 @@ function GatewayAlertPanel({
   const checks = evaluation.readiness?.checks && typeof evaluation.readiness.checks === 'object'
     ? Object.entries(evaluation.readiness.checks)
     : []
+  const visibleAlerts = evaluation.alerts.slice(0, 2)
+  const extraAlertCount = Math.max(0, evaluation.alerts.length - visibleAlerts.length)
   return (
     <section
-      className="mb-3 rounded-md border p-3 text-xs"
+      className="mb-3 rounded-md border px-3 py-2 text-xs"
       style={{
         borderColor: color,
         background: soft,
       }}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-2">
-          <Icon size={16} className="mt-0.5 shrink-0" style={{ color }} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon size={16} className="shrink-0" style={{ color }} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold" style={{ color: 'var(--text-1)' }}>
@@ -1148,7 +1548,7 @@ function GatewayAlertPanel({
           </div>
         </div>
         <div className="flex flex-wrap gap-1">
-          {checks.slice(0, 6).map(([name, value]) => {
+          {checks.slice(0, 5).map(([name, value]) => {
             const ok = String(value).toLowerCase() === 'ok' || String(value).toLowerCase() === 'healthy' || String(value) === '0'
             return (
               <Chip key={name} tone={ok ? 'neutral' : 'danger'}>
@@ -1163,22 +1563,109 @@ function GatewayAlertPanel({
           {Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-12 w-full" />)}
         </div>
       ) : evaluation.alerts.length === 0 ? (
-        <div className="mt-3 rounded border border-dashed px-3 py-2" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
+        <div className="mt-2 rounded border border-dashed px-3 py-2" style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}>
           {t('access.gateway.alerts.empty', '当前未触发基础运行态告警')}
         </div>
       ) : (
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          {evaluation.alerts.slice(0, 4).map((alert) => (
-            <div key={alert.code} className="rounded border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium" style={{ color: 'var(--text-1)' }}>{alert.title}</span>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {visibleAlerts.map((alert) => (
+            <div
+              key={alert.code}
+              className="min-w-[260px] flex-1 rounded border px-3 py-2"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 flex-1 truncate font-medium" style={{ color: 'var(--text-1)' }}>{alert.title}</span>
                 <Chip tone={gatewayAlertTone(alert.severity)}>{formatGatewayAlertSeverityLabel(alert.severity)}</Chip>
               </div>
-              <div className="mt-1" style={{ color: 'var(--text-3)' }}>{alert.message}</div>
+              <div className="mt-1 truncate" style={{ color: 'var(--text-3)' }} title={alert.message}>{alert.message}</div>
             </div>
           ))}
+          {extraAlertCount > 0 ? (
+            <div className="flex items-center rounded border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-3)' }}>
+              {t('access.gateway.alerts.more', '还有 {count} 个告警', { count: extraAlertCount })}
+            </div>
+          ) : null}
         </div>
       )}
+    </section>
+  )
+}
+
+function GatewayRuntimeObjectPanel({
+  summary,
+  loading,
+}: {
+  summary: GatewayTelemetrySummary
+  loading: boolean
+}) {
+  return (
+    <section className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--border)' }}>
+      <div className="font-semibold" style={{ color: 'var(--text-1)' }}>
+        {t('access.gateway.runtime.section', '运行对象')}
+      </div>
+      <div className="mt-3 space-y-2">
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.timeoutBreakdown', '超时拆分')}
+          text={loading ? '—' : `${summary.remote_timeout_count} / ${summary.client_wait_timeout_count}`}
+          helper={t('access.gateway.runtime.timeoutBreakdownDetail', '远端超时 / 客户端等待超时')}
+          danger={!loading && summary.timeout_count > 0}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.exportFlow', '导出链路')}
+          text={loading ? '—' : `${summary.export_request_count} / ${summary.export_started_count} / ${summary.export_success_count} / ${summary.export_not_ready_count} / ${summary.export_failure_count}`}
+          helper={t('access.gateway.runtime.exportFlowDetail', '请求 / 已开始 / 成功 / 未就绪 / 失败')}
+          danger={!loading && summary.export_failure_count + summary.export_not_ready_count > 0}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.resultGuardrails', '结果护栏')}
+          value={loading ? undefined : summary.result_rejected_count}
+          text={loading ? '—' : undefined}
+          helper={t('access.gateway.runtime.resultGuardrailsDetail', '整体过大 {tooLarge}，单行过大 {rowTooLarge}，最大结果 {maxBytes}，最大单行 {maxRowBytes}', {
+            tooLarge: summary.result_too_large_rejected_count,
+            rowTooLarge: summary.result_row_too_large_rejected_count,
+            maxBytes: formatBytes(summary.max_result_rejected_bytes),
+            maxRowBytes: formatBytes(summary.max_result_rejected_row_bytes),
+          })}
+          danger={!loading && summary.result_rejected_count > 0}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.resultObjects', '结果对象')}
+          value={loading ? undefined : summary.result_object_count}
+          text={loading ? '—' : undefined}
+          helper={t('access.gateway.runtime.resultObjectsDetail', 'gateway 管理的结果对象数量')}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.spoolObjects', 'Spool 对象')}
+          value={loading ? undefined : summary.spool_object_count}
+          text={loading ? '—' : undefined}
+          helper={summary.generated_at ? t('access.gateway.runtime.spoolObjectsDetail', '总量 {bytes}，更新时间 {time}', { bytes: formatBytes(summary.spool_result_total_bytes), time: fmtDateTime(summary.generated_at) }) : t('access.gateway.runtime.generatedAtEmpty', '等待 gateway 汇总时间')}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.authProtocolEvents', '认证 / 协议事件')}
+          text={loading ? '—' : `${summary.auth_denied_count} / ${summary.invalid_token_count ?? 0} / ${summary.missing_token_count ?? 0} / ${summary.legacy_protocol_count}`}
+          helper={t('access.gateway.runtime.authProtocolEventsDetail', '认证拒绝 / 无效令牌 / 缺失令牌 / legacy 协议调用')}
+          danger={!loading && summary.auth_denied_count + (summary.invalid_token_count ?? 0) + (summary.missing_token_count ?? 0) + summary.legacy_protocol_count > 0}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.credentialEvents', '凭据事件')}
+          text={loading ? '—' : `${summary.credential_missing_count ?? 0} / ${summary.credential_invalid_count ?? 0}`}
+          helper={t('access.gateway.runtime.credentialEventsDetail', '绑定缺失 / 凭据无效')}
+          danger={!loading && (summary.credential_missing_count ?? 0) + (summary.credential_invalid_count ?? 0) > 0}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.workerEvents', 'Worker / readyz 事件')}
+          text={loading ? '—' : `${summary.worker_heartbeat_stale_count} / ${summary.worker_orphan_lease_reclaimed_count} / ${summary.gateway_readyz_degraded_count}`}
+          helper={t('access.gateway.runtime.workerEventsDetail', '心跳过期 / 孤儿租约回收 / readyz 降级')}
+          danger={!loading && summary.worker_heartbeat_stale_count + summary.gateway_readyz_degraded_count > 0}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.runtime.workerCapacity', 'Worker 容量')}
+          text={loading ? '—' : `${summary.live_worker_count ?? 0} / ${summary.active_worker_count ?? 0} / ${summary.worker_capacity ?? 0}`}
+          helper={t('access.gateway.runtime.workerCapacityDetail', '存活 / 活跃 / 配置容量')}
+          danger={!loading && Number(summary.worker_capacity ?? 0) > 0 && Number(summary.live_worker_count ?? 0) <= 0}
+        />
+      </div>
     </section>
   )
 }
@@ -1219,10 +1706,28 @@ function GatewayDataQualityPanel({
             total: quality.total,
           })}
         </Chip>
+        <Chip tone={quality.policyDecisionMissingCount > 0 ? 'warning' : 'neutral'}>
+          {t('access.gateway.quality.policyDecisionMissing', '策略链路缺失 {count}/{total}', {
+            count: quality.policyDecisionMissingCount,
+            total: quality.total,
+          })}
+        </Chip>
+        <Chip tone={quality.credentialRefMissingCount > 0 ? 'warning' : 'neutral'}>
+          {t('access.gateway.quality.credentialMissing', '执行凭据缺失 {count}/{total}', {
+            count: quality.credentialRefMissingCount,
+            total: quality.total,
+          })}
+        </Chip>
       </div>
       {quality.hasIdentityGap ? (
         <div className="mt-1 pl-6" style={{ color: 'var(--text-3)' }}>
-          {t('access.gateway.quality.identityNote', 'DAU 只能按 gateway 返回的 principal / actor 计算；缺身份的记录不会计入活跃主体。')}
+          {quality.source === 'contract'
+            ? t('access.gateway.quality.contractNote', '缺口来自 gateway contract-completeness；gateway-only {gatewayOnly} 条、legacy actor {legacyActor} 条、平台治理链路 {governed} 条。', {
+              gatewayOnly: quality.gatewayOnlyCount,
+              legacyActor: quality.legacyActorCount,
+              governed: quality.platformGovernedCount,
+            })
+            : t('access.gateway.quality.identityNote', 'DAU 只能按 gateway 返回的 principal / actor 计算；缺身份的记录不会计入活跃主体。')}
         </div>
       ) : null}
     </section>
@@ -1259,14 +1764,17 @@ function AccessTrendPanel({
   rows,
   summary,
   quality,
+  windowLabel,
 }: {
   rows: AccessTrendPoint[]
   summary: GatewayTrendSummary
   quality: GatewayDataQualitySummary
+  windowLabel?: string
 }) {
   const maxCount = Math.max(1, ...rows.map((row) => row.total))
-  const maxDau = Math.max(1, ...rows.map((row) => row.dau))
+  const maxSecondary = Math.max(1, ...rows.map((row) => summary.usesGatewayTimeseries ? Number(row.executeP95Ms ?? 0) : row.dau))
   const latestDauValue = summary.latestDayQueries > 0 && summary.latestDayDau === 0 && quality.hasIdentityGap ? '—' : summary.latestDayDau
+  const latestSuccessRate = summary.latestSuccessRate == null ? '—' : `${formatRatioPercent(summary.latestSuccessRate)}%`
   return (
     <section className="mt-4 rounded-md border p-3 text-xs" style={{ borderColor: 'var(--border)' }}>
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -1275,49 +1783,59 @@ function AccessTrendPanel({
             {t('access.gateway.trend.section', '查询量日趋势')}
           </div>
           <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-            {t('access.gateway.trend.helper', '按最近执行记录聚合每日查询量、成功/失败和活跃主体')}
+            {summary.usesGatewayTimeseries
+              ? t('access.gateway.trend.helperTimeseries', '按 gateway timeseries 聚合查询量、成功率和执行 P95')
+              : t('access.gateway.trend.helper', '按最近执行记录聚合每日查询量、成功/失败和活跃主体')}
           </div>
         </div>
-        <Chip tone="neutral">{t('access.gateway.trend.window', '最近记录')}</Chip>
+        <Chip tone="neutral">{summary.usesGatewayTimeseries ? (windowLabel || '24h') : t('access.gateway.trend.window', '最近记录')}</Chip>
       </div>
       <div className="mb-3 grid gap-2 sm:grid-cols-4">
         <TrendSummaryItem
           label={t('access.gateway.trend.totalQueries', '窗口查询量')}
           value={summary.totalQueries}
-          detail={t('access.gateway.trend.totalQueriesDetail', '最近记录窗口合计')}
+          detail={summary.usesGatewayTimeseries ? t('access.gateway.trend.totalQueriesDetailTimeseries', 'gateway 聚合窗口合计') : t('access.gateway.trend.totalQueriesDetail', '最近记录窗口合计')}
         />
         <TrendSummaryItem
-          label={t('access.gateway.trend.latestQueries', '最新日查询')}
+          label={summary.usesGatewayTimeseries ? t('access.gateway.trend.latestBucketQueries', '最新桶查询') : t('access.gateway.trend.latestQueries', '最新日查询')}
           value={summary.latestDayQueries}
           detail={summary.latestDayLabel || t('access.gateway.trend.noLatestDay', '暂无日期')}
         />
         <TrendSummaryItem
-          label={t('access.gateway.trend.latestDau', '最新日 DAU')}
-          value={latestDauValue}
-          detail={quality.hasIdentityGap ? t('access.gateway.trend.latestDauMissing', 'gateway 未返回部分身份') : t('access.gateway.trend.latestDauDetail', '去重 principal / actor')}
+          label={summary.usesGatewayTimeseries ? t('access.gateway.trend.latestSuccessRate', '最新桶成功率') : t('access.gateway.trend.latestDau', '最新日 DAU')}
+          value={summary.usesGatewayTimeseries ? latestSuccessRate : latestDauValue}
+          detail={summary.usesGatewayTimeseries ? t('access.gateway.trend.latestSuccessRateDetail', 'gateway success_rate') : quality.hasIdentityGap ? t('access.gateway.trend.latestDauMissing', 'gateway 未返回部分身份') : t('access.gateway.trend.latestDauDetail', '去重 principal / actor')}
         />
         <TrendSummaryItem
-          label={t('access.gateway.trend.windowDau', '窗口活跃主体')}
-          value={summary.windowDau}
-          detail={t('access.gateway.trend.windowDauDetail', '跨日去重')}
+          label={summary.usesGatewayTimeseries ? t('access.gateway.trend.peakExecuteP95', '执行 P95 峰值') : t('access.gateway.trend.windowDau', '窗口活跃主体')}
+          value={summary.usesGatewayTimeseries ? formatDurationMs(summary.peakExecuteP95Ms) : summary.windowDau}
+          detail={summary.usesGatewayTimeseries ? t('access.gateway.trend.peakExecuteP95Detail', '窗口内最高执行 P95') : t('access.gateway.trend.windowDauDetail', '跨日去重')}
         />
       </div>
       {rows.length === 0 ? (
         <EmptyState text={t('access.gateway.trend.empty', '暂无访问趋势')} />
       ) : (
-        <div className="grid min-h-[168px] grid-cols-7 items-end gap-2">
+        <div
+          className="grid min-h-[168px] items-end gap-2 overflow-x-auto"
+          style={{ gridTemplateColumns: `repeat(${Math.max(rows.length, 1)}, minmax(36px, 1fr))` }}
+        >
           {rows.map((row) => {
             const totalHeight = Math.max(10, Math.round((row.total / maxCount) * 96))
             const allowHeight = row.total > 0 ? Math.max(2, Math.round((row.allow / row.total) * totalHeight)) : 0
             const blockedHeight = Math.max(0, totalHeight - allowHeight)
-            const dauHeight = row.dau > 0 ? Math.max(4, Math.round((row.dau / maxDau) * 28)) : 0
+            const secondaryValue = summary.usesGatewayTimeseries ? Number(row.executeP95Ms ?? 0) : row.dau
+            const secondaryHeight = secondaryValue > 0 ? Math.max(4, Math.round((secondaryValue / maxSecondary) * 28)) : 0
             return (
               <div key={row.key} className="flex min-w-0 flex-col items-center gap-1.5">
                 <div className="flex h-24 w-full items-end justify-center">
                   <div
                     className="flex w-full max-w-[44px] flex-col justify-end overflow-hidden rounded-t"
                     style={{ height: totalHeight, background: 'var(--bg-surface-2)' }}
-                    title={`${row.label} · 查询 ${row.total} · DAU ${row.dau}`}
+                    title={t('access.gateway.chartTitle', '{label} · 查询 {total} · DAU {dau}', {
+                      label: row.label,
+                      total: row.total,
+                      dau: row.dau,
+                    })}
                   >
                     {blockedHeight > 0 ? (
                       <div style={{ height: blockedHeight, background: 'var(--danger)' }} />
@@ -1331,15 +1849,17 @@ function AccessTrendPanel({
                   <div
                     className="w-full max-w-[44px] rounded-t"
                     style={{
-                      height: dauHeight,
-                      background: row.dau > 0 ? 'var(--success)' : 'var(--bg-surface-2)',
+                      height: secondaryHeight,
+                      background: secondaryValue > 0 ? 'var(--success)' : 'var(--bg-surface-2)',
                     }}
-                    title={`${row.label} · DAU ${row.dau}`}
+                    title={summary.usesGatewayTimeseries ? `${row.label} · P95 ${formatDurationMs(secondaryValue)}` : `${row.label} · DAU ${row.dau}`}
                   />
                 </div>
                 <div className="truncate text-[11px]" style={{ color: 'var(--text-3)' }}>{row.label}</div>
                 <div className="font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.total}</div>
-                <div className="font-mono text-[10px]" style={{ color: 'var(--text-3)' }}>DAU {row.dau}</div>
+                <div className="font-mono text-[10px]" style={{ color: 'var(--text-3)' }}>
+                  {summary.usesGatewayTimeseries ? `P95 ${formatDurationMs(secondaryValue)}` : `DAU ${row.dau}`}
+                </div>
               </div>
             )
           })}
@@ -1387,7 +1907,7 @@ function GatewayBreakdownPanel({
           return (
             <div key={row.level}>
               <div className="mb-1 flex items-center justify-between gap-3">
-                <span style={{ color: 'var(--text-2)' }}>{formatDataLevelLabel(row.level)}</span>
+                <span style={{ color: 'var(--text-2)' }}>{formatGatewayBreakdownKey(row.level)}</span>
                 <span className="tabular-nums" style={{ color: 'var(--text-3)' }}>{row.count}</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'var(--bg-surface-2)' }}>
@@ -1401,6 +1921,60 @@ function GatewayBreakdownPanel({
   )
 }
 
+function GatewayContractPanel({
+  contract,
+  loading,
+}: {
+  contract?: GatewayContractCompleteness | null
+  loading: boolean
+}) {
+  const data = contract ?? {
+    total: 0,
+    platform_governed_count: 0,
+    gateway_only_count: 0,
+    legacy_actor_count: 0,
+    principal_present_rate: 100,
+    actor_present_rate: 100,
+    policy_decision_present_rate: 100,
+    data_level_present_rate: 100,
+    execution_profile_present_rate: 100,
+    credential_ref_present_rate: 100,
+  }
+  return (
+    <section className="rounded-md border p-3 text-xs" style={{ borderColor: 'var(--border)' }}>
+      <div className="font-semibold" style={{ color: 'var(--text-1)' }}>
+        {t('access.gateway.contract.section', '契约完整度')}
+      </div>
+      <div className="mt-3 space-y-2">
+        <GatewayCheckRow
+          label={t('access.gateway.contract.coverage', '平台治理 / gateway-only')}
+          text={loading ? '—' : `${data.platform_governed_count} / ${data.gateway_only_count}`}
+          helper={t('access.gateway.contract.coverageDetail', '新版 GatewayAccessContext 覆盖情况')}
+          danger={!loading && data.gateway_only_count > 0}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.contract.identity', '身份字段')}
+          text={loading ? '—' : `${formatGatewayContractRate(data.principal_present_rate)} / ${formatGatewayContractRate(data.actor_present_rate)}`}
+          helper={t('access.gateway.contract.identityDetail', 'principal / actor present rate')}
+          danger={!loading && Math.min(data.principal_present_rate, data.actor_present_rate) < 95}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.contract.policyProfile', '策略 / 执行画像')}
+          text={loading ? '—' : `${formatGatewayContractRate(data.policy_decision_present_rate)} / ${formatGatewayContractRate(data.execution_profile_present_rate)}`}
+          helper={t('access.gateway.contract.policyProfileDetail', 'policy_decision / execution_profile present rate')}
+          danger={!loading && Math.min(data.policy_decision_present_rate, data.execution_profile_present_rate) < 95}
+        />
+        <GatewayCheckRow
+          label={t('access.gateway.contract.dataCredential', '等级 / 凭据')}
+          text={loading ? '—' : `${formatGatewayContractRate(data.data_level_present_rate)} / ${formatGatewayContractRate(data.credential_ref_present_rate)}`}
+          helper={t('access.gateway.contract.dataCredentialDetail', 'data_level / credential_ref present rate')}
+          danger={!loading && Math.min(data.data_level_present_rate, data.credential_ref_present_rate) < 95}
+        />
+      </div>
+    </section>
+  )
+}
+
 function GatewayExecutionRecordTable({
   rows,
   onOpenTrace,
@@ -1409,49 +1983,69 @@ function GatewayExecutionRecordTable({
   onOpenTrace: (run: GatewayQueryRun) => void
 }) {
   return (
-    <table className="w-full border-collapse text-xs">
-      <thead className="sticky top-0 z-10">
-        <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-          <Th>{t('access.gateway.records.col.time', '时间')}</Th>
-          <Th>{t('access.gateway.records.col.principal', '成员')}</Th>
-          <Th>{t('access.gateway.records.col.level', '等级')}</Th>
-          <Th>{t('access.gateway.records.col.profile', '执行方式')}</Th>
-          <Th>{t('access.gateway.records.col.result', '结果')}</Th>
-          <Th>{t('access.gateway.records.col.trace', 'Trace')}</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.query_id} style={{ borderBottom: '1px solid var(--border)' }}>
-            <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--text-3)' }}>
-              {row.created_at ? fmtDateTime(row.created_at) : '—'}
-            </td>
-            <td className="max-w-[220px] px-4 py-2.5">
-              <GatewayRunActorCell row={row} />
-            </td>
-            <td className="px-4 py-2.5">{row.data_level ? formatDataLevelLabel(row.data_level) : <span style={{ color: 'var(--text-3)' }}>{t('access.gateway.records.missingLevel', '未返回等级')}</span>}</td>
-            <td className="px-4 py-2.5">
-              <div className="font-mono text-[11px]" style={{ color: row.execution_profile_code ? 'var(--text-2)' : 'var(--text-3)' }}>{row.execution_profile_code || t('access.gateway.records.missingProfile', '未返回执行画像')}</div>
-              <div className="mt-1 font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.credential_ref || '—'}</div>
-            </td>
-            <td className="px-4 py-2.5">
-              <StatusChip status={row.physical_denied ? 'physical_denied' : row.status} />
-              <div className="mt-1 font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.reason_code || '—'}</div>
-            </td>
-            <td className="px-4 py-2.5">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors hover:bg-[color:var(--bg-hover)]"
-                style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-                onClick={() => onOpenTrace(row)}
-              >
-                <FileSearch size={11} /> {t('access.gateway.records.trace', '查看')}
-              </button>
-            </td>
+    <div className="overflow-x-auto">
+      <table className="min-w-[920px] w-full table-fixed border-collapse text-xs">
+        <colgroup>
+          <col style={{ width: 132 }} />
+          <col style={{ width: 210 }} />
+          <col style={{ width: 108 }} />
+          <col style={{ width: 168 }} />
+          <col style={{ width: 92 }} />
+          <col />
+          <col style={{ width: 64 }} />
+        </colgroup>
+        <thead className="sticky top-0 z-10">
+          <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
+            <Th>{t('access.gateway.record_col.time', '时间')}</Th>
+            <Th>{t('access.gateway.record_col.principal', '成员')}</Th>
+            <Th>{t('access.gateway.record_col.level', '等级')}</Th>
+            <Th>{t('access.gateway.record_col.profile', '执行方式')}</Th>
+            <Th>{t('access.gateway.record_col.result', '结果')}</Th>
+            <Th>{t('access.gateway.record_col.reason', '原因')}</Th>
+            <Th>{t('access.gateway.record_col.trace', 'Trace')}</Th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.query_id} style={{ borderBottom: '1px solid var(--border)' }}>
+              <td className="whitespace-nowrap px-4 py-2.5" style={{ color: 'var(--text-3)' }}>
+                {row.created_at ? fmtDateTime(row.created_at) : '—'}
+              </td>
+              <td className="px-4 py-2.5">
+                <GatewayRunActorCell row={row} />
+              </td>
+              <td className="px-4 py-2.5">
+                {row.data_level ? formatDataLevelLabel(row.data_level) : <MissingGatewayField label={t('access.gateway.records.missingLevelShort', '未返回')} title={t('access.gateway.records.missingLevel', '未返回等级')} />}
+              </td>
+              <td className="px-4 py-2.5">
+                <div className="truncate font-mono text-[11px]" style={{ color: row.execution_profile_code ? 'var(--text-2)' : 'var(--text-3)' }}>
+                  {row.execution_profile_code || <MissingGatewayField label="—" title={t('access.gateway.records.missingProfile', '未返回执行画像')} />}
+                </div>
+                <div className="mt-1 truncate font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.credential_ref || '—'}</div>
+              </td>
+              <td className="px-4 py-2.5">
+                <StatusChip status={row.physical_denied ? 'physical_denied' : row.status} />
+              </td>
+              <td className="px-4 py-2.5">
+                <ReasonCell reasonCode={row.reason_code} physicalDenied={row.physical_denied} />
+              </td>
+              <td className="px-4 py-2.5 text-right">
+                <button
+                  type="button"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded border transition-colors hover:bg-[color:var(--bg-hover)]"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+                  aria-label={t('access.gateway.records.openTraceAria', '查看执行 Trace {queryId}', { queryId: row.query_id })}
+                  title={t('access.gateway.records.trace', '查看')}
+                  onClick={() => onOpenTrace(row)}
+                >
+                  <FileSearch size={13} />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -1466,12 +2060,34 @@ function GatewayRunActorCell({ row }: { row: GatewayQueryRun }) {
     )
   }
   return (
-    <div>
-      <span style={{ color: 'var(--text-3)' }}>{t('access.gateway.records.missingActor', '未知主体')}</span>
-      <div className="mt-1 text-[11px]" style={{ color: 'var(--warning)' }}>
-        {t('access.gateway.records.missingActorHint', 'gateway 未返回 principal / actor')}
-      </div>
-    </div>
+    <MissingGatewayField
+      label={t('access.gateway.records.missingActorShort', '未解析')}
+      title={t('access.gateway.records.missingActorHint', 'gateway 未返回 principal / actor')}
+      tone="warning"
+    />
+  )
+}
+
+function MissingGatewayField({
+  label,
+  title,
+  tone = 'neutral',
+}: {
+  label: string
+  title: string
+  tone?: 'neutral' | 'warning'
+}) {
+  return (
+    <span
+      className="inline-flex max-w-full items-center truncate rounded px-1.5 py-0.5 text-[11px]"
+      title={title}
+      style={{
+        color: tone === 'warning' ? 'var(--warning)' : 'var(--text-3)',
+        background: tone === 'warning' ? 'var(--warning-soft)' : 'var(--bg-surface-2)',
+      }}
+    >
+      {label}
+    </span>
   )
 }
 
@@ -1525,19 +2141,24 @@ function GatewayCheckRow({
   label,
   value,
   text,
+  helper,
   danger = false,
 }: {
   label: string
   value?: number
   text?: string
+  helper?: string
   danger?: boolean
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
-      <span style={{ color: 'var(--text-2)' }}>{label}</span>
-      <span className="font-medium tabular-nums" style={{ color: danger ? 'var(--danger)' : 'var(--text-1)' }}>
-        {typeof value === 'number' ? value : text}
-      </span>
+    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex items-start justify-between gap-3">
+        <span className="shrink-0" style={{ color: 'var(--text-2)' }}>{label}</span>
+        <span className="min-w-0 break-words text-right font-medium tabular-nums" style={{ color: danger ? 'var(--danger)' : 'var(--text-1)' }}>
+          {typeof value === 'number' ? value : text}
+        </span>
+      </div>
+      {helper ? <div className="mt-1 text-[11px]" style={{ color: 'var(--text-3)' }}>{helper}</div> : null}
     </div>
   )
 }
@@ -1561,6 +2182,18 @@ function GatewayTraceDialog({
     <Dialog open={Boolean(run)} onClose={onClose} title={t('access.gateway.trace.title', '执行 Trace')} width={680}>
       {run ? (
         <div className="space-y-4 text-xs">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="inline-flex h-7 w-7 items-center justify-center rounded border transition-colors hover:bg-[color:var(--bg-hover)]"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+              aria-label={t('access.gateway.trace.close', '关闭执行 Trace')}
+              title={t('access.gateway.trace.close', '关闭执行 Trace')}
+              onClick={onClose}
+            >
+              <X size={13} />
+            </button>
+          </div>
           <InfoGrid items={[
             [t('access.gateway.trace.queryId', 'Query ID'), run.query_id],
             [t('access.gateway.trace.traceId', 'Trace ID'), run.trace_id || '—'],
@@ -1629,25 +2262,29 @@ function DataPolicyTable({
             <td className="px-4 py-2.5"><StatusChip status={row.status} /></td>
             <td className="px-4 py-2.5">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors hover:bg-[color:var(--bg-hover)]"
-                  style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-                  aria-label={`编辑策略 ${row.policy_code}`}
-                  onClick={() => onEdit(row)}
-                >
-                  <Pencil size={11} /> {t('action.edit', '编辑')}
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
-                  aria-label={`停用策略 ${row.policy_code}`}
-                  disabled={disabling || row.status === 'disabled'}
-                  onClick={() => onDisable(row)}
-                >
-                  <PowerOff size={11} /> {t('access.action.disable', '停用')}
-                </button>
+                <Can action="access.write" disabledTip={t('access.permissions.writeRequired', '需要权限管理员才能修改访问规则')}>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors hover:bg-[color:var(--bg-hover)]"
+                    style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+                    aria-label={`编辑策略 ${row.policy_code}`}
+                    onClick={() => onEdit(row)}
+                  >
+                    <Pencil size={11} /> {t('action.edit', '编辑')}
+                  </button>
+                </Can>
+                <Can action="access.write" disabledTip={t('access.permissions.writeRequired', '需要权限管理员才能修改访问规则')}>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
+                    aria-label={`停用策略 ${row.policy_code}`}
+                    disabled={disabling || row.status === 'disabled'}
+                    onClick={() => onDisable(row)}
+                  >
+                    <PowerOff size={11} /> {t('access.action.disable', '停用')}
+                  </button>
+                </Can>
               </div>
             </td>
           </tr>
@@ -1657,28 +2294,70 @@ function DataPolicyTable({
   )
 }
 
+function RowScopeDetail({ row }: { row: AccessPolicyDecision }) {
+  const scope = row.effective_row_scope
+  if (!scope || !scope.entries?.length) return null
+  const subjectId = scope.subject_principal_id || row.principal_id
+  const actingId = row.actor_id || row.principal_id
+  const delegated = subjectId !== actingId
+  return (
+    <div className="mt-1.5 space-y-1 rounded border px-2 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
+        <Chip tone="accent">{t('access.decisions.rowScope.badge', '行级范围')}</Chip>
+        <span>
+          {t('access.decisions.rowScope.subject', '数据主体')}: <span className="font-mono">{subjectId}</span>
+        </span>
+        {delegated ? (
+          <span>
+            {t('access.decisions.rowScope.acting', '执行主体')}: <span className="font-mono">{actingId}</span>
+          </span>
+        ) : null}
+      </div>
+      {scope.entries.map((entry, index) => (
+        <div key={`${entry.table}.${entry.column}.${index}`} className="font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>
+          {entry.table}.{entry.column} {entry.operator} [{(entry.values || []).join(', ')}]
+          <span style={{ color: 'var(--text-3)' }}>
+            {' '}· {t('access.decisions.rowScope.policy', '策略')} {entry.policy_code || '—'}
+            {entry.attribute
+              ? ` · ${t('access.decisions.rowScope.attribute', '属性来源')} ${entry.attribute}`
+              : ''}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function PolicyDecisionTable({ rows }: { rows: AccessPolicyDecision[] }) {
   return (
     <table className="w-full border-collapse text-xs">
       <thead className="sticky top-0 z-10">
         <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-          <Th>{t('access.decisions.col.decision', '判定')}</Th>
+          <Th>{t('access.decisions.col.time', '时间')}</Th>
           <Th>{t('access.decisions.col.principal', '成员')}</Th>
           <Th>{t('access.decisions.col.level', '等级')}</Th>
+          <Th>{t('access.decisions.col.decision', '判定')}</Th>
+          <Th>{t('access.decisions.col.reason', '原因')}</Th>
           <Th>{t('access.decisions.col.profile', '执行方式')}</Th>
         </tr>
       </thead>
       <tbody>
         {rows.map((row) => (
           <tr key={row.decision_id} style={{ borderBottom: '1px solid var(--border)' }}>
-            <td className="px-4 py-2.5">
-              <StatusChip status={row.decision} />
-              <div className="mt-1 font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.reason_code}</div>
+            <td className="whitespace-nowrap px-4 py-2.5 tabular-nums" style={{ color: 'var(--text-3)' }}>
+              {row.created_at ? fmtDateTime(row.created_at) : '—'}
             </td>
             <td className="max-w-[260px] px-4 py-2.5">
               <IdentityName value={row.principal_id} displayName={row.principal_display_name} />
             </td>
             <td className="px-4 py-2.5">{row.data_level}</td>
+            <td className="px-4 py-2.5">
+              <StatusChip status={row.decision} />
+            </td>
+            <td className="max-w-[320px] px-4 py-2.5">
+              <ReasonCell reasonCode={row.reason_code} reason={row.reason} governanceRequired={row.governance_required} />
+              <RowScopeDetail row={row} />
+            </td>
             <td className="px-4 py-2.5 font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.execution_profile_code || '—'}</td>
           </tr>
         ))}
@@ -1687,16 +2366,16 @@ function PolicyDecisionTable({ rows }: { rows: AccessPolicyDecision[] }) {
   )
 }
 
-function ApprovalRecordTable({ rows }: { rows: AccessPolicyDecision[] }) {
+function GovernanceRecordTable({ rows }: { rows: AccessPolicyDecision[] }) {
   return (
     <table className="w-full border-collapse text-xs">
       <thead className="sticky top-0 z-10">
         <tr style={{ background: 'var(--bg-surface-2)', borderBottom: '1px solid var(--border)' }}>
-          <Th>{t('access.audit.approvals.col.time', '时间')}</Th>
-          <Th>{t('access.audit.approvals.col.principal', '成员')}</Th>
-          <Th>{t('access.audit.approvals.col.scope', '申请范围')}</Th>
-          <Th>{t('access.audit.approvals.col.reason', '治理原因')}</Th>
-          <Th>{t('access.audit.approvals.col.status', '状态')}</Th>
+          <Th>{t('access.audit.governance_col.time', '时间')}</Th>
+          <Th>{t('access.audit.governance_col.principal', '成员')}</Th>
+          <Th>{t('access.audit.governance_col.scope', '治理范围')}</Th>
+          <Th>{t('access.audit.governance_col.reason', '治理原因')}</Th>
+          <Th>{t('access.audit.governance_col.status', '状态')}</Th>
         </tr>
       </thead>
       <tbody>
@@ -1746,25 +2425,29 @@ function ExecutionProfileList({
             <span className="min-w-0 flex-1 truncate font-medium" style={{ color: 'var(--text-1)' }}>{row.name}</span>
             <Chip tone="accent">{formatDataLevelLabel(row.data_level)}</Chip>
             <StatusChip status={row.status} />
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors hover:bg-[color:var(--bg-hover)]"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-              aria-label={`编辑执行配置 ${row.profile_code}`}
-              onClick={() => onEdit(row)}
-            >
-              <Pencil size={11} /> {t('action.edit', '编辑')}
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
-              aria-label={`停用执行配置 ${row.profile_code}`}
-              disabled={disabling || row.status === 'disabled'}
-              onClick={() => onDisable(row)}
-            >
-              <PowerOff size={11} /> {t('access.action.disable', '停用')}
-            </button>
+            <Can action="access.write" disabledTip={t('access.permissions.writeRequired', '需要权限管理员才能修改访问规则')}>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors hover:bg-[color:var(--bg-hover)]"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
+                aria-label={t('access.profiles.editGuardrailAria', '调整执行护栏 {profileCode}', { profileCode: row.profile_code })}
+                onClick={() => onEdit(row)}
+              >
+                <Pencil size={11} /> {t('access.profiles.editGuardrail', '调整护栏')}
+              </button>
+            </Can>
+            <Can action="access.write" disabledTip={t('access.permissions.writeRequired', '需要权限管理员才能修改访问规则')}>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
+                aria-label={t('access.profiles.disableGuardrailAria', '停用执行护栏 {profileCode}', { profileCode: row.profile_code })}
+                disabled={disabling || row.status === 'disabled'}
+                onClick={() => onDisable(row)}
+              >
+                <PowerOff size={11} /> {t('access.action.disable', '停用')}
+              </button>
+            </Can>
           </div>
           <div className="mt-1 break-all font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.profile_code}</div>
           <div className="mt-3">
@@ -1772,7 +2455,7 @@ function ExecutionProfileList({
               [t('access.profiles.credentialMode', '执行模式'), formatExecutionModeLabel(row.credential_mode)],
               [t('access.profiles.maxRows', '最大行数'), row.max_rows ? String(row.max_rows) : '—'],
               [t('access.profiles.timeout', '超时'), row.timeout_seconds ? `${row.timeout_seconds}s` : '—'],
-              [t('access.profiles.audit', '强审计'), row.requires_strong_audit ? '是' : '否'],
+              [t('access.profiles.audit', '强审计'), formatBooleanLabel(row.requires_strong_audit)],
             ]} />
           </div>
         </div>
@@ -1791,86 +2474,71 @@ function ExecutionProfileDialog({
   profile?: AccessExecutionProfile | null
 }) {
   const toast = useToast()
-  const createProfile = useCreateExecutionProfile()
   const updateProfile = useUpdateExecutionProfile()
-  const [profileCode, setProfileCode] = useState('')
-  const [name, setName] = useState('')
-  const [credentialMode, setCredentialMode] = useState('gateway_binding')
-  const [dataLevel, setDataLevel] = useState('M1')
-  const [operations, setOperations] = useState('query')
   const [maxRows, setMaxRows] = useState('1000')
   const [timeout, setTimeoutValue] = useState('60')
+  const [requiresStrongAudit, setRequiresStrongAudit] = useState('false')
   const [status, setStatus] = useState('active')
-  const editing = Boolean(profile)
 
   useEffect(() => {
     if (!open) return
-    setProfileCode(profile?.profile_code ?? '')
-    setName(profile?.name ?? '')
-    setCredentialMode(profile?.credential_mode ?? 'gateway_binding')
-    setDataLevel(profile?.data_level ?? 'M1')
-    setOperations((profile?.allowed_operations ?? ['query']).join(','))
     setMaxRows(profile?.max_rows == null ? '1000' : String(profile.max_rows))
     setTimeoutValue(profile?.timeout_seconds == null ? '60' : String(profile.timeout_seconds))
+    setRequiresStrongAudit(profile?.requires_strong_audit ? 'true' : 'false')
     setStatus(profile?.status ?? 'active')
   }, [open, profile])
 
-  const credentialModeOptions = getCredentialModeOptions(profile?.credential_mode)
-
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    const payload: Partial<AccessExecutionProfile> & {
-      profile_code: string
-      name: string
-      credential_mode: string
-    } = {
-      profile_code: profileCode,
-      name,
-      credential_mode: credentialMode,
-      data_level: dataLevel,
-      allowed_operations: splitList(operations),
+    if (!profile) return
+    const payload: Partial<AccessExecutionProfile> = {
       max_rows: Number(maxRows) || null,
       timeout_seconds: Number(timeout) || null,
-      export_allowed: profile?.export_allowed ?? false,
-      requires_strong_audit: profile?.requires_strong_audit ?? dataLevel === 'M3',
+      requires_strong_audit: requiresStrongAudit === 'true',
       status,
     }
-    if (editing && profile) {
-      await updateProfile.mutateAsync({
-        profileCode: profile.profile_code,
-        payload,
-      })
-      toast.show({ tone: 'success', title: t('access.profiles.updated', '执行配置已更新') })
-    } else {
-      await createProfile.mutateAsync(payload)
-      toast.show({ tone: 'success', title: t('access.profiles.created', '执行配置已创建') })
-    }
+    await updateProfile.mutateAsync({
+      profileCode: profile.profile_code,
+      payload,
+    })
+    toast.show({ tone: 'success', title: t('access.profiles.updated', '执行护栏已更新') })
     onClose()
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={editing ? '编辑执行方式' : '新建执行方式'} width={560}>
+    <Dialog open={open} onClose={onClose} title={t('access.profiles.guardrailTitle', '调整执行护栏')} width={560}>
+      {profile ? (
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <Field label="执行方式编码 *" value={profileCode} onChange={setProfileCode} required disabled={editing} />
-        <Field label="名称 *" value={name} onChange={setName} required />
+        <div className="rounded border p-3 text-xs" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
+          <InfoGrid items={[
+            [t('access.profiles.code', '执行画像'), <span className="font-mono">{profile.profile_code}</span>],
+            [t('access.profiles.name', '名称'), profile.name],
+            [t('access.profiles.credentialMode', '执行模式'), formatExecutionModeLabel(profile.credential_mode)],
+            [t('access.profiles.dataLevel', '数据等级'), formatDataLevelLabel(profile.data_level)],
+            [t('access.profiles.operations', '允许动作'), profile.allowed_operations.join(', ') || '—'],
+            [t('access.profiles.export', '允许导出'), formatBooleanLabel(profile.export_allowed)],
+          ]} />
+        </div>
+        <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
+          {t('access.profiles.guardrailHint', '此处只维护平台侧执行护栏；凭据绑定、RAM 角色和物理项目权限由 dw-query-gateway 管理。')}
+        </p>
+        <Field label={t('access.profiles.maxRows', '最大行数')} value={maxRows} onChange={setMaxRows} />
+        <Field label={t('access.profiles.timeoutSeconds', '超时时间（秒）')} value={timeout} onChange={setTimeoutValue} />
         <SelectField
-          label="执行模式 *"
-          value={credentialMode}
-          onChange={setCredentialMode}
-          options={credentialModeOptions}
-          formatOption={formatExecutionModeLabel}
+          label={t('access.profiles.audit', '强审计')}
+          value={requiresStrongAudit}
+          onChange={setRequiresStrongAudit}
+          options={['true', 'false']}
+          formatOption={(value) => formatBooleanLabel(value === 'true')}
         />
-        <Field label="数据等级" value={dataLevel} onChange={setDataLevel} />
-        <Field label="允许动作" value={operations} onChange={setOperations} />
-        <Field label="最大行数" value={maxRows} onChange={setMaxRows} />
-        <Field label="超时时间（秒）" value={timeout} onChange={setTimeoutValue} />
-        <SelectField label="状态" value={status} onChange={setStatus} options={['active', 'disabled']} />
+        <SelectField label={t('common.status', '状态')} value={status} onChange={setStatus} options={['active', 'disabled']} />
         <DialogActions
           onClose={onClose}
-          loading={createProfile.isPending || updateProfile.isPending}
-          submitLabel={editing ? t('action.save', '保存') : t('action.create', '创建')}
+          loading={updateProfile.isPending}
+          submitLabel={t('action.save', '保存')}
         />
       </form>
+      ) : null}
     </Dialog>
   )
 }
@@ -1887,38 +2555,61 @@ function DataPolicyDialog({
   const toast = useToast()
   const createPolicy = useCreateDataPolicy()
   const updatePolicy = useUpdateDataPolicy()
+  const roleCatalog = useAccessRoleCatalog()
+  const activeProfiles = useExecutionProfiles({ status: 'active' })
   const [policyCode, setPolicyCode] = useState('')
   const [name, setName] = useState('')
-  const [subjectRoles, setSubjectRoles] = useState('data_m1_reader')
-  const [dataLevels, setDataLevels] = useState('M1')
-  const [tableLayers, setTableLayers] = useState('dws,ads')
+  const [subjectRoles, setSubjectRoles] = useState<string[]>(['data_m1_reader'])
+  const [dataLevels, setDataLevels] = useState<string[]>(['M1'])
+  const [tableLayers, setTableLayers] = useState<string[]>(['dws', 'ads'])
   const [tablePrefixes, setTablePrefixes] = useState('dws_,ads_')
-  const [actions, setActions] = useState('query')
+  const [actions, setActions] = useState<string[]>(['query'])
   const [effect, setEffect] = useState('allow')
   const [profileCode, setProfileCode] = useState('')
   const [reason, setReason] = useState('')
   const [status, setStatus] = useState('active')
   const editing = Boolean(policy)
+  const dataRoleOptions = useMemo(
+    () => mergeOptions((roleCatalog.data?.data_roles ?? []).map((role) => role.role_code), subjectRoles),
+    [roleCatalog.data?.data_roles, subjectRoles],
+  )
+  const profileOptions = useMemo(
+    () => mergeOptions((activeProfiles.data?.items ?? []).map((profileItem) => profileItem.profile_code), profileCode ? [profileCode] : []),
+    [activeProfiles.data?.items, profileCode],
+  )
 
   useEffect(() => {
     if (!open) return
     const scope = policy?.resource_scope ?? {}
     setPolicyCode(policy?.policy_code ?? '')
     setName(policy?.name ?? '')
-    setSubjectRoles((policy?.subject_roles ?? ['data_m1_reader']).join(','))
-    setDataLevels(scopeValues(scope, 'data_levels', ['M1']).join(','))
-    setTableLayers(scopeValues(scope, 'table_layers', ['dws', 'ads']).join(','))
+    setSubjectRoles(policy?.subject_roles ?? ['data_m1_reader'])
+    setDataLevels(scopeValues(scope, 'data_levels', ['M1']))
+    setTableLayers(scopeValues(scope, 'table_layers', ['dws', 'ads']))
     setTablePrefixes(scopeValues(scope, 'table_prefixes', ['dws_', 'ads_']).join(','))
-    setActions((policy?.actions ?? ['query']).join(','))
+    setActions(policy?.actions ?? ['query'])
     setEffect(policy?.effect ?? 'allow')
     setProfileCode(policy?.execution_profile_code ?? '')
     setReason(policy?.reason ?? '')
     setStatus(policy?.status ?? 'active')
   }, [open, policy])
 
+  useEffect(() => {
+    if (!open || policy || effect !== 'allow' || profileCode) return
+    const defaultProfile = defaultProfileForLevels(activeProfiles.data?.items ?? [], dataLevels)
+    if (defaultProfile) setProfileCode(defaultProfile)
+  }, [activeProfiles.data?.items, dataLevels, effect, open, policy, profileCode])
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    const parsedLevels = splitList(dataLevels)
+    if (subjectRoles.length === 0 || dataLevels.length === 0 || actions.length === 0) {
+      toast.show({ tone: 'warning', title: t('access.policies.incomplete', '请至少选择角色、数据等级和允许操作') })
+      return
+    }
+    if (effect === 'allow' && !profileCode) {
+      toast.show({ tone: 'warning', title: t('access.policies.profileRequired', '允许访问时必须选择执行护栏') })
+      return
+    }
     const payload: Partial<AccessDataPolicy> & {
       policy_code: string
       name: string
@@ -1927,15 +2618,15 @@ function DataPolicyDialog({
       name,
       status,
       priority: policy?.priority ?? 100,
-      subject_roles: splitList(subjectRoles),
+      subject_roles: subjectRoles,
       resource_scope: {
-        data_levels: parsedLevels,
-        table_layers: splitList(tableLayers),
+        data_levels: dataLevels,
+        table_layers: tableLayers,
         table_prefixes: splitList(tablePrefixes),
       },
-      actions: splitList(actions),
+      actions,
       effect,
-      execution_profile_code: profileCode || null,
+      execution_profile_code: effect === 'allow' ? profileCode : null,
       reason: reason || null,
       policy_version: policy?.policy_version ?? 'v1',
     }
@@ -1953,19 +2644,57 @@ function DataPolicyDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={editing ? '编辑访问规则' : '新建访问规则'} width={620}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={editing ? t('access.policies.editTitle', '编辑访问规则') : t('access.policies.createTitle', '新建访问规则')}
+      width={620}
+    >
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-        <Field label="规则编码 *" value={policyCode} onChange={setPolicyCode} required disabled={editing} />
-        <Field label="名称 *" value={name} onChange={setName} required />
-        <Field label="适用权限角色" value={subjectRoles} onChange={setSubjectRoles} />
-        <Field label="可访问数据等级" value={dataLevels} onChange={setDataLevels} />
-        <Field label="可访问表层级" value={tableLayers} onChange={setTableLayers} />
-        <Field label="可访问表名前缀" value={tablePrefixes} onChange={setTablePrefixes} />
-        <Field label="允许操作" value={actions} onChange={setActions} />
-        <SelectField label="访问结果" value={effect} onChange={setEffect} options={['allow', 'deny']} formatOption={formatPolicyEffectLabel} />
-        <Field label="通过后执行方式" value={profileCode} onChange={setProfileCode} />
-        <Field label="说明" value={reason} onChange={setReason} />
-        <SelectField label="状态" value={status} onChange={setStatus} options={['active', 'disabled']} />
+        <Field label={t('access.policies.field.policyCode', '规则编码 *')} value={policyCode} onChange={setPolicyCode} required disabled={editing} />
+        <Field label={t('access.policies.field.name', '名称 *')} value={name} onChange={setName} required />
+        <MultiCheckField
+          label={t('access.policies.field.subjectRoles', '适用数据角色')}
+          value={subjectRoles}
+          onChange={setSubjectRoles}
+          options={dataRoleOptions}
+          formatOption={formatAccessRoleLabel}
+          helper={roleCatalog.isLoading ? t('access.policies.roleCatalogLoading', '角色目录加载中…') : undefined}
+        />
+        <MultiCheckField
+          label={t('access.policies.field.dataLevels', '可访问数据等级')}
+          value={dataLevels}
+          onChange={setDataLevels}
+          options={DATA_LEVEL_OPTIONS}
+          formatOption={formatDataLevelLabel}
+        />
+        <MultiCheckField
+          label={t('access.policies.field.tableLayers', '可访问表层级')}
+          value={tableLayers}
+          onChange={setTableLayers}
+          options={TABLE_LAYER_OPTIONS}
+          formatOption={formatTableLayerLabel}
+        />
+        <Field label={t('access.policies.field.tablePrefixes', '可访问表名前缀')} value={tablePrefixes} onChange={setTablePrefixes} />
+        <MultiCheckField
+          label={t('access.policies.field.actions', '允许操作')}
+          value={actions}
+          onChange={setActions}
+          options={POLICY_ACTION_OPTIONS}
+          formatOption={formatPolicyActionLabel}
+        />
+        <SelectField label={t('access.policies.field.effect', '访问结果')} value={effect} onChange={setEffect} options={['allow', 'deny']} formatOption={formatPolicyEffectLabel} />
+        <SelectField
+          label={t('access.policies.field.executionGuardrail', '通过后执行护栏')}
+          value={effect === 'allow' ? profileCode : ''}
+          onChange={setProfileCode}
+          options={profileOptions}
+          formatOption={formatExecutionProfileLabel(activeProfiles.data?.items ?? [])}
+          placeholder={activeProfiles.isLoading ? t('access.policies.profileLoading', '执行护栏加载中…') : t('access.policies.profilePlaceholder', '请选择执行护栏')}
+          disabled={effect !== 'allow'}
+        />
+        <Field label={t('common.description', '说明')} value={reason} onChange={setReason} />
+        <SelectField label={t('common.status', '状态')} value={status} onChange={setStatus} options={['active', 'disabled']} />
         <DialogActions
           onClose={onClose}
           loading={createPolicy.isPending || updatePolicy.isPending}
@@ -2026,6 +2755,63 @@ export function replaceDataAccessPackageCode(
   const next = value.filter((item) => !dataPackageCodes.has(item))
   if (packageCode) next.push(packageCode)
   return next
+}
+
+export function summarizePrincipalPlatformPackages(
+  principal: Pick<AccessPrincipal, 'platform_roles'>,
+  packages: AccessPermissionPackage[],
+): string {
+  const roles = principal.platform_roles ?? []
+  const { platformPackages } = splitAccessPackages(packages)
+  const matched = platformPackages.find((item) => item.role_codes.some((roleCode) => roles.includes(roleCode)))
+  return matched?.name || formatRoleList(roles) || t('access.detail.noPlatformRoles', '暂无平台角色')
+}
+
+export function summarizePrincipalDataPackage(
+  principal: Pick<AccessPrincipal, 'data_roles'>,
+  packages: AccessPermissionPackage[],
+): string | null {
+  const roles = principal.data_roles ?? []
+  const { dataPackages } = splitAccessPackages(packages)
+  const matchedPackageCode = highestDataPackageCode(
+    dataPackages
+      .filter((item) => item.role_codes.every((roleCode) => roles.includes(roleCode)))
+      .map((item) => item.package_code),
+    dataPackages,
+  )
+  const matched = dataPackages.find((item) => item.package_code === matchedPackageCode)
+  if (matched) return matched.name || formatDataLevelLabel(matched.data_level || '')
+  if (roles.includes('data_m2_detail_reader')) return formatDataLevelLabel('M2')
+  if (roles.includes('data_m1_reader')) return formatDataLevelLabel('M1')
+  if (roles.includes('data_m0_reader')) return formatDataLevelLabel('M0')
+  return null
+}
+
+export function summarizePrincipalPermissionSource(
+  principal: Pick<AccessPrincipal, 'principal_id' | 'role_bindings' | 'idp'>,
+): { label: string; tone: 'success' | 'warning' | 'neutral' } {
+  const bindings = principal.role_bindings ?? []
+  const dataBinding = bindings.find((binding) => binding.role_code === 'data_m2_detail_reader')
+    || bindings.find((binding) => binding.role_type === 'data')
+    || bindings[0]
+  const source = dataBinding?.source
+  if (source === 'feishu_m2_allowlist') {
+    return { label: t('access.principals.source.m2Allowlist', 'M2 白名单'), tone: 'success' }
+  }
+  if (source === 'feishu_sso' || source === 'feishu_sync') {
+    return { label: bindingSourceLabel(source), tone: 'success' }
+  }
+  if (source === 'manual') {
+    return { label: t('access.principals.source.manual', '手动授予'), tone: 'warning' }
+  }
+  if (source === 'permission_package') {
+    return { label: t('access.principals.source.permissionPackage', '权限配置'), tone: 'neutral' }
+  }
+  if (source) return { label: bindingSourceLabel(source), tone: 'neutral' }
+  if (principal.idp === 'feishu' || principal.principal_id.startsWith('feishu:')) {
+    return { label: bindingSourceLabel('feishu_sync'), tone: 'success' }
+  }
+  return { label: t('access.principals.source.systemDefault', '系统默认'), tone: 'neutral' }
 }
 
 function defaultPlatformPackageCode(platformPackages: AccessPermissionPackage[]): string {
@@ -2212,7 +2998,8 @@ function formatPermissionSaveError(error: unknown): string {
     if (error.code === 'INSUFFICIENT_ROLE' && required) {
       return t(
         'access.detail.rolesSaveFailedInsufficientRole',
-        `当前账号没有权限配置写权限，需要 ${required}，当前为 ${current}。请先用管理员账号授权后再保存。`,
+        '当前账号没有权限配置写权限，需要 {required}，当前为 {current}。请先用管理员账号授权后再保存。',
+        { required, current },
       )
     }
     return error.message || t('access.detail.rolesSaveFailedRetry', '请稍后重试，或联系管理员查看后端日志。')
@@ -2510,6 +3297,9 @@ function CreateApiKeyDialog({
   const [scopes, setScopes] = useState<string[]>([])
   const [allowedIps, setAllowedIps] = useState('')
   const [rateLimit, setRateLimit] = useState('60')
+  const [keyMode, setKeyMode] = useState<'scope' | 'delegation'>('scope')
+  const [dataScopeAttr, setDataScopeAttr] = useState('school_ids')
+  const [dataScopeValues, setDataScopeValues] = useState('')
   const scopeOptions = mergeOptions(roleCatalog?.api_key_scopes, scopes)
 
   useEffect(() => {
@@ -2520,12 +3310,18 @@ function CreateApiKeyDialog({
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
+    const scopeValues = splitList(dataScopeValues)
     const key = await createKey.mutateAsync({
       principalId,
       payload: {
         scopes,
         allowed_ips: splitList(allowedIps),
         rate_limit_per_minute: Number(rateLimit) || null,
+        mode: keyMode,
+        data_scopes:
+          keyMode === 'scope' && dataScopeAttr.trim() && scopeValues.length > 0
+            ? [{ attribute: dataScopeAttr.trim(), values: scopeValues }]
+            : undefined,
       },
     })
     toast.show({ tone: 'success', title: t('access.apiKeys.created', '接入 Key 已签发') })
@@ -2536,6 +3332,53 @@ function CreateApiKeyDialog({
   return (
     <Dialog open={open} onClose={onClose} title={t('access.apiKeys.createTitle', '签发 API Key')} width={560}>
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
+        <div>
+          <label className="mb-2 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>{t('access.apiKeys.field.mode', '身份模式')}</label>
+          <div className="grid grid-cols-1 gap-2">
+            <label className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+              <input
+                type="radio"
+                name="api-key-mode"
+                checked={keyMode === 'scope'}
+                onChange={() => setKeyMode('scope')}
+              />
+              <span>
+                <span className="font-medium">{t('access.apiKeys.mode.scope', '模式 A · 服务自带数据范围')}</span>
+                <span className="mt-0.5 block" style={{ color: 'var(--text-3)' }}>
+                  {t('access.apiKeys.mode.scopeHint', '为服务身份配置固定数据范围（行级求值取该范围），不允许代理用户。')}
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-2)' }}>
+              <input
+                type="radio"
+                name="api-key-mode"
+                checked={keyMode === 'delegation'}
+                onChange={() => setKeyMode('delegation')}
+              />
+              <span>
+                <span className="font-medium">{t('access.apiKeys.mode.delegation', '模式 B · 委托代理用户')}</span>
+                <span className="mt-0.5 block" style={{ color: 'var(--text-3)' }}>
+                  {t('access.apiKeys.mode.delegationHint', '需先在虚拟用户上配置委托白名单（允许租户）；行级求值取被代理用户的数据范围。')}
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+        {keyMode === 'scope' ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Field
+              label={t('access.apiKeys.field.dataScopeAttr', '数据范围属性')}
+              value={dataScopeAttr}
+              onChange={setDataScopeAttr}
+            />
+            <Field
+              label={t('access.apiKeys.field.dataScopeValues', '范围值（逗号分隔）')}
+              value={dataScopeValues}
+              onChange={setDataScopeValues}
+            />
+          </div>
+        ) : null}
         <div>
           <label className="mb-2 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>{t('access.apiKeys.field.scopes', 'Scope')}</label>
           <div className="grid grid-cols-1 gap-2">
@@ -2618,24 +3461,78 @@ function SelectField({
   onChange,
   options,
   formatOption,
+  placeholder,
+  disabled,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   options: string[]
   formatOption?: (value: string) => string
+  placeholder?: string
+  disabled?: boolean
 }) {
   return (
     <div>
       <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>{label}</label>
       <select
-        className="w-full rounded border px-2 py-1.5 text-xs outline-none"
+        className="w-full rounded border px-2 py-1.5 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-60"
         style={{ background: 'var(--bg-surface-2)', borderColor: 'var(--border)', color: 'var(--text-1)' }}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
       >
+        {placeholder ? <option value="">{placeholder}</option> : null}
         {options.map((option) => <option key={option} value={option}>{formatOption ? formatOption(option) : option}</option>)}
       </select>
+    </div>
+  )
+}
+
+function MultiCheckField({
+  label,
+  value,
+  onChange,
+  options,
+  formatOption,
+  helper,
+}: {
+  label: string
+  value: string[]
+  onChange: (value: string[]) => void
+  options: string[]
+  formatOption?: (value: string) => string
+  helper?: string
+}) {
+  const selected = new Set(value)
+  const toggle = (option: string) => {
+    if (selected.has(option)) {
+      onChange(value.filter((item) => item !== option))
+    } else {
+      onChange([...value, option])
+    }
+  }
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>{label}</label>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {options.map((option) => (
+          <label
+            key={option}
+            className="flex min-h-9 items-center gap-2 rounded border px-2 py-1.5 text-xs"
+            style={{ borderColor: 'var(--border)', background: selected.has(option) ? 'var(--accent-soft)' : 'var(--bg-surface-2)', color: 'var(--text-1)' }}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(option)}
+              onChange={() => toggle(option)}
+              className="h-3.5 w-3.5"
+            />
+            <span className="min-w-0 truncate">{formatOption ? formatOption(option) : option}</span>
+          </label>
+        ))}
+      </div>
+      {helper ? <div className="mt-1 text-[11px]" style={{ color: 'var(--text-3)' }}>{helper}</div> : null}
     </div>
   )
 }
@@ -2688,6 +3585,29 @@ function StatusChip({ status }: { status: string }) {
         ? 'warning'
         : 'neutral'
   return <Chip tone={tone}>{statusLabel(status)}</Chip>
+}
+
+function ReasonCell({
+  reasonCode,
+  reason,
+  physicalDenied = false,
+  governanceRequired = false,
+}: {
+  reasonCode?: string | null
+  reason?: string | null
+  physicalDenied?: boolean
+  governanceRequired?: boolean
+}) {
+  const code = physicalDenied ? 'physical_denied_after_policy_allow' : String(reasonCode || '').trim()
+  const label = reason || formatAccessReasonLabel(code, governanceRequired)
+  return (
+    <div className="min-w-0">
+      <div className="truncate font-medium" style={{ color: 'var(--text-1)' }}>{label || '—'}</div>
+      {code ? (
+        <div className="mt-0.5 truncate font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{code}</div>
+      ) : null}
+    </div>
+  )
 }
 
 function principalTypeLabel(type: string): string {
@@ -2802,6 +3722,33 @@ function bindingSourceLabel(source: string): string {
   }[source] ?? source
 }
 
+function allowlistSourceLabel(source: string): string {
+  return {
+    FEISHU_M2_READER_OPEN_IDS: t('access.allowlist.source.env', '环境变量'),
+    CUBIC3_ALLOWED_USER_IDS: t('access.allowlist.source.cubic3', 'CUBIC3 白名单'),
+  }[source] ?? source
+}
+
+function allowlistGrantLabel(status: string): string {
+  return {
+    granted: t('access.allowlist.grant.granted', '已拥有 M2'),
+    pending_login: t('access.allowlist.grant.pendingLogin', '等待首次登录'),
+    pending_sync: t('access.allowlist.grant.pendingSync', '待同步授权'),
+  }[status] ?? status
+}
+
+function allowlistGrantTone(status: string): 'success' | 'warning' | 'neutral' {
+  if (status === 'granted') return 'success'
+  if (status === 'pending_login' || status === 'pending_sync') return 'warning'
+  return 'neutral'
+}
+
+function allowlistRiskLabel(risk: string): string {
+  return {
+    manual_revoke_conflict: t('access.allowlist.risk.manualRevokeConflict', '与手动撤销冲突'),
+  }[risk] ?? risk
+}
+
 export function formatPolicyScopeChips(scope: Record<string, unknown>): string[] {
   const chips: string[] = []
   const append = (formatter: (value: string) => string, values: unknown) => {
@@ -2828,8 +3775,20 @@ function dataLevelRank(level: string | null | undefined): number {
   return ranks[String(level || '').toUpperCase()] ?? -1
 }
 
-function isCredentialReason(reasonCode: string): boolean {
-  return ['credential_binding_missing', 'credential_invalid', 'secret_unavailable'].includes(reasonCode)
+function gatewayBreakdownRows(
+  snapshot: GatewayObservabilitySnapshot | undefined,
+  summary: GatewayTelemetrySummary,
+): Array<{ level: string; count: number }> {
+  const rows = snapshot?.breakdowns?.data_level
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows.map((row) => ({ level: row.key, count: Number(row.count || 0) }))
+  }
+  return Object.entries(summary.by_data_level ?? {}).map(([level, count]) => ({ level, count: Number(count) }))
+}
+
+function formatGatewayBreakdownKey(value: string): string {
+  if (value === 'missing') return t('access.gateway.breakdown.missing', '未返回等级')
+  return formatDataLevelLabel(value)
 }
 
 interface AccessTrendPoint {
@@ -2840,6 +3799,9 @@ interface AccessTrendPoint {
   blocked: number
   dau: number
   activePrincipals: string[]
+  successRate?: number | null
+  executeP95Ms?: number | null
+  queueWaitP95Ms?: number | null
 }
 
 interface GatewayTrendSummary {
@@ -2850,6 +3812,9 @@ interface GatewayTrendSummary {
   windowDau: number
   peakQueries: number
   peakLabel: string
+  usesGatewayTimeseries: boolean
+  latestSuccessRate: number | null
+  peakExecuteP95Ms: number
 }
 
 interface GatewayDataQualitySummary {
@@ -2857,8 +3822,14 @@ interface GatewayDataQualitySummary {
   identityMissingCount: number
   dataLevelMissingCount: number
   executionProfileMissingCount: number
+  policyDecisionMissingCount: number
+  credentialRefMissingCount: number
+  platformGovernedCount: number
+  gatewayOnlyCount: number
+  legacyActorCount: number
   hasIdentityGap: boolean
   hasDataGap: boolean
+  source: 'query_runs' | 'contract'
 }
 
 interface GatewayRowsPage<T> {
@@ -2883,7 +3854,41 @@ export function formatGatewayStabilityBasis(summary: Pick<GatewayTelemetrySummar
   })
 }
 
-export function summarizeGatewayDataQuality(rows: GatewayQueryRun[]): GatewayDataQualitySummary {
+export function summarizeGatewayDataQuality(
+  rows: GatewayQueryRun[],
+  contract?: GatewayContractCompleteness | null,
+): GatewayDataQualitySummary {
+  if (contract && Number(contract.total || 0) > 0) {
+    const total = Number(contract.total || 0)
+    const principalMissing = missingCountFromRate(total, contract.principal_present_rate)
+    const actorMissing = missingCountFromRate(total, contract.actor_present_rate)
+    const identityMissingCount = Math.min(total, Math.min(principalMissing, actorMissing))
+    const dataLevelMissingCount = missingCountFromRate(total, contract.data_level_present_rate)
+    const executionProfileMissingCount = missingCountFromRate(total, contract.execution_profile_present_rate)
+    const policyDecisionMissingCount = missingCountFromRate(total, contract.policy_decision_present_rate)
+    const credentialRefMissingCount = missingCountFromRate(total, contract.credential_ref_present_rate)
+    return {
+      total,
+      identityMissingCount,
+      dataLevelMissingCount,
+      executionProfileMissingCount,
+      policyDecisionMissingCount,
+      credentialRefMissingCount,
+      platformGovernedCount: Number(contract.platform_governed_count ?? 0),
+      gatewayOnlyCount: Number(contract.gateway_only_count ?? 0),
+      legacyActorCount: Number(contract.legacy_actor_count ?? 0),
+      hasIdentityGap: identityMissingCount > 0,
+      hasDataGap: [
+        identityMissingCount,
+        dataLevelMissingCount,
+        executionProfileMissingCount,
+        policyDecisionMissingCount,
+        credentialRefMissingCount,
+      ].some((count) => count > 0),
+      source: 'contract',
+    }
+  }
+
   const total = rows.length
   const identityMissingCount = rows.filter((row) => !gatewayRunActorKey(row)).length
   const dataLevelMissingCount = rows.filter((row) => !String(row.data_level || '').trim()).length
@@ -2893,9 +3898,20 @@ export function summarizeGatewayDataQuality(rows: GatewayQueryRun[]): GatewayDat
     identityMissingCount,
     dataLevelMissingCount,
     executionProfileMissingCount,
+    policyDecisionMissingCount: rows.filter((row) => !String(row.policy_decision_id || '').trim()).length,
+    credentialRefMissingCount: rows.filter((row) => !String(row.credential_ref || '').trim()).length,
+    platformGovernedCount: rows.filter((row) => String(row.policy_decision_id || '').trim()).length,
+    gatewayOnlyCount: rows.filter((row) => !String(row.policy_decision_id || '').trim()).length,
+    legacyActorCount: rows.filter((row) => !String(row.actor_type || '').trim()).length,
     hasIdentityGap: total > 0 && identityMissingCount > 0,
     hasDataGap: total > 0 && (identityMissingCount > 0 || dataLevelMissingCount > 0 || executionProfileMissingCount > 0),
+    source: 'query_runs',
   }
+}
+
+function missingCountFromRate(total: number, rate: number): number {
+  const present = Math.round(total * (Number.isFinite(rate) ? rate : 0) / 100)
+  return Math.max(0, total - present)
 }
 
 export function paginateGatewayRows<T>(rows: T[], page: number, pageSize = GATEWAY_RECORD_PAGE_SIZE): GatewayRowsPage<T> {
@@ -2953,6 +3969,32 @@ export function buildGatewayTrend(rows: GatewayQueryRun[]): AccessTrendPoint[] {
   })
 }
 
+export function buildGatewayTrendFromTimeseries(points: GatewayTimeseriesPoint[]): AccessTrendPoint[] | null {
+  const rows = points
+    .filter((point) => point.bucket_start)
+    .slice(-24)
+  if (rows.length === 0) return null
+  return rows.map((point) => {
+    const total = Number(point.query_total || 0)
+    const success = Number(point.success || 0)
+    const failed = Number(point.failed || 0)
+    const rejected = Number(point.rejected || 0)
+    const timeout = Number(point.timeout || 0)
+    return {
+      key: point.bucket_start,
+      label: formatHourLabel(point.bucket_start),
+      total,
+      allow: success,
+      blocked: failed + rejected + timeout,
+      dau: 0,
+      activePrincipals: [],
+      successRate: point.success_rate == null ? null : Number(point.success_rate),
+      executeP95Ms: point.execute_p95_ms == null ? null : Number(point.execute_p95_ms),
+      queueWaitP95Ms: point.queue_wait_p95_ms == null ? null : Number(point.queue_wait_p95_ms),
+    }
+  })
+}
+
 export function summarizeGatewayTrend(rows: AccessTrendPoint[]): GatewayTrendSummary {
   const activePrincipals = new Set<string>()
   rows.forEach((row) => row.activePrincipals.forEach((principal) => activePrincipals.add(principal)))
@@ -2961,6 +4003,7 @@ export function summarizeGatewayTrend(rows: AccessTrendPoint[]): GatewayTrendSum
     if (!current || row.total > current.total) return row
     return current
   }, null)
+  const usesGatewayTimeseries = rows.some((row) => row.successRate !== undefined || row.executeP95Ms !== undefined)
   return {
     totalQueries: rows.reduce((sum, row) => sum + row.total, 0),
     latestDayQueries: latest?.total ?? 0,
@@ -2969,6 +4012,9 @@ export function summarizeGatewayTrend(rows: AccessTrendPoint[]): GatewayTrendSum
     windowDau: activePrincipals.size,
     peakQueries: peak?.total ?? 0,
     peakLabel: peak?.label ?? '',
+    usesGatewayTimeseries,
+    latestSuccessRate: latest?.successRate ?? null,
+    peakExecuteP95Ms: rows.reduce((max, row) => Math.max(max, Number(row.executeP95Ms ?? 0)), 0),
   }
 }
 
@@ -2982,6 +4028,10 @@ function gatewayRunActorKey(row: GatewayQueryRun): string | null {
 function formatRatioPercent(value: number): string {
   if (!Number.isFinite(value)) return '0'
   return value.toFixed(2).replace(/\.?0+$/, '')
+}
+
+function formatGatewayContractRate(value: number): string {
+  return `${formatRatioPercent(Number(value || 0))}%`
 }
 
 function dateKey(value: string | null | undefined): string | null {
@@ -3011,6 +4061,11 @@ function formatShortDateLabel(key: string): string {
   return key.slice(5).replace('-', '/')
 }
 
+function formatHourLabel(value: string): string {
+  const match = String(value || '').match(/T(\d{2}):/)
+  return match ? `${match[1]}:00` : formatShortDateLabel(value)
+}
+
 function highestDataPackageCode(packageCodes: string[], dataPackages: AccessPermissionPackage[]): string | null {
   const current = new Set(packageCodes)
   const selected = dataPackages
@@ -3027,27 +4082,27 @@ function formatPackageRoleSummary(item: Pick<AccessPermissionPackage, 'name' | '
 
 export function formatAccessRoleLabel(roleCode: string): string {
   const labels: Record<string, string> = {
-    data_m0_reader: '基础数据读取',
-    data_m1_reader: '汇总数据读取',
-    data_m2_detail_reader: '明细数据读取',
-    data_exporter: '数据开发',
-    platform_admin: '管理员',
-    semantic_admin: '管理员',
-    semantic_modeler: '数据开发',
-    semantic_reviewer: '数据开发',
-    governance_admin: '管理员',
-    auditor: '管理员',
-    product_manager: '产品经理',
-    viewer: '普通用户',
+    data_m0_reader: t('access.role.dataM0Reader', '基础数据读取'),
+    data_m1_reader: t('access.role.dataM1Reader', '汇总数据读取'),
+    data_m2_detail_reader: t('access.role.dataM2Reader', '明细数据读取'),
+    data_exporter: t('access.role.dataExporter', '数据开发'),
+    platform_admin: t('access.role.platformAdmin', '管理员'),
+    semantic_admin: t('access.role.semanticAdmin', '管理员'),
+    semantic_modeler: t('access.role.semanticModeler', '数据开发'),
+    semantic_reviewer: t('access.role.semanticReviewer', '数据开发'),
+    governance_admin: t('access.role.governanceAdmin', '管理员'),
+    auditor: t('access.role.auditor', '管理员'),
+    product_manager: t('access.role.productManager', '产品经理'),
+    viewer: t('access.role.viewer', '普通用户'),
   }
   return labels[roleCode] ?? roleCode
 }
 
 export function formatGatewayAlertSeverityLabel(severity: string): string {
   const labels: Record<string, string> = {
-    critical: '严重',
-    warning: '预警',
-    healthy: '正常',
+    critical: t('access.gateway.severityCritical', '严重'),
+    warning: t('access.gateway.severityWarning', '预警'),
+    healthy: t('access.gateway.severityHealthy', '正常'),
   }
   return labels[severity] ?? severity
 }
@@ -3067,6 +4122,24 @@ export function formatDataLevelLabel(level: string): string {
   }
   const key = String(level || '').toUpperCase()
   return labels[key] ?? level
+}
+
+export function formatAccessReasonLabel(reasonCode: string, governanceRequired = false): string {
+  if (governanceRequired) return '需要先完成数据治理'
+  const labels: Record<string, string> = {
+    ok: '执行成功',
+    policy_allow: '平台策略放行',
+    policy_denied: '平台策略拒绝',
+    missing_data_role: '缺少对应数据角色',
+    m3_governance_required: 'M3 原始高敏阻断',
+    physical_denied_after_policy_allow: 'MaxCompute 物理权限拒绝',
+    credential_binding_missing: '缺少执行凭据绑定',
+    credential_invalid: '执行凭据无效',
+    secret_unavailable: '执行凭据不可用',
+    sql_guard_denied: 'SQL guard 拦截',
+    query_timeout: '查询超时',
+  }
+  return labels[reasonCode] ?? reasonCode
 }
 
 function formatTableLayerLabel(layer: string): string {
@@ -3092,12 +4165,37 @@ export function formatExecutionModeLabel(mode: string): string {
   return labels[mode] ?? mode
 }
 
-export function getCredentialModeOptions(currentMode?: string | null): string[] {
-  const activeModes = ['gateway_binding', 'inline_policy_decision']
-  if (currentMode === 'internal_query_execution') {
-    return [...activeModes, 'internal_query_execution']
+export function getCredentialModeOptions(_currentMode?: string | null): string[] {
+  return ['gateway_binding']
+}
+
+function formatPolicyActionLabel(action: string): string {
+  const labels: Record<string, string> = {
+    'metadata.read': t('access.policyAction.metadataRead', '读取元数据'),
+    'semantic.plan': t('access.policyAction.semanticPlan', '生成查询计划'),
+    query: t('access.policyAction.query', '执行查询'),
   }
-  return activeModes
+  return labels[action] ?? action
+}
+
+function formatBooleanLabel(value: boolean): string {
+  return value ? t('common.yes', '是') : t('common.no', '否')
+}
+
+function formatExecutionProfileLabel(profiles: AccessExecutionProfile[]): (profileCode: string) => string {
+  const profileByCode = new Map(profiles.map((profile) => [profile.profile_code, profile]))
+  return (profileCode: string) => {
+    const profile = profileByCode.get(profileCode)
+    if (!profile) return profileCode
+    return `${profile.name}（${profile.profile_code}）`
+  }
+}
+
+function defaultProfileForLevels(profiles: AccessExecutionProfile[], dataLevels: string[]): string {
+  if (profiles.length === 0) return ''
+  const preferredLevel = [...dataLevels].sort((left, right) => dataLevelRank(right) - dataLevelRank(left))[0]
+  const matched = profiles.find((profile) => profile.status === 'active' && profile.data_level === preferredLevel)
+  return matched?.profile_code ?? profiles.find((profile) => profile.status === 'active')?.profile_code ?? ''
 }
 
 export function formatPolicyEffectLabel(effect: string): string {

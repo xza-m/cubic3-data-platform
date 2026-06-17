@@ -76,7 +76,7 @@ test('P23 Dashboard 首屏 KPI + 侧卡片可见 @p23', async ({ page }) => {
   await expect(page.getByText('平台健康度').first()).toBeVisible()
 
   // 运行关注把关键状态提前，并提供可直接处理的入口。
-  await expect(page.getByRole('link', { name: /数据源健康/ })).toHaveAttribute('href', '/data-center/datasources')
+  await expect(page.getByRole('link', { name: /数据源健康/ })).toHaveAttribute('href', '/data-center/connections')
   await expect(page.getByRole('link', { name: /语义覆盖/ })).toHaveAttribute('href', '/semantic/ontology')
   await expect(page.getByRole('link', { name: /查询活动/ })).toHaveAttribute('href', '/queries/history')
   await expect(page.getByRole('link', { name: /访问治理/ })).toHaveAttribute('href', '/config/access')

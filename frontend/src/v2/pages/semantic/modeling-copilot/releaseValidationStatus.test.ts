@@ -22,6 +22,11 @@ const basePreview: ReleasePreview = {
     status: "passed",
     message: "语义中心编译预演通过。",
   },
+  bindingValidation: {
+    status: "passed",
+    message: "Cube ↔ Ontology 绑定校验通过。",
+    blockers: [],
+  },
   gatewayValidation: {
     status: "failed",
     message: "Gateway SQL dry-run 调用失败：gateway SQL dry-run failed: 405",

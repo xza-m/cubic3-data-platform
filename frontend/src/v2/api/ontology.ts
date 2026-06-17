@@ -24,11 +24,23 @@ const post = <T>(url: string, body?: unknown): Promise<T> =>
 
 // ─── 业务对象 (Objects) ─────────────────────────────────────────────────────
 
+export interface MeasureRef {
+  ref: string
+  role?: 'primary' | 'equivalent'
+}
+
+export interface CubeBinding {
+  cube: string
+  role?: 'primary' | 'detail' | 'event'
+  entity_key?: string | null
+}
+
 export interface BusinessObject {
   name: string
   title: string
   description?: string | null
   aliases?: string[]
+  cube_bindings?: CubeBinding[]
   status?: string
 }
 
@@ -49,7 +61,7 @@ export interface BusinessMetric {
   semantic_formula?: string
   description?: string | null
   semantic_labels?: string[]
-  measure_refs?: string[]
+  measure_refs?: Array<string | MeasureRef>
   aliases?: string[]
   status?: string
 }

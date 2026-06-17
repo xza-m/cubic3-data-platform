@@ -123,10 +123,13 @@ src/
 
 - `/login`
 - `/dashboard`
-- `/data-center/datasources`
-- `/data-center/datasets`
-- `/extraction/tasks`
-- `/extraction/runs`
+- `/data-center`
+- `/data-center/connections`
+- `/data-center/assets`
+- `/data-center/sync/tasks`
+- `/data-center/sync/runs`
+- `/data-center/sync/config`
+- `/data-center/impact`
 - `/queries`
 - `/queries/my`
 - `/queries/history`
@@ -147,8 +150,8 @@ src/
 兼容层说明：
 
 - `/queries/editor`、`/queries/templates` 会统一重定向到 `/queries`
-- `/semantic/overview`、`/semantic/tools`、`/semantic/playground`、`/semantic/visual-model`、`/semantic/canvas`、`/semantic/ide`、`/semantic/devtools` 会统一重定向到新的语义中心主入口
-- `/semantic/modeling` 会重定向到 `/semantic/domains`
+- 语义中心以新 IA 路由为准：`/semantic/modeling-workbench`、`/semantic/assets`、`/semantic/cubes`、`/semantic/ontology`、`/semantic/relations`、`/semantic/domains`、`/semantic/workbench`
+- `/semantic/overview`、`/semantic/tools`、`/semantic/playground`、`/semantic/visual-model`、`/semantic/canvas`、`/semantic/ide`、`/semantic/devtools`、`/semantic/modeling` 等旧语义入口不再注册兼容重定向
 
 语义中心当前页面职责：
 
@@ -159,12 +162,12 @@ src/
 
 路由/API 当前审计见 `docs/quality/frontend-v2-route-api-audit.md`。
 
-当前数据中心 Phase 1 已落地的前端基线：
+当前数据中心前端基线：
 
-- 数据源主链路以 `PostgreSQL`、`MaxCompute` 为准
-- 数据集注册覆盖 `physical`、`virtual`、`file`
+- 连接管理主链路以 `PostgreSQL`、`MaxCompute` 为准
+- 数据资产登记覆盖 `physical`、`virtual`、`file`
 - `virtual` 入口固定保留在 Query Editor 的“保存为虚拟数据集”
-- `file` 支持 `CSV / XLS / XLSX`，重新上传会创建新数据集，不覆盖旧对象
+- `file` 支持 `CSV / XLS / XLSX`，重新上传会创建新数据资产，不覆盖旧对象
 
 ## 构建产物
 

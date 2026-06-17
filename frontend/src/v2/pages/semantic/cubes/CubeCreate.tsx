@@ -263,7 +263,7 @@ export default function CubeCreate() {
             aria-label={mode === 'manual' ? t('cube.create', '新建 Cube') : t('cube.generateDraft', '生成草稿')}
           >
             {isPending
-              ? t('loading', '处理中…')
+              ? t('common.loading', '处理中…')
               : mode === 'manual'
                 ? t('cube.create', '新建 Cube')
                 : t('cube.generateDraft', '生成草稿')}

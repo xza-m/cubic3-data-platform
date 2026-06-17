@@ -190,9 +190,9 @@ export default function CubeEdit() {
         {tab === 'yaml' ? (
           <div className="h-full min-h-80">
             {yamlQuery.isLoading ? (
-              <div className="flex items-center justify-center py-12 text-sm text-3">{t('loading', '加载中…')}</div>
+              <div className="flex items-center justify-center py-12 text-sm text-3">{t('common.loading', '加载中…')}</div>
             ) : (
-              <Suspense fallback={<div className="flex items-center justify-center py-12 text-sm text-3">{t('loading', '加载编辑器…')}</div>}>
+              <Suspense fallback={<div className="flex items-center justify-center py-12 text-sm text-3">{t('common.loading', '加载编辑器…')}</div>}>
                 <MonacoEditor
                   height="100%"
                   language="yaml"
@@ -249,7 +249,7 @@ export default function CubeEdit() {
                 </CardBody>
               </Card>
             ) : (
-              <div className="py-8 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+              <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
             )}
           </div>
         ) : tab === 'validate' ? (
@@ -264,7 +264,7 @@ export default function CubeEdit() {
                     disabled={validateMutation.isPending}
                     onClick={() => name && validateMutation.mutate(yamlContent)}
                   >
-                    {validateMutation.isPending ? t('loading', '校验中…') : t('cube.runValidate', '运行校验')}
+                    {validateMutation.isPending ? t('common.loading', '校验中…') : t('cube.runValidate', '运行校验')}
                   </Button>
                 }
               />

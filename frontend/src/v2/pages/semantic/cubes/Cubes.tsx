@@ -224,7 +224,7 @@ export default function Cubes() {
 
         {/* 主体 */}
         {cubeListQuery.isLoading ? (
-          <div className="py-12 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+          <div className="py-12 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
         ) : cubeListQuery.isError ? (
           <Card>
             <CardBody className="px-6 py-12 text-center text-sm text-danger">
@@ -367,7 +367,7 @@ function CubePeek({
       size="medium"
     >
       {detailQuery.isLoading ? (
-        <div className="flex items-center justify-center py-12 text-sm text-3">{t('loading', '加载中…')}</div>
+        <div className="flex items-center justify-center py-12 text-sm text-3">{t('common.loading', '加载中…')}</div>
       ) : detailQuery.isError ? (
         <div className="px-4 py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</div>
       ) : cube ? (
@@ -376,7 +376,10 @@ function CubePeek({
           actions={{
             onOpenDesigner: () => { navigate(`/semantic/cubes/${cube.name}/edit`); onClose() },
             onJumpOntology: () => { navigate('/semantic/ontology/objects'); onClose() },
-            onRunDiagnose: () => { navigate('/semantic/workbench'); onClose() },
+            onRunDiagnose: () => {
+              navigate(`/semantic/workbench?tab=query&object=${encodeURIComponent(cube.name)}`)
+              onClose()
+            },
           }}
         />
       ) : null}

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import type { DomainSummary } from '@v2/api/semantic'
 
 vi.mock('@v2/layout/AppShell', () => ({
@@ -27,6 +27,8 @@ const mockCreateDomain = useCreateDomain as ReturnType<typeof vi.fn>
 
 function makeDomain(index: number): DomainSummary {
   return {
+    id: `domain_${String(index).padStart(2, '0')}`,
+    code: `domain_${String(index).padStart(2, '0')}`,
     name: `domain_${String(index).padStart(2, '0')}`,
     title: `业务域 ${index}`,
     description: `业务域 ${index} 描述`,
@@ -51,8 +53,14 @@ function renderPage(domains: DomainSummary[]) {
   return render(
     <MemoryRouter>
       <Domains />
+      <LocationProbe />
     </MemoryRouter>,
   )
+}
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location">{location.pathname}</div>
 }
 
 describe('Domains page pagination', () => {
@@ -71,5 +79,22 @@ describe('Domains page pagination', () => {
     expect(screen.queryByText('业务域 1')).toBeNull()
     expect(screen.getByText('业务域 21')).toBeInTheDocument()
     expect(screen.getByText('21-21 / 21 条')).toBeInTheDocument()
+  })
+
+  it('点击业务上下文时使用稳定 id 跳转，不使用中文展示名', () => {
+    renderPage([
+      {
+        id: 'academic',
+        code: 'academic',
+        name: '学业分析域',
+        title: null,
+        description: '学业分析和学习行为相关的业务上下文',
+        status: 'active',
+      },
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: /学业分析域/ }))
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/semantic/domains/academic')
   })
 })

@@ -5,6 +5,7 @@
         "id": 301,
         "name": "运维飞书机器人",
         "type": "lark",
+        "channel_type": "feishu",
         "enabled": true,
         "config": { "webhook": "https://example.com/webhook" },
         "created_at": "2026-04-01T08:00:00+08:00"
@@ -19,6 +20,7 @@
     "id": 301,
     "name": "运维飞书机器人",
     "type": "lark",
+    "channel_type": "feishu",
     "enabled": true,
     "config": { "webhook": "https://example.com/webhook" },
     "created_at": "2026-04-01T08:00:00+08:00",
@@ -33,11 +35,27 @@
     "items": [
       {
         "id": 401,
-        "name": "每日抽取告警",
+        "name": "每日同步告警",
+        "description": "学习行为同步失败时通知运维群",
         "enabled": true,
+        "app_instance_id": 101,
         "channel_id": 301,
         "channel_name": "运维飞书机器人",
-        "rule": { "metric": "extraction_failed" },
+        "event_types": ["app.execution.completed"],
+        "filter_conditions": {},
+        "delivery_config": {},
+        "app_instance": {
+          "id": 101,
+          "name": "DataAgent 智能问答",
+          "app_code": "data_agent",
+          "app_name": "DataAgent 智能问答"
+        },
+        "channel": {
+          "id": 301,
+          "name": "运维飞书机器人",
+          "channel_type": "feishu"
+        },
+        "rule": { "metric": "sync_failed" },
         "created_at": "2026-04-01T08:00:00+08:00"
       }
     ],
@@ -48,11 +66,27 @@
   },
   "subscription_detail": {
     "id": 401,
-    "name": "每日抽取告警",
+    "name": "每日同步告警",
+    "description": "学习行为同步失败时通知运维群",
     "enabled": true,
+    "app_instance_id": 101,
     "channel_id": 301,
     "channel_name": "运维飞书机器人",
-    "rule": { "metric": "extraction_failed" },
+    "event_types": ["app.execution.completed"],
+    "filter_conditions": {},
+    "delivery_config": {},
+    "app_instance": {
+      "id": 101,
+      "name": "DataAgent 智能问答",
+      "app_code": "data_agent",
+      "app_name": "DataAgent 智能问答"
+    },
+    "channel": {
+      "id": 301,
+      "name": "运维飞书机器人",
+      "channel_type": "feishu"
+    },
+    "rule": { "metric": "sync_failed" },
     "created_at": "2026-04-01T08:00:00+08:00",
     "updated_at": "2026-04-01T08:00:00+08:00"
   },
@@ -63,8 +97,10 @@
         "subscription_id": 401,
         "channel_id": 301,
         "status": "success",
-        "delivered_at": "2026-04-21T02:01:00+08:00",
-        "payload_summary": "extraction_failed: 学习行为抽取"
+        "event_type": "app.execution.completed",
+        "trigger_at": "2026-04-21T02:01:00+08:00",
+        "message": "sync_failed: 学习行为同步",
+        "duration_ms": 328
       }
     ],
     "total": 1,

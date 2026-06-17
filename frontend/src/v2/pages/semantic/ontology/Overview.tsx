@@ -19,7 +19,7 @@ export default function OntologyOverview() {
   const overview = useWorkbenchObjectOverview(name!)
 
   if (overview.isLoading) {
-    return <div className="py-8 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+    return <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
   }
   if (overview.isError || !overview.data) {
     return (
@@ -34,10 +34,10 @@ export default function OntologyOverview() {
         variant="ghost"
         className="mb-4 w-fit"
         onClick={() => navigate(-1)}
-        aria-label={t('back', '返回')}
+        aria-label={t('common.action.back', '返回')}
       >
         <ArrowLeft size={12} />
-        {t('back', '返回')}
+        {t('common.action.back', '返回')}
       </Button>
       <OntologyObjectContent overview={overview.data} />
     </div>

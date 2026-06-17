@@ -2,21 +2,10 @@
 // 按钮级权限门控：<Can action="datasource.delete">{children}</Can>
 // 无权限时：子元素 disabled + tooltip 说明原因。
 //
-// TODO(access): wire usePermissions() to Access Principal role bindings.
 import { type ReactNode, cloneElement, isValidElement } from 'react'
 import { Tooltip } from '@v2/components/ui'
+import { hasAccessPermission, useAccessPermissions } from '@v2/hooks/accessPermissions'
 import { t } from '@v2/i18n'
-
-// 权限 hook 占位：当前始终返回 ['*'] 表示有所有权限
-function usePermissions(): string[] {
-  // TODO(access): replace with real Access Principal permissions.
-  return ['*']
-}
-
-function hasPermission(permissions: string[], action: string): boolean {
-  if (permissions.includes('*')) return true
-  return permissions.includes(action)
-}
 
 interface CanProps {
   action: string
@@ -26,12 +15,14 @@ interface CanProps {
 }
 
 export function Can({ action, children, disabledTip }: CanProps) {
-  const permissions = usePermissions()
-  const allowed = hasPermission(permissions, action)
+  const { permissions, isAuthenticated, isLoading } = useAccessPermissions()
+  const allowed = isAuthenticated && !isLoading && hasAccessPermission(permissions, action)
 
   if (allowed) return <>{children}</>
 
-  const tip = disabledTip ?? t('can.requirePermission', '需要权限 {action}', { action })
+  const tip = isLoading
+    ? t('can.checkingPermission', '权限校验中')
+    : disabledTip ?? t('can.requirePermission', '需要权限 {action}', { action })
 
   // 尝试给第一个有效子元素注入 disabled
   if (isValidElement<Record<string, unknown>>(children)) {

@@ -15,6 +15,7 @@ import { EntityFormDialog } from '@v2/components/EntityFormDialog'
 // 等待 X-Crosscut：@v2/i18n
 import { t } from '@v2/i18n'
 import { usePolicyList, useCreatePolicy, useGlossaryList, useCreateGlossary } from '@v2/hooks/ontology'
+import { useSemanticMapperConsistencyReport, useSemanticMapperStaleCheck } from '@v2/hooks/semantic'
 import type { PolicyMetadata, GlossaryEntry } from '@v2/api/ontology'
 
 export default function OntologyGovernance() {
@@ -26,9 +27,13 @@ export default function OntologyGovernance() {
   const glossaryQuery = useGlossaryList()
   const createPolicy = useCreatePolicy()
   const createGlossary = useCreateGlossary()
+  const staleCheck = useSemanticMapperStaleCheck()
+  const consistencyReport = useSemanticMapperConsistencyReport()
 
   const policies = policyQuery.data?.items ?? []
   const glossary = glossaryQuery.data?.items ?? []
+  const staleItems = ((staleCheck.data?.stale_items ?? staleCheck.data?.items ?? []) as Array<Record<string, unknown>>)
+  const consistencyItems = ((consistencyReport.data?.consistency_items ?? consistencyReport.data?.items ?? []) as Array<Record<string, unknown>>)
 
   const handleCreatePolicy = async (data: Record<string, string>) => {
     await createPolicy.mutateAsync({
@@ -64,7 +69,13 @@ export default function OntologyGovernance() {
         className="flex shrink-0 items-center justify-between gap-2 border-b px-5 py-2"
         style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
       >
-        <Tabs value={tab} onChange={(v) => setTab(v as 'policy' | 'glossary')}>
+        <Tabs
+          value={tab}
+          onChange={(v) => setTab(v as 'policy' | 'glossary')}
+          size="sm"
+          bordered={false}
+          aria-label={t('governance.tabNavigation', '治理视图导航')}
+        >
           <Tab value="policy">{t('governance.tab.policy', '数据策略')}</Tab>
           <Tab value="glossary">{t('governance.tab.glossary', '业务术语')}</Tab>
         </Tabs>
@@ -80,6 +91,11 @@ export default function OntologyGovernance() {
       </div>
 
       <div className="flex-1 overflow-auto scroll-thin p-5">
+        <SemanticRiskSummary
+          staleCount={staleItems.length}
+          consistencyCount={consistencyItems.length}
+          loading={staleCheck.isLoading || consistencyReport.isLoading}
+        />
         {tab === 'policy' ? (
           <PolicyTable
             items={policies}
@@ -141,6 +157,48 @@ export default function OntologyGovernance() {
   )
 }
 
+function SemanticRiskSummary({
+  staleCount,
+  consistencyCount,
+  loading,
+}: {
+  staleCount: number
+  consistencyCount: number
+  loading: boolean
+}) {
+  const total = staleCount + consistencyCount
+  return (
+    <section className="mb-4 rounded border bg-[var(--bg-surface)] px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="m-0 text-[14px] font-semibold text-1">{t('governance.risk.title', '语义一致性风险')}</h2>
+          <p className="m-0 mt-1 text-[12px] text-3">{t('governance.risk.subtitle', '聚合 Mapper stale-check 与 consistency-report，作为发布前风险入口。')}</p>
+        </div>
+        <Chip tone={total > 0 ? 'warning' : 'success'}>
+          {loading
+            ? t('governance.risk.checking', '检查中')
+            : total > 0
+              ? t('governance.risk.attentionCount', '{count} 项需关注', { count: total })
+              : t('governance.risk.noBlocker', '无阻断风险')}
+        </Chip>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <RiskStat label={t('governance.risk.staleProjection', 'Stale 投影')} value={staleCount} />
+        <RiskStat label={t('governance.risk.consistencyIssue', '一致性问题')} value={consistencyCount} />
+      </div>
+    </section>
+  )
+}
+
+function RiskStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded bg-[var(--bg-surface-2)] px-3 py-2">
+      <div className="text-[11px] text-3">{label}</div>
+      <div className="mt-1 text-[18px] font-semibold text-1">{value}</div>
+    </div>
+  )
+}
+
 function PolicyTable({
   items,
   loading,
@@ -150,7 +208,7 @@ function PolicyTable({
   loading: boolean
   error: boolean
 }) {
-  if (loading) return <div className="py-8 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+  if (loading) return <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
   if (error) return <div className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</div>
   if (!items.length) return <div className="py-8 text-center text-sm text-3">{t('governance.policy.empty', '尚无数据策略')}</div>
 
@@ -199,7 +257,7 @@ function GlossaryTable({
   loading: boolean
   error: boolean
 }) {
-  if (loading) return <div className="py-8 text-center text-sm text-3">{t('loading', '加载中…')}</div>
+  if (loading) return <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
   if (error) return <div className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</div>
   if (!items.length) return <div className="py-8 text-center text-sm text-3">{t('governance.glossary.empty', '尚无业务术语')}</div>
 

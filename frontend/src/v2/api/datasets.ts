@@ -28,6 +28,8 @@ export interface Dataset {
   dataset_type: string            // 'physical' | 'virtual' | 'file'
   source_id: number | null
   source_type: string | null
+  datasource_id?: number | null
+  datasource_name?: string | null
   physical_table: string | null
   sql_query: string | null
   file_metadata: Record<string, unknown> | null

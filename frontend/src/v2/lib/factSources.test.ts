@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatDatasetScaleSource,
+  formatQueryHistorySource,
   isConnectedDatasourceStatus,
   normalizeDataAssetSyncStatus,
   normalizeDatasourceConnectionStatus,
@@ -20,7 +21,11 @@ describe('factSources', () => {
   })
 
   it('格式化 Dashboard 数据规模来源', () => {
-    expect(formatDatasetScaleSource('datasets')).toBe('回退到平台 Dataset')
-    expect(formatDatasetScaleSource('data_asset_tables')).toBe('资产事实层 · data_asset_tables')
+    expect(formatDatasetScaleSource('datasets')).toBe('平台数据集')
+    expect(formatDatasetScaleSource('data_asset_tables')).toBe('数据资产事实源')
+  })
+
+  it('格式化 Dashboard 查询记录来源', () => {
+    expect(formatQueryHistorySource('query_histories')).toBe('交互式查询记录')
   })
 })

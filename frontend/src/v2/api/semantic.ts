@@ -324,6 +324,24 @@ export interface DataAssetFieldListResponse {
   total: number
 }
 
+export interface DataAssetFieldSemanticCandidate {
+  field?: string
+  name?: string
+  label?: string | null
+  role?: string | null
+  semantic_type?: string | null
+  confidence?: number | null
+  evidence?: string[]
+  [key: string]: unknown
+}
+
+export interface DataAssetFieldSemanticCandidateResponse {
+  fields?: DataAssetFieldSemanticCandidate[]
+  candidates?: DataAssetFieldSemanticCandidate[]
+  items?: DataAssetFieldSemanticCandidate[]
+  [key: string]: unknown
+}
+
 export interface DataAssetEvidenceBundle {
   runtime_truth: false
   asset_refs?: Array<Record<string, unknown>>
@@ -433,6 +451,12 @@ export const listDataAssetPhysicalTables = (params: DataAssetPhysicalTableListPa
 export const getDataAssetTableFields = (tableId: string) =>
   get<DataAssetFieldListResponse>(`/semantic/assets/tables/${encodeURIComponent(tableId)}/fields`)
 
+export const inferDataAssetFieldSemantics = (tableId: string, fields?: DataAssetFieldProfile[]) =>
+  post<DataAssetFieldSemanticCandidateResponse>(
+    `/semantic/assets/tables/${encodeURIComponent(tableId)}/field-semantic-candidates`,
+    fields?.length ? { fields } : {},
+  )
+
 export const getDataAssetTableEvidence = (tableId: string) =>
   get<DataAssetEvidenceBundle>(`/semantic/assets/tables/${encodeURIComponent(tableId)}/evidence`)
 
@@ -531,164 +555,6 @@ export interface SemanticModelingAgentValidationResult {
   checks?: Record<string, unknown>
   agent_sandbox_preview?: Record<string, unknown>
 }
-
-export type SemanticModelingProposalStatus =
-  | 'created'
-  | 'drafted'
-  | 'validated'
-  | 'blocked'
-  | 'approved'
-  | 'applied'
-  | 'published'
-  | 'closed'
-  | string
-
-export interface SemanticModelingProposal {
-  id: string
-  source_mode: 'human_led' | 'agent_led' | string
-  status: SemanticModelingProposalStatus
-  close_reason?: string | null
-  intent?: Record<string, unknown>
-  source_context?: Record<string, unknown>
-  spec?: SemanticModelingAgentSpec | null
-  drafts?: Record<string, unknown>
-  coverage_result?: Record<string, unknown>
-  semantic_diff?: Record<string, unknown>
-  validation_matrix?: Record<string, unknown>
-  review_records?: Array<Record<string, unknown>>
-  publish_result?: Record<string, unknown> | null
-  runtime_consumption_result?: Record<string, unknown>
-  readiness_label?: string
-  approved_spec_hash?: string | null
-  applied_spec_hash?: string | null
-  last_transition_actor?: string | null
-  last_transition_at?: string | null
-  audit_snapshot?: Record<string, unknown>
-  created_at?: string
-  updated_at?: string
-  [key: string]: unknown
-}
-
-export interface SemanticModelingProposalGapView {
-  id: string
-  status: SemanticModelingProposalStatus
-  display_status: string
-  question: {
-    text: string
-    extracted_context: Array<{ key: string; label: string; value: string }>
-  }
-  coverage: {
-    decision: string
-    label: string
-    summary: string
-    reusable_assets: unknown[]
-  }
-  gaps: Array<{
-    id: string
-    type: string
-    severity: 'required' | 'needs_confirmation' | 'optional' | string
-    title: string
-    description: string
-    technical_hint?: string
-    requires_confirmation?: boolean
-  }>
-  patch_plan: Array<{
-    id: string
-    type: string
-    title: string
-    business_name: string
-    technical_name?: string | null
-    description: string
-  }>
-  validation: {
-    summary: string
-    checks: Array<{
-      id: string
-      status: 'passed' | 'failed' | 'needs_confirmation' | string
-      title: string
-      description: string
-      technical_hint?: string
-    }>
-  }
-  technical_change: {
-    changed_objects: Array<{
-      type: string
-      name: string
-      operation: 'create' | 'update' | 'delete' | string
-    }>
-    yaml_diff?: string
-    sql_validation?: string
-    impact_summary?: string[]
-    approval_wording?: string
-  }
-  primary_action: {
-    label: string
-    action: 'draft' | 'validate' | 'approve' | 'apply' | 'publish' | 'inspect_failure' | 'open_query' | 'none' | string
-    disabled: boolean
-    tone: 'primary' | 'success' | 'warning' | 'danger' | 'neutral' | string
-  }
-}
-
-export interface SemanticModelingProposalCreateBody extends SemanticModelingAgentSpecDraftBody {
-  source_mode?: 'human_led' | 'agent_led' | string
-  user_question?: string
-}
-
-export interface SemanticModelingProposalApproveBody {
-  reviewer?: string
-  comment?: string
-  [key: string]: unknown
-}
-
-export interface SemanticModelingProposalPublishRequest {
-  publish_targets?: {
-    cube?: boolean
-    ontology?: boolean
-  }
-}
-
-export interface SemanticModelingProposalCloseRequest {
-  close_reason: 'reused_existing' | 'rejected' | 'abandoned' | string
-  actor?: string
-  reviewer?: string
-  comment?: string
-}
-
-export const createSemanticModelingProposal = (body: SemanticModelingProposalCreateBody) =>
-  post<SemanticModelingProposal>('/semantic/modeling-agent/proposals', body)
-
-export const getSemanticModelingProposal = (proposalId: string) =>
-  get<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}`)
-
-export const getSemanticModelingProposalGapView = (proposalId: string) =>
-  get<SemanticModelingProposalGapView>(`/semantic/modeling-agent/proposals/${proposalId}/gap-view`)
-
-export const draftSemanticModelingProposal = (proposalId: string) =>
-  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/draft`)
-
-export const validateSemanticModelingProposal = (proposalId: string) =>
-  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/validate`)
-
-export const approveSemanticModelingProposal = (
-  proposalId: string,
-  body?: SemanticModelingProposalApproveBody,
-) =>
-  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/approve`, body)
-
-export const applySemanticModelingProposal = (proposalId: string) =>
-  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/apply`)
-
-export const publishSemanticModelingProposal = (
-  proposalId: string,
-  body?: SemanticModelingProposalPublishRequest,
-) =>
-  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/publish`, body)
-
-export const closeSemanticModelingProposal = (
-  proposalId: string,
-  body: SemanticModelingProposalCloseRequest,
-) =>
-  post<SemanticModelingProposal>(`/semantic/modeling-agent/proposals/${proposalId}/close`, body)
 
 export type SemanticModelingCopilotEntryType = 'table_known' | 'business_question' | 'semantic_gap' | string
 
@@ -1036,6 +902,20 @@ export const previewSemanticModelingCopilotRelease = (sessionId: string, body?: 
     MODELING_COPILOT_LONG_REQUEST,
   )
 
+export const startSemanticModelingCopilotReviewRun = (sessionId: string, body?: Record<string, unknown>) =>
+  post<SemanticModelingCopilotSession>(
+    `/semantic/modeling-copilot/sessions/${sessionId}/review-runs`,
+    body,
+    MODELING_COPILOT_LONG_REQUEST,
+  )
+
+export const startSemanticModelingCopilotRepairRun = (sessionId: string, body?: Record<string, unknown>) =>
+  post<SemanticModelingCopilotSession>(
+    `/semantic/modeling-copilot/sessions/${sessionId}/repair-runs`,
+    body,
+    MODELING_COPILOT_LONG_REQUEST,
+  )
+
 export const saveSemanticModelingCopilotProposal = (sessionId: string, body?: Record<string, unknown>) =>
   post<SemanticModelingCopilotSession>(
     `/semantic/modeling-copilot/sessions/${sessionId}/save-proposal`,
@@ -1255,10 +1135,35 @@ export interface CompileResult {
   sql: string
   primary_cube: string
   joined_cubes: string[]
+  /** Phase 3 证据包：编译时刻主 Cube 定义版本标识 */
+  definition_hash?: string | null
 }
 
-export const compileDsl = (dsl: string) =>
+/** Cube Query DSL（JSON 对象），与后端 QueryDSL 契约一致 */
+export type QueryDslInput = Record<string, unknown>
+
+export const compileDsl = (dsl: QueryDslInput) =>
   post<CompileResult>('/semantic/compile', { dsl })
+
+// ─── Query 执行（DevTools 证据包） ────────────────────────────────────────────
+// 后端契约：POST /api/v1/semantic/query（app/interfaces/api/v1/semantic/runtime.py）
+// 失败时返回 400，details 含 error / error_code / hint / sql / definition_hash。
+
+export interface SemanticQueryResult {
+  columns: string[]
+  data: unknown[][]
+  row_count: number
+  execution_time_ms: number
+  sql: string
+  primary_cube: string
+  joined_cubes: string[]
+  definition_hash?: string | null
+  message?: string
+  retryable?: boolean
+}
+
+export const queryDsl = (dsl: QueryDslInput) =>
+  post<SemanticQueryResult>('/semantic/query', { dsl })
 
 // ─── Schema sync ─────────────────────────────────────────────────────────────
 
@@ -1331,6 +1236,35 @@ export interface SemanticGraphData {
 
 export const getSemanticGraph = () =>
   get<SemanticGraphData>('/semantic/graph')
+
+// ─── Mapper 投影 / 影响分析 ─────────────────────────────────────────────────
+
+export interface SemanticMapperReport {
+  items?: Array<Record<string, unknown>>
+  stale_items?: Array<Record<string, unknown>>
+  consistency_items?: Array<Record<string, unknown>>
+  total?: number
+  [key: string]: unknown
+}
+
+export interface SemanticMapperBacklinks {
+  items?: Array<Record<string, unknown>>
+  backlinks?: Array<Record<string, unknown>>
+  total?: number
+  [key: string]: unknown
+}
+
+export const getSemanticMapperStaleCheck = () =>
+  get<SemanticMapperReport>('/semantic-mapper/stale-check')
+
+export const getSemanticMapperConsistencyReport = () =>
+  get<SemanticMapperReport>('/semantic-mapper/consistency-report')
+
+export const getSemanticCubeBacklinks = (cubeName: string) =>
+  get<SemanticMapperBacklinks>('/semantic-mapper/cube-backlinks', { cube_name: cubeName })
+
+export const getSemanticMeasureBacklinks = (measureRef: string) =>
+  get<SemanticMapperBacklinks>('/semantic-mapper/measure-backlinks', { measure_ref: measureRef })
 
 // ─── P7 · Domain 发布历史 ────────────────────────────────────────────────────
 // 后端契约：GET /api/v1/semantic/domains/:id/publish/history

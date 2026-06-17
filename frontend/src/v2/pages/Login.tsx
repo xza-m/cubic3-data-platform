@@ -8,14 +8,14 @@
 //   ┌──────────────────────────┬────────────────────────────┐
 //   │ 左：品牌 Hero（始终深色） │ 右：登录表单（surface 背板） │
 //   │ · Logo                    │ · 欢迎标题 / 描述           │
-//   │ · 3 列连通图 + 流动点      │ · 用户名 / 密码 + 记住我    │
+//   │ · 3 列连通图 + 流动点      │ · 用户名 / 密码             │
 //   │ · 平台标语 / 版权         │ · 登录按钮                   │
 //   │                          │ · 分割线 + 飞书 SSO          │
 //   └──────────────────────────┴────────────────────────────┘
 // 交互：
 //   · password toggle（眼睛图标）
 //   · ⌘↵ / Enter 提交
-//   · SSO 回调 ?token=xxx / ?error=xxx（飞书 callback 302 回登录页）
+//   · SSO 回调 ?code=xxx / ?cli_code=xxx / ?error=xxx（飞书 callback 302 回登录页）
 //   · 已登录态（有 access token）直接重定向到 ?redirect 或 /dashboard
 // 统一：
 //   · 颜色：仅使用 tokens + color-mix 做透明叠加；品牌 Hero 的深底使用局部 CSS 变量，
@@ -30,6 +30,7 @@ import {
   ArrowRight,
   Bell,
   Box,
+  Clipboard,
   Command as CommandIcon,
   Database,
   Eye,
@@ -50,23 +51,32 @@ import {
 } from 'lucide-react'
 import { Button, Kbd } from '@v2/components/ui'
 import { useToast } from '@v2/components/ui/Toast'
-import { apiClient, getAccessToken, setAccessToken } from '@v2/api/client'
+import { apiClient, getAccessToken, setTokenPair, type TokenPair } from '@v2/api/client'
 import { useTheme } from '@v2/components/ThemeProvider'
 import { ev, obs } from '@v2/observability'
 import { t } from '@v2/i18n'
 import type { LoginResponse } from './login-utils'
-import { extractLoginToken } from './login-utils'
+import { buildCliExchangeCommand, extractLoginTokenPair } from './login-utils'
 
-async function loginRequest(username: string, password: string): Promise<string> {
+async function loginRequest(username: string, password: string): Promise<TokenPair> {
   const res = await apiClient.post<LoginResponse>('/auth/login', {
     username,
     password,
   })
-  const token = extractLoginToken(res.data)
-  if (!token) {
-    throw new Error(t('login.error.missingToken', '登录接口未返回 token'))
+  const tokenPair = extractLoginTokenPair(res.data)
+  if (!tokenPair) {
+    throw new Error(t('login.error.missingTokenPair', '登录接口未返回 Token Pair'))
   }
-  return token
+  return tokenPair
+}
+
+async function exchangeFeishuCode(code: string): Promise<TokenPair> {
+  const res = await apiClient.post<LoginResponse>('/auth/feishu/exchange', { code })
+  const tokenPair = extractLoginTokenPair(res.data)
+  if (!tokenPair) {
+    throw new Error(t('login.error.missingTokenPair', '登录接口未返回 Token Pair'))
+  }
+  return tokenPair
 }
 
 export default function Login() {
@@ -79,32 +89,66 @@ export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
   const redirectTo =
     (location.state as { from?: string } | null)?.from ??
     searchParams.get('redirect') ??
     '/dashboard'
+  const cliCodeFromQuery = searchParams.get('cli_code')
+  const [cliAuthorizationCode, setCliAuthorizationCode] = useState<string | null>(cliCodeFromQuery)
+  const cliExchangeCommand = cliAuthorizationCode
+    ? buildCliExchangeCommand(
+        cliAuthorizationCode,
+        typeof window === 'undefined' ? '' : window.location.origin,
+      )
+    : ''
 
-  // 飞书 SSO 回调：后端 302 带 ?token=xxx 或 ?error=xxx 回到 /login
+  // 飞书 SSO 回调：web code 自动交换；CLI code 展示给命令行使用。
   useEffect(() => {
-    const ssoToken = searchParams.get('token')
+    const ssoCode = searchParams.get('code')
+    const ssoCliCode = searchParams.get('cli_code')
     const ssoError = searchParams.get('error')
-    if (ssoToken) {
-      setAccessToken(ssoToken)
-      obs.track(ev.loginSucceeded('feishu'))
-      navigate(redirectTo, { replace: true })
+    if (ssoCliCode) {
+      setCliAuthorizationCode(ssoCliCode)
+      if (ssoError) {
+        toast.show(decodeURIComponent(ssoError), 'danger')
+      }
       return
     }
+    setCliAuthorizationCode(null)
     if (ssoError) {
       toast.show(decodeURIComponent(ssoError), 'danger')
+    }
+    if (!ssoCode) return
+
+    let cancelled = false
+    setSubmitting(true)
+    exchangeFeishuCode(ssoCode)
+      .then((tokenPair) => {
+        if (cancelled) return
+        setTokenPair(tokenPair)
+        obs.track(ev.loginSucceeded('feishu'))
+        navigate(redirectTo, { replace: true })
+      })
+      .catch((err) => {
+        if (cancelled) return
+        toast.show(
+          err instanceof Error ? err.message : t('login.error.default', '登录失败'),
+          'danger',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setSubmitting(false)
+      })
+    return () => {
+      cancelled = true
     }
     // 仅订阅 query 的变化，toast/navigate 稳定
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  if (getAccessToken()) {
+  if (getAccessToken() && !cliCodeFromQuery) {
     return <Navigate to={redirectTo} replace />
   }
 
@@ -118,13 +162,13 @@ export default function Login() {
     setSubmitting(true)
     try {
       const trimmedUser = username.trim()
-      const token = await loginRequest(trimmedUser, password)
-      setAccessToken(token)
+      const tokenPair = await loginRequest(trimmedUser, password)
+      setTokenPair(tokenPair)
       obs.track(ev.loginSucceeded(trimmedUser))
       toast.show({
         tone: 'success',
         title: t('login.success.title', '登录成功'),
-        description: t('login.success.desc', '已写入 token，进入工作台'),
+        description: t('login.success.desc', '已写入登录凭据，进入工作台'),
       })
       navigate(redirectTo, { replace: true })
     } catch (err) {
@@ -139,6 +183,39 @@ export default function Login() {
 
   const handleFeishuLogin = () => {
     window.location.href = '/api/v1/auth/feishu/authorize'
+  }
+
+  const handleCopyCliCode = async () => {
+    if (!cliAuthorizationCode) return
+    try {
+      await navigator.clipboard.writeText(cliAuthorizationCode)
+      toast.show(t('login.cliCode.copied', '已复制 CLI 授权码'), 'success')
+    } catch {
+      toast.show(t('login.cliCode.copyFailed', '复制失败，请手动复制'), 'warning')
+    }
+  }
+
+  const handleCopyCliCommand = async () => {
+    if (!cliExchangeCommand) return
+    try {
+      await navigator.clipboard.writeText(cliExchangeCommand)
+      toast.show(t('login.cliCode.commandCopied', '已复制 CLI 登录命令'), 'success')
+    } catch {
+      toast.show(t('login.cliCode.copyFailed', '复制失败，请手动复制'), 'warning')
+    }
+  }
+
+  const handleCloseCliPage = () => {
+    window.close()
+    toast.show(t('login.cliCode.closeHint', '完成终端兑换后，可以关闭此页'), 'info')
+  }
+
+  const handleEnterPlatform = () => {
+    if (getAccessToken()) {
+      navigate(redirectTo, { replace: true })
+      return
+    }
+    handleFeishuLogin()
   }
 
   return (
@@ -170,6 +247,167 @@ export default function Login() {
           <Sun size={14} />
         </button>
 
+        {cliAuthorizationCode ? (
+          <div
+            className="flex w-full max-w-[460px] flex-col gap-6"
+            data-testid="cli-authorization-success"
+          >
+            {/* Logo + 标题 */}
+            <div className="flex flex-col gap-2">
+              <div className="mb-1 flex items-center gap-2.5">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-[10px] text-white"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, var(--accent) 0%, var(--violet) 100%)',
+                  }}
+                >
+                  <Box className="h-[22px] w-[22px]" />
+                </div>
+                <span
+                  className="text-[22px] font-extrabold tracking-[1px]"
+                  style={{ color: 'var(--text-1)' }}
+                >
+                  CUBIC³
+                </span>
+              </div>
+              <h1
+                className="text-[26px] font-bold leading-tight"
+                style={{ color: 'var(--text-1)' }}
+              >
+                {t('login.cliCode.pageTitle', 'CLI 授权已生成')}
+              </h1>
+              <p className="text-[13px] leading-5" style={{ color: 'var(--text-3)' }}>
+                {t(
+                  'login.cliCode.pageDesc',
+                  '请回到终端完成 Token Pair 兑换。兑换完成后，可以关闭此页。',
+                )}
+              </p>
+            </div>
+
+            <div
+              className="flex flex-col gap-4 rounded-lg border p-4"
+              style={{
+                background: 'color-mix(in srgb, var(--accent) 7%, var(--bg-surface))',
+                borderColor: 'color-mix(in srgb, var(--accent) 26%, var(--border))',
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                  style={{
+                    background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
+                    color: 'var(--accent-text)',
+                  }}
+                >
+                  <CommandIcon size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold" style={{ color: 'var(--text-1)' }}>
+                    {t('login.cliCode.title', 'CLI 授权码')}
+                  </p>
+                  <p className="mt-1 text-[12px] leading-5" style={{ color: 'var(--text-3)' }}>
+                    {t(
+                      'login.cliCode.exchangeHint',
+                      '授权码只用于当前 CLI 登录流程，建议直接复制下方命令执行。',
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] font-medium" style={{ color: 'var(--text-2)' }}>
+                    {t('login.cliCode.codeLabel', '授权码')}
+                  </span>
+                  <button
+                    type="button"
+                    className="rail-btn"
+                    onClick={handleCopyCliCode}
+                    title={t('login.cliCode.copy', '复制授权码')}
+                    aria-label={t('login.cliCode.copy', '复制授权码')}
+                  >
+                    <Clipboard size={14} />
+                  </button>
+                </div>
+                <code
+                  className="break-all rounded border px-3 py-2 text-[12px]"
+                  style={{
+                    borderColor: 'var(--border)',
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-2)',
+                  }}
+                >
+                  {cliAuthorizationCode}
+                </code>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] font-medium" style={{ color: 'var(--text-2)' }}>
+                    {t('login.cliCode.commandLabel', '终端命令')}
+                  </span>
+                  <button
+                    type="button"
+                    className="rail-btn"
+                    onClick={handleCopyCliCommand}
+                    title={t('login.cliCode.copyCommand', '复制命令')}
+                    aria-label={t('login.cliCode.copyCommand', '复制命令')}
+                  >
+                    <Clipboard size={14} />
+                  </button>
+                </div>
+                <code
+                  className="block break-all rounded border px-3 py-2 text-[12px] leading-5"
+                  style={{
+                    borderColor: 'var(--border)',
+                    background: 'var(--bg-surface)',
+                    color: 'var(--text-2)',
+                  }}
+                >
+                  {cliExchangeCommand}
+                </code>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <Button
+                type="button"
+                variant="primary"
+                className="h-11 w-full justify-center"
+                onClick={handleCopyCliCommand}
+              >
+                <Clipboard size={14} />
+                {t('login.cliCode.copyCommand', '复制命令')}
+                <ArrowRight size={14} />
+              </Button>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  className="h-10 justify-center"
+                  onClick={handleEnterPlatform}
+                >
+                  <MessageCircle size={14} />
+                  {t('login.cliCode.enterWeb', '网页登录进入平台')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-10 justify-center"
+                  onClick={handleCloseCliPage}
+                >
+                  {t('login.cliCode.closePage', '关闭此页')}
+                </Button>
+              </div>
+              <p className="text-center text-[11px]" style={{ color: 'var(--text-4)' }}>
+                {t(
+                  'login.cliCode.enterWebHint',
+                  'CLI 登录不会写入浏览器登录态；需要进入网页端时请使用网页飞书登录。',
+                )}
+              </p>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="flex w-full max-w-[420px] flex-col gap-6">
           {/* Logo + 标题 */}
           <div className="flex flex-col gap-2">
@@ -282,18 +520,8 @@ export default function Login() {
             </div>
           </div>
 
-          {/* 记住我 + 忘记密码 */}
-          <div className="flex items-center justify-between text-[12px]">
-            <label className="flex cursor-pointer items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(e) => setRememberMe(e.target.checked)}
-                className="h-3.5 w-3.5 rounded"
-                style={{ accentColor: 'var(--accent)' }}
-              />
-              <span>{t('login.remember', '记住登录状态')}</span>
-            </label>
+          {/* 辅助操作 */}
+          <div className="flex items-center justify-end text-[12px]">
             <button
               type="button"
               className="hover:underline"
@@ -358,6 +586,7 @@ export default function Login() {
             {t('login.terms', '登录即表示您同意平台的使用条款和隐私政策')}
           </p>
         </form>
+        )}
       </section>
     </div>
   )

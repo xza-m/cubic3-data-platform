@@ -11,6 +11,7 @@ vi.mock('@v2/api/subscriptions', () => ({
   listSubscriptions: vi.fn(),
   listSubscriptionsByInstance: vi.fn(),
   listSubscriptionHistory: vi.fn(),
+  triggerSubscription: vi.fn(),
   updateSubscription: vi.fn(),
 }))
 
@@ -25,6 +26,7 @@ import {
   useEnableSubscription,
   useDisableSubscription,
   useSubscriptionHistory,
+  useTriggerSubscription,
   useToggleSubscription,
 } from './subscriptions'
 import { makeWrapper } from './test-utils'
@@ -132,6 +134,25 @@ describe('subscriptions', () => {
       await result.current.mutateAsync(8)
     })
     expect(spy).toHaveBeenCalledWith({ queryKey: ['subscriptions', 'detail', 8] })
+  })
+
+  it('useTriggerSubscription invalidates list + detail + history', async () => {
+    (api.triggerSubscription as ReturnType<typeof vi.fn>).mockResolvedValue({
+      event_type: 'app.execution.completed',
+      total_subscriptions: 1,
+      successful: 1,
+      failed: 0,
+      details: [],
+    })
+    const { qc, wrapper } = makeWrapper()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useTriggerSubscription(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync({ id: 9 })
+    })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['subscriptions'] })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['subscriptions', 'detail', 9] })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['subscriptions', 'detail', 9, 'history'] })
   })
 
   it('useToggleSubscription dispatches enable when not enabled', async () => {

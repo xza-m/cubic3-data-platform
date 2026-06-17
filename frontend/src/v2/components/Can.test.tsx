@@ -1,35 +1,61 @@
 // frontend/src/v2/components/Can.test.tsx
 //
-// Note: Can's `usePermissions` placeholder always returns ['*']
-// so currently only the "allowed" branch is reachable. Coverage of
-// the disallowed branches is intentionally accepted as dead code
-// pending B-back-permissions wire-up.
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactElement } from 'react'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { getCurrentUser } from '@v2/api/auth'
+import { setAccessToken } from '@v2/api/client'
 import { Can } from './Can'
 
-describe('Can - allowed branch (placeholder)', () => {
-  it('renders element children unchanged', () => {
-    render(
+vi.mock('@v2/api/auth', () => ({
+  getCurrentUser: vi.fn(),
+}))
+
+function renderWithQuery(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>)
+}
+
+afterEach(() => {
+  cleanup()
+  setAccessToken(null)
+  vi.clearAllMocks()
+})
+
+describe('Can', () => {
+  it('renders element children unchanged when permission is granted', async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({ permissions: ['datasource.delete'] })
+    setAccessToken('test-token')
+    renderWithQuery(
       <Can action="datasource.delete">
         <button>do</button>
       </Can>,
     )
-    expect(screen.getByRole('button', { name: 'do' })).toBeInTheDocument()
-    expect(screen.getByRole('button')).not.toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'do' })).not.toBeDisabled())
   })
 
-  it('renders text children unchanged', () => {
-    render(<Can action="x">just-text</Can>)
-    expect(screen.getByText('just-text')).toBeInTheDocument()
-  })
-
-  it('honors disabledTip prop without crashing (currently unused)', () => {
-    render(
-      <Can action="x" disabledTip="needs-perm">
-        <span>x</span>
+  it('disables element children when permission is missing', async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({ permissions: [] })
+    setAccessToken('test-token')
+    renderWithQuery(
+      <Can action="datasource.delete" disabledTip="needs-perm">
+        <button>do</button>
       </Can>,
     )
-    expect(screen.getByText('x')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'do' })).toBeDisabled())
+  })
+
+  it('keeps text children visible when permission is missing', async () => {
+    vi.mocked(getCurrentUser).mockResolvedValue({ permissions: [] })
+    setAccessToken('test-token')
+    renderWithQuery(
+      <Can action="x" disabledTip="needs-perm">
+        just-text
+      </Can>,
+    )
+    expect(await screen.findByText('just-text')).toBeInTheDocument()
   })
 })

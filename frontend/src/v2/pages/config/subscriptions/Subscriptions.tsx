@@ -7,9 +7,9 @@
 // drop-frontend: type(指标/查询/应用/事件) / target / schedule / owner / last_triggered_at
 //   — demo 字段，后端无对应，见 plan §3.4。
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Chip, Dialog, Input, SkeletonRows, Switch, Table, useToast, type TableColumn } from '@v2/components/ui'
+import { Chip, Dialog, Input, Select, SkeletonRows, Switch, Table, useToast, type TableColumn, useConfirm } from '@v2/components/ui'
 import { CreateButton } from '@v2/components/CommonControls'
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
@@ -17,14 +17,17 @@ import {
   useSubscriptions,
   useCreateSubscription,
   useDeleteSubscription,
+  useTriggerSubscription,
   useUpdateSubscription,
 } from '@v2/hooks/subscriptions'
 import { useChannels } from '@v2/hooks/channels'
 import type { Subscription, CreateSubscriptionPayload } from '@v2/api/subscriptions'
+import type { Channel, ChannelType } from '@v2/api/channels'
 import {
   SubscriptionDetailContent,
 } from '../_shared/subscription-content'
-import { eventTypeLabel } from '../_shared/event-labels'
+import { eventTypeLabel, SUBSCRIPTION_EVENT_OPTIONS } from '../_shared/event-labels'
+import { CHANNEL_TYPE_LABEL } from '../_shared/channel-content'
 
 // ============================================================================
 // 创建 / 编辑表单
@@ -37,12 +40,14 @@ function SubscriptionFormDialog({
   onSubmit,
   initialValues,
   mode,
+  onCreateChannel,
 }: {
   open: boolean
   onClose: () => void
   onSubmit: (payload: CreateSubscriptionPayload) => Promise<void>
   initialValues?: Partial<CreateSubscriptionPayload>
   mode: 'create' | 'edit'
+  onCreateChannel?: () => void
 }) {
   const { data: channelData } = useChannels()
   const channels = channelData?.items ?? []
@@ -50,12 +55,28 @@ function SubscriptionFormDialog({
   const [name, setName] = useState(initialValues?.name ?? '')
   const [appInstanceId, setAppInstanceId] = useState(String(initialValues?.app_instance_id ?? ''))
   const [channelId, setChannelId] = useState(String(initialValues?.channel_id ?? ''))
-  const [eventTypesStr, setEventTypesStr] = useState(
-    (initialValues?.event_types ?? []).join(', '),
-  )
+  const [eventTypes, setEventTypes] = useState<string[]>(initialValues?.event_types ?? [])
   const [description, setDescription] = useState(initialValues?.description ?? '')
   const [enabled, setEnabled] = useState(initialValues?.enabled ?? true)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setName(initialValues?.name ?? '')
+    setAppInstanceId(String(initialValues?.app_instance_id ?? ''))
+    setChannelId(String(initialValues?.channel_id ?? ''))
+    setEventTypes(initialValues?.event_types ?? [])
+    setDescription(initialValues?.description ?? '')
+    setEnabled(initialValues?.enabled ?? true)
+  }, [initialValues, open])
+
+  const toggleEventType = (eventType: string) => {
+    setEventTypes((current) =>
+      current.includes(eventType)
+        ? current.filter((item) => item !== eventType)
+        : [...current, eventType],
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,7 +86,7 @@ function SubscriptionFormDialog({
         name,
         app_instance_id: Number(appInstanceId),
         channel_id: Number(channelId),
-        event_types: eventTypesStr.split(',').map((s) => s.trim()).filter(Boolean),
+        event_types: eventTypes,
         description: description || undefined,
         enabled,
       })
@@ -114,35 +135,63 @@ function SubscriptionFormDialog({
             <label htmlFor="sub-channel" className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
               {t('subscription.field.channelId', '推送渠道')} *
             </label>
-            <select
+            <Select
               id="sub-channel"
               value={channelId}
               onChange={(e) => setChannelId(e.target.value)}
               required
-              className="w-full rounded-md border px-2 py-1.5 text-xs focus-visible:ring-2"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)' }}
             >
               <option value="">{t('subscription.form.channelPlaceholder', '— 选择渠道 —')}</option>
               {channels.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {formatChannelOption(c)}
+                </option>
               ))}
-            </select>
+            </Select>
+            {channels.length === 0 ? (
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
+                {t('subscription.form.noChannels', '暂无渠道，先创建飞书或 Webhook 渠道')}
+                {onCreateChannel ? (
+                  <button
+                    type="button"
+                    className="ml-1 underline"
+                    onClick={onCreateChannel}
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    {t('subscription.form.createChannelLink', '去创建')}
+                  </button>
+                ) : null}
+              </p>
+            ) : null}
           </div>
         </div>
 
         <div>
-          <label htmlFor="sub-events" className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
+          <div className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
             {t('subscription.field.eventTypes', '订阅事件类型')} *
-          </label>
-          <Input
-            id="sub-events"
-            value={eventTypesStr}
-            onChange={(e) => setEventTypesStr(e.target.value)}
-            required
-            placeholder="app.execution.completed, app.execution.failed"
-          />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {SUBSCRIPTION_EVENT_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className="flex min-h-9 items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
+                style={{
+                  borderColor: eventTypes.includes(option.value) ? 'var(--accent)' : 'var(--border)',
+                  background: eventTypes.includes(option.value) ? 'var(--accent-soft)' : 'var(--bg-surface)',
+                  color: 'var(--text-2)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={eventTypes.includes(option.value)}
+                  onChange={() => toggleEventType(option.value)}
+                />
+                <span className="truncate" title={option.value}>{option.label}</span>
+              </label>
+            ))}
+          </div>
           <p className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
-            {t('subscription.form.eventTypesHint', '多个事件用逗号分隔')}
+            {t('subscription.form.eventTypesHint', '至少选择一个事件类型')}
           </p>
         </div>
 
@@ -176,7 +225,7 @@ function SubscriptionFormDialog({
           </button>
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || eventTypes.length === 0}
             className="rounded-md bg-[color:var(--accent)] px-4 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {submitting
@@ -198,6 +247,7 @@ function SubscriptionFormDialog({
 export default function Subscriptions() {
   const navigate = useNavigate()
   const toast = useToast()
+  const confirm = useConfirm()
 
   const { data, isLoading } = useSubscriptions()
   const rows = useMemo(() => data?.items ?? [], [data])
@@ -205,6 +255,7 @@ export default function Subscriptions() {
   const updateMutation = useUpdateSubscription()
   const createMutation = useCreateSubscription()
   const deleteMutation = useDeleteSubscription()
+  const triggerMutation = useTriggerSubscription()
 
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
   const [editing, setEditing] = useState<Subscription | null>(null)
@@ -234,7 +285,7 @@ export default function Subscriptions() {
   }
 
   const handleDelete = async (row: Subscription) => {
-    if (!window.confirm(t('subscription.confirm.delete', `删除订阅「${row.name}」？`))) return
+    if (!(await confirm({ title: t('subscription.confirm.delete', '删除订阅「{name}」？', { name: row.name }), tone: 'danger' }))) return
     await deleteMutation.mutateAsync(row.id)
     toast.show({ tone: 'warning', title: t('subscription.toast.deleted', '已删除'), description: row.name })
     if (peekRow?.id === row.id) setPeekRow(null)
@@ -242,6 +293,18 @@ export default function Subscriptions() {
 
   const handleToggle = async (row: Subscription) => {
     await updateMutation.mutateAsync({ id: row.id, payload: { enabled: !row.enabled } })
+  }
+
+  const handleTrigger = async (row: Subscription) => {
+    const result = await triggerMutation.mutateAsync({ id: row.id })
+    const detail = result.details[0]
+    toast.show({
+      tone: result.successful > 0 ? 'success' : 'warning',
+      title: result.successful > 0
+        ? t('subscription.toast.triggered', '已立即触发')
+        : t('subscription.toast.triggerFailed', '触发失败'),
+      description: detail?.error ?? detail?.detail ?? row.name,
+    })
   }
 
   // 统计
@@ -400,8 +463,7 @@ export default function Subscriptions() {
               <SubscriptionDetailContent
                 row={peekRow}
                 actions={{
-                  onTrigger: () =>
-                    toast.show({ tone: 'success', title: t('subscription.toast.triggered', '已立即触发'), description: peekRow.name }),
+                  onTrigger: () => void handleTrigger(peekRow),
                   onToggle: () => void handleToggle(peekRow),
                   onJumpChannel: () => navigate(`/config/channels/${peekRow.channel_id}`),
                   onEdit: () => openEdit(peekRow),
@@ -427,6 +489,10 @@ export default function Subscriptions() {
         open={formMode != null}
         mode={formMode ?? 'create'}
         onClose={closeForm}
+        onCreateChannel={() => {
+          closeForm()
+          navigate('/config/channels/new')
+        }}
         onSubmit={formMode === 'edit' && editing ? handleEditSubmit : handleCreate}
         initialValues={
           formMode === 'edit' && editing
@@ -443,4 +509,11 @@ export default function Subscriptions() {
       />
     </div>
   )
+}
+
+function formatChannelOption(channel: Channel): string {
+  const rawType = channel.channel_type ?? (channel as Channel & { type?: ChannelType }).type
+  const typeLabel = rawType ? CHANNEL_TYPE_LABEL[rawType] ?? rawType : t('channel.field.type', '渠道')
+  const status = channel.enabled ? t('common.enabled', '启用') : t('common.disabled', '已停')
+  return `${channel.name} · ${typeLabel} · ${status}`
 }

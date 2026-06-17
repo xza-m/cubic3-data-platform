@@ -1,11 +1,11 @@
 // frontend/src/v2/pages/data/DatasetDetail.tsx
 //
-// 数据集详情全屏页（L3）。包含概览 / Schema / 预览 / 血缘四个 Tab。
+// 数据资产详情全屏页（L3）。包含概览 / Schema / 预览 / 血缘四个 Tab。
 // 对接 GET /api/v1/data-center/datasets/:id?include_fields=true
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Database, ExternalLink, Pencil, RotateCw, ScanSearch } from 'lucide-react'
+import { ArrowLeft, Database, ExternalLink, RotateCw, ScanSearch } from 'lucide-react'
 import { useDataset, useDatasets, useSyncDatasetSchema, useDatasetProfile, useRefreshDatasetProfile } from '@v2/hooks/datasets'
 import type { Dataset, DatasetField, DatasetProfileColumn } from '@v2/api/datasets'
 import { RefreshButton } from '@v2/components/CommonControls'
@@ -17,6 +17,7 @@ import {
   syncStatusChip,
 } from './_shared/dataset-detail-content'
 import { fmtDateTime } from '@v2/lib/format'
+import { datasourceTypeLabel } from '@v2/lib/datasourceTypes'
 import { t } from '@v2/i18n'
 
 // X-Crosscut 提供（编译错误留待 Phase 3 修复）
@@ -55,7 +56,7 @@ export default function DatasetDetail() {
     if (!data) return
     setBreadcrumbs([
       t('datasetDetail.breadcrumb.data', '数据'),
-      t('datasetDetail.breadcrumb.datasets', '数据集'),
+      t('datasetDetail.breadcrumb.datasets', '资产目录'),
       data.dataset_name,
     ])
   }, [data, setBreadcrumbs])
@@ -65,10 +66,10 @@ export default function DatasetDetail() {
     openTab({
       id: `dataset:${data.id}`,
       label: datasetTabLabel(data),
-      to: `/data-center/datasets/${data.id}`,
+      to: `/data-center/assets/${data.id}`,
       closeable: true,
       onClose: () => {
-        navigate('/data-center/datasets')
+        navigate('/data-center/assets')
         return true
       },
     })
@@ -79,7 +80,7 @@ export default function DatasetDetail() {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={() => navigate('/data-center/datasets')}
+          onClick={() => navigate('/data-center/assets')}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
           style={{ color: 'var(--text-2)' }}
         >
@@ -111,25 +112,17 @@ export default function DatasetDetail() {
               className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
               style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
             >
-              <ScanSearch size={12} className={refreshProfile.isPending ? 'animate-spin' : ''} />
-              {refreshProfile.isPending
-                ? t('datasetDetail.action.refreshingProfile', '画像刷新中…')
-                : t('datasetDetail.action.refreshProfile', '刷新画像')}
+            <ScanSearch size={12} className={refreshProfile.isPending ? 'animate-spin' : ''} />
+            {refreshProfile.isPending
+              ? t('datasetDetail.action.refreshingProfile', '画像刷新中…')
+              : t('datasetDetail.action.refreshProfile', '刷新画像')}
             </button>
           </>
         ) : null}
-        <button
-          type="button"
-          onClick={() => navigate(`/data-center/datasets/${numericId}/edit`)}
-          className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
-          style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
-        >
-          <Pencil size={12} /> {t('datasetDetail.action.edit', '编辑')}
-        </button>
       </div>,
     )
     return () => setTopBarActions(null)
-  }, [setTopBarActions, refetch, isFetching, navigate, data, syncSchema, numericId, refreshProfile])
+  }, [setTopBarActions, refetch, isFetching, navigate, data, syncSchema, refreshProfile])
 
   const neighbors = useMemo(() => {
     const items = listData?.items ?? []
@@ -168,7 +161,7 @@ export default function DatasetDetail() {
                     : t('datasetDetail.neighbor.noPrev', '没有上一项')
                 }
                 disabled={!neighbors.prev}
-                onClick={neighbors.prev ? () => navigate(`/data-center/datasets/${neighbors.prev!.id}`) : undefined}
+                onClick={neighbors.prev ? () => navigate(`/data-center/assets/${neighbors.prev!.id}`) : undefined}
               />
               <NeighborBtn
                 label={
@@ -177,25 +170,26 @@ export default function DatasetDetail() {
                     : t('datasetDetail.neighbor.noNext', '没有下一项')
                 }
                 disabled={!neighbors.next}
-                onClick={neighbors.next ? () => navigate(`/data-center/datasets/${neighbors.next!.id}`) : undefined}
+                onClick={neighbors.next ? () => navigate(`/data-center/assets/${neighbors.next!.id}`) : undefined}
               />
             </div>
           </section>
           <section>
-            <CtxLabel>{t('datasetDetail.context.references', '下游引用')}</CtxLabel>
+            <CtxLabel>{t('datasetDetail.context.references', '影响分析')}</CtxLabel>
             <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-3)' }}>
               {t(
                 'datasetDetail.context.refsHint',
-                '通过 /api/v1/cubes?source_dataset_id={id} 查询关联 Cube。',
+                '查看该资产后续进入语义建设、BI 或 Data Agent 的消费路径。',
                 { id: data.id },
               )}
             </p>
             <button
               type="button"
+              onClick={() => navigate(`/data-center/impact?asset_id=${data.id}`)}
               className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
               style={{ color: 'var(--text-2)' }}
             >
-              <ExternalLink size={11} /> {t('datasetDetail.action.viewRefs', '查看引用关系')}
+              <ExternalLink size={11} /> {t('datasetDetail.action.viewRefs', '查看影响分析')}
             </button>
           </section>
         </div>
@@ -210,7 +204,7 @@ export default function DatasetDetail() {
         className="flex flex-1 items-center justify-center text-xs"
         style={{ color: 'var(--text-3)' }}
       >
-        {t('datasetDetail.state.invalidId', '非法的数据集 ID')}
+        {t('datasetDetail.state.invalidId', '非法的数据资产 ID')}
       </div>
     )
   }
@@ -230,7 +224,7 @@ export default function DatasetDetail() {
         className="flex-1"
         message={error instanceof Error ? error.message : t('datasetDetail.state.loadFailed', '加载失败')}
         onRetry={() => refetch()}
-        retryAriaLabel={t('datasetDetail.action.retry', '重试加载数据集')}
+        retryAriaLabel={t('datasetDetail.action.retry', '重试加载数据资产')}
       />
     )
   }
@@ -471,7 +465,7 @@ function LineageTab({ item }: { item: Dataset }) {
   const currentLabel = t('datasetDetail.lineage.current', '当前')
   const cubeLine = t(
     'datasetDetail.lineage.cubeLine',
-    'cube / app  (通过 /api/v1/cubes?source_dataset_id={id} 聚合)',
+    '语义中心 / BI / Data Agent 消费路径',
     { id: item.id },
   )
   return (
@@ -481,9 +475,9 @@ function LineageTab({ item }: { item: Dataset }) {
           {t('datasetDetail.lineage.title', '血缘关系')}
         </p>
         <pre className="text-xs leading-6" style={{ color: 'var(--text-2)' }}>
-{`source: ${item.source_type ?? '—'} #${item.source_id ?? '—'}
+{`connection: ${item.source_type ? datasourceTypeLabel(item.source_type) : '—'} #${item.source_id ?? '—'}
    ↓
-dataset: ${item.dataset_code}  ← ${currentLabel}
+asset: ${item.dataset_code}  ← ${currentLabel}
    ↓
 ${cubeLine}`}
         </pre>

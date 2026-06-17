@@ -407,7 +407,7 @@ async function setupInteractionMocks(page: Page): Promise<void> {
         actor_display_name: null,
         decision: 'deny',
         reason_code: 'governance_required',
-        reason: '明细数据需要审批',
+        reason: '明细数据需要治理复核',
         data_level: 'M2',
         resource_set: {},
         sql_hashes: ['hash_governance_1'],
@@ -515,18 +515,18 @@ test('C06 访问网关使用 access 成员权限契约加载 @smoke @interaction
   await expect(page.getByRole('button', { name: '执行与审计' })).toHaveCount(0)
   await expect(page.getByText('成员权限加载失败')).toHaveCount(0)
   await expect(page.getByText('轩志昂').first()).toBeVisible()
-  await expect(page.getByText('飞书同步').first()).toBeVisible()
-  await page.getByText('轩志昂').first().click()
-  await expect(page.getByRole('complementary', { name: '成员权限配置' })).toBeVisible()
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByText('轩志昂')).toBeVisible()
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByRole('heading', { name: '平台角色' })).toBeVisible()
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByRole('heading', { name: '数据访问权限' })).toBeVisible()
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByText('汇总数据读取')).toBeVisible()
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByText('邮箱')).toHaveCount(0)
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByText('工号')).toHaveCount(0)
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByText('principal:feishu:tenant:on_admin')).toHaveCount(0)
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByText('权限配置', { exact: true })).toBeVisible()
-  await expect(page.getByRole('complementary', { name: '成员权限配置' }).getByRole('button', { name: '保存权限配置' })).toHaveCount(0)
+  await expect(page.getByRole('table').getByText('飞书同步').first()).toBeVisible()
+  await page.getByRole('button', { name: /查看主体权限详情 轩志昂/ }).click()
+  await expect(page.getByRole('complementary', { name: '主体权限配置' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByText('轩志昂')).toBeVisible()
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByRole('heading', { name: '平台角色' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByRole('heading', { name: '数据访问权限' })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByText('汇总数据读取')).toBeVisible()
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByText('邮箱')).toHaveCount(0)
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByText('工号')).toHaveCount(0)
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByText('principal:feishu:tenant:on_admin')).toHaveCount(0)
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByText('权限配置', { exact: true })).toBeVisible()
+  await expect(page.getByRole('complementary', { name: '主体权限配置' }).getByRole('button', { name: '保存权限配置' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '调整权限' })).toBeVisible()
   await page.getByRole('button', { name: '调整权限' }).click()
   await expect(page.getByRole('dialog').getByText('调整成员权限')).toBeVisible()
@@ -546,14 +546,13 @@ test('C06 访问网关使用 access 成员权限契约加载 @smoke @interaction
   await expect(page.getByRole('button', { name: '展开上下文面板' })).toHaveCount(0)
   await expect(page.getByRole('complementary', { name: '行预览' })).toHaveCount(0)
 
-  await page.getByRole('button', { name: '机器人接入' }).click()
   await page.getByRole('button', { name: '新建机器人' }).click()
   await expect(page.getByRole('dialog').getByText('负责人')).toBeVisible()
   await expect(page.getByPlaceholder('搜索姓名 / 邮箱 / Principal ID')).toBeVisible()
   await expect(page.getByRole('dialog').getByRole('button', { name: '创建机器人' })).toBeVisible()
   await page.getByRole('button', { name: '取消' }).click()
 
-  await page.getByRole('button', { name: '数据访问规则' }).click()
+  await page.getByRole('tab', { name: '数据访问规则' }).click()
   await expect(page.getByRole('button', { name: '展开剩余 3 项' })).toBeVisible()
   await page.getByRole('button', { name: '展开剩余 3 项' }).click()
   await expect(page.getByText('资源标签 sensitive')).toBeVisible()
@@ -565,14 +564,14 @@ test('C06 访问网关使用 access 成员权限契约加载 @smoke @interaction
   await page.getByRole('link', { name: '权限审计' }).click()
   await expect(page).toHaveURL(/\/config\/access\/audit$/)
   await expect(page.getByRole('heading', { name: '权限审计' })).toBeVisible()
-  await expect(page.getByText('权限审批记录').first()).toBeVisible()
-  await expect(page.getByText('明细数据需要审批')).toBeVisible()
+  await expect(page.getByText('治理要求记录').first()).toBeVisible()
+  await expect(page.getByText('明细数据需要治理复核').first()).toBeVisible()
   await expect(page.getByText('最近权限判定')).toBeVisible()
 
   await page.getByRole('link', { name: '网关观测' }).click()
   await expect(page).toHaveURL(/\/config\/access\/observability$/)
   await expect(page.getByRole('heading', { name: '网关观测' })).toBeVisible()
-  await expect(page.getByText('权限审批记录')).toHaveCount(0)
+  await expect(page.getByText('治理要求记录')).toHaveCount(0)
   await expect(page.getByText('执行身份')).toHaveCount(0)
   await expect(page.getByText('查询次数', { exact: true })).toBeVisible()
   await expect(page.getByText('稳定性', { exact: true })).toBeVisible()
@@ -582,11 +581,12 @@ test('C06 访问网关使用 access 成员权限契约加载 @smoke @interaction
   await expect(page.getByRole('heading', { name: '全平台访问记录' })).toBeVisible()
   await expect(page.getByText('访问等级分布')).toBeVisible()
   await expect(page.getByText('物理权限检查')).toBeVisible()
-  const traceButtons = page.getByRole('button', { name: '查看' })
+  const traceButtons = page.getByRole('button', { name: /查看执行 Trace/ })
   if (await traceButtons.count() > 0) {
     await traceButtons.first().click()
     await expect(page.getByRole('dialog').getByText('Principal 解析')).toBeVisible()
     await expect(page.getByRole('dialog').getByText('MaxCompute 兜底')).toBeVisible()
+    await expect(page.getByRole('button', { name: '关闭执行 Trace' })).toBeVisible()
   } else {
     await expect(page.getByText('暂无网关执行记录')).toBeVisible()
   }
@@ -623,17 +623,18 @@ test('C08 共性工具栏控件使用统一语义 @smoke @interaction-contract',
   await expect(page.getByLabel('筛选执行状态')).toBeVisible()
   await expect(page.getByRole('button', { name: '刷新执行记录' })).toBeVisible()
 
-  await gotoV2(page, '/extraction/tasks')
-  await expect(page.getByRole('searchbox', { name: '搜索提取任务' })).toBeVisible()
+  await gotoV2(page, '/data-center/sync/tasks')
+  await expect(page.getByRole('tab', { name: /同步任务/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('searchbox', { name: '搜索同步任务' })).toBeVisible()
   await expect(page.getByLabel('筛选任务状态')).toBeVisible()
   await expect(page.getByLabel('筛选任务类型')).toBeVisible()
-  await expect(page.getByRole('button', { name: '刷新提取任务' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '刷新同步任务' })).toBeVisible()
   await expect(page.getByRole('button', { name: '新建任务' })).toBeVisible()
-  await expect(page.getByRole('complementary', { name: '提取任务' })).toHaveCount(0)
+  await expect(page.getByRole('complementary', { name: '同步任务' })).toHaveCount(0)
 
   await gotoV2(page, '/config/access')
-  await expect(page.getByRole('searchbox', { name: '搜索成员权限' })).toBeVisible()
-  await expect(page.getByLabel('筛选成员来源')).toBeVisible()
-  await expect(page.getByRole('button', { name: '刷新成员权限' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '主体权限' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('searchbox', { name: '搜索主体权限' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '刷新主体权限' })).toBeVisible()
   await expectNoNotFound(page)
 })
