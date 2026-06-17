@@ -10,7 +10,7 @@ class TestSemanticViewMaterializeRunModel:
 
     def test_to_dict_all_fields_present(self, app):
         """实例化并调用 to_dict()，确认所有字段均存在。"""
-        from app.domain.semantic.views_materialize import SemanticViewMaterializeRun
+        from app.infrastructure.semantic.models import SemanticViewMaterializeRun
 
         now = datetime(2026, 4, 20, 12, 0, 0)
         run = SemanticViewMaterializeRun(
@@ -27,7 +27,7 @@ class TestSemanticViewMaterializeRunModel:
 
     def test_to_dict_with_finished_at(self, app):
         """finished_at 存在时，序列化为 ISO 字符串。"""
-        from app.domain.semantic.views_materialize import SemanticViewMaterializeRun
+        from app.infrastructure.semantic.models import SemanticViewMaterializeRun
 
         start = datetime(2026, 4, 20, 12, 0, 0)
         end = datetime(2026, 4, 20, 12, 5, 0)
@@ -40,7 +40,7 @@ class TestSemanticViewMaterializeRunModel:
 
     def test_to_dict_with_error(self, app):
         """error 字段序列化。"""
-        from app.domain.semantic.views_materialize import SemanticViewMaterializeRun
+        from app.infrastructure.semantic.models import SemanticViewMaterializeRun
 
         run = SemanticViewMaterializeRun(
             id=3, view_id=10, status="failed",
@@ -51,7 +51,7 @@ class TestSemanticViewMaterializeRunModel:
 
     def test_to_dict_started_at_none_branch(self, app):
         """started_at 为 None 时，序列化结果也为 None。"""
-        from app.domain.semantic.views_materialize import SemanticViewMaterializeRun
+        from app.infrastructure.semantic.models import SemanticViewMaterializeRun
 
         run = SemanticViewMaterializeRun(
             id=4, view_id=10, status="running",
@@ -61,6 +61,6 @@ class TestSemanticViewMaterializeRunModel:
 
     def test_tablename(self, app):
         """确认表名映射正确。"""
-        from app.domain.semantic.views_materialize import SemanticViewMaterializeRun
+        from app.infrastructure.semantic.models import SemanticViewMaterializeRun
 
         assert SemanticViewMaterializeRun.__tablename__ == "semantic_view_materialize_runs"

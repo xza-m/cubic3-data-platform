@@ -143,7 +143,6 @@ def create_app(role: str = "web") -> Flask:
     from .domain.entities.config.subscription import Subscription  # noqa
     from .domain.queries.scheduled_query import ScheduledQuery  # noqa
     from .domain.queries.scheduled_query_run import ScheduledQueryRun  # noqa
-    from .domain.semantic.diagnose_run import DiagnoseRun  # noqa
     from .infrastructure.access.models import (  # noqa
         AccessApiKeyORM,
         AccessDelegationEventORM,

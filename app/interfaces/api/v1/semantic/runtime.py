@@ -327,7 +327,7 @@ def register_runtime_routes(bp, ctx):
 
     # ── B-back-9: Diagnose + DiagnoseRuns ────────────────────────────────────
     # 导入实体确保 SQLAlchemy 元数据注册
-    from app.domain.semantic.diagnose_run import DiagnoseRun  # noqa
+    from app.infrastructure.semantic.models import DiagnoseRun  # noqa
 
     @bp.route('/diagnose', methods=['POST'])
     @require_auth

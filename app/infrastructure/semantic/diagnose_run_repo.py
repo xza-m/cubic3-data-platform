@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from app.domain.semantic.diagnose_run import DiagnoseRun
+from app.infrastructure.semantic.models import DiagnoseRun
 from app.extensions import db
 
 

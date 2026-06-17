@@ -71,8 +71,8 @@ def _register_all_models():
     )
     from app.domain.queries.scheduled_query import ScheduledQuery            # noqa  B-back-8
     from app.domain.queries.scheduled_query_run import ScheduledQueryRun    # noqa  B-back-8
-    from app.domain.semantic.diagnose_run import DiagnoseRun                 # noqa  B-back-9
-    from app.domain.semantic.views_materialize import SemanticViewMaterializeRun  # noqa  B-back-3
+    from app.infrastructure.semantic.models import DiagnoseRun               # noqa  B-back-9
+    from app.infrastructure.semantic.models import SemanticViewMaterializeRun  # noqa  B-back-3
 
 
 # ============================================================================

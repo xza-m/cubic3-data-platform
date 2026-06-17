@@ -8,7 +8,7 @@ from app.infrastructure.semantic.view_materialize_repo import (
     ViewMaterializeRepository,
     _utcnow,
 )
-from app.domain.semantic.views_materialize import SemanticViewMaterializeRun
+from app.infrastructure.semantic.models import SemanticViewMaterializeRun
 
 
 @pytest.fixture

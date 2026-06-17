@@ -10,7 +10,7 @@ from typing import Any, Optional
 import sqlalchemy as sa
 
 from app.extensions import db
-from app.domain.semantic.views_materialize import SemanticViewMaterializeRun
+from app.infrastructure.semantic.models import SemanticViewMaterializeRun
 
 
 def _utcnow() -> datetime:
