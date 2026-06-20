@@ -87,3 +87,25 @@ def validate_config(code: str):
         'is_valid': is_valid,
         'errors': errors
     })
+
+
+@bp.route('/<string:code>/enable', methods=['POST'])
+@require_auth
+def enable_app(code: str):
+    """启用应用"""
+    service = _get_service()
+    app = service.set_enabled(code, True)
+    if not app:
+        return not_found(message=f"应用 {code} 不存在")
+    return success(data=app, message="应用已启用")
+
+
+@bp.route('/<string:code>/disable', methods=['POST'])
+@require_auth
+def disable_app(code: str):
+    """停用应用"""
+    service = _get_service()
+    app = service.set_enabled(code, False)
+    if not app:
+        return not_found(message=f"应用 {code} 不存在")
+    return success(data=app, message="应用已停用")

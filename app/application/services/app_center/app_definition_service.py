@@ -60,7 +60,25 @@ class AppDefinitionService:
             return None
         
         return app.to_dict(include_stats=True)
-    
+
+    def set_enabled(self, code: str, enabled: bool) -> Optional[Dict[str, Any]]:
+        """启用 / 停用应用定义。
+
+        Args:
+            code: 应用代码
+            enabled: True=启用，False=停用
+
+        Returns:
+            更新后的应用定义字典；应用不存在返回 None
+        """
+        app = self.app_definition_repository.find_by_code(code)
+        if not app:
+            return None
+
+        app.enabled = enabled
+        self.app_definition_repository.save(app)
+        return app.to_dict(include_stats=True)
+
     def get_config_schema(self, code: str) -> Optional[Dict[str, Any]]:
         """
         获取应用的配置表单 JSON Schema
