@@ -77,7 +77,14 @@ vi.mock('@v2/hooks/conversations', () => ({
           role: 'assistant',
           content: '已通过语义路由执行查询。',
           generated_sql: 'SELECT SUM(amount) FROM orders',
-          query_result: null,
+          query_result: {
+            columns: ['region', 'gmv'],
+            data: [
+              { region: '华东', gmv: 1280 },
+              { region: '华南', gmv: 940 },
+            ],
+            row_count: 2,
+          },
           visualization_config: null,
           error: null,
           source: 'semantic',
@@ -137,5 +144,15 @@ describe('DataChat 来源徽标', () => {
     expect(trace.textContent).not.toContain('route')
     expect(screen.queryByText('SELECT SUM(amount) FROM orders')).not.toBeInTheDocument()
     expect(screen.getByText('已生成可追溯查询语句，详情可在执行记录中查看。')).toBeInTheDocument()
+  })
+
+  it('渲染 query_result 数据表格（问数结果不再只显示一句话）', () => {
+    render(<DataChat />)
+
+    expect(screen.getByText('region')).toBeInTheDocument()
+    expect(screen.getByText('gmv')).toBeInTheDocument()
+    expect(screen.getByText('华东')).toBeInTheDocument()
+    expect(screen.getByText('1280')).toBeInTheDocument()
+    expect(screen.getByText(/结果行数/)).toBeInTheDocument()
   })
 })

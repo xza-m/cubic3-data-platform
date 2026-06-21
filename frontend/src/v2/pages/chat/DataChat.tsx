@@ -500,6 +500,87 @@ function sourceBadge(source: string | null | undefined): { label: string; tone: 
   }
 }
 
+const RESULT_DISPLAY_LIMIT = 50
+
+// 防御式解析后端 query_result（形状未在契约中钉定）：
+// 兼容 columns 为 string[] 或 [{name}]，data 为对象数组或数组数组。
+function parseQueryResult(
+  qr: unknown,
+): { columns: string[]; rows: Record<string, unknown>[]; total: number } | null {
+  if (!qr || typeof qr !== 'object' || Array.isArray(qr)) return null
+  const obj = qr as Record<string, unknown>
+  const rawData = (Array.isArray(obj.data) ? obj.data : Array.isArray(obj.rows) ? obj.rows : null) as
+    | unknown[]
+    | null
+  if (!rawData || rawData.length === 0) return null
+  const rawCols = obj.columns
+  let columns: string[] = []
+  if (Array.isArray(rawCols) && rawCols.length > 0) {
+    columns = rawCols.map((c) =>
+      typeof c === 'string'
+        ? c
+        : c && typeof c === 'object' && 'name' in (c as object)
+          ? String((c as { name: unknown }).name)
+          : String(c),
+    )
+  } else {
+    const first = rawData[0]
+    if (first && typeof first === 'object' && !Array.isArray(first)) columns = Object.keys(first as object)
+  }
+  if (columns.length === 0) return null
+  const rows = rawData.map((r) => {
+    if (Array.isArray(r)) {
+      const o: Record<string, unknown> = {}
+      columns.forEach((c, i) => {
+        o[c] = (r as unknown[])[i]
+      })
+      return o
+    }
+    return r && typeof r === 'object' ? (r as Record<string, unknown>) : {}
+  })
+  const total = typeof obj.row_count === 'number' ? obj.row_count : rows.length
+  return { columns, rows, total }
+}
+
+function formatCell(value: unknown): string {
+  if (value == null) return '-'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function QueryResultTable({ result }: { result: unknown }) {
+  const parsed = parseQueryResult(result)
+  if (!parsed) return null
+  const { columns, rows, total } = parsed
+  const shown = rows.slice(0, RESULT_DISPLAY_LIMIT)
+  return (
+    <div className="mt-3 overflow-auto scroll-thin rounded border" style={{ borderColor: 'var(--border)' }}>
+      <table className="wb-table" data-density="compact">
+        <thead>
+          <tr>
+            {columns.map((c) => (
+              <th key={c}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((row, i) => (
+            <tr key={i}>
+              {columns.map((c) => (
+                <td key={c}>{formatCell(row[c])}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="px-3 py-1.5 text-[11px] text-3">
+        {t('dataChat.result.rowCount', '结果行数')}: {total}
+        {rows.length > shown.length ? ` · ${t('dataChat.result.truncated', '仅展示前 50 行')}` : ''}
+      </div>
+    </div>
+  )
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   const badge = message.role === 'assistant' ? sourceBadge(message.source) : null
   return (
@@ -512,6 +593,7 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
         <span className="text-[11px] text-3">{fmtDateTime(message.created_at)}</span>
       </div>
       <div className="whitespace-pre-wrap text-sm leading-6 text-1">{message.content}</div>
+      <QueryResultTable result={message.query_result} />
       {message.generated_sql ? (
         <div
           className="mt-3 rounded border px-3 py-2 text-xs text-2"

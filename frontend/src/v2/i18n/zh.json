@@ -943,6 +943,8 @@
   "dataChat.route.fallback": "兜底理解",
   "dataChat.route.queryPlan": "查询计划生成",
   "dataChat.route.semantic": "语义模型匹配",
+  "dataChat.result.rowCount": "结果行数",
+  "dataChat.result.truncated": "仅展示前 50 行",
   "dataChat.source.agent": "Agent",
   "dataChat.source.legacy": "直连 LLM · 未验证",
   "dataChat.source.semantic": "语义层",
