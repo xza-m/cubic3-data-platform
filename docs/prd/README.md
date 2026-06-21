@@ -39,6 +39,9 @@ last_reviewed: 2026-06-09
 - [权限中心产品方案与界面设计](access_permission_center_prd.md)
   - 固定轻量权限中心的产品口径、页面结构、白名单运营、权限审计和网关观测界面设计
   - 状态：当前方案，配合 ADR-013 与访问网关运行手册推进后端联调和前端落地
+- [管理员诊断证据面板设计](admin_diagnostic_evidence_panel_prd.md)
+  - 定义 SQL / YAML / JSON / Trace / Gateway telemetry / Secret 引用等技术证据在业务视图、诊断视图和原始证据视图中的分层展示、权限边界和组件模式
+  - 状态：设计中，作为下一轮 UI 治理和管理员证据面板落地输入
 
 ## 使用建议
 
