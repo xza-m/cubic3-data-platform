@@ -2,6 +2,7 @@
 import { type ReactNode } from 'react'
 import { cn } from '@v2/lib/cn'
 import { t } from '@v2/i18n'
+import { useUiPreference } from '@v2/layout/uiPreference'
 
 export interface TableColumn<T> {
   key: string
@@ -34,9 +35,10 @@ export function Table<T>({
   className,
 }: TableProps<T>) {
   const emptyNode = empty ?? emptyText ?? t('common.noData', '暂无数据')
+  const { tableDensity } = useUiPreference()
   return (
     <div className={cn('overflow-auto scroll-thin', className)}>
-      <table className="wb-table">
+      <table className="wb-table" data-density={tableDensity}>
         <thead>
           <tr>
             {columns.map((c) => (

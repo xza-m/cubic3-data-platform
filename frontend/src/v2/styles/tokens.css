@@ -338,6 +338,10 @@ kbd {
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
+.wb-table[data-density="compact"] th,
+.wb-table[data-density="compact"] td {
+  padding: 4px 10px;
+}
 .wb-table th {
   font-weight: 500;
   font-size: 11px;

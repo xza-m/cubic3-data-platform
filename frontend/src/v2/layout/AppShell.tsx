@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useMyPreferences } from '@v2/hooks/userPreferences'
-import type { TableDensity } from '@v2/api/userPreferences'
+import { UiPreferenceContext, type UiPreference } from './uiPreference'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { LeftRail } from './LeftRail'
 import { SecondarySidebar } from './SecondarySidebar'
@@ -69,19 +69,7 @@ interface AppShellContextValue {
 
 const INSPECTOR_COLLAPSED_KEY = 'cubic3.inspector.collapsed'
 
-// ── UiPreference Context ───────────────────────────────────────────────────────
-// 提供从服务端偏好读取的 UI 配置（表格密度等），供子组件消费。
-// TODO: tables should consume tableDensity from this context in a future PR.
-
-export interface UiPreference {
-  tableDensity: TableDensity
-}
-
-export const UiPreferenceContext = createContext<UiPreference>({ tableDensity: 'comfortable' })
-
-export function useUiPreference(): UiPreference {
-  return useContext(UiPreferenceContext)
-}
+// UiPreference Context（表格密度等）已抽到 ./uiPreference，避免底层 UI 原语反向依赖 shell 成环。
 
 // ── AppShell Context ───────────────────────────────────────────────────────────
 
