@@ -18,4 +18,18 @@ describe('SecondarySidebar', () => {
     expect(screen.getByRole('link', { name: /语义资产/ })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: /诊断治理/ })).not.toHaveAttribute('aria-current')
   })
+
+  it('数据中心使用二级侧栏承载模块级入口', () => {
+    const dataCenter = NAV_MODULES.find((module) => module.id === 'data-center')
+    if (!dataCenter) throw new Error('data-center module not found')
+
+    render(
+      <MemoryRouter initialEntries={['/data-center/assets']}>
+        <SecondarySidebar module={dataCenter} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: /数据资产/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: /数据连接/ })).not.toHaveAttribute('aria-current')
+  })
 })

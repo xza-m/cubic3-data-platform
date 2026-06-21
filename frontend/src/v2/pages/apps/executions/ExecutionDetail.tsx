@@ -10,6 +10,7 @@ import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { useExecution } from '@v2/hooks/instances'
 import { ExecStatusChip } from '../_shared/instance-content'
 import { ExecutionDetailContent, fmtDuration } from '../_shared/execution-content'
+import { appCodeLabel } from '@v2/lib/appLabels'
 
 export default function ExecutionDetail() {
   const { id: idStr } = useParams<{ id: string }>()
@@ -68,16 +69,15 @@ export default function ExecutionDetail() {
                       : 'var(--text-3)',
             }}
           >
-            EX
+            {t('exec.avatar', '执行')}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              <code>#{execution.id}</code>
               {execution.instance && <span className="truncate">{execution.instance.name}</span>}
               <ExecStatusChip status={execution.status} />
             </div>
             <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-              {execution.app && <code>{execution.app.code}</code>}
+              {execution.app && <span>{execution.app.name || appCodeLabel(execution.app.code)}</span>}
               {execution.app && ' · '}
               {execution.trigger_display_name}
               {execution.started_at && ` · ${fmtRelative(execution.started_at)}`}
@@ -185,9 +185,9 @@ export default function ExecutionDetail() {
                   onClick={() => navigate(`/apps/instances/${execution.instance_id}`)}
                 >
                   {execution.instance.name}
-                  <code className="ml-1 text-xs" style={{ color: 'var(--text-3)' }}>
-                    ({execution.instance.app_code})
-                  </code>
+                  <span className="ml-1 text-xs" style={{ color: 'var(--text-3)' }}>
+                    ({appCodeLabel(execution.instance.app_code)})
+                  </span>
                 </button>
               </div>
             )}

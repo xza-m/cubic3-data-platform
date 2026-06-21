@@ -89,7 +89,6 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: 'quick:dashboard',
         label: t('nav.palette.quick.dashboard', '回到总览'),
-        hint: '/dashboard',
         icon: NAV_MODULES[0].icon,
         group: shortcutGroup,
         run: () => { navigate('/dashboard'); stableOnClose() },
@@ -97,7 +96,6 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: 'quick:semantic',
         label: t('nav.palette.quick.semantic', '打开本体语义 · 总览'),
-        hint: '/semantic/ontology',
         icon: NAV_MODULES.find((m) => m.id === 'semantic')!.icon,
         group: shortcutGroup,
         run: () => { navigate('/semantic/ontology'); stableOnClose() },
@@ -105,7 +103,6 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: 'quick:semantic-cubes',
         label: t('nav.palette.quick.cubes', '业务语义 · Cube 列表'),
-        hint: '/semantic/cubes',
         icon: NAV_MODULES.find((m) => m.id === 'semantic')!.icon,
         group: shortcutGroup,
         run: () => { navigate('/semantic/cubes'); stableOnClose() },
@@ -113,18 +110,14 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       {
         id: 'quick:relation-canvas',
         label: t('nav.palette.quick.relations', '语义关系画布'),
-        hint: '/semantic/relations',
         icon: NAV_MODULES.find((m) => m.id === 'semantic')!.icon,
         group: shortcutGroup,
         run: () => { navigate('/semantic/relations'); stableOnClose() },
       },
     ]
-    const hintJump = t('nav.palette.hint.jump', '跳转到模块')
-    const hintPlaceholder = t('nav.palette.hint.placeholder', '即将上线（占位页）')
     const fromNav: PaletteItem[] = NAV_MODULES.map((m) => ({
       id: `nav:${m.id}`,
       label: m.label,
-      hint: m.implemented ? hintJump : hintPlaceholder,
       icon: m.icon,
       group: groupLabel(m.group),
       run: () => {
@@ -177,7 +170,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
   // 滚动选中项到视口
   useEffect(() => {
     const el = listRef.current?.querySelector(`[data-idx="${selectedIndex}"]`)
-    el?.scrollIntoView({ block: 'nearest' })
+    if (el instanceof HTMLElement && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest' })
+    }
   }, [selectedIndex])
 
   if (!open) return null

@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Chip, Dialog, Input, Select, SkeletonRows, Switch, Table, useToast, type TableColumn, useConfirm } from '@v2/components/ui'
 import { CreateButton } from '@v2/components/CommonControls'
+import { PeekPanel } from '@v2/components/PeekPanel'
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
 import {
@@ -25,13 +26,15 @@ import type { Subscription, CreateSubscriptionPayload } from '@v2/api/subscripti
 import type { Channel, ChannelType } from '@v2/api/channels'
 import {
   SubscriptionDetailContent,
+  formatSubscriptionAppInstanceName,
+  formatSubscriptionAppInstanceOption,
 } from '../_shared/subscription-content'
 import { eventTypeLabel, SUBSCRIPTION_EVENT_OPTIONS } from '../_shared/event-labels'
 import { CHANNEL_TYPE_LABEL } from '../_shared/channel-content'
+import { useInstances } from '@v2/hooks/instances'
 
 // ============================================================================
 // 创建 / 编辑表单
-// TODO: 等待 X-Crosscut EntityFormDialog
 // ============================================================================
 
 function SubscriptionFormDialog({
@@ -50,7 +53,9 @@ function SubscriptionFormDialog({
   onCreateChannel?: () => void
 }) {
   const { data: channelData } = useChannels()
+  const { data: instanceData, isLoading: instancesLoading } = useInstances({ page: 1, page_size: 50 })
   const channels = channelData?.items ?? []
+  const instances = instanceData?.items ?? []
 
   const [name, setName] = useState(initialValues?.name ?? '')
   const [appInstanceId, setAppInstanceId] = useState(String(initialValues?.app_instance_id ?? ''))
@@ -119,17 +124,36 @@ function SubscriptionFormDialog({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label htmlFor="sub-instance" className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-              {t('subscription.field.appInstanceId', '应用实例 ID')} *
+              {t('subscription.field.appInstanceId', '应用实例')} *
             </label>
-            <Input
+            <Select
               id="sub-instance"
-              type="number"
               value={appInstanceId}
               onChange={(e) => setAppInstanceId(e.target.value)}
               required
-              placeholder="1"
-              min={1}
-            />
+              disabled={mode === 'edit'}
+            >
+              <option value="">
+                {instancesLoading
+                  ? t('subscription.form.instanceLoading', '正在加载应用实例…')
+                  : t('subscription.form.instancePlaceholder', '— 选择应用实例 —')}
+              </option>
+              {instances.map((instance) => (
+                <option key={instance.id} value={instance.id}>
+                  {formatSubscriptionAppInstanceOption(instance)}
+                </option>
+              ))}
+            </Select>
+            {instances.length === 0 && !instancesLoading ? (
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
+                {t('subscription.form.noInstances', '暂无可订阅的应用实例，先在应用中心创建实例')}
+              </p>
+            ) : null}
+            {mode === 'edit' ? (
+              <p className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
+                {t('subscription.form.instanceImmutableHint', '订阅创建后不修改关联实例，需要变更时请新建订阅')}
+              </p>
+            ) : null}
           </div>
           <div>
             <label htmlFor="sub-channel" className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
@@ -347,11 +371,13 @@ export default function Subscriptions() {
     {
       key: 'app_instance_id',
       title: t('subscription.field.appInstanceId', '应用实例'),
-      width: 110,
+      width: 190,
       render: (r) => (
-        <span style={{ color: 'var(--text-2)' }}>
-          {r.app_instance?.app_name ?? `#${r.app_instance_id}`}
-        </span>
+        <div className="min-w-0">
+          <div className="truncate" style={{ color: 'var(--text-2)' }}>
+            {formatSubscriptionAppInstanceName(r.app_instance)}
+          </div>
+        </div>
       ),
     },
     {
@@ -360,7 +386,7 @@ export default function Subscriptions() {
       width: 110,
       render: (r) => (
         <span style={{ color: 'var(--text-2)' }}>
-          {r.channel?.name ?? `#${r.channel_id}`}
+          {r.channel?.name ?? t('subscription.channel.unknown', '未知渠道')}
         </span>
       ),
     },
@@ -411,7 +437,7 @@ export default function Subscriptions() {
       </header>
 
       {/* ── 列表 ── */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="p-4">
@@ -429,49 +455,22 @@ export default function Subscriptions() {
           )}
         </div>
 
-        {/* ── Peek Panel ── */}
-        {/* TODO: 等待 X-Crosscut PeekPanel 组件 */}
-        {peekRow ? (
-          <aside
-            role="complementary"
-            aria-label={t('peek.aria.preview', '行预览')}
-            className="flex w-72 shrink-0 flex-col border-l"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
-          >
-            <div
-              className="flex items-center justify-between border-b px-3 py-2"
-              style={{ borderColor: 'var(--border)' }}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium" style={{ color: 'var(--text-1)' }}>
-                  {peekRow.name}
-                </div>
-                <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-                  {peekRow.channel?.name ?? `#${peekRow.channel_id}`}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPeekRow(null)}
-                aria-label={t('common.close', '关闭')}
-                className="ml-2 shrink-0 rounded p-1 hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto">
-              <SubscriptionDetailContent
-                row={peekRow}
-                actions={{
-                  onTrigger: () => void handleTrigger(peekRow),
-                  onToggle: () => void handleToggle(peekRow),
-                  onJumpChannel: () => navigate(`/config/channels/${peekRow.channel_id}`),
-                  onEdit: () => openEdit(peekRow),
-                  onDelete: () => void handleDelete(peekRow),
-                }}
-              />
-            </div>
-            <div className="border-t p-3" style={{ borderColor: 'var(--border)' }}>
+        <PeekPanel
+          open={!!peekRow}
+          onClose={() => setPeekRow(null)}
+          onOpenFull={peekRow ? () => navigate(`/config/subscriptions/${peekRow.id}`) : undefined}
+          title={peekRow?.name ?? t('subscription.peek.title', '订阅详情')}
+          subtitle={peekRow ? formatSubscriptionAppInstanceName(peekRow.app_instance) : undefined}
+          badges={
+            peekRow ? (
+              <Chip tone={peekRow.enabled ? 'success' : 'neutral'}>
+                {peekRow.enabled ? t('common.enabled', '启用') : t('common.disabled', '已停')}
+              </Chip>
+            ) : null
+          }
+          size="narrow"
+          footer={
+            peekRow ? (
               <button
                 type="button"
                 className="btn btn-sm btn-primary w-full"
@@ -479,9 +478,22 @@ export default function Subscriptions() {
               >
                 {t('action.view_detail', '查看详情')}
               </button>
-            </div>
-          </aside>
-        ) : null}
+            ) : null
+          }
+        >
+          {peekRow ? (
+            <SubscriptionDetailContent
+              row={peekRow}
+              actions={{
+                onTrigger: () => void handleTrigger(peekRow),
+                onToggle: () => void handleToggle(peekRow),
+                onJumpChannel: () => navigate(`/config/channels/${peekRow.channel_id}`),
+                onEdit: () => openEdit(peekRow),
+                onDelete: () => void handleDelete(peekRow),
+              }}
+            />
+          ) : null}
+        </PeekPanel>
       </div>
 
       {/* ── 创建 / 编辑表单 ── */}

@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Database, ExternalLink, RotateCw, ScanSearch } from 'lucide-react'
+import { ArrowLeft, Database, RotateCw, ScanSearch } from 'lucide-react'
 import { useDataset, useDatasets, useSyncDatasetSchema, useDatasetProfile, useRefreshDatasetProfile } from '@v2/hooks/datasets'
 import type { Dataset, DatasetField, DatasetProfileColumn } from '@v2/api/datasets'
 import { RefreshButton } from '@v2/components/CommonControls'
@@ -141,7 +141,7 @@ export default function DatasetDetail() {
           {data.dataset_name}
         </div>
       ),
-      subtitle: `${data.dataset_type} · #${data.id}`,
+      subtitle: t('datasetDetail.context.subtitle', '数据资产详情'),
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
@@ -173,24 +173,6 @@ export default function DatasetDetail() {
                 onClick={neighbors.next ? () => navigate(`/data-center/assets/${neighbors.next!.id}`) : undefined}
               />
             </div>
-          </section>
-          <section>
-            <CtxLabel>{t('datasetDetail.context.references', '影响分析')}</CtxLabel>
-            <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-3)' }}>
-              {t(
-                'datasetDetail.context.refsHint',
-                '查看该资产后续进入语义建设、BI 或 Data Agent 的消费路径。',
-                { id: data.id },
-              )}
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate(`/data-center/impact?asset_id=${data.id}`)}
-              className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
-              style={{ color: 'var(--text-2)' }}
-            >
-              <ExternalLink size={11} /> {t('datasetDetail.action.viewRefs', '查看影响分析')}
-            </button>
           </section>
         </div>
       ),
@@ -244,7 +226,7 @@ export default function DatasetDetail() {
               {syncStatusChip(data.sync_status)}
             </div>
             <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-              <code>{data.dataset_code}</code> · #{data.id} · {t('datasetDetail.subtitle', '字段、画像与质量信息')}
+              {t('datasetDetail.subtitle', '字段、画像与质量信息')}
             </div>
           </div>
         </div>
@@ -463,24 +445,19 @@ function ProfileTab({
 
 function LineageTab({ item }: { item: Dataset }) {
   const currentLabel = t('datasetDetail.lineage.current', '当前')
-  const cubeLine = t(
-    'datasetDetail.lineage.cubeLine',
-    '语义中心 / BI / Data Agent 消费路径',
-    { id: item.id },
-  )
   return (
     <div className="p-4">
       <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)' }}>
         <p className="mb-3 text-xs font-medium" style={{ color: 'var(--text-1)' }}>
           {t('datasetDetail.lineage.title', '血缘关系')}
         </p>
-        <pre className="text-xs leading-6" style={{ color: 'var(--text-2)' }}>
-{`connection: ${item.source_type ? datasourceTypeLabel(item.source_type) : '—'} #${item.source_id ?? '—'}
-   ↓
-asset: ${item.dataset_code}  ← ${currentLabel}
-   ↓
-${cubeLine}`}
-        </pre>
+        <div className="space-y-2 text-xs leading-5" style={{ color: 'var(--text-2)' }}>
+          <LineageRow label={t('datasetDetail.lineage.source', '来源连接')} value={item.source_type ? datasourceTypeLabel(item.source_type) : '—'} />
+          <LineageRow label={t('datasetDetail.lineage.asset', '数据资产')} value={`${item.dataset_name} · ${currentLabel}`} />
+          <div className="rounded-md border px-3 py-2 text-3" style={{ borderColor: 'var(--border)' }}>
+            {t('datasetDetail.lineage.noConsumers', '暂无真实消费关系数据。')}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -503,6 +480,15 @@ function NeighborBtn({ label, onClick, disabled }: { label: string; onClick?: ()
     >
       <span className="truncate">{label}</span>
     </button>
+  )
+}
+
+function LineageRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+      <span className="text-3">{label}</span>
+      <span className="truncate text-right text-1">{value}</span>
+    </div>
   )
 }
 

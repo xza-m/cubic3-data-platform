@@ -27,7 +27,7 @@ import {
   ChannelContextBody,
 } from '../_shared/channel-content'
 
-// TODO: 等待 X-Crosscut 提供 useAppShell 布局 hook —— 当前用 document.title 占位
+// 详情页仍保留 document.title，同步到多 Tab Shell 时再切换为 useAppShell。
 // import { useAppShell } from '@v2/layout/AppShell'
 
 export default function ChannelDetail() {
@@ -113,7 +113,7 @@ export default function ChannelDetail() {
   if (!channel) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-red-500">
-        {t('channel.error.notFound', '未找到渠道 #{id}', { id: numericId })}
+        {t('channel.error.notFound', '未找到渠道')}
       </div>
     )
   }
@@ -199,7 +199,6 @@ export default function ChannelDetail() {
       </div>
 
       {/* ── 右侧 Context Panel ── */}
-      {/* TODO: 等待 X-Crosscut setContextPanel — 当前内联渲染 */}
       <aside
         className="hidden w-56 shrink-0 border-l xl:block"
         style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}

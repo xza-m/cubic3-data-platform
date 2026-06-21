@@ -14,6 +14,7 @@ import { useInstances, useEnableInstance, useDisableInstance } from '@v2/hooks/i
 import { useToast } from '@v2/components/ui'
 import { InstanceStatusChip, ExecStatusChip, scheduleLabel, InstancePeekContent } from '../_shared/instance-content'
 import type { AppInstance } from '@v2/api/instances'
+import { appInstanceAppLabel } from '@v2/lib/appLabels'
 
 // ============================================================================
 // Peek 面板（内联，待 X-Crosscut PeekPanel 接入后可迁移）
@@ -44,7 +45,7 @@ function PeekPanel({
             {instance.name}
           </div>
           <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-            <code>{instance.app_code}</code>
+            {appInstanceAppLabel(instance)}
           </div>
         </div>
         <button
@@ -119,7 +120,7 @@ export default function Instances() {
     return instances.filter(
       (i) =>
         i.name.toLowerCase().includes(q) ||
-        i.app_code.toLowerCase().includes(q) ||
+        appInstanceAppLabel(i).toLowerCase().includes(q) ||
         (i.owner ?? '').toLowerCase().includes(q),
     )
   }, [instances, keyword])
@@ -226,7 +227,7 @@ export default function Instances() {
                         {inst.name}
                       </td>
                       <td className="px-4 py-2">
-                        <code>{inst.app_code}</code>
+                        {appInstanceAppLabel(inst)}
                       </td>
                       <td className="px-4 py-2">
                         <InstanceStatusChip enabled={inst.enabled} />

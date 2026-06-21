@@ -9,12 +9,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Database, Plus } from 'lucide-react'
 // 等待 X-Crosscut：@v2/components/ui
-import { Button, Card, CardBody, CardHead, Input, Textarea } from '@v2/components/ui'
+import { Button, Card, CardBody, CardHead, Input, Select, Textarea } from '@v2/components/ui'
 // 等待 X-Crosscut：@v2/layout/AppShell
 import { useAppShell } from '@v2/layout/AppShell'
 // 等待 X-Crosscut：@v2/i18n
 import { t } from '@v2/i18n'
 import { useCreateCube, useDraftCubeFromSource } from '@v2/hooks/semantic'
+import { useDatasets } from '@v2/hooks/datasets'
+import { useDatasources } from '@v2/hooks/datasources'
+import { datasourceTypeLabel } from '@v2/lib/datasourceTypes'
 
 type Mode = 'manual' | 'from-dataset' | 'from-datasource'
 
@@ -40,6 +43,10 @@ export default function CubeCreate() {
 
   const createMutation = useCreateCube()
   const draftMutation = useDraftCubeFromSource()
+  const datasetsQ = useDatasets({ page: 1, page_size: 100 })
+  const datasourcesQ = useDatasources({ page: 1, page_size: 100 })
+  const datasets = datasetsQ.data?.items ?? []
+  const datasources = datasourcesQ.data?.items ?? []
 
   useEffect(() => {
     setBreadcrumbs([t('nav.semantic', '语义中心'), t('nav.cubes', 'Cube'), t('cube.create', '新建 Cube')])
@@ -194,25 +201,48 @@ export default function CubeCreate() {
             <CardHead title={t('cube.sourceInfo', '来源信息')} />
             <CardBody className="space-y-3">
               {mode === 'from-dataset' ? (
-                <FormRow label={t('cube.datasetId', '数据集 ID')} required>
-                  <Input
+                <FormRow label={t('cube.datasetId', '数据集')} required>
+                  <Select
                     value={datasetId}
                     onChange={(e) => setDatasetId(e.target.value)}
-                    placeholder={t('cube.datasetIdPlaceholder', '数据集 UUID')}
                     required
                     id="cube-dataset-id"
-                  />
+                    disabled={datasetsQ.isLoading || datasets.length === 0}
+                  >
+                    <option value="">
+                      {datasetsQ.isLoading
+                        ? t('state.loading', '加载中…')
+                        : t('cube.datasetPlaceholder', '选择数据集')}
+                    </option>
+                    {datasets.map((dataset) => (
+                      <option key={dataset.id} value={dataset.id}>
+                        {dataset.dataset_name}
+                        {dataset.datasource_name ? ` · ${dataset.datasource_name}` : ''}
+                      </option>
+                    ))}
+                  </Select>
                 </FormRow>
               ) : (
                 <>
-                  <FormRow label={t('cube.sourceId', '数据源 ID')} required>
-                    <Input
+                  <FormRow label={t('cube.sourceId', '数据源')} required>
+                    <Select
                       value={sourceId}
                       onChange={(e) => setSourceId(e.target.value)}
-                      placeholder={t('cube.sourceIdPlaceholder', '数据源 UUID')}
                       required
                       id="cube-source-id"
-                    />
+                      disabled={datasourcesQ.isLoading || datasources.length === 0}
+                    >
+                      <option value="">
+                        {datasourcesQ.isLoading
+                          ? t('state.loading', '加载中…')
+                          : t('cube.sourcePlaceholder', '选择数据源')}
+                      </option>
+                      {datasources.map((source) => (
+                        <option key={source.id} value={source.id}>
+                          {source.name} · {datasourceTypeLabel(source.source_type)}
+                        </option>
+                      ))}
+                    </Select>
                   </FormRow>
                   <FormRow label={t('cube.database', '数据库')}>
                     <Input

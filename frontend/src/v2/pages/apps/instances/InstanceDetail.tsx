@@ -20,6 +20,9 @@ import {
   useExecutions,
 } from '@v2/hooks/instances'
 import { HealthChip } from '@v2/components/HealthChip'
+import { appInstanceAppLabel } from '@v2/lib/appLabels'
+import { StructuredDetails } from '@v2/components/common/StructuredDetails'
+import { TechnicalValue } from '@v2/components/common/TechnicalValue'
 import {
   InstanceStatusChip,
   ExecStatusChip,
@@ -51,6 +54,20 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       </dd>
     </div>
   )
+}
+
+function recordFieldCount(value: Record<string, unknown> | null | undefined): number {
+  return value ? Object.keys(value).length : 0
+}
+
+function scheduleConfigSummary(scheduleType: string, config: Record<string, unknown> | null): string {
+  const enabled = typeof config?.enabled === 'boolean'
+    ? config.enabled
+      ? t('common.enabled', '启用')
+      : t('common.disabled', '已停')
+    : t('instance.schedule.noSwitch', '未单独配置启停')
+  const cron = typeof config?.cron === 'string' && config.cron.trim() ? ` · ${config.cron}` : ''
+  return `${scheduleLabel(scheduleType)} · ${enabled}${cron}`
 }
 
 export default function InstanceDetail() {
@@ -126,7 +143,7 @@ export default function InstanceDetail() {
               <HealthChip health={instance.health} />
             </div>
             <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-              <code>{instance.app_code}</code>
+              {appInstanceAppLabel(instance)}
               {' · '}
               {t('instance.field.owner', '所有者')}: {instance.owner}
               {' · '}
@@ -323,32 +340,22 @@ export default function InstanceDetail() {
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
               {t('instance.section.config', '配置参数')}
             </div>
-            <pre
-              className="overflow-auto rounded border p-3 text-xs leading-5"
-              style={{
-                background: 'var(--bg-surface-2)',
-                borderColor: 'var(--border)',
-                color: 'var(--text-2)',
-              }}
-            >
-              {JSON.stringify(instance.config, null, 2)}
-            </pre>
+            <StructuredDetails
+              title={t('instance.config.detailTitle', '查看配置详情')}
+              value={instance.config}
+              summary={t('instance.config.summary', '配置项 {count} 个', { count: recordFieldCount(instance.config) })}
+            />
 
             {instance.schedule_config && (
               <>
                 <div className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
                   {t('instance.section.schedule_config', '调度配置')}
                 </div>
-                <pre
-                  className="overflow-auto rounded border p-3 text-xs leading-5"
-                  style={{
-                    background: 'var(--bg-surface-2)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--text-2)',
-                  }}
-                >
-                  {JSON.stringify(instance.schedule_config, null, 2)}
-                </pre>
+                <StructuredDetails
+                  title={t('instance.scheduleConfig.detailTitle', '查看调度详情')}
+                  value={instance.schedule_config}
+                  summary={scheduleConfigSummary(instance.schedule_type, instance.schedule_config)}
+                />
               </>
             )}
           </div>
@@ -377,7 +384,7 @@ export default function InstanceDetail() {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}>
-                  <th className="px-4 py-2 text-left font-normal">#</th>
+                  <th className="px-4 py-2 text-left font-normal">{t('exec.field.record', '执行记录')}</th>
                   <th className="px-4 py-2 text-left font-normal">{t('exec.field.status', '状态')}</th>
                   <th className="px-4 py-2 text-left font-normal">{t('exec.field.trigger', '触发')}</th>
                   <th className="px-4 py-2 text-left font-normal">{t('exec.field.started_at', '开始')}</th>
@@ -393,7 +400,7 @@ export default function InstanceDetail() {
                     onClick={() => navigate(`/apps/executions/${e.id}`)}
                   >
                     <td className="px-4 py-2">
-                      <code>#{e.id}</code>
+                      <TechnicalValue value={e.id} label={t('exec.field.recordShort', '记录')} />
                     </td>
                     <td className="px-4 py-2">
                       <ExecStatusChip status={e.status} />

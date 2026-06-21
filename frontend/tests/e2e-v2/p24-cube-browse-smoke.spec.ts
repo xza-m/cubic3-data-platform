@@ -4,7 +4,7 @@
 //
 // 覆盖：
 //   - /semantic/cubes 列表页能打开
-//   - fixture 里的 cube（fct_lesson / 课程事实）出现在列表
+//   - fixture 里的 cube 以业务标题出现在列表，不直接铺出技术标识
 //   - 新建 Cube CTA 存在
 //
 // 参考文档：docs/quality/e2e-coverage-gaps.md §2。
@@ -23,9 +23,10 @@ test('P24 Cube 列表首屏能打开并渲染 fixture 项 @p24', async ({ page }
   await gotoV2(page, '/semantic/cubes')
   await expect(page).toHaveURL(/\/semantic\/cubes$/)
 
-  // fixture 里的 cube
-  await expect(page.getByText('fct_lesson').first()).toBeVisible()
+  // fixture 里的 cube：主路径展示业务标题，技术标识不作为卡片主信息外露
   await expect(page.getByText('课程事实').first()).toBeVisible()
+  await expect(page.getByText('维护可复用的数据语义资产，统一管理事实表、维度、度量和发布状态。')).toBeVisible()
+  await expect(page.getByText('fct_lesson').first()).toHaveCount(0)
 
   // 搜索框（aria-label="搜索 Cube"）
   const searchInput = page.getByRole('textbox', { name: /搜索 Cube/ }).first()

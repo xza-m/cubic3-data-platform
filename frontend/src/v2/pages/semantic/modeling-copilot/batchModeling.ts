@@ -11,7 +11,7 @@ export interface BatchModelingScope {
   strategy: BatchModelingStrategy
   includeExistingSemantics: boolean
   // 真实扫描坐标：选定数据源 + 库时，后端扫描器读真实表缓存出候选；
-  // 未选定时降级为演示队列，保证向后兼容。
+  // 未选定时使用手动范围生成待确认候选，保证向后兼容。
   sourceId?: number | null
   database?: string | null
   // 仅用于扫描计划/风险预览文案展示，不参与后端扫描参数下发。
@@ -125,7 +125,7 @@ function resolveRiskLevel(scope: BatchModelingScope): BatchModelingRiskLevel {
   return 'low'
 }
 
-// 选定真实数据源 + 库时，扫描计划反映真实坐标与表上限；否则保持演示口径。
+// 选定真实数据源 + 库时，扫描计划反映真实坐标与表上限；否则使用手动范围口径。
 export function isRealSourceScope(scope: BatchModelingScope): boolean {
   return Boolean(scope.sourceId) && Boolean((scope.database ?? '').trim())
 }

@@ -11,6 +11,7 @@
 import { ArrowRight, Bot, CalendarClock, LayoutGrid, Sigma, ShieldCheck, Sparkles, TrendingUp, type LucideIcon } from 'lucide-react'
 import { t } from '@v2/i18n'
 import type { App } from '@v2/api/apps'
+import { appCategoryLabel } from '@v2/lib/appLabels'
 
 // ============================================================================
 // 分类 → 图标/颜色映射
@@ -70,12 +71,10 @@ interface AppCardProps {
 export function AppCard({ app, categoryLabel, onOpen, onCreateInstance }: AppCardProps) {
   const meta = metaOf(app.category)
   const Icon = meta.icon
-  const displayCategory = categoryLabel ?? app.category
+  const displayCategory = categoryLabel ?? appCategoryLabel(app.category)
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <div
       className="group relative flex h-full min-h-[168px] w-full flex-col overflow-hidden rounded-md border text-left transition-all hover:-translate-y-px hover:shadow-md"
       style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
     >
@@ -86,32 +85,39 @@ export function AppCard({ app, categoryLabel, onOpen, onCreateInstance }: AppCar
         style={{ background: meta.color }}
       />
 
-      <div className="flex items-start gap-3 p-3 pt-4">
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-white"
-          style={{ background: meta.color }}
-        >
-          <Icon size={16} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              {app.name}
-            </span>
-            <AppStatusChip enabled={app.enabled} />
+      <button
+        type="button"
+        aria-label={t('app.open_detail', '查看应用详情：{name}', { name: app.name })}
+        onClick={onOpen}
+        className="flex min-h-0 flex-1 flex-col text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--accent)]"
+      >
+        <div className="flex items-start gap-3 p-3 pt-4">
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded text-white"
+            style={{ background: meta.color }}
+          >
+            <Icon size={16} />
           </div>
-          <div className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>
-            {app.author && <span>{app.author}</span>}
-            {app.author && app.category && <span className="mx-1.5">·</span>}
-            <span>{displayCategory}</span>
-            {app.version && <span className="mx-1.5">v{app.version}</span>}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+                {app.name}
+              </span>
+              <AppStatusChip enabled={app.enabled} />
+            </div>
+            <div className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>
+              {app.author && <span>{app.author}</span>}
+              {app.author && app.category && <span className="mx-1.5">·</span>}
+              <span>{displayCategory}</span>
+              {app.version && <span className="mx-1.5">v{app.version}</span>}
+            </div>
           </div>
         </div>
-      </div>
 
-      <p className="line-clamp-2 px-3 text-xs leading-5" style={{ color: 'var(--text-2)' }}>
-        {app.description ?? t('app.no_description', '暂无描述')}
-      </p>
+        <p className="line-clamp-2 px-3 text-xs leading-5" style={{ color: 'var(--text-2)' }}>
+          {app.description ?? t('app.no_description', '暂无描述')}
+        </p>
+      </button>
 
       {/* drop-frontend: App.capabilities 假标签 — see plan §3.4 */}
 
@@ -147,7 +153,7 @@ export function AppCard({ app, categoryLabel, onOpen, onCreateInstance }: AppCar
           />
         </span>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -164,7 +170,7 @@ interface AppRowProps {
 export function AppRow({ app, categoryLabel, onOpen }: AppRowProps) {
   const meta = metaOf(app.category)
   const Icon = meta.icon
-  const displayCategory = categoryLabel ?? app.category
+  const displayCategory = categoryLabel ?? appCategoryLabel(app.category)
 
   return (
     <button

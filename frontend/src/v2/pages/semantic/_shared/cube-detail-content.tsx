@@ -6,7 +6,7 @@
 // 不另外派生下游 BI 数（drop-frontend: backend has no design for downstream BI count — see plan §3.4）
 
 import type { ReactNode } from 'react'
-import { Boxes, Database, GitBranch, Pencil, Sparkles } from 'lucide-react'
+import { Boxes, Database, Pencil, Sparkles } from 'lucide-react'
 // 等待 X-Crosscut：@v2/components/ui（Button, Card, CardBody, Chip）
 import { Button, Card, CardBody, Chip } from '@v2/components/ui'
 import { fmtNum } from '@v2/lib/format'
@@ -207,31 +207,6 @@ export function CubeDetailContent({
           </Card>
         </Section>
       ) : null}
-
-      <Section title={t('cube.semanticLink', '语义衔接')}>
-        <CardBody
-          className="rounded-md border p-3"
-          style={{ borderColor: 'var(--border)' }}
-        >
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-3">
-            <GitBranch size={11} /> {t('cube.dualLayer', '双层语义建模')}
-          </div>
-          <ul className="mt-2 space-y-1.5 text-xs leading-5 text-2">
-            <li>
-              <b className="text-1">{t('cube.layer.physical', '物理底座')}</b>
-              {cube.fact_table ? (
-                <> · {t('cube.factTable', '事实表')} <code className="font-mono text-xs">{cube.fact_table}</code></>
-              ) : null}
-            </li>
-            <li>
-              <b className="text-1">{t('cube.layer.semantic', '数据语义层')}</b> · {t('cube.layer.semanticDesc', '当前 Cube，提供维度与度量')}
-            </li>
-            <li>
-              <b className="text-1">{t('cube.layer.business', '业务语义层')}</b> · {t('cube.layer.businessDesc', '在本体里把度量提升为业务指标，把外键提升为业务关系')}
-            </li>
-          </ul>
-        </CardBody>
-      </Section>
 
       <CubeImpactSection cubeName={cube.name} />
     </div>

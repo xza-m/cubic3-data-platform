@@ -195,6 +195,9 @@ describe('数据资产底座工作区', () => {
         },
       ],
       total: 1,
+      page: 1,
+      page_size: 10,
+      page_count: 1,
     })
     mockSyncDataAssetMetadata.mockResolvedValue({
       sync_run_id: 'sync-20260523-001',
@@ -206,7 +209,7 @@ describe('数据资产底座工作区', () => {
     })
   })
 
-  it('展示资产雷达摘要和物理表列表', async () => {
+  it('资产雷达只展示底座概览，不重复展示物理表列表', async () => {
     render(
       <MemoryRouter>
         <Assets />
@@ -224,9 +227,9 @@ describe('数据资产底座工作区', () => {
     expect(screen.queryByText('最近同步：成功，写入 1 张表 / 2 个字段')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '刷新同步记录' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '同步元数据' })).not.toBeInTheDocument()
-    expect(screen.getByText('订单事实表')).toBeInTheDocument()
-    expect(screen.getByText('dwd_order_fact')).toBeInTheDocument()
-    expect(screen.getByText('生产 PostgreSQL')).toBeInTheDocument()
+    expect(screen.queryByText('物理表列表')).not.toBeInTheDocument()
+    expect(screen.queryByText('订单事实表')).not.toBeInTheDocument()
+    expect(mockListDataAssetPhysicalTables).not.toHaveBeenCalled()
   })
 
   it('资产雷达无 Schema 漂移问题时不展示漂移摘要', async () => {
@@ -315,7 +318,8 @@ describe('数据资产底座工作区', () => {
 
     expect(await screen.findByText('底座健康概览')).toBeInTheDocument()
     expect(screen.getByText('18')).toBeInTheDocument()
-    expect(screen.getByText('订单事实表')).toBeInTheDocument()
+    expect(screen.queryByText('物理表列表')).not.toBeInTheDocument()
+    expect(mockListDataAssetPhysicalTables).not.toHaveBeenCalled()
     expect(screen.queryByText('资产底座数据加载失败，请稍后重试。')).not.toBeInTheDocument()
   })
 
@@ -377,7 +381,8 @@ describe('数据资产底座工作区', () => {
     )
 
     expect(await screen.findByRole('heading', { name: '物理表' })).toBeInTheDocument()
-    expect(await screen.findByText('物理表列表')).toBeInTheDocument()
+    expect(screen.queryByText('物理表列表')).not.toBeInTheDocument()
+    expect(await screen.findByText('共 1 张表')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '资产雷达' })).not.toBeInTheDocument()
     expect(screen.queryByText('底座健康概览')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '刷新同步记录' })).not.toBeInTheDocument()
@@ -730,6 +735,44 @@ describe('数据资产底座工作区', () => {
     expect(await screen.findByText('元数据同步记录')).toBeInTheDocument()
     expect(screen.getByText('sync-20260523-001')).toBeInTheDocument()
     expect(screen.getByText('success')).toBeInTheDocument()
+    expect(screen.getByText('1-1 / 1 条')).toBeInTheDocument()
+    expect(mockListDataAssetSyncRuns).toHaveBeenLastCalledWith({ page: 1, page_size: 10 })
+  })
+
+  it('元数据同步页支持分页切换', async () => {
+    const user = userEvent.setup()
+    mockListDataAssetSyncRuns.mockResolvedValue({
+      items: [
+        {
+          id: 'sync-page-1',
+          source_id: 'data-asset-smoke',
+          status: 'success',
+          started_at: '2026-05-24T08:40:00Z',
+          finished_at: '2026-05-24T08:41:00Z',
+          stats: { table_count: 1, field_count: 2 },
+        },
+      ],
+      total: 21,
+      page: 1,
+      page_size: 10,
+      page_count: 3,
+    })
+
+    render(
+      <MemoryRouter>
+        <AssetWorkspace view="sync-runs" />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('sync-page-1')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '下一页' }))
+
+    await waitFor(() =>
+      expect(mockListDataAssetSyncRuns).toHaveBeenLastCalledWith({
+        page: 2,
+        page_size: 10,
+      }),
+    )
   })
 
   it('元数据同步页展示失败数据源明细', async () => {
@@ -751,6 +794,9 @@ describe('数据资产底座工作区', () => {
         },
       ],
       total: 1,
+      page: 1,
+      page_size: 10,
+      page_count: 1,
     })
 
     render(

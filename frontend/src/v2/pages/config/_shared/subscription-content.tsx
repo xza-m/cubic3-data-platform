@@ -12,10 +12,13 @@ import type { ReactNode } from 'react'
 import { Edit3, ExternalLink, PauseCircle, Play, PlayCircle, Trash2 } from 'lucide-react'
 import { ActionIconButton } from '@v2/components/ActionIconButton'
 import { IdentityName } from '@v2/components/IdentityName'
+import { StructuredDetails } from '@v2/components/common/StructuredDetails'
 import { Chip } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import type { Subscription } from '@v2/api/subscriptions'
+import type { AppInstance } from '@v2/api/instances'
+import { appCodeLabel } from '@v2/lib/appLabels'
 import { eventTypeLabel } from './event-labels'
 
 // ============================================================================
@@ -31,6 +34,29 @@ export function subscriptionTabLabel(row: Subscription): ReactNode {
       </Chip>
     </span>
   )
+}
+
+type SubscriptionAppInstance = NonNullable<Subscription['app_instance']>
+
+export function formatSubscriptionAppInstanceName(
+  instance: SubscriptionAppInstance | null | undefined,
+): string {
+  const appName = instance?.app_name ?? appCodeLabel(instance?.app_code)
+  const instanceName = instance?.name
+  if (appName && instanceName && appName !== instanceName) return `${appName} · ${instanceName}`
+  if (instanceName) return instanceName
+  if (appName) return appName
+  return t('subscription.instance.unknown', '未知应用实例')
+}
+
+export function formatSubscriptionAppInstanceOption(instance: AppInstance): string {
+  const appName = instance.app?.name ?? appCodeLabel(instance.app_code)
+  const instanceName = instance.name
+  const title = appName && instanceName && appName !== instanceName
+    ? `${appName} · ${instanceName}`
+    : instanceName || appName || t('subscription.instance.unknown', '未知应用实例')
+  const status = instance.enabled ? t('common.enabled', '启用') : t('common.disabled', '已停')
+  return `${title} · ${status}`
 }
 
 // ============================================================================
@@ -109,7 +135,6 @@ export function SubscriptionDetailContent({
       ) : null}
 
       <DetailSection title={t('subscription.section.basic', '基础信息')}>
-        <DetailRow label={t('common.id', '编号')} value={<code>#{row.id}</code>} />
         <DetailRow label={t('common.name', '名称')} value={row.name} />
         <DetailRow
           label={t('common.status', '状态')}
@@ -121,18 +146,14 @@ export function SubscriptionDetailContent({
         />
         <DetailRow
           label={t('subscription.field.appInstanceId', '应用实例')}
-          value={
-            row.app_instance
-              ? <code>{row.app_instance.app_name ?? row.app_instance.app_code} #{row.app_instance_id}</code>
-              : <code>#{row.app_instance_id}</code>
-          }
+          value={formatSubscriptionAppInstanceName(row.app_instance)}
         />
         <DetailRow
           label={t('subscription.field.channelId', '渠道')}
           value={
             row.channel
-              ? <code>{row.channel.name} #{row.channel_id}</code>
-              : <code>#{row.channel_id}</code>
+              ? row.channel.name
+              : t('subscription.channel.unknown', '未知渠道')
           }
         />
         <DetailRow
@@ -165,23 +186,25 @@ export function SubscriptionDetailContent({
 
       {Object.keys(row.filter_conditions ?? {}).length > 0 ? (
         <DetailSection title={t('subscription.section.filterConditions', '过滤条件')}>
-          <pre
-            className="overflow-auto rounded border p-2 text-xs leading-4"
-            style={{ background: 'var(--bg-surface-2)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
-          >
-            {JSON.stringify(row.filter_conditions, null, 2)}
-          </pre>
+          <StructuredDetails
+            title={t('subscription.filter.detailTitle', '查看过滤详情')}
+            value={row.filter_conditions}
+            summary={t('subscription.filter.summary', '过滤项 {count} 个', {
+              count: Object.keys(row.filter_conditions ?? {}).length,
+            })}
+          />
         </DetailSection>
       ) : null}
 
       {Object.keys(row.delivery_config ?? {}).length > 0 ? (
         <DetailSection title={t('subscription.section.deliveryConfig', '投递配置')}>
-          <pre
-            className="overflow-auto rounded border p-2 text-xs leading-4"
-            style={{ background: 'var(--bg-surface-2)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
-          >
-            {JSON.stringify(row.delivery_config, null, 2)}
-          </pre>
+          <StructuredDetails
+            title={t('subscription.delivery.detailTitle', '查看投递详情')}
+            value={row.delivery_config}
+            summary={t('subscription.delivery.summary', '投递配置 {count} 项', {
+              count: Object.keys(row.delivery_config ?? {}).length,
+            })}
+          />
         </DetailSection>
       ) : null}
     </div>
@@ -238,7 +261,7 @@ export function SubscriptionContextBody({
           </div>
           <div className="mt-2">
             <NeighborButton
-              label={`→ ${row.channel?.name ?? `渠道 #${channelId}`}`}
+              label={`→ ${row.channel?.name ?? t('subscription.channel.unknown', '未知渠道')}`}
               onClick={onJumpChannel}
             />
           </div>

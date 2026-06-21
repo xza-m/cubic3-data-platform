@@ -19,7 +19,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAppShell } from '@v2/layout/AppShell'
-import { Button, Input, Tab, Tabs } from '@v2/components/ui'
+import { Button, Input, Select, Tab, Tabs } from '@v2/components/ui'
 import { useToast } from '@v2/components/ui/Toast'
 import { useMyPreferences, useUpdateMyPreferences } from '@v2/hooks/userPreferences'
 import type { ThemePreference, TableDensity, UserPreferences } from '@v2/api/userPreferences'
@@ -63,6 +63,16 @@ interface SegmentedOption<T extends string> {
   value: T
   label: string
 }
+
+const LANDING_OPTIONS = [
+  { value: '/dashboard', label: t('settings.landing.dashboard', '总览工作台') },
+  { value: '/data-center', label: t('settings.landing.dataCenter', '数据中心') },
+  { value: '/semantic/modeling-workbench/quick', label: t('settings.landing.semanticWorkbench', '语义建设工作台') },
+  { value: '/semantic/assets', label: t('settings.landing.semanticAssets', '语义资产') },
+  { value: '/queries', label: t('settings.landing.queries', '查询工作台') },
+  { value: '/apps', label: t('settings.landing.apps', '应用市场') },
+  { value: '/config/access', label: t('settings.landing.access', '权限管理') },
+] as const
 
 interface SegmentedControlProps<T extends string> {
   value: T
@@ -113,7 +123,7 @@ function SegmentedControl<T extends string>({
 
 function validateForm(form: FormState): string | null {
   if (!form.default_landing.startsWith('/')) {
-    return t('settings.validate.landingPrefix', '默认落地页必须以 / 开头')
+    return t('settings.validate.landingPrefix', '请选择有效的默认工作区')
   }
   if (!Number.isInteger(form.list_page_size) || form.list_page_size < 5 || form.list_page_size > 200) {
     return t('settings.validate.pageSizeRange', '列表页尺寸必须是 5 到 200 之间的整数')
@@ -287,18 +297,28 @@ export default function Settings({ initialTab = 'general' }: SettingsProps) {
         <div className="px-5 py-4">
           <div className="text-[13px] font-medium text-1">{labelLanding}</div>
           <div className="mt-0.5 text-[12px] text-3">
-            {t('settings.desc.landing', '登录后自动跳转到此路径（必须以 / 开头）')}
+            {t('settings.desc.landing', '登录后进入的默认工作区')}
           </div>
-          <Input
+          <Select
             className="mt-2 w-full max-w-[320px]"
             value={form.default_landing}
             onChange={(e) => setForm((f) => f && { ...f, default_landing: e.target.value })}
-            placeholder="/dashboard"
             aria-label={labelLanding}
-          />
+          >
+            {!LANDING_OPTIONS.some((option) => option.value === form.default_landing) ? (
+              <option value={form.default_landing}>
+                {t('settings.landing.currentSaved', '当前保存的工作区')}
+              </option>
+            ) : null}
+            {LANDING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
           {form.default_landing && !form.default_landing.startsWith('/') ? (
             <p className="mt-1 text-[11px]" style={{ color: 'var(--danger)' }}>
-              {t('settings.validate.landingPrefixShort', '路径必须以 / 开头')}
+              {t('settings.validate.landingPrefixShort', '请选择有效的默认工作区')}
             </p>
           ) : null}
         </div>

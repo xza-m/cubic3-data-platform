@@ -88,7 +88,7 @@ test('S03 /data-center/connections 连接管理渲染 @smoke', async ({ page }) 
   await gotoV2(page, '/data-center/connections')
 
   await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
-  await expect(page.getByRole('tab', { name: /连接管理/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('link', { name: /数据连接/ })).toHaveAttribute('aria-current', 'page')
 })
 
 // ── S04  /semantic/ontology/objects 列表 ─────────────────────────────────────

@@ -11,9 +11,11 @@ import { Input, Select, Switch, useToast } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 import { useCreateSubscription } from '@v2/hooks/subscriptions'
 import { useChannels } from '@v2/hooks/channels'
+import { useInstances } from '@v2/hooks/instances'
 import type { CreateSubscriptionPayload } from '@v2/api/subscriptions'
 import type { Channel, ChannelType } from '@v2/api/channels'
 import { CHANNEL_TYPE_LABEL } from '../_shared/channel-content'
+import { formatSubscriptionAppInstanceOption } from '../_shared/subscription-content'
 import { SUBSCRIPTION_EVENT_OPTIONS } from '../_shared/event-labels'
 
 export default function SubscriptionCreate() {
@@ -21,7 +23,9 @@ export default function SubscriptionCreate() {
   const toast = useToast()
   const createMutation = useCreateSubscription()
   const { data: channelData } = useChannels()
+  const { data: instanceData, isLoading: instancesLoading } = useInstances({ page: 1, page_size: 50 })
   const channels = channelData?.items ?? []
+  const instances = instanceData?.items ?? []
 
   const [name, setName] = useState('')
   const [appInstanceId, setAppInstanceId] = useState('')
@@ -99,20 +103,30 @@ export default function SubscriptionCreate() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label htmlFor="new-sub-instance" className="mb-1 block text-xs font-medium" style={{ color: 'var(--text-2)' }}>
-                {t('subscription.field.appInstanceId', '应用实例 ID')} *
+                {t('subscription.field.appInstanceId', '应用实例')} *
               </label>
-              <Input
+              <Select
                 id="new-sub-instance"
-                type="number"
                 value={appInstanceId}
                 onChange={(e) => setAppInstanceId(e.target.value)}
                 required
-                placeholder="1"
-                min={1}
                 aria-describedby="new-sub-instance-hint"
-              />
+              >
+                <option value="">
+                  {instancesLoading
+                    ? t('subscription.form.instanceLoading', '正在加载应用实例…')
+                    : t('subscription.form.instancePlaceholder', '— 选择应用实例 —')}
+                </option>
+                {instances.map((instance) => (
+                  <option key={instance.id} value={instance.id}>
+                    {formatSubscriptionAppInstanceOption(instance)}
+                  </option>
+                ))}
+              </Select>
               <p id="new-sub-instance-hint" className="mt-1 text-xs" style={{ color: 'var(--text-3)' }}>
-                {t('subscription.form.instanceIdHint', '可在应用实例列表页查看 ID')}
+                {instances.length === 0 && !instancesLoading
+                  ? t('subscription.form.noInstances', '暂无可订阅的应用实例，先在应用中心创建实例')
+                  : t('subscription.form.instanceHint', '订阅会监听所选应用实例产生的事件')}
               </p>
             </div>
             <div>
@@ -219,7 +233,7 @@ export default function SubscriptionCreate() {
 
 function formatChannelOption(channel: Channel): string {
   const rawType = channel.channel_type ?? (channel as Channel & { type?: ChannelType }).type
-  const typeLabel = rawType ? CHANNEL_TYPE_LABEL[rawType] ?? rawType : t('channel.field.type', '渠道')
+  const typeLabel = rawType ? CHANNEL_TYPE_LABEL[rawType] ?? t('channel.type.unknown', '未知渠道') : t('channel.field.type', '渠道')
   const status = channel.enabled ? t('common.enabled', '启用') : t('common.disabled', '已停')
   return `${channel.name} · ${typeLabel} · ${status}`
 }

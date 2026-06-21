@@ -482,7 +482,7 @@ export default function ModelingAgent({
         tone: "success",
         title: "发布预演已生成",
         description:
-          "只读预演已更新，不会发布、不应用资产，也不会在平台控制面执行物理查询。",
+          "只读预演已更新，不会发布、不应用资产，也不会发起真实查询。",
       });
     } catch (error) {
       setLocalError(formatCopilotError(error));
@@ -758,8 +758,7 @@ export default function ModelingAgent({
             <div className="mt-1 text-[12.5px]">
               {llmRequiredError.message}
               <span className="mx-1">·</span>
-              请联系管理员在后端环境变量中配置{" "}
-              <code>LLM_API_KEY / LLM_API_BASE / LLM_MODEL</code>。
+              请联系管理员完成 AI 语义服务配置后再重试。
             </div>
             <div className="mt-1 text-[12.5px]">
               你可以返回{" "}

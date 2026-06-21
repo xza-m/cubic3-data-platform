@@ -8,6 +8,7 @@
 import type { ReactNode } from 'react'
 import type { Datasource } from '@v2/api/datasources'
 import { IdentityName } from '@v2/components/IdentityName'
+import { StructuredDetails } from '@v2/components/common/StructuredDetails'
 import { datasourceTypeLabel, normalizeDatasourceType } from '@v2/lib/datasourceTypes'
 import { fmtDateTime } from '@v2/lib/format'
 import { isConnectedDatasourceStatus, normalizeDatasourceConnectionStatus } from '@v2/lib/factSources'
@@ -228,16 +229,11 @@ export function DatasourceDetailContent({ item }: { item: Datasource }) {
       ) : null}
 
       <Section title={t('datasourceDetailContent.section.connConfig', '连接配置（已脱敏）')}>
-        <pre
-          className="max-h-64 overflow-auto rounded-md border p-2 text-[11px] leading-4"
-          style={{
-            background: 'var(--bg-surface-2)',
-            borderColor: 'var(--border)',
-            color: 'var(--text-2)',
-          }}
-        >
-          {JSON.stringify(item.connection_config, null, 2)}
-        </pre>
+        <StructuredDetails
+          title={t('datasourceDetailContent.connConfig.detailTitle', '查看脱敏配置')}
+          value={item.connection_config}
+          summary={<ConnectionConfigSummary config={item.connection_config} sourceType={item.source_type} />}
+        />
       </Section>
 
       {item.last_test_error ? (
@@ -279,4 +275,40 @@ function Row({ label, value }: { label: ReactNode; value: ReactNode }) {
       </dd>
     </div>
   )
+}
+
+function ConnectionConfigSummary({
+  config,
+  sourceType,
+}: {
+  config: Record<string, unknown>
+  sourceType: string
+}) {
+  const host = safeConfigText(config, ['host', 'endpoint', 'server'])
+  const database = safeConfigText(config, ['database', 'project', 'db'])
+  const schema = safeConfigText(config, ['schema'])
+  const authConfigured = ['username', 'user', 'access_key_id', 'client_id'].some((key) => hasConfigValue(config, key))
+  return (
+    <span>
+      {datasourceTypeLabel(sourceType)}
+      {host ? ` · ${host}` : ''}
+      {database ? ` · ${database}` : ''}
+      {schema ? ` / ${schema}` : ''}
+      {` · ${authConfigured ? t('datasourceDetailContent.connConfig.authConfigured', '认证已配置') : t('datasourceDetailContent.connConfig.authMissing', '认证未配置')}`}
+    </span>
+  )
+}
+
+function safeConfigText(config: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = config[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (typeof value === 'number') return String(value)
+  }
+  return ''
+}
+
+function hasConfigValue(config: Record<string, unknown>, key: string): boolean {
+  const value = config[key]
+  return value != null && String(value).trim().length > 0
 }

@@ -50,11 +50,11 @@ test('P17 同步 Run 日志可见 + 重跑 @p17', async ({ page }) => {
   // ── Act: 进入 runs 列表 ─────────────────────────────────────────────────
   await gotoV2(page, '/data-center/sync/runs')
 
-  // 渲染 Run #9001 行 + 行内 `重跑` 按钮（对 failed 允许点击）
-  const row9001 = page.getByText(/^#9001$/)
+  // 渲染同步记录 9001 行 + 行内 `重跑` 按钮（对 failed 允许点击）
+  const row9001 = page.getByText(/^记录 9001$/)
   await expect(row9001).toBeVisible()
   await expect(page.getByTestId('run-rerun-9001')).toBeEnabled()
-  await expect(page.getByText('Run #undefined')).toHaveCount(0)
+  await expect(page.getByText('同步记录 undefined')).toHaveCount(0)
 
   // ── 打开 Peek，确认日志面板里能看到 INFO / WARNING / ERROR ───────────
   await row9001.click()
@@ -78,8 +78,8 @@ test('P17 同步 Run 日志可见 + 重跑 @p17', async ({ page }) => {
 
   await expect.poll(() => rerunPostCount).toBe(1)
 
-  // 列表自动刷新（useRerunExtractionRun invalidate 后重拉），出现 Run #9002
-  await expect(page.getByText(/^#9002$/)).toBeVisible({ timeout: 5000 })
+  // 列表自动刷新（useRerunExtractionRun invalidate 后重拉），出现同步记录 9002
+  await expect(page.getByText(/^记录 9002$/)).toBeVisible({ timeout: 5000 })
 
   // 9002 对应的 `重跑` 按钮因为 running 而 disabled
   await expect(page.getByTestId('run-rerun-9002')).toBeDisabled()

@@ -242,7 +242,7 @@ export default function Marketplace() {
                   categoryLabel={categoryLabelByValue.get(app.category)}
                   onOpen={() => navigate(`/apps/${app.code}`)}
                   onCreateInstance={() =>
-                    navigate('/apps/instances/new', {
+                    navigate(`/apps/instances/new?app_code=${encodeURIComponent(app.code)}`, {
                       state: { app_code: app.code },
                     })
                   }

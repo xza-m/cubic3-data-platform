@@ -8,6 +8,10 @@ import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 import type { AppExecution } from '@v2/api/instances'
 import { ExecStatusChip } from './instance-content'
+import { appCodeLabel } from '@v2/lib/appLabels'
+import { StructuredDetails } from '@v2/components/common/StructuredDetails'
+import { TechnicalValue } from '@v2/components/common/TechnicalValue'
+import { technicalIdLabel } from '@v2/lib/displayLabels'
 
 // ============================================================================
 // 工具
@@ -58,9 +62,9 @@ export function fmtDuration(ms: number | null | undefined): string {
 export function executionTabLabel(row: AppExecution): ReactNode {
   return (
     <span className="flex items-center gap-1.5">
-      <code className="text-xs" style={{ color: 'var(--text-3)' }}>
-        #{row.id}
-      </code>
+      <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+        {technicalIdLabel(t('exec.tab.recordPrefix', '执行记录 '), row.id)}
+      </span>
       {row.instance && (
         <span className="truncate">{row.instance.name}</span>
       )}
@@ -102,18 +106,18 @@ export function ExecutionDetailContent({
       )}
 
       <Section title={t('exec.section.basic', '基础信息')}>
-        <Row label={t('exec.field.id', '编号')} value={<code>#{execution.id}</code>} />
+        <Row label={t('exec.field.id', '执行记录')} value={<TechnicalValue value={execution.id} />} />
         <Row
           label={t('exec.field.instance', '实例')}
           value={
             execution.instance ? (
               <>
-                <code>{execution.instance.app_code}</code>
-                {' — '}
+                {appCodeLabel(execution.instance.app_code)}
+                {' · '}
                 {execution.instance.name}
               </>
             ) : (
-              `#${execution.instance_id}`
+              t('exec.instance.unknown', '未知实例')
             )
           }
         />
@@ -126,7 +130,7 @@ export function ExecutionDetailContent({
         />
         <Row
           label={t('exec.field.trigger', '触发方式')}
-          value={execution.trigger_display_name ?? execution.trigger_type}
+          value={execution.trigger_display_name || t('exec.trigger.unknown', '未知触发')}
         />
       </Section>
 
@@ -147,8 +151,8 @@ export function ExecutionDetailContent({
 
       {execution.error_message && (
         <Section title={t('exec.section.error', '错误信息')}>
-          <pre
-            className="overflow-auto rounded border p-2 text-xs leading-4"
+          <p
+            className="rounded border p-2 text-xs leading-4"
             style={{
               background: 'var(--danger-soft)',
               borderColor: 'var(--danger)',
@@ -156,22 +160,19 @@ export function ExecutionDetailContent({
             }}
           >
             {execution.error_message}
-          </pre>
+          </p>
         </Section>
       )}
 
       {execution.output && Object.keys(execution.output).length > 0 && (
         <Section title={t('exec.section.output', '输出')}>
-          <pre
-            className="overflow-auto rounded border p-2 text-xs leading-4"
-            style={{
-              background: 'var(--bg-surface-2)',
-              borderColor: 'var(--border)',
-              color: 'var(--text-2)',
-            }}
-          >
-            {JSON.stringify(execution.output, null, 2)}
-          </pre>
+          <StructuredDetails
+            title={t('exec.output.detailTitle', '查看输出详情')}
+            value={execution.output}
+            summary={t('exec.output.summary', '输出字段 {count} 个', {
+              count: Object.keys(execution.output).length,
+            })}
+          />
         </Section>
       )}
     </div>
@@ -186,7 +187,7 @@ export function ExecutionPeekContent({ execution }: { execution: AppExecution })
   return (
     <div className="space-y-4 px-4 py-4 text-xs">
       <Section title={t('exec.section.basic', '基础信息')}>
-        <Row label={t('exec.field.id', '编号')} value={<code>#{execution.id}</code>} />
+        <Row label={t('exec.field.id', '执行记录')} value={<TechnicalValue value={execution.id} />} />
         <Row
           label={t('exec.field.status', '状态')}
           value={<ExecStatusChip status={execution.status} />}

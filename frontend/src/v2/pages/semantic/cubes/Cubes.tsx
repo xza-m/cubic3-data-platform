@@ -10,12 +10,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Boxes,
-  Database,
   Grid3x3,
   LayoutList,
   Plus,
   Search,
-  Sparkles,
   GitBranch,
   TrendingUp,
 } from 'lucide-react'
@@ -27,7 +25,6 @@ import { PeekPanel } from '@v2/components/PeekPanel'
 import { ListPagination } from '@v2/components/ListPagination'
 // 等待 X-Crosscut：@v2/layout/AppShell, @v2/layout/Inspector
 import { useAppShell } from '@v2/layout/AppShell'
-import { ContextActions, ContextRow, ContextSection } from '@v2/layout/Inspector'
 // 等待 X-Crosscut：@v2/i18n
 import { t } from '@v2/i18n'
 import { fmtNum, fmtRelative } from '@v2/lib/format'
@@ -110,49 +107,9 @@ export default function Cubes() {
   }, [setTopBarActions, navigate, cubeListQuery])
 
   useEffect(() => {
-    setContextPanel({
-      title: t('nav.cubes', 'Cube'),
-      subtitle: t('cube.contextSubtitle', '数据语义层'),
-      body: (
-        <>
-          <ContextSection title={t('cube.contextScale', '规模')}>
-            <ContextRow label={t('cube.total', 'Cube 总数')} value={allCubes.length} />
-            <ContextRow label={t('status.active', '已上线')} value={stats.byStatus.active ?? 0} />
-            <ContextRow label={t('status.review', '待审核')} value={stats.byStatus.review ?? 0} />
-            <ContextRow label={t('status.draft', '草稿')} value={stats.byStatus.draft ?? 0} />
-          </ContextSection>
-          {Object.keys(stats.byDomain).length > 0 ? (
-            <ContextSection title={t('cube.contextByDomain', '按业务上下文')}>
-              {Object.entries(stats.byDomain).map(([k, v]) => (
-                <ContextRow key={k} label={`${k}`} value={v} />
-              ))}
-            </ContextSection>
-          ) : null}
-          <ContextSection title={t('cube.contextQuickActions', '快捷操作')}>
-            <ContextActions>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="justify-start w-full"
-                onClick={() => navigate('/semantic/ontology/objects')}
-              >
-                <Boxes size={12} /> {t('nav.ontologyObjects', '本体对象')}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="justify-start w-full"
-                onClick={() => navigate('/semantic/workbench')}
-              >
-                <Sparkles size={12} /> {t('nav.devtools', '语义诊断')}
-              </Button>
-            </ContextActions>
-          </ContextSection>
-        </>
-      ),
-    })
+    setContextPanel(null)
     return () => setContextPanel(null)
-  }, [allCubes, stats, setContextPanel, navigate])
+  }, [setContextPanel])
 
   const openPeek = (name: string) => setPeekName(name)
   const closePeek = () => setPeekName(null)
@@ -160,10 +117,10 @@ export default function Cubes() {
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
       <div className="scroll-thin flex-1 overflow-auto p-5">
-        {/* Pipeline Hero */}
-        <PipelineHero
+        <CubeSummaryBar
           cubeTotal={allCubes.length}
           active={stats.byStatus.active ?? 0}
+          review={stats.byStatus.review ?? 0}
           draft={stats.byStatus.draft ?? 0}
         />
 
@@ -387,110 +344,61 @@ function CubePeek({
   )
 }
 
-function PipelineHero({
+function CubeSummaryBar({
   cubeTotal,
   active,
+  review,
   draft,
 }: {
   cubeTotal: number
   active: number
+  review: number
   draft: number
 }) {
   return (
     <div
-      className="rounded-lg border p-4"
+      className="rounded-md border px-4 py-3"
       style={{
         borderColor: 'var(--border)',
-        background: 'linear-gradient(135deg, color-mix(in srgb, var(--violet) 8%, var(--bg-surface)) 0%, var(--bg-surface) 100%)',
+        background: 'var(--bg-surface)',
       }}
     >
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-3">
-        <GitBranch size={12} /> {t('cube.dualLayer', '双层语义建模')}
-      </div>
-      <div className="mt-1.5 flex items-center gap-3 text-base font-semibold text-1">
-        Cube
-        <span className="text-3 font-normal">·</span>
-        <span className="text-3 font-normal text-xs">{t('cube.heroSubtitle', '数据语义层 · 在物理表之上、本体之下')}</span>
-      </div>
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <PipelineNode
-          step="01"
-          icon={Database}
-          title={t('cube.layer.physical', '物理底座')}
-          subtitle={t('cube.layer.physicalSub', '数据集 / 物理表')}
-          tone="neutral"
-          stats="MaxCompute · Hologres · MySQL"
-        />
-        <PipelineNode
-          step="02"
-          icon={GitBranch}
-          title="Cube"
-          subtitle={t('cube.layer.semantic', '数据语义层')}
-          tone="violet"
-          stats={t(
-            'cube.heroStats',
-            '{cubeTotal} 个 · 已上线 {active} · 草稿 {draft}',
-            { cubeTotal, active, draft },
-          )}
-          highlighted
-        />
-        <PipelineNode
-          step="03"
-          icon={Boxes}
-          title={t('cube.layer.business', '本体对象')}
-          subtitle={t('cube.layer.businessSub', '业务语义层')}
-          tone="accent"
-          stats={t('cube.layer.businessStats', '基于 Cube 的指标 / 关系组合')}
-        />
-      </div>
-      <div className="mt-3 flex items-start gap-2 text-xs text-3">
-        <TrendingUp size={11} className="mt-0.5" />
-        <span>
-          {t('cube.heroDesc', '先在数据集上定义')} <b className="text-2">Cube</b>{t('cube.heroDesc2', '（事实表 + 维度 + 度量），再在本体里把度量提升为')} <b className="text-2">{t('cube.businessMetric', '业务指标')}</b>。
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-semibold text-1">
+            <GitBranch size={14} /> Cube
+          </div>
+          <div className="mt-1 text-xs text-3">
+            {t('cube.summaryDesc', '维护可复用的数据语义资产，统一管理事实表、维度、度量和发布状态。')}
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-2 text-right">
+          <SummaryMetric label={t('cube.total', 'Cube 总数')} value={cubeTotal} />
+          <SummaryMetric label={t('status.active', '已上线')} value={active} tone="success" />
+          <SummaryMetric label={t('status.review', '待审核')} value={review} tone="warning" />
+          <SummaryMetric label={t('status.draft', '草稿')} value={draft} />
+        </div>
       </div>
     </div>
   )
 }
 
-function PipelineNode({
-  step,
-  icon: Icon,
-  title,
-  subtitle,
-  tone,
-  stats,
-  highlighted,
+function SummaryMetric({
+  label,
+  value,
+  tone = 'neutral',
 }: {
-  step: string
-  icon: typeof Database
-  title: string
-  subtitle: string
-  tone: 'neutral' | 'violet' | 'accent'
-  stats: string
-  highlighted?: boolean
+  label: string
+  value: number
+  tone?: 'neutral' | 'success' | 'warning'
 }) {
-  const colorMap = {
-    neutral: 'var(--text-3)',
-    violet: 'var(--violet)',
-    accent: 'var(--accent)',
-  } as const
-  const color = colorMap[tone]
+  const color = tone === 'success' ? 'var(--success)' : tone === 'warning' ? 'var(--warning)' : 'var(--text-1)'
   return (
-    <div
-      className="rounded-md border p-3"
-      style={{
-        borderColor: highlighted ? color : 'var(--border)',
-        background: highlighted ? `color-mix(in srgb, ${color} 10%, var(--bg-surface))` : 'var(--bg-surface)',
-      }}
-    >
-      <div className="flex items-center gap-2 text-xs">
-        <span className="font-mono text-3" style={{ letterSpacing: '0.05em' }}>{step}</span>
-        <Icon size={12} style={{ color }} />
-        <span className="font-medium text-1">{title}</span>
+    <div className="min-w-16">
+      <div className="text-[11px] text-3">{label}</div>
+      <div className="mt-0.5 text-base font-semibold tabular-nums" style={{ color }}>
+        {fmtNum(value)}
       </div>
-      <div className="mt-1 text-xs text-3">{subtitle}</div>
-      <div className="mt-2 text-xs text-2">{stats}</div>
     </div>
   )
 }
@@ -524,33 +432,21 @@ function CubeCard({
       >
         <CardBody>
           <div className="mb-3 flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="obj-dot" style={{ background: 'var(--violet)' }}>CB</div>
-              <div>
-                <div className="text-sm font-semibold text-1">{cube.title}</div>
-                <div className="font-mono text-xs text-3">{cube.name}</div>
+            <div className="flex min-w-0 items-start gap-2">
+              <div className="obj-dot shrink-0" style={{ background: 'var(--violet)' }}>
+                CB
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-1">{cube.title}</div>
+                {cube.domain_name ? (
+                  <div className="mt-1">
+                    <Chip tone="violet">{cube.domain_name}</Chip>
+                  </div>
+                ) : null}
               </div>
             </div>
             {cube.status ? <StatusChip status={cube.status} /> : null}
           </div>
-
-          {cube.domain_name ? (
-            <div className="mb-2">
-              <Chip tone="violet">{cube.domain_name}</Chip>
-            </div>
-          ) : null}
-
-          {cube.fact_table ? (
-            <div
-              className="mb-3 rounded border px-2 py-1.5"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
-            >
-              <div className="flex items-center gap-1.5 text-xs text-3">
-                <Database size={11} /> {t('cube.factTable', '事实表')}
-              </div>
-              <div className="mt-0.5 truncate font-mono text-xs text-2">{cube.fact_table}</div>
-            </div>
-          ) : null}
 
           {cube.description ? (
             <p className="mb-3 text-xs text-3 line-clamp-2">{cube.description}</p>

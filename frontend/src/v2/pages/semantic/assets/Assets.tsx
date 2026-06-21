@@ -4,7 +4,6 @@ import { Button, Card, CardBody, CardHead, Chip, Input, Select, Table, type Tabl
 import { ToolbarSearch } from '@v2/components/CommonControls'
 import { ListPagination } from '@v2/components/ListPagination'
 import { useAppShell } from '@v2/layout/AppShell'
-import { ContextRow, ContextSection } from '@v2/layout/Inspector'
 import { normalizeDataAssetSyncStatus } from '@v2/lib/factSources'
 import { t } from '@v2/i18n'
 import {
@@ -46,6 +45,7 @@ const VIEW_META: Array<{
 ]
 
 const TABLE_PAGE_SIZE = 20
+const SYNC_RUN_PAGE_SIZE = 10
 
 const EMPTY_RADAR: DataAssetRadarResponse = {
   summary: {
@@ -90,6 +90,8 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
   const [selectedTableId, setSelectedTableId] = useState<string | null>(null)
   const [tablePage, setTablePage] = useState(1)
   const [tableTotal, setTableTotal] = useState(0)
+  const [syncRunPage, setSyncRunPage] = useState(1)
+  const [syncRunTotal, setSyncRunTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -115,10 +117,15 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
         schema: schemaFilter,
         syncStatus: syncStatusFilter,
       })
+      const shouldLoadTables = view !== 'radar' && view !== 'sync-runs'
       const [nextRadar, nextTables, nextSyncRuns, nextGovernanceIssues] = await Promise.all([
         getDataAssetRadar(),
-        listDataAssetPhysicalTables(tableParams),
-        view === 'sync-runs' ? listDataAssetSyncRuns({ limit: 50 }) : Promise.resolve({ items: [], total: 0 }),
+        shouldLoadTables
+          ? listDataAssetPhysicalTables(tableParams)
+          : Promise.resolve({ tables: [], total: 0, page: 1, page_size: TABLE_PAGE_SIZE, page_count: 0 }),
+        view === 'sync-runs'
+          ? listDataAssetSyncRuns({ page: syncRunPage, page_size: SYNC_RUN_PAGE_SIZE })
+          : Promise.resolve({ items: [], total: 0, page: 1, page_size: SYNC_RUN_PAGE_SIZE, page_count: 0 }),
         getSemanticGovernanceIssues({ schema_source: 'asset_snapshot' }).catch(() => ({ issues: [] })),
       ])
       if (listRequestIdRef.current !== requestId) return
@@ -126,6 +133,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
       setTables(nextTables.tables)
       setTableTotal(nextTables.total)
       setSyncRuns(nextSyncRuns.items)
+      setSyncRunTotal(nextSyncRuns.total)
       setDriftIssues(nextGovernanceIssues.issues ?? [])
       setSelectedTableId((currentTableId) => {
         if (nextTables.tables.length === 0) return null
@@ -143,11 +151,15 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
         if (shouldShowLoading) setLoading(false)
       }
     }
-  }, [databaseFilter, schemaFilter, sourceFilter, syncStatusFilter, tableKeyword, tablePage, view])
+  }, [databaseFilter, schemaFilter, sourceFilter, syncRunPage, syncStatusFilter, tableKeyword, tablePage, view])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    setContextPanel(null)
+  }, [setContextPanel])
 
   useEffect(() => {
     const requestId = detailRequestIdRef.current + 1
@@ -208,13 +220,17 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
     try {
       const result = await syncDataAssetMetadata({ scope: 'all' })
       setSyncMessage(formatSyncMessage(result))
-      await load()
+      if (syncRunPage === 1) {
+        await load()
+      } else {
+        setSyncRunPage(1)
+      }
     } catch {
       setSyncMessage('同步任务提交失败')
     } finally {
       setSyncing(false)
     }
-  }, [load])
+  }, [load, syncRunPage])
 
   const handleTableKeywordChange = useCallback((value: string) => {
     setTableKeyword(value)
@@ -247,28 +263,6 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
     return Math.round((radar.summary.synced_table_count / total) * 100)
   }, [radar])
 
-  useEffect(() => {
-    setContextPanel({
-      title: '数据资产底座',
-      subtitle: '元数据事实层：物理表、字段、血缘与质量的统一入口',
-      body: (
-        <>
-          <ContextSection title="资产覆盖">
-            <ContextRow label="物理表" value={fmtNumber(radar.summary.physical_table_count)} />
-            <ContextRow label="字段" value={fmtNumber(radar.summary.field_count)} />
-            <ContextRow label="同步覆盖" value={`${syncRate}%`} />
-          </ContextSection>
-          <ContextSection title="治理信号">
-            <ContextRow label="健康分" value={radar.health.score} />
-            <ContextRow label="质量问题" value={radar.summary.quality_issue_count} />
-            <ContextRow label="最近同步" value={fmtDateTime(radar.summary.last_sync_at)} />
-          </ContextSection>
-        </>
-      ),
-    })
-    return () => setContextPanel(null)
-  }, [radar, setContextPanel, syncRate])
-
   const columns = useMemo<TableColumn<DataAssetPhysicalTable>[]>(
     () => [
       {
@@ -299,7 +293,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
   )
 
   const activeLabel = VIEW_META.find((item) => item.view === view)?.label ?? '资产雷达'
-  const syncNotice = syncMessage ?? (view === 'sync-runs' ? formatLatestSyncNotice(syncRuns[0]) : null)
+  const syncNotice = syncMessage ?? (view === 'sync-runs' && syncRunPage === 1 ? formatLatestSyncNotice(syncRuns[0]) : null)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -311,7 +305,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
             </div>
             <h1 className="mt-1 text-xl font-semibold text-1">{activeLabel}</h1>
             <p className="mt-1 max-w-3xl text-xs text-3">
-              汇总物理表、字段、血缘、质量和同步任务，为语义建模提供可复用的元数据事实层；Dataset 类型资产通过 asset_type='dataset' 表达。
+              汇总物理表、字段、血缘、质量和同步任务，为语义建模提供可复用的元数据事实层。
             </p>
           </div>
           {view === 'sync-runs' ? (
@@ -344,7 +338,7 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
           <div className="space-y-4">
             {view === 'radar' ? <RadarSection radar={radar} syncRate={syncRate} /> : null}
             {view === 'radar' ? <DriftSummary issues={driftIssues} /> : null}
-            {view === 'radar' || view === 'tables' ? (
+            {view === 'tables' ? (
               <TablesSection
                 tables={tables}
                 columns={columns}
@@ -385,7 +379,15 @@ export function AssetWorkspace({ view = 'radar' }: AssetWorkspaceProps) {
               />
             ) : null}
             {view === 'lineage' ? <LineageUsageSection evidence={evidence} /> : null}
-            {view === 'sync-runs' ? <SyncRunsSection syncRuns={syncRuns} /> : null}
+            {view === 'sync-runs' ? (
+              <SyncRunsSection
+                syncRuns={syncRuns}
+                page={syncRunPage}
+                pageSize={SYNC_RUN_PAGE_SIZE}
+                total={syncRunTotal}
+                onPageChange={setSyncRunPage}
+              />
+            ) : null}
           </div>
         )}
       </div>
@@ -500,7 +502,6 @@ function TablesSection({
 }) {
   return (
     <Card>
-      <CardHead title="物理表列表" subtitle="当前已纳入资产底座的物理表" />
       <CardBody>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <ToolbarSearch
@@ -818,7 +819,19 @@ function LineageUsageSection({ evidence }: { evidence: DataAssetEvidenceBundle |
   )
 }
 
-function SyncRunsSection({ syncRuns }: { syncRuns: DataAssetSyncRun[] }) {
+function SyncRunsSection({
+  syncRuns,
+  page,
+  pageSize,
+  total,
+  onPageChange,
+}: {
+  syncRuns: DataAssetSyncRun[]
+  page: number
+  pageSize: number
+  total: number
+  onPageChange: (page: number) => void
+}) {
   const columns = useMemo<TableColumn<DataAssetSyncRun>[]>(
     () => [
       { key: 'id', title: '批次', render: (row) => row.id },
@@ -840,6 +853,13 @@ function SyncRunsSection({ syncRuns }: { syncRuns: DataAssetSyncRun[] }) {
           rows={syncRuns}
           rowKey={(row) => row.id}
           emptyText="暂无同步记录。"
+        />
+        <ListPagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={onPageChange}
+          alwaysShow
         />
         <div className="mt-3 space-y-2">
           {syncRuns.flatMap((run) => failedSourceDetails(run)).map((item) => (

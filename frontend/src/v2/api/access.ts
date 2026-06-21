@@ -322,8 +322,12 @@ export interface GatewayQueryRun {
   query_id: string
   trace_id: string | null
   principal_id: string | null
+  principal_display_name?: string | null
+  principal_name?: string | null
   actor_type?: string | null
   actor_id?: string | null
+  actor_display_name?: string | null
+  actor_name?: string | null
   policy_decision_id?: string | null
   policy_epoch?: number | null
   data_level: string | null

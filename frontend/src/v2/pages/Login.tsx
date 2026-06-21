@@ -65,7 +65,7 @@ async function loginRequest(username: string, password: string): Promise<TokenPa
   })
   const tokenPair = extractLoginTokenPair(res.data)
   if (!tokenPair) {
-    throw new Error(t('login.error.missingTokenPair', '登录接口未返回 Token Pair'))
+    throw new Error(t('login.error.missingTokenPair', '登录结果异常，未获取到有效凭据'))
   }
   return tokenPair
 }
@@ -74,7 +74,7 @@ async function exchangeFeishuCode(code: string): Promise<TokenPair> {
   const res = await apiClient.post<LoginResponse>('/auth/feishu/exchange', { code })
   const tokenPair = extractLoginTokenPair(res.data)
   if (!tokenPair) {
-    throw new Error(t('login.error.missingTokenPair', '登录接口未返回 Token Pair'))
+    throw new Error(t('login.error.missingTokenPair', '登录结果异常，未获取到有效凭据'))
   }
   return tokenPair
 }
@@ -567,15 +567,11 @@ export default function Login() {
             {t('login.feishu', '飞书登录')}
           </button>
 
-          {/* 调试 & 快捷键提示 */}
+          {/* 快捷键提示 */}
           <div
-            className="flex items-center justify-between text-[11px]"
+            className="flex items-center justify-end text-[11px]"
             style={{ color: 'var(--text-4)' }}
           >
-            <span>
-              {t('login.bypass.hint', '调试可设')}{' '}
-              <code style={{ color: 'var(--text-3)' }}>VITE_AUTH_BYPASS=1</code>
-            </span>
             <span className="flex items-center gap-1">
               <Kbd>↵</Kbd> {t('login.submit', '登录')}
             </span>

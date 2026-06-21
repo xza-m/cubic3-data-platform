@@ -5,9 +5,6 @@ import {
   AlertCircle,
   ArrowRight,
   Boxes,
-  Database,
-  GitBranch,
-  RefreshCw,
   ServerCog,
   ShieldCheck,
   Table2,
@@ -31,7 +28,6 @@ import {
 } from './_shared/datasource-detail-content'
 import { syncStatusChip } from './_shared/dataset-detail-content'
 import { DATA_CENTER_TABS, dataCenterTabFromPath } from './_shared/data-center-tabs'
-import { DataCenterNavTabs } from './_shared/data-center-nav'
 
 function assetSourceId(asset: Dataset): number | null {
   return asset.source_id ?? asset.datasource_id ?? null
@@ -51,6 +47,7 @@ export default function DataCenter() {
   const [keyword, setKeyword] = useState('')
   const [testingId, setTestingId] = useState<number | null>(null)
   const activeTab = dataCenterTabFromPath(location.pathname)
+  const activeTabItem = DATA_CENTER_TABS.find((tab) => tab.id === activeTab) ?? DATA_CENTER_TABS[0]
 
   const datasources = useDatasources({ page: 1, page_size: 100 })
   const datasets = useDatasets({ page: 1, page_size: 100 })
@@ -160,13 +157,8 @@ export default function DataCenter() {
   )
 
   useEffect(() => {
-    const current = DATA_CENTER_TABS.find((tab) => tab.id === activeTab)
-    setBreadcrumbs([
-      t('dataCenter.breadcrumb.data', '数据'),
-      t('dataCenter.breadcrumb.center', '数据中心'),
-      current?.label ?? t('dataCenter.tab.overview', '概览'),
-    ])
-  }, [activeTab, setBreadcrumbs])
+    setBreadcrumbs([t('dataCenter.breadcrumb.data', '数据'), activeTabItem.label])
+  }, [activeTabItem.label, setBreadcrumbs])
 
   useEffect(() => {
     const primaryAction =
@@ -195,35 +187,52 @@ export default function DataCenter() {
   }, [activeTab, datasources.isFetching, datasets.isFetching, handleRefreshAll, navigate, setTopBarActions])
 
   useEffect(() => {
+    const items = [
+      summary.failedConnections > 0
+        ? t('dataCenter.ctx.failedConnections', '{n} 个连接异常，优先检查连接健康。', { n: summary.failedConnections })
+        : null,
+      summary.pendingConnections > 0
+        ? t('dataCenter.ctx.pendingConnections', '{n} 个连接待测试。', { n: summary.pendingConnections })
+        : null,
+      summary.failedAssets > 0
+        ? t('dataCenter.ctx.failedAssets', '{n} 个资产同步失败。', { n: summary.failedAssets })
+        : null,
+    ].filter(Boolean) as string[]
+
     setContextPanel({
-      title: t('dataCenter.ctx.title', '数据中心'),
-      subtitle: t('dataCenter.ctx.subtitle', '按连接、资产、同步和影响组织数据中心能力。'),
+      title: t('dataCenter.ctx.title', '数据健康'),
+      subtitle:
+        items.length > 0
+          ? t('dataCenter.ctx.hasIssues', '{n} 项待处理', { n: items.length })
+          : t('dataCenter.ctx.noIssues', '当前无阻断项'),
       body: (
         <div className="space-y-4 px-4 py-4 text-xs">
-          <ContextSection title={t('dataCenter.ctx.boundary', '产品边界')}>
-            <p className="leading-5 text-3">
-              {t('dataCenter.ctx.boundaryDesc', '数据中心承接连接、资产目录、同步任务和影响分析；语义中心负责语义资产持久化与编译，gateway 负责执行物理 SQL。')}
-            </p>
-          </ContextSection>
-          <ContextSection title={t('dataCenter.ctx.launch', '上线判断')}>
-            <ul className="space-y-1 leading-5 text-3">
-              <li>{t('dataCenter.ctx.launchConnection', '连接状态入口唯一且可解释')}</li>
-              <li>{t('dataCenter.ctx.launchAsset', '资产目录不再暴露内部 Dataset 术语')}</li>
-              <li>{t('dataCenter.ctx.launchSync', '同步失败能直接定位下一步')}</li>
-              <li>{t('dataCenter.ctx.launchImpact', '影响分析只展示消费者关系，不暴露 API')}</li>
-            </ul>
-          </ContextSection>
           <ContextSection title={t('dataCenter.ctx.currentData', '当前数据')}>
             <div className="grid grid-cols-2 gap-2">
               <MiniStat label={t('dataCenter.unit.connection', '连接')} value={summary.sourceTotal} />
               <MiniStat label={t('dataCenter.unit.asset', '资产')} value={summary.assetTotal} />
             </div>
           </ContextSection>
+          <ContextSection title={t('dataCenter.ctx.todo', '待处理')}>
+            {items.length > 0 ? (
+              <ul className="space-y-2">
+                {items.map((item) => (
+                  <li key={item} className="rounded-md border px-3 py-2 leading-5 text-2" style={{ borderColor: 'var(--border)' }}>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="rounded-md border px-3 py-2 leading-5 text-3" style={{ borderColor: 'var(--border)' }}>
+                {t('dataCenter.ctx.noTodo', '连接和资产同步状态正常。')}
+              </div>
+            )}
+          </ContextSection>
         </div>
       ),
     })
     return () => setContextPanel(null)
-  }, [setContextPanel, summary.assetTotal, summary.sourceTotal])
+  }, [setContextPanel, summary])
 
   const loading = datasources.isLoading || datasets.isLoading
   const error = datasources.error ?? datasets.error
@@ -231,34 +240,6 @@ export default function DataCenter() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div
-        className="border-b px-5 py-4"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span
-                className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium"
-                style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
-              >
-                {t('dataCenter.hero.badge', '数据中心')}
-              </span>
-              <span className="text-[11px] text-3">{t('dataCenter.hero.kicker', '连接、资产、同步与影响分析')}</span>
-            </div>
-            <h1 className="mt-2 text-[20px] font-semibold text-1">{t('dataCenter.hero.title', '数据中心')}</h1>
-            <p className="mt-1 max-w-3xl text-[12px] leading-5 text-3">
-              {t('dataCenter.hero.desc', '按“连接 → 资产 → 同步 → 影响”的任务路径组织数据中心能力，不改变语义中心与 gateway 的职责边界。')}
-            </p>
-          </div>
-          <WorkflowStrip />
-        </div>
-      </div>
-
-      <div className="shrink-0 px-5 pt-3">
-        <DataCenterNavTabs />
-      </div>
-
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-4">
         {isError ? (
           <RetryState
@@ -273,8 +254,6 @@ export default function DataCenter() {
             {activeTab === 'overview' ? (
               <OverviewPanel
                 summary={summary}
-                sources={sourceRows}
-                assets={assetRows}
                 onOpenConnections={() => navigate('/data-center/connections')}
                 onOpenAssets={() => navigate('/data-center/assets')}
               />
@@ -312,35 +291,8 @@ export default function DataCenter() {
   )
 }
 
-function WorkflowStrip() {
-  const steps = [
-    { label: t('dataCenter.workflow.connection', '连接'), icon: ServerCog },
-    { label: t('dataCenter.workflow.asset', '资产'), icon: Boxes },
-    { label: t('dataCenter.workflow.sync', '同步'), icon: RefreshCw },
-    { label: t('dataCenter.workflow.impact', '影响'), icon: GitBranch },
-  ]
-  return (
-    <div
-      className="flex h-10 items-center rounded-md border px-3"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
-    >
-      {steps.map((step, index) => (
-        <div key={step.label} className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 text-[12px] font-medium text-2">
-            <step.icon size={13} aria-hidden />
-            {step.label}
-          </span>
-          {index < steps.length - 1 ? <ArrowRight size={12} className="mx-2 text-3" aria-hidden /> : null}
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function OverviewPanel({
   summary,
-  sources,
-  assets,
   onOpenConnections,
   onOpenAssets,
 }: {
@@ -353,8 +305,6 @@ function OverviewPanel({
     sourceTotal: number
     assetTotal: number
   }
-  sources: Datasource[]
-  assets: Dataset[]
   onOpenConnections: () => void
   onOpenAssets: () => void
 }) {
@@ -385,7 +335,7 @@ function OverviewPanel({
         <MetricCard title={t('dataCenter.metric.syncedAssets', '已同步资产')} value={summary.syncedAssets} icon={Table2} helper={t('dataCenter.metric.syncedAssetsDesc', '字段结构可用的资产')} tone="success" />
       </div>
 
-      <div className="grid min-h-[320px] grid-cols-[1.4fr_1fr] gap-4">
+      <div className="min-h-[280px]">
         <Panel title={t('dataCenter.overview.todo', '今日待处理')} subtitle={t('dataCenter.overview.todoDesc', '把分散的错误和未知态收敛成运营队列。')}>
           <div className="grid grid-cols-3 gap-2">
             {risks.map((risk) => (
@@ -407,29 +357,6 @@ function OverviewPanel({
               cta={t('dataCenter.task.openAssets', '进入资产目录')}
               onClick={onOpenAssets}
             />
-          </div>
-        </Panel>
-
-        <Panel title={t('dataCenter.overview.recentObjects', '最近运营对象')} subtitle={t('dataCenter.overview.recentObjectsDesc', '按工作对象而不是内部 API 组织。')}>
-          <div className="space-y-2">
-            {sources.slice(0, 3).map((source) => (
-              <ObjectRow
-                key={`source-${source.id}`}
-                icon={<DatasourceTypeIcon type={source.source_type} size="sm" />}
-                title={source.name}
-                subtitle={`${datasourceTypeLabel(source.source_type)} · ${fmtDateTime(source.updated_at)}`}
-                meta={connectionStatusChip(source.connection_status)}
-              />
-            ))}
-            {assets.slice(0, 2).map((asset) => (
-              <ObjectRow
-                key={`asset-${asset.id}`}
-                icon={<Boxes size={16} />}
-                title={asset.dataset_name}
-                subtitle={asset.physical_table ?? asset.dataset_code}
-                meta={syncStatusChip(asset.sync_status)}
-              />
-            ))}
           </div>
         </Panel>
       </div>
@@ -730,7 +657,10 @@ function ImpactPanel({
       asset: asset.dataset_name,
       source: assetSourceName(asset, sourceNameById),
       semantic: asset.sync_status === 'synced' ? t('dataCenter.impact.semanticReady', '可进入语义建设') : t('dataCenter.impact.semanticPending', '等待同步'),
-      consumers: asset.sync_status === 'synced' ? t('dataCenter.impact.consumers', '语义中心 / BI / Data Agent') : t('dataCenter.common.none', '暂无'),
+      blocker:
+        asset.sync_status === 'synced'
+          ? t('dataCenter.impact.blocker.none', '暂无阻断')
+          : t('dataCenter.impact.blocker.sync', '等待资产同步'),
     }))
   }, [assets, sourceNameById])
 
@@ -739,24 +669,132 @@ function ImpactPanel({
       { key: 'asset', title: t('dataCenter.impact.col.asset', '数据资产'), render: (row) => <span className="text-xs font-medium text-1">{row.asset}</span> },
       { key: 'source', title: t('dataCenter.impact.col.source', '来源连接'), width: 180 },
       { key: 'semantic', title: t('dataCenter.impact.col.semantic', '语义可用性'), width: 160 },
-      { key: 'consumers', title: t('dataCenter.impact.col.consumers', '潜在消费者'), width: 220 },
+      { key: 'blocker', title: t('dataCenter.impact.col.blocker', '阻断项'), width: 160 },
     ],
     [],
   )
 
+  const impactSummary = useMemo(() => {
+    const readyAssets = assets.filter((asset) => asset.sync_status === 'synced')
+    const blockedAssets = assets.filter((asset) => asset.sync_status !== 'synced')
+    const assetCountBySource = new Map<number, number>()
+    for (const asset of assets) {
+      const sourceId = assetSourceId(asset)
+      if (sourceId == null) continue
+      assetCountBySource.set(sourceId, (assetCountBySource.get(sourceId) ?? 0) + 1)
+    }
+    const coveredSources = sources.filter((source) => (assetCountBySource.get(source.id) ?? 0) > 0)
+    const pendingSources = coveredSources.filter((source) => !isConnectedDatasourceStatus(source.connection_status))
+
+    return {
+      readyAssets,
+      blockedAssets,
+      coveredSources,
+      pendingSources,
+      assetCountBySource,
+    }
+  }, [assets, sources])
+
+  const actionItems = useMemo(() => {
+    if (assets.length === 0) {
+      return [t('dataCenter.impact.action.noAssets', '暂无可分析资产，先完成连接和资产同步。')]
+    }
+    const items: string[] = []
+    if (impactSummary.blockedAssets.length > 0) {
+      items.push(t('dataCenter.impact.action.blockedAssets', '{n} 个资产未完成同步，暂不进入语义建设。', { n: impactSummary.blockedAssets.length }))
+    }
+    if (impactSummary.pendingSources.length > 0) {
+      items.push(t('dataCenter.impact.action.pendingSources', '{n} 个来源连接未连通，可能阻断资产刷新。', { n: impactSummary.pendingSources.length }))
+    }
+    if (items.length === 0) {
+      items.push(t('dataCenter.impact.action.allClear', '暂无阻断项，已同步资产可继续进入语义建设。'))
+    }
+    return items
+  }, [assets.length, impactSummary.blockedAssets.length, impactSummary.pendingSources.length])
+
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[1fr_300px] gap-4">
-      <Panel title={t('dataCenter.impact.title', '影响分析')} subtitle={t('dataCenter.impact.subtitle', '展示资产被哪些语义能力和消费端使用，不再把内部查询 API 当作用户入口。')} fullHeight>
-        <Table columns={columns} rows={rows} rowKey={(row) => row.id} emptyText={t('dataCenter.impact.empty', '暂无影响关系')} />
+      <Panel title={t('dataCenter.impact.title', '影响准备度')} subtitle={t('dataCenter.impact.subtitle', '基于资产同步状态和来源连接判断资产是否可进入语义建设。')} fullHeight>
+        <Table columns={columns} rows={rows} rowKey={(row) => row.id} emptyText={t('dataCenter.impact.empty', '暂无资产影响准备度')} />
       </Panel>
-      <Panel title={t('dataCenter.boundary.title', '职责边界')} subtitle={t('dataCenter.boundary.subtitle', '方案 B 不改变底层运行边界。')}>
-        <BoundaryItem icon={Boxes} title={t('dataCenter.boundary.dataCenter', '数据中心')} description={t('dataCenter.boundary.dataCenterDesc', '管理连接、目录、同步和资产影响。')} />
-        <BoundaryItem icon={Database} title={t('dataCenter.boundary.semantic', '语义中心')} description={t('dataCenter.boundary.semanticDesc', '持久化语义资产，封装语义到 SQL / Query Plan 的编译能力。')} />
-        <BoundaryItem icon={ShieldCheck} title="Gateway" description={t('dataCenter.boundary.gatewayDesc', '执行物理 SQL，不承接建模工具语义 spec。')} />
-        <div className="mt-4 rounded-md border p-3 text-[12px] leading-5 text-3" style={{ borderColor: 'var(--border)' }}>
-          {t('dataCenter.boundary.currentConnections', '当前连接 {n} 个，影响分析只做控制面展示；真实查询事实仍以 gateway 为准。', { n: sources.length })}
+      <Panel title={t('dataCenter.impact.summary.title', '准备度摘要')} subtitle={t('dataCenter.impact.summary.subtitle', '从资产可用性、阻断项和来源覆盖判断建设风险。')}>
+        <div className="grid grid-cols-2 gap-2">
+          <ImpactStat label={t('dataCenter.impact.summary.readyAssets', '可建模资产')} value={impactSummary.readyAssets.length} helper={t('dataCenter.impact.summary.readyAssetsDesc', '已同步，可进入语义建设')} />
+          <ImpactStat label={t('dataCenter.impact.summary.blockedAssets', '待补齐资产')} value={impactSummary.blockedAssets.length} helper={t('dataCenter.impact.summary.blockedAssetsDesc', '未同步或失败，暂不进入建设')} tone={impactSummary.blockedAssets.length > 0 ? 'warning' : 'neutral'} />
+          <ImpactStat label={t('dataCenter.impact.summary.coveredSources', '涉及连接')} value={impactSummary.coveredSources.length} helper={t('dataCenter.impact.summary.coveredSourcesDesc', '当前资产覆盖的来源连接')} />
+          <ImpactStat label={t('dataCenter.impact.summary.pendingSources', '待检查连接')} value={impactSummary.pendingSources.length} helper={t('dataCenter.impact.summary.pendingSourcesDesc', '可能影响资产刷新')} tone={impactSummary.pendingSources.length > 0 ? 'warning' : 'neutral'} />
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-3">{t('dataCenter.impact.summary.actions', '待处理影响')}</div>
+          <div className="space-y-2">
+            {actionItems.map((item) => (
+              <ImpactActionItem key={item} label={item} />
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-3">{t('dataCenter.impact.summary.sources', '来源覆盖')}</div>
+          <div className="space-y-2">
+            {impactSummary.coveredSources.length > 0 ? (
+              impactSummary.coveredSources.slice(0, 4).map((source) => (
+                <ImpactSourceRow
+                  key={source.id}
+                  source={source}
+                  assetCount={impactSummary.assetCountBySource.get(source.id) ?? 0}
+                />
+              ))
+            ) : (
+              <div className="rounded-md border px-3 py-2 text-[12px] text-3" style={{ borderColor: 'var(--border)' }}>
+                {t('dataCenter.impact.summary.noSources', '暂无资产来源覆盖')}
+              </div>
+            )}
+          </div>
         </div>
       </Panel>
+    </div>
+  )
+}
+
+function ImpactStat({
+  label,
+  value,
+  helper,
+  tone = 'neutral',
+}: {
+  label: string
+  value: number
+  helper: string
+  tone?: 'neutral' | 'warning'
+}) {
+  const color = tone === 'warning' ? 'var(--warning)' : 'var(--text-1)'
+  return (
+    <div className="rounded-md border p-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
+      <div className="text-[11px] font-medium text-3">{label}</div>
+      <div className="mt-2 text-2xl font-semibold tabular-nums" style={{ color }}>{value}</div>
+      <div className="mt-1 text-[11px] leading-4 text-3">{helper}</div>
+    </div>
+  )
+}
+
+function ImpactActionItem({ label }: { label: string }) {
+  return (
+    <div className="flex gap-2 rounded-md border px-3 py-2 text-[12px] leading-5 text-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
+      <AlertCircle size={14} className="mt-0.5 shrink-0 text-[color:var(--accent)]" aria-hidden />
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function ImpactSourceRow({ source, assetCount }: { source: Datasource; assetCount: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+      <div className="min-w-0">
+        <div className="truncate text-[12px] font-medium text-1">{source.name}</div>
+        <div className="mt-0.5 text-[11px] text-3">{t('dataCenter.impact.summary.assetCount', '{n} 个资产', { n: assetCount })}</div>
+      </div>
+      <div className="shrink-0">{connectionStatusChip(source.connection_status)}</div>
     </div>
   )
 }
@@ -861,45 +899,6 @@ function Panel({
       </div>
       <div className={fullHeight ? 'min-h-0 flex-1 overflow-hidden p-3' : 'p-3'}>{children}</div>
     </section>
-  )
-}
-
-function ObjectRow({
-  icon,
-  title,
-  subtitle,
-  meta,
-}: {
-  icon: React.ReactNode
-  title: string
-  subtitle: string | null
-  meta: React.ReactNode
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-md border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ background: 'var(--bg-surface-2)', color: 'var(--text-2)' }}>
-        {icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-1">{title}</div>
-        <div className="truncate text-[11px] text-3">{subtitle || '-'}</div>
-      </div>
-      <div className="shrink-0">{meta}</div>
-    </div>
-  )
-}
-
-function BoundaryItem({ icon: Icon, title, description }: { icon: typeof Activity; title: string; description: string }) {
-  return (
-    <div className="mb-3 flex gap-3">
-      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ background: 'var(--bg-surface-2)', color: 'var(--accent)' }}>
-        <Icon size={15} />
-      </div>
-      <div>
-        <div className="text-[13px] font-semibold text-1">{title}</div>
-        <div className="mt-0.5 text-[12px] leading-5 text-3">{description}</div>
-      </div>
-    </div>
   )
 }
 

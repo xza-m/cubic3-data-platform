@@ -1360,7 +1360,7 @@ test("P1 Build Project 批量语义建设生成真实候选队列 @smoke @p34", 
   await expect(page.getByText("Builder 过渡工作区")).toHaveCount(0);
   await expect(page.getByText("推荐范围", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("未选真实数据源，使用演示数据生成候选队列；选定数据源与库后可扫描真实表。"),
+    page.getByText("暂不绑定真实数据源时，将根据当前输入生成待确认候选队列；选定数据源与库后可扫描真实表。"),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: /生成候选队列/ })).toBeVisible();
   await page.getByLabel("业务主题").fill("学情分析");

@@ -13,6 +13,7 @@ import type { ReactNode } from 'react'
 import { Edit3, Power, PowerOff, Send, Trash2 } from 'lucide-react'
 import { ActionIconButton } from '@v2/components/ActionIconButton'
 import { IdentityName } from '@v2/components/IdentityName'
+import { StructuredDetails } from '@v2/components/common/StructuredDetails'
 import { Chip, type ChipTone } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
@@ -38,8 +39,8 @@ export const CHANNEL_TYPE_TONE: Record<ChannelType, ChipTone> = {
 
 export function channelTypeChip(type: ChannelType): ReactNode {
   return (
-    <Chip tone={CHANNEL_TYPE_TONE[type]}>
-      {CHANNEL_TYPE_LABEL[type] ?? type}
+    <Chip tone={CHANNEL_TYPE_TONE[type] ?? 'neutral'}>
+      {CHANNEL_TYPE_LABEL[type] ?? t('channel.type.unknown', '未知渠道')}
     </Chip>
   )
 }
@@ -111,7 +112,6 @@ export function ChannelDetailContent({
       ) : null}
 
       <DetailSection title={t('channel.section.basic', '基础信息')}>
-        <DetailRow label={t('common.id', '编号')} value={<code>#{row.id}</code>} />
         <DetailRow label={t('common.name', '名称')} value={row.name} />
         <DetailRow label={t('channel.field.type', '类型')} value={channelTypeChip(row.channel_type)} />
         <DetailRow
@@ -143,12 +143,11 @@ export function ChannelDetailContent({
       ) : null}
 
       <DetailSection title={t('channel.section.config', '渠道配置')}>
-        <pre
-          className="overflow-auto rounded border p-2 text-xs leading-4"
-          style={{ background: 'var(--bg-surface-2)', borderColor: 'var(--border)', color: 'var(--text-2)' }}
-        >
-          {JSON.stringify(row.config, null, 2)}
-        </pre>
+        <StructuredDetails
+          title={t('channel.config.detailTitle', '查看配置详情')}
+          value={row.config}
+          summary={channelConfigSummary(row)}
+        />
       </DetailSection>
     </div>
   )
@@ -235,6 +234,18 @@ function DetailRow({ label, value }: { label: string; value: ReactNode }) {
       <dd className="truncate" style={{ color: 'var(--text-1)' }}>{value}</dd>
     </div>
   )
+}
+
+function channelConfigSummary(row: Channel): string {
+  const config = row.config ?? {}
+  const keyCount = Object.keys(config).length
+  const target =
+    row.channel_type === 'email'
+      ? t('channel.config.emailTarget', '收件人配置')
+      : row.channel_type === 'oss'
+        ? t('channel.config.ossTarget', '存储桶配置')
+        : t('channel.config.webhookTarget', 'Webhook 配置')
+  return `${CHANNEL_TYPE_LABEL[row.channel_type]} · ${target} · ${t('channel.config.keyCount', '{count} 项', { count: keyCount })}`
 }
 
 function CtxPair({ label, value }: { label: string; value: ReactNode }) {

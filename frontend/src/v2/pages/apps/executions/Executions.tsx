@@ -15,6 +15,9 @@ import { useExecutions } from '@v2/hooks/instances'
 import { ExecStatusChip } from '../_shared/instance-content'
 import { fmtDuration, ExecutionPeekContent } from '../_shared/execution-content'
 import type { AppExecution } from '@v2/api/instances'
+import { appCodeLabel } from '@v2/lib/appLabels'
+import { TechnicalValue } from '@v2/components/common/TechnicalValue'
+import { technicalIdLabel } from '@v2/lib/displayLabels'
 
 type StatusFilter = '' | AppExecution['status']
 const EXECUTIONS_PAGE_SIZE = 20
@@ -55,13 +58,13 @@ function PeekPanel({
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <code className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              #{execution.id}
-            </code>
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
+              {technicalIdLabel(t('executions.peek.recordPrefix', '执行记录 '), execution.id)}
+            </span>
             <ExecStatusChip status={execution.status} />
           </div>
           <div className="mt-0.5 text-xs" style={{ color: 'var(--text-3)' }}>
-            {execution.instance?.name ?? t('executions.instanceRef', '实例 #{id}', { id: execution.instance_id })}
+            {execution.instance?.name ?? t('executions.instanceUnknown', '未知实例')}
           </div>
         </div>
         <button
@@ -134,11 +137,11 @@ export default function Executions() {
     if (!q) return executions
     return executions.filter((e) => {
       const instanceName = e.instance?.name ?? ''
-      const appCode = e.instance?.app_code ?? ''
+      const appName = appCodeLabel(e.instance?.app_code)
       return (
         String(e.id).includes(q) ||
         instanceName.toLowerCase().includes(q) ||
-        appCode.toLowerCase().includes(q)
+        appName.toLowerCase().includes(q)
       )
     })
   }, [executions, keyword])
@@ -187,8 +190,8 @@ export default function Executions() {
             </span>
             {(appCodeFilter || instanceIdFilter) && (
               <span className="ml-2 text-xs" style={{ color: 'var(--text-3)' }}>
-                {appCodeFilter && `app: ${appCodeFilter}`}
-                {instanceIdFilter ? t('executions.instanceRef', '实例 #{id}', { id: instanceIdFilter }) : ''}
+                {appCodeFilter ? appCodeLabel(appCodeFilter) : ''}
+                {instanceIdFilter ? t('executions.instanceScoped', '已按实例筛选') : ''}
               </span>
             )}
           </div>
@@ -199,7 +202,7 @@ export default function Executions() {
                 setKeyword(value)
                 setPageNo(1)
               }}
-              placeholder={t('executions.search_placeholder', '按 ID / 实例名搜索…')}
+              placeholder={t('executions.search_placeholder', '按实例或应用搜索…')}
               ariaLabel={t('executions.search.aria', '搜索执行记录')}
               width={220}
             />
@@ -258,7 +261,7 @@ export default function Executions() {
                 <table className="w-full text-xs">
                 <thead>
                   <tr style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}>
-                    <th className="px-4 py-2 text-left font-normal">#</th>
+                    <th className="px-4 py-2 text-left font-normal">{t('exec.field.record', '执行记录')}</th>
                     <th className="px-4 py-2 text-left font-normal">
                       {t('exec.field.instance', '实例')}
                     </th>
@@ -288,15 +291,15 @@ export default function Executions() {
                       onClick={() => setPeek(exec.id === peek?.id ? null : exec)}
                     >
                       <td className="px-4 py-2">
-                        <code>#{exec.id}</code>
+                        <TechnicalValue value={exec.id} label={t('exec.field.recordShort', '记录')} />
                       </td>
                       <td className="px-4 py-2" style={{ color: 'var(--text-1)' }}>
                         {exec.instance?.name ?? (
-                          <span style={{ color: 'var(--text-3)' }}>#{exec.instance_id}</span>
+                          <span style={{ color: 'var(--text-3)' }}>{t('executions.instanceUnknown', '未知实例')}</span>
                         )}
                         {exec.app && (
                           <span className="ml-1" style={{ color: 'var(--text-3)' }}>
-                            · <code>{exec.app.code}</code>
+                            · {exec.app.name || appCodeLabel(exec.app.code)}
                           </span>
                         )}
                       </td>

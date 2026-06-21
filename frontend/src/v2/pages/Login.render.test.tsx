@@ -19,6 +19,18 @@ import { buildCliExchangeCommand } from './login-utils'
 import Login from './Login'
 
 describe('Login CLI authorization callback', () => {
+  it('password login form does not expose development bypass instructions', () => {
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <Login />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument()
+    expect(screen.queryByText(/VITE_AUTH_BYPASS/)).not.toBeInTheDocument()
+    expect(screen.queryByText('调试可设')).not.toBeInTheDocument()
+  })
+
   it('renders a dedicated CLI completion page instead of the password login form', () => {
     render(
       <MemoryRouter initialEntries={['/login?cli_code=code_abc123']}>

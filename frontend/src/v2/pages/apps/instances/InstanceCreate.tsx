@@ -7,11 +7,13 @@
 
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Pencil } from 'lucide-react'
 import { t } from '@v2/i18n'
 import { useApps, useValidateAppConfig } from '@v2/hooks/apps'
 import { useCreateInstance } from '@v2/hooks/instances'
 import { getAppConfigSchema } from '@v2/api/apps'
+import { appCategoryLabel } from '@v2/lib/appLabels'
+import { StructuredDetails } from '@v2/components/common/StructuredDetails'
 
 const SCHEDULE_TYPES = [
   { value: 'manual', label: t('schedule.manual', '手动') },
@@ -61,7 +63,10 @@ interface FieldErrors {
 export default function InstanceCreate() {
   const navigate = useNavigate()
   const location = useLocation()
-  const prefilledAppCode = (location.state as { app_code?: string } | null)?.app_code ?? ''
+  const prefilledAppCode =
+    new URLSearchParams(location.search).get('app_code')
+    || (location.state as { app_code?: string } | null)?.app_code
+    || ''
 
   const [appCode, setAppCode] = useState(prefilledAppCode)
   const [name, setName] = useState('')
@@ -71,6 +76,7 @@ export default function InstanceCreate() {
   const [scheduleConfigText, setScheduleConfigText] = useState('{}')
   const [errors, setErrors] = useState<FieldErrors>({})
   const [configSchema, setConfigSchema] = useState<Record<string, unknown> | null>(null)
+  const [configEditing, setConfigEditing] = useState(false)
 
   const { data: apps = [], isLoading: appsLoading } = useApps({ enabled_only: true })
   const createMut = useCreateInstance()
@@ -147,6 +153,10 @@ export default function InstanceCreate() {
     borderColor: 'var(--border)',
     color: 'var(--text-1)',
   }
+  const configPreview = formatJsonForDisplay(configText)
+  const schemaPreview = configSchema && Object.keys(configSchema).length > 0
+    ? JSON.stringify(configSchema, null, 2)
+    : ''
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -205,7 +215,7 @@ export default function InstanceCreate() {
                     <option value="">{t('form.placeholder.select_app', '请选择应用…')}</option>
                     {apps.map((a) => (
                       <option key={a.code} value={a.code}>
-                        {a.name} ({a.code})
+                        {a.name} · {appCategoryLabel(a.category)} · {a.enabled ? t('common.enabled', '启用') : t('common.disabled', '已停')}
                       </option>
                     ))}
                   </select>
@@ -259,7 +269,7 @@ export default function InstanceCreate() {
 
               {scheduleType !== 'manual' && (
                 <FormField
-                  label={t('instance.field.schedule_config', '调度配置（JSON）')}
+                  label={t('instance.field.schedule_config', '调度配置')}
                   error={errors.schedule_config}
                 >
                   <textarea
@@ -280,65 +290,104 @@ export default function InstanceCreate() {
             className="rounded-md border p-4"
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
           >
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-                {t('instancecreate.section.config', '配置参数（JSON）')}
+                {t('instancecreate.section.config', '配置参数')}
               </div>
-              {appCode && (
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   className="btn btn-sm btn-ghost"
-                  disabled={validateMut.isPending}
-                  onClick={async () => {
-                    try {
-                      const config = JSON.parse(configText) as Record<string, unknown>
-                      await validateMut.mutateAsync({ code: appCode, config })
-                      setErrors((prev) => ({ ...prev, config: undefined }))
-                    } catch (err: unknown) {
-                      setErrors((prev) => ({
-                        ...prev,
-                        config:
-                          err instanceof Error
-                            ? err.message
-                            : t('form.error.validate_failed', '校验失败'),
-                      }))
-                    }
-                  }}
+                  onClick={() => setConfigEditing((value) => !value)}
+                  aria-pressed={configEditing}
                 >
-                  {t('action.validate', '校验')}
+                  <Pencil size={12} />
+                  {configEditing ? t('action.done', '完成') : t('action.edit', '编辑')}
                 </button>
-              )}
+                {appCode ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    disabled={validateMut.isPending}
+                    onClick={async () => {
+                      try {
+                        const config = JSON.parse(configText) as Record<string, unknown>
+                        await validateMut.mutateAsync({ code: appCode, config })
+                        setErrors((prev) => ({ ...prev, config: undefined }))
+                      } catch (err: unknown) {
+                        setErrors((prev) => ({
+                          ...prev,
+                          config:
+                            err instanceof Error
+                              ? err.message
+                              : t('form.error.validate_failed', '校验失败'),
+                        }))
+                      }
+                    }}
+                  >
+                    <CheckCircle2 size={12} />
+                    {validateMut.isPending ? t('state.validating', '校验中…') : t('action.validate', '校验')}
+                  </button>
+                ) : null}
+              </div>
             </div>
 
-            {configSchema && (
-              <details className="mb-2">
-                <summary className="cursor-pointer text-xs" style={{ color: 'var(--accent)' }}>
-                  {t('instancecreate.view_schema', '查看 Schema')}
-                </summary>
-                <pre
-                  className="mt-1 overflow-auto rounded border p-2 text-xs leading-4"
-                  style={{
-                    background: 'var(--bg-surface-2)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--text-3)',
-                  }}
-                >
-                  {JSON.stringify(configSchema, null, 2)}
-                </pre>
-              </details>
-            )}
+            <div className="space-y-3">
+              <section
+                className="rounded border p-3"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+              >
+                <div className="mb-2 text-xs font-medium" style={{ color: 'var(--text-2)' }}>
+                  {t('instancecreate.schema.title', '配置结构')}
+                </div>
+                {schemaPreview ? (
+                  <StructuredDetails
+                    title={t('instancecreate.schema.detailTitle', '查看结构详情')}
+                    value={configSchema}
+                    summary={t('instancecreate.schema.summary', '配置结构已载入，可先校验再创建实例')}
+                  />
+                ) : (
+                  <div className="rounded border px-2 py-2 text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}>
+                    {t('instancecreate.schema.empty', '当前应用未定义配置结构')}
+                  </div>
+                )}
+              </section>
 
-            <FormField label="" error={errors.config}>
-              <textarea
-                className={inputCls}
-                style={{ ...inputStyle, fontFamily: 'monospace', minHeight: 160 }}
-                value={configText}
-                onChange={(e) => {
-                  setConfigText(e.target.value)
-                  setErrors((prev) => ({ ...prev, config: undefined }))
-                }}
-              />
-            </FormField>
+              <section>
+                <div className="mb-1 text-xs font-medium" style={{ color: 'var(--text-2)' }}>
+                  {t('instancecreate.config.title', '配置内容')}
+                </div>
+                {configEditing ? (
+                  <FormField label="" error={errors.config}>
+                    <textarea
+                      className={inputCls}
+                      style={{ ...inputStyle, fontFamily: 'monospace', minHeight: 160 }}
+                      value={configText}
+                      onChange={(e) => {
+                        setConfigText(e.target.value)
+                        setErrors((prev) => ({ ...prev, config: undefined }))
+                      }}
+                    />
+                  </FormField>
+                ) : (
+                  <>
+                    <pre
+                      className="min-h-[88px] overflow-auto rounded border p-2 text-xs leading-5"
+                      style={{
+                        background: 'var(--bg-surface-2)',
+                        borderColor: 'var(--border)',
+                        color: 'var(--text-2)',
+                      }}
+                    >
+                      {configPreview}
+                    </pre>
+                    {errors.config ? (
+                      <p className="mt-1 text-xs" style={{ color: 'var(--danger)' }}>{errors.config}</p>
+                    ) : null}
+                  </>
+                )}
+              </section>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2">
@@ -363,4 +412,12 @@ export default function InstanceCreate() {
       </div>
     </div>
   )
+}
+
+function formatJsonForDisplay(value: string): string {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
 }

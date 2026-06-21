@@ -366,6 +366,9 @@ export interface DataAssetSyncRun {
 export interface DataAssetSyncRunListResponse {
   items: DataAssetSyncRun[]
   total: number
+  page?: number
+  page_size?: number
+  page_count?: number
 }
 
 export interface SemanticGovernanceIssue {
@@ -460,8 +463,11 @@ export const inferDataAssetFieldSemantics = (tableId: string, fields?: DataAsset
 export const getDataAssetTableEvidence = (tableId: string) =>
   get<DataAssetEvidenceBundle>(`/semantic/assets/tables/${encodeURIComponent(tableId)}/evidence`)
 
-export const listDataAssetSyncRuns = (params?: { limit?: number }) =>
-  get<DataAssetSyncRunListResponse>('/semantic/assets/sync-runs', { limit: params?.limit })
+export const listDataAssetSyncRuns = (params: { page?: number; page_size?: number } = {}) =>
+  get<DataAssetSyncRunListResponse>('/semantic/assets/sync-runs', {
+    page: params.page,
+    page_size: params.page_size,
+  })
 
 export const getSemanticGovernanceIssues = (
   params: { cube_name?: string; schema_source?: 'asset_snapshot' | string } = {},

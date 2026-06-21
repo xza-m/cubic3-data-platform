@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import DataChat from './DataChat'
 
+const appShellMocks = vi.hoisted(() => ({
+  setBreadcrumbs: vi.fn(),
+  setTopBarActions: vi.fn(),
+  setContextPanel: vi.fn(),
+}))
+
 vi.mock('@v2/layout/AppShell', () => ({
-  useAppShell: () => ({
-    setBreadcrumbs: vi.fn(),
-    setTopBarActions: vi.fn(),
-    setContextPanel: vi.fn(),
-  }),
+  useAppShell: () => appShellMocks,
 }))
 
 vi.mock('@v2/hooks/datasets', () => ({
@@ -105,6 +107,19 @@ vi.mock('@v2/hooks/conversations', () => ({
 }))
 
 describe('DataChat 来源徽标', () => {
+  it('上下文面板不展示接口契约或前端实现说明', () => {
+    render(<DataChat />)
+
+    const calls = appShellMocks.setContextPanel.mock.calls
+    const payload = calls[calls.length - 1]?.[0]
+    expect(payload).toBeTruthy()
+    render(<>{payload.body}</>)
+
+    expect(screen.getByText('对话记录')).toBeInTheDocument()
+    expect(screen.getByText('先选择数据集，再围绕该数据集发起自然语言问数。')).toBeInTheDocument()
+    expect(screen.queryByText(/conversations|接口返回内容|前端伪造/)).not.toBeInTheDocument()
+  })
+
   it('assistant 消息按 source 展示徽标：语义层 / 直连 LLM-未验证', () => {
     render(<DataChat />)
 
@@ -112,12 +127,15 @@ describe('DataChat 来源徽标', () => {
     expect(screen.getByText('直连 LLM · 未验证')).toBeInTheDocument()
   })
 
-  it('展示最近一次语义路由 trace 摘要', () => {
+  it('展示业务化的语义执行摘要，不直出 route_type 或 SQL', () => {
     render(<DataChat />)
 
     const trace = screen.getByTestId('semantic-plan-trace')
-    expect(trace.textContent).toContain('cube')
+    expect(trace.textContent).toContain('Cube 指标匹配')
     expect(trace.textContent).toContain('GMV')
     expect(trace.textContent).toContain('orders')
+    expect(trace.textContent).not.toContain('route')
+    expect(screen.queryByText('SELECT SUM(amount) FROM orders')).not.toBeInTheDocument()
+    expect(screen.getByText('已生成可追溯查询语句，详情可在执行记录中查看。')).toBeInTheDocument()
   })
 })

@@ -1,19 +1,14 @@
 // frontend/src/v2/layout/StatusBar.tsx
-import { Activity, GitBranch, Wifi } from 'lucide-react'
+import { type ReactNode } from 'react'
+import { Wifi } from 'lucide-react'
 import { Kbd } from '@v2/components/ui'
 import { t } from '@v2/i18n'
 
 interface StatusBarProps {
-  envLabel?: string
-  branch?: string
-  apiTarget?: string
-  rightExtra?: React.ReactNode
+  rightExtra?: ReactNode
 }
 
 export function StatusBar({
-  envLabel = 'preview',
-  branch = 'redesign/v0',
-  apiTarget = '/api → :81',
   rightExtra,
 }: StatusBarProps) {
   return (
@@ -23,17 +18,7 @@ export function StatusBar({
     >
       <span className="flex items-center gap-1">
         <Wifi size={11} className="text-[color:var(--success)]" />
-        {t('statusBar.online', '在线')} · {apiTarget}
-      </span>
-      <span className="divider-v" />
-      <span className="flex items-center gap-1">
-        <GitBranch size={11} />
-        {branch}
-      </span>
-      <span className="divider-v" />
-      <span className="flex items-center gap-1">
-        <Activity size={11} />
-        {envLabel}
+        {t('statusBar.online', '服务正常')}
       </span>
       <div className="ml-auto flex items-center gap-2">
         {rightExtra}

@@ -1205,7 +1205,7 @@ export function ReleasePreviewPanel({ preview }: { preview: ReleasePreview | nul
           message: bindingFailed
             ? preview.bindingValidation.message ||
               "存在断链绑定，发布将被 gate 阻断。"
-            : "Cube、本体和 Binding 已整理为发布预演输入；发布目标是语义中心。",
+            : "Cube、本体和语义绑定已整理为发布预演输入；发布目标是语义中心。",
         },
         semanticCompile: {
           status: toPublishCheckStatus(preview.semanticCompile.status),

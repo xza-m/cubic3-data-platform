@@ -64,7 +64,7 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette, hideBreadcr
           variant="ghost"
           size="sm"
           aria-label={t('topBar.changes', '变更')}
-          title={t('topBar.changesPending', '变更中心暂未接入')}
+          title={t('topBar.changesUnavailable', '暂无可查看的变更')}
           disabled
         >
           <Rocket size={12} /> {t('topBar.changes', '变更')}
@@ -73,7 +73,7 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette, hideBreadcr
           variant="ghost"
           size="sm"
           aria-label={t('topBar.notifications', '通知')}
-          title={t('topBar.notificationsPending', '通知中心暂未接入')}
+          title={t('topBar.notificationsUnavailable', '暂无通知')}
           disabled
         >
           <Bell size={12} />

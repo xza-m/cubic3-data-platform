@@ -28,6 +28,36 @@ vi.mock('@v2/hooks/semantic', () => ({
   useDraftCubeFromSource: () => ({ mutateAsync: draftCube, isPending: false, isError: false }),
 }))
 
+vi.mock('@v2/hooks/datasets', () => ({
+  useDatasets: () => ({
+    data: {
+      items: [
+        {
+          id: 11,
+          dataset_name: '学生评论事实数据集',
+          datasource_name: '生产 PostgreSQL',
+        },
+      ],
+    },
+    isLoading: false,
+  }),
+}))
+
+vi.mock('@v2/hooks/datasources', () => ({
+  useDatasources: () => ({
+    data: {
+      items: [
+        {
+          id: 7,
+          name: '生产 PostgreSQL',
+          source_type: 'postgresql',
+        },
+      ],
+    },
+    isLoading: false,
+  }),
+}))
+
 import CubeCreate from './CubeCreate'
 
 function renderPage() {
@@ -67,12 +97,19 @@ describe('CubeCreate', () => {
     renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: '从数据源候选生成' }))
+    fireEvent.change(screen.getByDisplayValue('选择数据源'), { target: { value: '7' } })
     fireEvent.change(screen.getByPlaceholderText('cube_name_snake_case'), { target: { value: 'student_comment' } })
     fireEvent.change(screen.getByPlaceholderText('如：订单交易 Cube'), { target: { value: '学生评论' } })
     fireEvent.click(screen.getByRole('button', { name: '生成草稿' }))
 
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/semantic/cubes/student_comment/edit'))
 
+    expect(draftCube).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_kind: 'datasource',
+        source_id: '7',
+      }),
+    )
     expect(sessionStorage.getItem('cube-draft-field-candidates:student_comment')).toContain('fcs_1')
   })
 

@@ -26,10 +26,10 @@ export const SUBSCRIPTION_EVENT_OPTIONS = [
   'app.instance.deleted',
 ].map((value) => ({
   value,
-  label: EVENT_TYPE_LABELS[value] ?? value,
+  label: EVENT_TYPE_LABELS[value] ?? '未知事件',
 }))
 
 export function eventTypeLabel(value: string | null | undefined): string {
   if (!value) return '—'
-  return EVENT_TYPE_LABELS[value] ?? value
+  return EVENT_TYPE_LABELS[value] ?? '未知事件'
 }

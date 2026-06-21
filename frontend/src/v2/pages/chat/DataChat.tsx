@@ -82,8 +82,8 @@ export default function DataChat() {
       subtitle: t('dataChat.ctx.subtitle', '选择数据集后发起自然语言问数'),
       body: (
         <div className="space-y-3 px-4 py-4 text-xs text-2">
-          <p>{t('dataChat.ctx.contract', '对话入口使用 conversations 契约，发送消息前必须先绑定数据集。')}</p>
-          <p>{t('dataChat.ctx.noFakeData', '页面只展示接口返回内容，不在前端伪造 AI 结果。')}</p>
+          <p>{t('dataChat.ctx.datasetFirst', '先选择数据集，再围绕该数据集发起自然语言问数。')}</p>
+          <p>{t('dataChat.ctx.trust', '回答会标注来源，优先使用已验证的语义层结果。')}</p>
         </div>
       ),
     })
@@ -183,7 +183,7 @@ export default function DataChat() {
             tone: 'success',
             title: t('dataChat.execute.submitted', '已提交正式执行'),
             description: result.gateway_query_id
-              ? t('dataChat.execute.gatewayQuery', 'Gateway Query ID：{id}', { id: String(result.gateway_query_id) })
+              ? t('dataChat.execute.gatewayQuery', '执行任务已生成，可在执行记录中追踪')
               : undefined,
           })
         } else {
@@ -295,7 +295,7 @@ export default function DataChat() {
                       ? t('dataChat.activeDataset', '当前数据集：{name}', { name: selectedDataset.dataset_name })
                       : t('dataChat.noDataset', '请选择一个数据集')
                   }
-                  extra={<Chip tone="accent">{t('dataChat.api', 'conversations')}</Chip>}
+                  extra={<Chip tone="accent">{t('dataChat.api', '对话记录')}</Chip>}
                 />
                 <CardBody className="space-y-3">
                   <SemanticPlanTrace
@@ -383,7 +383,7 @@ function ConversationButton({
   )
 }
 
-/** 最近一次语义路由 trace 摘要（conversation.context.semantic_plan） */
+/** 最近一次语义执行摘要（conversation.context.semantic_plan） */
 function SemanticPlanTrace({
   context,
   executeResult,
@@ -404,7 +404,7 @@ function SemanticPlanTrace({
   const decision = decisionLabel((plan.policy_decision ?? {}) as Record<string, unknown>)
   const parts: string[] = []
   if (typeof route.route_type === 'string') {
-    parts.push(t('dataChat.trace.routeValue', '路由：{value}', { value: route.route_type }))
+    parts.push(t('dataChat.trace.routeValue', '理解方式：{value}', { value: semanticRouteLabel(route.route_type) }))
   }
   const metricTitle = metric.title ?? metric.name
   if (typeof metricTitle === 'string') {
@@ -426,7 +426,7 @@ function SemanticPlanTrace({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span>
-          {t('dataChat.trace.title', '语义路由 trace')}
+          {t('dataChat.trace.title', '语义执行摘要')}
           {parts.length > 0 ? ` · ${parts.join(' · ')}` : ''}
         </span>
         {canSubmit ? (
@@ -443,7 +443,29 @@ function SemanticPlanTrace({
 
 function decisionLabel(policyDecision: Record<string, unknown>): string | null {
   const raw = policyDecision.decision ?? policyDecision.effect
-  return typeof raw === 'string' && raw ? raw : null
+  if (typeof raw !== 'string' || !raw) return null
+  const normalized = raw.toLowerCase()
+  const labels: Record<string, string> = {
+    allow: t('dataChat.policy.allow', '允许执行'),
+    allowed: t('dataChat.policy.allow', '允许执行'),
+    deny: t('dataChat.policy.deny', '已拦截'),
+    denied: t('dataChat.policy.deny', '已拦截'),
+    review: t('dataChat.policy.review', '需要复核'),
+  }
+  return labels[normalized] ?? raw
+}
+
+function semanticRouteLabel(routeType: string): string {
+  const normalized = routeType.trim().toLowerCase()
+  const labels: Record<string, string> = {
+    semantic: t('dataChat.route.semantic', '语义模型匹配'),
+    semantic_router: t('dataChat.route.semantic', '语义模型匹配'),
+    cube: t('dataChat.route.cube', 'Cube 指标匹配'),
+    query_plan: t('dataChat.route.queryPlan', '查询计划生成'),
+    direct_sql: t('dataChat.route.directSql', 'SQL 直连兜底'),
+    fallback: t('dataChat.route.fallback', '兜底理解'),
+  }
+  return labels[normalized] ?? t('dataChat.route.semantic', '语义模型匹配')
 }
 
 function SemanticExecuteResult({ result }: { result: AgentSemanticExecuteResponse }) {
@@ -456,7 +478,7 @@ function SemanticExecuteResult({ result }: { result: AgentSemanticExecuteRespons
         </Chip>
         <span className="text-3">
           {submitted && result.gateway_query_id
-            ? t('dataChat.execute.gatewayQuery', 'Gateway Query ID：{id}', { id: String(result.gateway_query_id) })
+            ? t('dataChat.execute.gatewayQuery', '执行任务已生成，可在执行记录中追踪')
             : result.reason ?? result.decision ?? result.status}
         </span>
       </div>
@@ -491,9 +513,12 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
       </div>
       <div className="whitespace-pre-wrap text-sm leading-6 text-1">{message.content}</div>
       {message.generated_sql ? (
-        <pre className="mt-3 overflow-x-auto rounded bg-black/5 p-3 text-xs dark:bg-white/10">
-          {message.generated_sql}
-        </pre>
+        <div
+          className="mt-3 rounded border px-3 py-2 text-xs text-2"
+          style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
+        >
+          {t('dataChat.sql.generated', '已生成可追溯查询语句，详情可在执行记录中查看。')}
+        </div>
       ) : null}
       {message.error ? <div className="mt-2 text-xs text-danger">{message.error}</div> : null}
     </div>

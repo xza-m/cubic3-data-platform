@@ -63,8 +63,19 @@ export function Table<T>({
               return (
                 <tr
                   key={key}
-                  className={isActive ? 'active' : ''}
+                  className={cn(
+                    isActive ? 'active' : '',
+                    onRowClick ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]' : '',
+                  )}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  aria-selected={isActive || undefined}
                   onClick={() => onRowClick?.(row)}
+                  onKeyDown={(event) => {
+                    if (!onRowClick) return
+                    if (event.key !== 'Enter' && event.key !== ' ') return
+                    event.preventDefault()
+                    onRowClick(row)
+                  }}
                 >
                   {columns.map((c) => (
                     <td

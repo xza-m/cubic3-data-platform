@@ -6,10 +6,14 @@ import {
   formatAccessRoleLabel,
   formatDataLevelLabel,
   formatExecutionModeLabel,
+  formatExecutionProfileAccessLabel,
+  formatExecutionProfileLabel,
   formatGatewayAlertSeverityLabel,
   formatGatewayStabilityBasis,
   formatPolicyEffectLabel,
   formatPolicyScopeChips,
+  formatRowScopeEntryLabel,
+  formatRowScopeSummary,
   gatewayAlertTone,
   getCredentialModeOptions,
   paginateGatewayRows,
@@ -51,14 +55,52 @@ describe('AccessIdentity 管理员文案', () => {
     expect(formatAccessReasonLabel('m3_governance_required', true)).toBe('需要先完成数据治理')
   })
 
+  it('把行级范围压缩成表格摘要，完整条件留给 hover 明细', () => {
+    const decision = {
+      principal_id: 'u_teacher',
+      effective_row_scope: {
+        subject_principal_id: 'scoped_teacher',
+        entries: [
+          {
+            table: 'dw.dwd_comment_reports',
+            column: 'school_id',
+            operator: 'in',
+            values: ['s_001', 's_002'],
+            policy_code: 'm2_detail_read',
+            attribute: 'school_ids',
+          },
+          {
+            table: 'dw.dwd_course_reports',
+            column: 'school_id',
+            operator: 'in',
+            values: ['s_001'],
+            policy_code: 'm2_detail_read',
+          },
+        ],
+      },
+    } as any
+
+    expect(formatRowScopeSummary(decision)).toBe('等 2 条 · dw.dwd_comment_reports.school_id · 数据主体 scoped_teacher')
+    expect(formatRowScopeEntryLabel(decision.effective_row_scope.entries[0])).toBe(
+      'dw.dwd_comment_reports.school_id in [s_001, s_002] · 策略 m2_detail_read · 属性来源 school_ids',
+    )
+  })
+
   it('避免在权限配置 UI 中暴露执行侧凭据术语', () => {
-    expect(formatExecutionModeLabel('gateway_binding')).toBe('网关执行画像')
+    expect(formatExecutionModeLabel('gateway_binding')).toBe('网关执行方式')
     expect(formatExecutionModeLabel('internal_query_execution')).toBe('已下线执行模式')
+    expect(formatExecutionProfileAccessLabel('mc_m0_reader')).toBe('基础数据读取')
+    expect(formatExecutionProfileAccessLabel('mc_m1_reader')).toBe('汇总数据读取')
+    expect(formatExecutionProfileAccessLabel('mc_m2_detail_reader')).toBe('明细数据读取')
+    expect(formatExecutionProfileAccessLabel('mc_m2_detail')).toBe('明细数据读取')
+    expect(formatExecutionProfileAccessLabel('inline_m0')).toBe('基础数据读取')
+    expect(formatExecutionProfileAccessLabel('custom_runtime_profile')).toBe('自定义执行方式')
+    expect(formatExecutionProfileLabel([{ profile_code: 'mc_m2_detail_reader', name: 'mc_m2_detail_reader' } as any])('mc_m2_detail_reader')).toBe('明细数据读取')
     expect(formatPolicyEffectLabel('allow')).toBe('允许访问')
     expect(formatPolicyEffectLabel('deny')).toBe('拒绝访问')
   })
 
-  it('执行画像只保留网关绑定模式，不再把历史模式塞回下拉', () => {
+  it('执行方式只保留网关绑定模式，不再把历史模式塞回下拉', () => {
     expect(getCredentialModeOptions()).toEqual(['gateway_binding'])
     expect(getCredentialModeOptions('inline_policy_decision')).toEqual(['gateway_binding'])
     expect(getCredentialModeOptions('internal_query_execution')).toEqual(['gateway_binding'])
@@ -141,7 +183,7 @@ describe('AccessIdentity 管理员文案', () => {
     } as any)).toBe('网关稳定性 97.3%；成功 900 / 查询 1000')
   })
 
-  it('统计最近网关记录的身份、等级和执行画像缺失情况', () => {
+  it('统计最近网关记录的身份、等级和执行方式缺失情况', () => {
     const rows = [
       { query_id: 'q1', principal_id: 'u1', data_level: 'M1', execution_profile_code: 'mc_m1_reader' },
       { query_id: 'q2', principal_id: null, actor_id: null, data_level: null, execution_profile_code: null },

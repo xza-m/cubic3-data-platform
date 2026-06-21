@@ -95,14 +95,11 @@ export const NAV_MODULES: NavModule[] = [
     defaultPath: '/data-center',
     group: '数据',
     implemented: true,
-    layout: {
-      secondarySidebar: false,
-    },
     subnav: [
       { label: t('nav.dataCenter.sub.overview', '概览'), path: '/data-center', implemented: true },
-      { label: t('nav.dataCenter.sub.connections', '连接管理'), path: '/data-center/connections', implemented: true, matchPrefix: true },
-      { label: t('nav.dataCenter.sub.assets', '资产目录'), path: '/data-center/assets', implemented: true, matchPrefix: true },
-      { label: t('nav.dataCenter.sub.sync', '同步任务'), path: '/data-center/sync', implemented: true, matchPrefix: true },
+      { label: t('nav.dataCenter.sub.connections', '数据连接'), path: '/data-center/connections', implemented: true, matchPrefix: true },
+      { label: t('nav.dataCenter.sub.assets', '数据资产'), path: '/data-center/assets', implemented: true, matchPrefix: true },
+      { label: t('nav.dataCenter.sub.sync', '数据同步'), path: '/data-center/sync', implemented: true, matchPrefix: true },
       { label: t('nav.dataCenter.sub.impact', '影响分析'), path: '/data-center/impact', implemented: true, matchPrefix: true },
     ],
   },

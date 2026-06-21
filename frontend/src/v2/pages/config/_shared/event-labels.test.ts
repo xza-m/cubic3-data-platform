@@ -24,7 +24,7 @@ describe('eventTypeLabel', () => {
     ])
   })
 
-  it('未知枚举保留原值，避免误导', () => {
-    expect(eventTypeLabel('custom.event')).toBe('custom.event')
+  it('未知枚举不直出机器值', () => {
+    expect(eventTypeLabel('custom.event')).toBe('未知事件')
   })
 })

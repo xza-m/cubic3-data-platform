@@ -28,7 +28,7 @@ import {
 } from '../_shared/subscription-content'
 import { eventTypeLabel, SUBSCRIPTION_EVENT_OPTIONS } from '../_shared/event-labels'
 
-// TODO: 等待 X-Crosscut 提供 useAppShell 布局 hook —— 当前用 document.title 占位
+// 详情页仍保留 document.title，同步到多 Tab Shell 时再切换为 useAppShell。
 // import { useAppShell } from '@v2/layout/AppShell'
 
 type SubTabId = 'overview' | 'history'
@@ -135,7 +135,7 @@ export default function SubscriptionDetail() {
   if (!subscription) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs text-red-500">
-        {t('subscription.error.notFound', '未找到订阅 #{id}', { id: numericId })}
+        {t('subscription.error.notFound', '未找到订阅')}
       </div>
     )
   }
@@ -178,7 +178,7 @@ export default function SubscriptionDetail() {
                   : <Chip tone="neutral">{t('common.disabled', '已停')}</Chip>}
               </div>
               <p className="mt-0.5 truncate text-xs" style={{ color: 'var(--text-3)' }}>
-                {subscription.channel?.name ?? t('subscriptionDetail.channelPrefix', '渠道 #{id}', { id: subscription.channel_id })}
+                {subscription.channel?.name ?? t('subscription.channel.unknown', '未知渠道')}
                 {' · '}
                 {t('common.updatedAt', '更新')}：{fmtRelative(subscription.updated_at)}
               </p>
@@ -264,7 +264,6 @@ export default function SubscriptionDetail() {
       </div>
 
       {/* ── 右侧 Context Panel ── */}
-      {/* TODO: 等待 X-Crosscut setContextPanel */}
       <aside
         className="hidden w-56 shrink-0 border-l xl:block"
         style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
@@ -274,7 +273,7 @@ export default function SubscriptionDetail() {
             {subscription.name}
           </div>
           <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-            {subscription.channel?.name ?? `#${subscription.channel_id}`}
+            {subscription.channel?.name ?? t('subscription.channel.unknown', '未知渠道')}
           </div>
         </div>
         <SubscriptionContextBody

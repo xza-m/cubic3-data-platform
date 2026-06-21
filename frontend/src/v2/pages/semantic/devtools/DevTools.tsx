@@ -77,7 +77,7 @@ export default function DevTools() {
   }
 
   useEffect(() => {
-    setBreadcrumbs([t('nav.semantic', '语义中心'), t('nav.devtools', '开发者工具')])
+    setBreadcrumbs([t('nav.semantic', '语义中心'), t('nav.devtools', '语义诊断')])
   }, [setBreadcrumbs])
 
   const handleReplay = (payload: ReplayPayload) => {

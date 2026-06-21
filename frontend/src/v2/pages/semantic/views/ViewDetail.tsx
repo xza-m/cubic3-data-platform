@@ -58,13 +58,12 @@ export default function ViewDetail() {
         <Button size="sm" variant="ghost" onClick={() => navigate('/semantic/views')}>
           <ArrowLeft size={12} /> {t('action.back', '返回列表')}
         </Button>
-        {/* Phase 3 收敛：调试与运行证据统一回 DevTools（物化保留为运营动作） */}
         <Button
           size="sm"
           variant="ghost"
           onClick={() => navigate(`/semantic/workbench?tab=query&object=${encodeURIComponent(name ?? '')}`)}
         >
-          {t('view.openDevtools', '去 DevTools 调试')}
+          {t('view.openDevtools', '打开语义诊断')}
         </Button>
         {/* 物化触发按钮 */}
         <Button

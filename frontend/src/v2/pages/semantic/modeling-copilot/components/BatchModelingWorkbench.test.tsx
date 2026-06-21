@@ -308,7 +308,7 @@ describe('BatchModelingWorkbench', () => {
 
     expect(screen.getByText('推荐范围')).toBeInTheDocument()
     expect(
-      screen.getByText('未选真实数据源，使用演示数据生成候选队列；选定数据源与库后可扫描真实表。'),
+      screen.getByText('暂不绑定真实数据源时，将根据当前输入生成待确认候选队列；选定数据源与库后可扫描真实表。'),
     ).toBeInTheDocument()
     expect(screen.queryByLabelText('推荐为空，使用手动选表模式')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /高级设置/ }))

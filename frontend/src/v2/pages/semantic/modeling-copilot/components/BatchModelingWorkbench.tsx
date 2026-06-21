@@ -86,7 +86,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
           strategy: scope.strategy,
           include_existing_semantics: scope.includeExistingSemantics,
           // 选定真实数据源 + 库时下发坐标，后端扫描器读真实表缓存出候选；
-          // 否则保持原有演示/手动降级路径。
+          // 否则保持手动范围降级路径。
           ...(hasRealSource
             ? {
                 source_id: scope.sourceId,
@@ -106,7 +106,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
       setProject(scanned)
       setSubmittedScope(scope)
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : '生成候选资产队列失败')
+      setSubmitError(error instanceof Error ? error.message : t('semantic.batch.error.generate', '生成候选资产队列失败'))
     }
   }
 
@@ -118,7 +118,9 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
         packageId: item.id,
         body: {
           action,
-          reason: action === 'defer' ? '用户在候选队列暂缓' : '用户在候选队列标记重复',
+          reason: action === 'defer'
+            ? t('semantic.batch.reason.defer', '用户在候选队列暂缓')
+            : t('semantic.batch.reason.duplicate', '用户在候选队列标记重复'),
         },
       },
       {
@@ -128,7 +130,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
           }
         },
         onError: (error) => {
-          setActionError(error instanceof Error ? error.message : '候选资产操作失败')
+          setActionError(error instanceof Error ? error.message : t('semantic.batch.error.action', '候选资产操作失败'))
         },
       },
     )
@@ -139,13 +141,13 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
       <header className="border-b px-6 py-5" style={{ borderColor: 'var(--border)' }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-[12px] font-semibold uppercase text-3">语义建设工作台</p>
-            <h2 className="m-0 mt-1 text-[22px] font-semibold leading-tight">语义冷启动项目</h2>
+            <p className="text-[12px] font-semibold uppercase text-3">{t('semantic.batch.header.eyebrow', '语义建设工作台')}</p>
+            <h2 className="m-0 mt-1 text-[22px] font-semibold leading-tight">{t('semantic.batch.header.title', '语义冷启动项目')}</h2>
             <p className="m-0 mt-2 max-w-[760px] text-[13px] leading-6 text-2">
-              以业务主题和推荐范围生成待审阅候选队列，再逐个进入资产建设画布收敛字段证据、Cube 口径、本体锚定和发布门禁。
+              {t('semantic.batch.header.desc', '以业务主题和推荐范围生成待审阅候选队列，再逐个进入资产建设画布收敛字段证据、Cube 口径、本体锚定和发布门禁。')}
             </p>
           </div>
-          <Chip tone="accent">目标：语义中心</Chip>
+          <Chip tone="accent">{t('semantic.batch.header.target', '目标：语义中心')}</Chip>
         </div>
       </header>
 
@@ -153,10 +155,10 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
         <section className="rounded-[8px] border bg-[var(--bg-surface)] p-4" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-center gap-2">
             <Layers3 className="h-4 w-4 text-3" aria-hidden />
-            <h2 className="m-0 text-[15px] font-semibold">冷启动范围</h2>
+            <h2 className="m-0 text-[15px] font-semibold">{t('semantic.batch.scope.title', '冷启动范围')}</h2>
           </div>
           <label className="mt-4 block text-[12px] font-medium text-2" htmlFor="batch-modeling-domain">
-            业务主题
+            {t('semantic.batch.scope.domain', '业务主题')}
           </label>
           <Input
             id="batch-modeling-domain"
@@ -166,7 +168,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
           />
 
           <label className="mt-4 block text-[12px] font-medium text-2" htmlFor="batch-modeling-source">
-            数据源
+            {t('semantic.batch.scope.source', '数据源')}
           </label>
           <select
             id="batch-modeling-source"
@@ -181,7 +183,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
               setScope((current) => ({ ...current, sourceId: nextId, sourceLabel: nextLabel, database: null }))
             }}
           >
-            <option value="">演示数据（不选真实源）</option>
+            <option value="">{t('semantic.batch.scope.manualOption', '手动范围（暂不绑定数据源）')}</option>
             {datasourceOptions.map((datasource) => (
               <option key={datasource.id} value={datasource.id}>
                 {datasource.name}
@@ -192,7 +194,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
           {scope.sourceId ? (
             <>
               <label className="mt-3 block text-[12px] font-medium text-2" htmlFor="batch-modeling-database">
-                数据库 / 项目
+                {t('semantic.batch.scope.database', '数据库 / 项目')}
               </label>
               <select
                 id="batch-modeling-database"
@@ -204,7 +206,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                   setScope((current) => ({ ...current, database: event.target.value || null }))
                 }
               >
-                <option value="">{databasesQuery.isLoading ? '加载中...' : '请选择库'}</option>
+                <option value="">{databasesQuery.isLoading ? t('semantic.batch.scope.loading', '加载中...') : t('semantic.batch.scope.selectDatabase', '请选择库')}</option>
                 {databaseOptions.map((database) => (
                   <option key={database} value={database}>
                     {database}
@@ -219,12 +221,12 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
             style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}
           >
             <div className="text-[12px] font-semibold text-1">
-              {scope.sourceId && scope.database ? '真实表扫描' : '推荐范围'}
+              {scope.sourceId && scope.database ? t('semantic.batch.scope.realScan', '真实表扫描') : t('semantic.batch.scope.recommendation', '推荐范围')}
             </div>
             <p className="m-0 mt-1 text-[12px] leading-5 text-3">
               {scope.sourceId && scope.database
-                ? '从所选数据源的真实表缓存按命名分层扫描出候选资产，并做置信度 / 风险分诊。'
-                : '未选真实数据源，使用演示数据生成候选队列；选定数据源与库后可扫描真实表。'}
+                ? t('semantic.batch.scope.realScanDesc', '从所选数据源的真实表缓存按命名分层扫描出候选资产，并做置信度 / 风险分诊。')
+                : t('semantic.batch.scope.manualDesc', '暂不绑定真实数据源时，将根据当前输入生成待确认候选队列；选定数据源与库后可扫描真实表。')}
             </p>
           </div>
 
@@ -237,15 +239,15 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
             >
               <span className="flex items-center gap-2">
                 <SlidersHorizontal className="h-4 w-4 text-3" aria-hidden />
-                高级设置
+                {t('semantic.batch.advanced.title', '高级设置')}
               </span>
-              <span className="text-[11px] text-3">{advancedOpen ? '收起' : '展开'}</span>
+              <span className="text-[11px] text-3">{advancedOpen ? t('semantic.batch.advanced.collapse', '收起') : t('semantic.batch.advanced.expand', '展开')}</span>
             </button>
 
             {advancedOpen ? (
               <div className="border-t px-3 pb-3 pt-2" style={{ borderColor: 'var(--border)' }}>
                 <label className="block text-[12px] font-medium text-2" htmlFor="batch-modeling-source-count">
-                  {isRealSourceScope(scope) ? '最多扫描表数' : '候选表数量'}
+                  {isRealSourceScope(scope) ? t('semantic.batch.advanced.maxTables', '最多扫描表数') : t('semantic.batch.advanced.sourceCount', '候选表数量')}
                 </label>
                 <Input
                   id="batch-modeling-source-count"
@@ -259,12 +261,12 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                 />
                 <p className="m-0 mt-1.5 text-[11px] leading-4 text-3">
                   {isRealSourceScope(scope)
-                    ? '真实扫描时作为本次最多读取的表数上限（按命名分层取前 N 张）。'
-                    : '演示模式下用于估算候选物理表规模。'}
+                    ? t('semantic.batch.advanced.realHelp', '真实扫描时作为本次最多读取的表数上限（按命名分层取前 N 张）。')
+                    : t('semantic.batch.advanced.manualHelp', '手动范围下用于估算候选物理表规模。')}
                 </p>
 
                 <div className="mt-4">
-                  <p className="m-0 text-[12px] font-medium text-2">策略选择</p>
+                  <p className="m-0 text-[12px] font-medium text-2">{t('semantic.batch.advanced.strategy', '策略选择')}</p>
                   <div className="mt-2 grid grid-cols-3 gap-2">
                     {STRATEGIES.map((strategy) => (
                       <button
@@ -292,22 +294,22 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                       setScope((current) => ({ ...current, includeExistingSemantics: event.target.checked }))
                     }
                   />
-                  对齐已有语义资产
+                  {t('semantic.batch.advanced.includeExisting', '对齐已有语义资产')}
                 </label>
 
                 <label className="mt-3 flex items-center gap-2 text-[12px] text-2">
                   <input
-                    aria-label="推荐为空，使用手动选表模式"
+                    aria-label={t('semantic.batch.advanced.manualFallbackAria', '推荐为空，使用手动选表模式')}
                     type="checkbox"
                     checked={manualFallback}
                     onChange={(event) => setManualFallback(event.target.checked)}
                   />
-                  推荐为空时使用手动选表降级
+                  {t('semantic.batch.advanced.manualFallback', '推荐为空时使用手动选表降级')}
                 </label>
                 {manualFallback ? (
                   <>
                     <label className="mt-2 block text-[12px] font-medium text-2" htmlFor="batch-modeling-manual-source">
-                      手动源表名
+                      {t('semantic.batch.advanced.manualSource', '手动源表名')}
                     </label>
                     <Input
                       id="batch-modeling-manual-source"
@@ -329,7 +331,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
             onClick={() => void handleGenerateQueue()}
           >
             <RefreshCw className="h-4 w-4" aria-hidden />
-            {isGenerating ? '生成中...' : '生成候选队列'}
+            {isGenerating ? t('semantic.batch.generate.loading', '生成中...') : t('semantic.batch.generate.action', '生成候选队列')}
           </Button>
           {submitError ? <p className="m-0 mt-3 text-[12px] leading-5 text-danger">{submitError}</p> : null}
         </section>
@@ -343,11 +345,11 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <Search className="h-4 w-4 text-3" aria-hidden />
-                  <h2 className="m-0 text-[15px] font-semibold">扫描计划</h2>
+                  <h2 className="m-0 text-[15px] font-semibold">{t('semantic.batch.plan.title', '扫描计划')}</h2>
                 </div>
                 {hasGenerated ? <h3 className="m-0 mt-2 min-w-0 break-words text-[16px] font-semibold">{plan.title}</h3> : null}
                 <p className="m-0 mt-1 text-[12px] leading-5 text-3">
-                  {hasGenerated ? '已生成冷启动计划，等待逐项审阅。' : '确认冷启动范围后生成候选队列。'}
+                  {hasGenerated ? t('semantic.batch.plan.generatedDesc', '已生成冷启动计划，等待逐项审阅。') : t('semantic.batch.plan.pendingDesc', '确认冷启动范围后生成候选队列。')}
                 </p>
               </div>
               <Chip tone={batchModelingRiskTone(headerRiskLevel)}>{batchModelingRiskLabel(headerRiskLevel)}</Chip>
@@ -364,7 +366,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
             style={{ borderColor: 'var(--border)' }}
           >
             <div className="flex items-center justify-between gap-3">
-              <h2 className="m-0 text-[16px] font-semibold">候选资产队列</h2>
+              <h2 className="m-0 text-[16px] font-semibold">{t('semantic.batch.queue.title', '候选资产队列')}</h2>
               <span className="text-[12px] text-3">
                 {hasGenerated
                   ? t('semantic.batch.queue.count', '{count} 个候选资产包', { count: project.asset_package_count || queueItems.length })
@@ -384,12 +386,12 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                     className="rounded-[8px] border px-3 py-2 text-[12px] leading-5 text-2"
                     style={{ borderColor: 'var(--warning)', background: 'var(--bg-surface-2)' }}
                   >
-                    已选择真实数据源，但未从表缓存扫描到候选（可能尚未同步目录或命名不匹配），当前展示的是降级候选。请到数据源详情触发目录同步后重试。
+                    {t('semantic.batch.queue.fallbackNotice', '已选择真实数据源，但未从表缓存扫描到候选（可能尚未同步目录或命名不匹配），当前展示的是降级候选。请到数据源详情触发目录同步后重试。')}
                   </div>
                 ) : null}
                 {queueItems.length === 0 ? (
                   <div className="rounded-[8px] border px-3 py-3 text-[12px] text-3" style={{ borderColor: 'var(--border)' }}>
-                    本次未生成候选资产，请调整范围或确认数据源已同步表缓存后重试。
+                    {t('semantic.batch.queue.emptyGenerated', '本次未生成候选资产，请调整范围或确认数据源已同步表缓存后重试。')}
                   </div>
                 ) : null}
                 {BATCH_TRIAGE_BUCKET_ORDER.filter((bucket) => triageBuckets[bucket].length > 0).map((bucket) => (
@@ -419,7 +421,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                               <Chip tone={batchModelingRiskTone(item.risk)}>{batchModelingRiskLabel(item.risk)}</Chip>
                             </div>
                           </div>
-                          <p className="m-0 mt-3 text-[12px] text-2">置信度 {(item.confidence * 100).toFixed(0)}%</p>
+                          <p className="m-0 mt-3 text-[12px] text-2">{t('semantic.batch.queue.confidence', '置信度 {value}%', { value: (item.confidence * 100).toFixed(0) })}</p>
                           <ul className="m-0 mt-2 space-y-1 pl-4 text-[12px] leading-5 text-2">
                             {item.evidence.map((evidence) => (
                               <li key={evidence}>{evidence}</li>
@@ -433,7 +435,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                               disabled={applyPackageAction.isPending || isDeferred}
                               onClick={() => handlePackageAction(item, 'defer')}
                             >
-                              暂缓
+                              {t('semantic.batch.queue.defer', '暂缓')}
                             </Button>
                             <Button
                               size="sm"
@@ -441,7 +443,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
                               disabled={applyPackageAction.isPending || isDuplicate}
                               onClick={() => handlePackageAction(item, 'mark_duplicate')}
                             >
-                              标记重复
+                              {t('semantic.batch.queue.duplicate', '标记重复')}
                             </Button>
                             <Button
                               size="sm"
@@ -463,7 +465,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
               </div>
             ) : (
               <div className="mt-4 rounded-[8px] border px-3 py-3 text-[12px] text-3" style={{ borderColor: 'var(--border)' }}>
-                {isGenerating ? '正在创建 Build Project 并扫描候选资产...' : '尚未生成候选队列。'}
+                {isGenerating ? t('semantic.batch.queue.generating', '正在创建 Build Project 并扫描候选资产...') : t('semantic.batch.queue.empty', '尚未生成候选队列。')}
               </div>
             )}
           </section>
@@ -471,7 +473,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
           <section className="order-3 rounded-[8px] border bg-[var(--bg-surface)] p-4" style={{ borderColor: 'var(--border)' }}>
             <div className="flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-3" aria-hidden />
-              <h2 className="m-0 text-[15px] font-semibold">批量模式边界</h2>
+              <h2 className="m-0 text-[15px] font-semibold">{t('semantic.batch.guardrails.title', '批量模式边界')}</h2>
             </div>
             <ul className="m-0 mt-3 space-y-2 pl-4 text-[12px] leading-5 text-2">
               {plan.guardrails.map((item) => (
@@ -485,7 +487,7 @@ export function BatchModelingWorkbench({ onOpenBuilder }: BatchModelingWorkbench
   )
 }
 
-// 真实扫描的候选包带 snapshot_id 形如 scan:<source>:<db>:<table>；演示/降级包用 workbench: 前缀。
+// 真实扫描的候选包带 snapshot_id 形如 scan:<source>:<db>:<table>；手动范围包用 workbench: 前缀。
 function isRealScanPackage(item: SemanticAssetPackage): boolean {
   const source = item.modeling_source as Record<string, unknown> | undefined
   const evidence = source?.evidence_bundle as Record<string, unknown> | undefined
@@ -585,7 +587,7 @@ function toSharedBatchQueueStatus(status: WorkbenchQueueStatus): BatchQueueStatu
 }
 
 function workbenchQueueStatusLabel(status: WorkbenchQueueStatus): string {
-  if (status === 'duplicate_candidate') return '重复候选'
+  if (status === 'duplicate_candidate') return t('semantic.batch.status.duplicate', '重复候选')
   return batchQueueStatusLabel(status)
 }
 

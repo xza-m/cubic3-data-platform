@@ -28,6 +28,7 @@ import {
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 import { DataCenterSyncTabs } from './_shared/data-center-nav'
+import { dataTriggerLabel } from '@v2/lib/displayLabels'
 
 import { useAppShell } from '@v2/layout/AppShell'
 
@@ -44,9 +45,9 @@ function statusOptions() {
 function typeOptions() {
   return [
     { value: '',          label: t('extractionTasks.type.all', '全部类型') },
-    { value: 'manual',    label: t('extractionTasks.type.manual', '手动') },
-    { value: 'scheduled', label: t('extractionTasks.type.scheduled', '调度') },
-    { value: 'api',       label: 'API' },
+    { value: 'manual',    label: dataTriggerLabel('manual') },
+    { value: 'scheduled', label: dataTriggerLabel('scheduled') },
+    { value: 'api',       label: dataTriggerLabel('api') },
   ]
 }
 
@@ -154,7 +155,7 @@ export default function ExtractionTasks() {
         const result = await executeTask.mutateAsync({ id: row.id })
         toast.show({
           tone: 'success',
-          title: t('extractionTasks.toast.executeSubmitted', '已提交执行 · Run #{id}', {
+          title: t('extractionTasks.toast.executeSubmitted', '已提交执行 · 同步记录 {id}', {
             id: result.run_id,
           }),
           description: result.job_id

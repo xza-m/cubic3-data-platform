@@ -628,7 +628,7 @@ describe("ModelingAgent · 右侧产物面板", () => {
     expect(
       screen.getByText("数据资产底座 smoke 评论事实表"),
     ).toBeInTheDocument();
-    expect(screen.getByText("data_asset_table")).toBeInTheDocument();
+    expect(screen.getByText("数据资产表")).toBeInTheDocument();
     expect(
       screen.getByText(
         "data-asset-smoke.df_cb_258187.dw_smoke.dwd_data_asset_smoke_df",

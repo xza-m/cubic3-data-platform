@@ -5,6 +5,13 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ToastProvider } from '@v2/components/ui/Toast'
 import DataCenter from './DataCenter'
 
+const appShellMocks = vi.hoisted(() => ({
+  setBreadcrumbs: vi.fn(),
+  setTopBarActions: vi.fn(),
+  setContextPanel: vi.fn(),
+  openTab: vi.fn(),
+}))
+
 const datasource = {
   id: 1,
   name: 'pg_main',
@@ -72,12 +79,7 @@ vi.mock('@v2/hooks/datasets', () => ({
 }))
 
 vi.mock('@v2/layout/AppShell', () => ({
-  useAppShell: () => ({
-    setBreadcrumbs: vi.fn(),
-    setTopBarActions: vi.fn(),
-    setContextPanel: vi.fn(),
-    openTab: vi.fn(),
-  }),
+  useAppShell: () => appShellMocks,
 }))
 
 function renderDataCenter(initialPath = '/data-center') {
@@ -97,19 +99,55 @@ describe('DataCenter', () => {
     datasourcesState.isError = false
     datasourcesState.error = null
     testConnectionMutateAsync.mockReset()
+    appShellMocks.setBreadcrumbs.mockClear()
+    appShellMocks.setTopBarActions.mockClear()
+    appShellMocks.setContextPanel.mockClear()
+    appShellMocks.openTab.mockClear()
   })
 
-  it('默认展示概览，可切换到连接管理 Tab', async () => {
+  it('默认展示概览，一级导航交给二级侧栏承载', () => {
     renderDataCenter()
 
-    expect(screen.getByRole('tab', { name: /概览/ })).toHaveAttribute('aria-selected', 'true')
+    expect(appShellMocks.setBreadcrumbs).toHaveBeenLastCalledWith(['数据', '概览'])
+    expect(screen.queryByRole('tab', { name: /概览/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '数据中心' })).not.toBeInTheDocument()
     expect(screen.getByText('今日待处理')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '最近运营对象' })).not.toBeInTheDocument()
+  })
 
-    await userEvent.click(screen.getByRole('tab', { name: /连接管理/ }))
+  it('连接路径直接展示连接管理内容', async () => {
+    renderDataCenter('/data-center/connections')
 
-    expect(screen.getByRole('tab', { name: /连接管理/ })).toHaveAttribute('aria-selected', 'true')
     expect(await screen.findByText('pg_main')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '测试连接' })).toBeInTheDocument()
+  })
+
+  it('影响分析展示基于资产和连接状态计算的摘要', () => {
+    renderDataCenter('/data-center/impact')
+
+    expect(screen.getByRole('heading', { name: '准备度摘要' })).toBeInTheDocument()
+    expect(screen.getByText('可建模资产')).toBeInTheDocument()
+    expect(screen.getByText('暂无阻断项，已同步资产可继续进入语义建设。')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '职责边界' })).not.toBeInTheDocument()
+    expect(screen.queryByText('语义中心 / BI / Data Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('可触达消费端')).not.toBeInTheDocument()
+  })
+
+  it('上下文面板展示数据健康，不重复菜单和内部边界说明', () => {
+    renderDataCenter()
+
+    const calls = appShellMocks.setContextPanel.mock.calls
+    const payload = calls[calls.length - 1]?.[0]
+    expect(payload).toBeTruthy()
+    render(<>{payload.body}</>)
+
+    expect(payload.title).toBe('数据健康')
+    expect(screen.getByText('当前数据')).toBeInTheDocument()
+    expect(screen.getByText('待处理')).toBeInTheDocument()
+    expect(screen.getByText('连接和资产同步状态正常。')).toBeInTheDocument()
+    expect(screen.queryByText('工作路径')).not.toBeInTheDocument()
+    expect(screen.queryByText('操作原则')).not.toBeInTheDocument()
+    expect(screen.queryByText(/gateway|Dataset|不暴露 API/)).not.toBeInTheDocument()
   })
 
   it('数据加载失败时展示 RetryState', () => {

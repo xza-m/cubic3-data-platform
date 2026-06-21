@@ -21,7 +21,7 @@ import { fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 import { DataCenterSyncTabs } from './_shared/data-center-nav'
 
-// X-Crosscut 提供（编译错误留待 Phase 3 修复）
+// X-Crosscut Shell：详情页通过顶部动作与右侧上下文承载任务操作。
 import { useAppShell } from '@v2/layout/AppShell'
 
 function buildDetailTabs() {
@@ -64,7 +64,7 @@ export default function ExtractionTaskDetail() {
       const result = await executeTask.mutateAsync({ id: task.id })
       toast.show({
         tone: 'success',
-        title: t('extractionTasks.toast.executeSubmitted', '已提交执行 · Run #{id}', {
+        title: t('extractionTasks.toast.executeSubmitted', '已提交执行 · 同步记录 {id}', {
           id: result.run_id,
         }),
         description: result.job_id

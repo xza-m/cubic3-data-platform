@@ -36,12 +36,7 @@ export function LeftRail({ pathname, onOpenCommandPalette }: LeftRailProps) {
           return (
             <Tooltip
               key={m.id}
-              label={
-                <span>
-                  {m.label}
-                  {!m.implemented ? <span className="ml-1 text-3">{t('leftRail.comingSoon', '（即将上线）')}</span> : null}
-                </span>
-              }
+              label={m.label}
               side="right"
             >
               <button

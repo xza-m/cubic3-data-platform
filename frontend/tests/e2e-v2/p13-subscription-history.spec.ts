@@ -5,11 +5,24 @@
 import { test, expect } from '@playwright/test'
 import { gotoV2, installApiCatchAll, mockJsonRoute, prepareV2Page, envelope } from './helpers'
 import cfgFx from './fixtures/config.json' with { type: 'json' }
+import instancesFx from './fixtures/instances.json' with { type: 'json' }
 
 test.beforeEach(async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/channels**', envelope(cfgFx.channels))
+  await mockJsonRoute(page, '**/api/v1/app-instances?**', envelope({
+    ...instancesFx.list,
+    items: instancesFx.list.items.map((item) => ({
+      ...item,
+      app: {
+        code: item.app_code,
+        name: '教学助手应用',
+        category: 'assistant',
+        icon: null,
+      },
+    })),
+  }))
   await mockJsonRoute(page, '**/api/v1/subscriptions?**', envelope(cfgFx.subscriptions))
   await mockJsonRoute(
     page,
@@ -68,6 +81,10 @@ test('P13 新建订阅展示渠道下拉与事件选项 @p13', async ({ page }) 
   await gotoV2(page, '/config/subscriptions/new')
   await expect(page).toHaveURL(/\/config\/subscriptions\/new/)
   await expect(page.getByRole('heading', { name: '新建订阅' })).toBeVisible()
+
+  const instanceSelect = page.locator('#new-sub-instance')
+  await expect(instanceSelect).toBeVisible()
+  await expect(instanceSelect).toContainText('教学助手应用 · 教学助手 · 三年级 · #101 · 启用')
 
   const channelSelect = page.locator('#new-sub-channel')
   await expect(channelSelect).toBeVisible()

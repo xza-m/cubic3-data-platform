@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import {
+  Activity,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
@@ -22,7 +23,7 @@ import {
 } from 'lucide-react'
 import { IdentityName } from '@v2/components/IdentityName'
 import { Can } from '@v2/components/Can'
-import { Button, Chip, Dialog, Input, Skeleton, useToast, useConfirm } from '@v2/components/ui'
+import { Button, Chip, Dialog, Input, Skeleton, Tab, Tabs, useToast, useConfirm } from '@v2/components/ui'
 import {
   CreateButton,
   RefreshButton,
@@ -63,6 +64,7 @@ import type {
   AccessPrincipalDetail,
   AccessRoleBinding,
   AccessServicePrincipal,
+  EffectiveRowScopeEntry,
   GatewayRuntimeAlerts,
   GatewayQueryRun,
   GatewayTelemetrySummary,
@@ -78,6 +80,8 @@ import { AppError } from '@v2/api/types'
 type TabId = 'principals' | 'allowlist' | 'policies'
 
 type AccessViewId = 'permissions' | 'audit' | 'observability'
+
+type GatewayObservabilityTab = 'overview' | 'runtime' | 'trace' | 'quality'
 
 interface AccessIdentityProps {
   view?: AccessViewId
@@ -189,7 +193,7 @@ export default function AccessIdentity({ view = 'permissions' }: AccessIdentityP
     },
     observability: {
       title: t('access.observability.title', '网关观测'),
-      subtitle: t('access.observability.subtitle', '管理员查看全平台访问记录、查询次数、稳定性和 MaxCompute 兜底结果'),
+      subtitle: t('access.observability.subtitle', '按概览、运行、Trace 和契约质量排查网关问题'),
     },
   }[view]
 
@@ -199,7 +203,7 @@ export default function AccessIdentity({ view = 'permissions' }: AccessIdentityP
         className="flex flex-1 flex-col overflow-hidden rounded-md border"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
-        <header className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
+        <header className="border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
           <div>
             <h1 className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
               {viewMeta.title}
@@ -208,27 +212,26 @@ export default function AccessIdentity({ view = 'permissions' }: AccessIdentityP
               {viewMeta.subtitle}
             </p>
           </div>
-          {view === 'permissions' ? (
-            <div className="flex flex-col items-end gap-2">
-              <div
-                role="tablist"
-                aria-label={t('access.permissions.innerTabs', '权限管理分组')}
-                className="flex items-center gap-1 rounded-md border p-1"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                <TabButton active={tab === 'principals'} onClick={() => setTab('principals')}>
-                  <UserRound size={12} /> {t('access.tab.principals', '主体权限')}
-                </TabButton>
-                <TabButton active={tab === 'allowlist'} onClick={() => setTab('allowlist')}>
-                  <ShieldCheck size={12} /> {t('access.tab.allowlist', 'M2 白名单')}
-                </TabButton>
-                <TabButton active={tab === 'policies'} onClick={() => setTab('policies')}>
-                  <ShieldCheck size={12} /> {t('access.tab.policies', '数据访问规则')}
-                </TabButton>
-              </div>
-            </div>
-          ) : null}
         </header>
+        {view === 'permissions' ? (
+          <Tabs
+            value={tab}
+            onChange={(value) => setTab(value as TabId)}
+            size="sm"
+            className="px-4"
+            aria-label={t('access.permissions.innerTabs', '权限管理分组')}
+          >
+            <Tab value="principals">
+              <UserRound size={12} /> {t('access.tab.principals', '主体权限')}
+            </Tab>
+            <Tab value="allowlist">
+              <ShieldCheck size={12} /> {t('access.tab.allowlist', 'M2 白名单')}
+            </Tab>
+            <Tab value="policies">
+              <ShieldCheck size={12} /> {t('access.tab.policies', '数据访问规则')}
+            </Tab>
+          </Tabs>
+        ) : null}
         {view === 'permissions'
           ? (
             tab === 'principals'
@@ -242,32 +245,6 @@ export default function AccessIdentity({ view = 'permissions' }: AccessIdentityP
           : view === 'audit' ? <PermissionAuditWorkspace /> : <GatewayObservabilityWorkspace />}
       </div>
     </div>
-  )
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className="inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs"
-      style={{
-        background: active ? 'var(--accent-soft)' : 'transparent',
-        color: active ? 'var(--accent)' : 'var(--text-2)',
-      }}
-    >
-      {children}
-    </button>
   )
 }
 
@@ -816,7 +793,7 @@ function M2AllowlistWorkspace() {
             <GatewayMetricCard
               label={t('access.allowlist.metric.currentM2', '当前 M2 成员')}
               value={isLoading ? '—' : summary.current_m2_count}
-              detail={t('access.allowlist.metric.currentM2Detail', '已绑定 data_m2_detail_reader 的成员')}
+              detail={t('access.allowlist.metric.currentM2Detail', '已绑定明细数据读取权限的成员')}
             />
           </div>
 
@@ -1083,13 +1060,6 @@ function PolicyWorkspace() {
     isFetching: fetchingProfiles,
     refetch: refetchProfiles,
   } = useExecutionProfiles()
-  const {
-    data: decisions,
-    isLoading: loadingDecisions,
-    isError: decisionError,
-    isFetching: fetchingDecisions,
-    refetch: refetchDecisions,
-  } = usePolicyDecisions({ limit: 50 })
   const updatePolicy = useUpdateDataPolicy()
   const updateProfile = useUpdateExecutionProfile()
 
@@ -1099,7 +1069,6 @@ function PolicyWorkspace() {
       const results = await Promise.all([
         refetchPolicies(),
         refetchProfiles(),
-        refetchDecisions(),
       ])
       const failed = results.find((result) => result.isError)
       if (failed) throw failed.error
@@ -1110,7 +1079,7 @@ function PolicyWorkspace() {
       setManualRefreshing(false)
     }
   }
-  const refreshing = manualRefreshing || fetchingPolicies || fetchingProfiles || fetchingDecisions
+  const refreshing = manualRefreshing || fetchingPolicies || fetchingProfiles
 
   const disablePolicy = async (policy: AccessDataPolicy) => {
     if (!(await confirm({ title: t('access.policies.disableConfirm', '停用这个访问规则？'), tone: 'danger' }))) return
@@ -1162,19 +1131,6 @@ function PolicyWorkspace() {
               disabling={updatePolicy.isPending}
             />
           )}
-          <div className="mt-4">
-            <PanelTitle title={t('access.decisions.section', '最近判定')} count={decisions?.total ?? 0} />
-            {loadingDecisions ? (
-              <LoadingRows />
-            ) : decisionError ? (
-              <EmptyState tone="danger" text={t('access.decisions.loadFailed', '判定记录加载失败')} />
-            ) : (decisions?.items ?? []).length === 0 ? (
-              <EmptyState text={t('access.decisions.empty', '暂无判定记录')} />
-            ) : (
-              <PolicyDecisionTable rows={decisions?.items ?? []} />
-            )}
-          </div>
-
           <section className="mt-4 rounded-md border" style={{ borderColor: 'var(--border)' }}>
             <button
               type="button"
@@ -1324,6 +1280,7 @@ function PermissionAuditWorkspace() {
 function GatewayObservabilityWorkspace() {
   const [traceRun, setTraceRun] = useState<GatewayQueryRun | null>(null)
   const [recordPage, setRecordPage] = useState(1)
+  const [activeGatewayTab, setActiveGatewayTab] = useState<GatewayObservabilityTab>('overview')
   const snapshotQuery = useGatewayObservability(GATEWAY_OBSERVABILITY_PARAMS)
   const snapshot = snapshotQuery.data
   const summary = snapshot?.summary ?? EMPTY_GATEWAY_SUMMARY
@@ -1353,11 +1310,23 @@ function GatewayObservabilityWorkspace() {
   const refresh = () => {
     void snapshotQuery.refetch()
   }
+  const gatewayTabs = [
+    { value: 'overview', label: t('access.gateway.tabs.overview', '监控概览'), icon: Activity },
+    { value: 'runtime', label: t('access.gateway.tabs.runtime', '运行指标'), icon: RotateCw },
+    { value: 'trace', label: t('access.gateway.tabs.trace', 'Trace 查询'), icon: FileSearch },
+    { value: 'quality', label: t('access.gateway.tabs.quality', '契约质量'), icon: ShieldCheck },
+  ] as const
+  const handleGatewayTabChange = (value: string) => {
+    if (value === 'overview' || value === 'runtime' || value === 'trace' || value === 'quality') {
+      setActiveGatewayTab(value)
+    }
+  }
+
   return (
     <div className="min-h-0 flex-1 overflow-auto p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-          {t('access.gateway.source.detail', 'data-platform 只展示 gateway 遥测；执行记录、SQL guard、MaxCompute 物理拒绝和稳定性指标由 dw-query-gateway 提供。')}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-[240px] flex-1 text-xs" style={{ color: 'var(--text-3)' }}>
+          {t('access.gateway.source.detail', '当前页展示查询运行、稳定性、拦截、物理拒绝与契约质量等网关遥测结果。')}
         </div>
         <RefreshButton
           onClick={refresh}
@@ -1365,114 +1334,164 @@ function GatewayObservabilityWorkspace() {
           ariaLabel={t('access.gateway.refresh', '刷新网关观测')}
         />
       </div>
+      <Tabs
+        value={activeGatewayTab}
+        onChange={handleGatewayTabChange}
+        size="sm"
+        className="mb-3"
+        aria-label={t('access.gateway.tabs.label', '网关观测模块')}
+      >
+        {gatewayTabs.map(({ value, label, icon: Icon }) => (
+          <Tab key={value} value={value}>
+            <Icon size={13} />
+            <span>{label}</span>
+          </Tab>
+        ))}
+      </Tabs>
       {isError ? (
         <div className="mb-3">
           <EmptyState tone="danger" text={t('access.gateway.loadFailed', '网关观测加载失败，请检查 data-platform 到 dw-query-gateway 的服务令牌和网络连通性')} />
         </div>
       ) : null}
-      <GatewayAlertPanel evaluation={alertEvaluation} loading={snapshotQuery.isLoading} />
-      <div className="grid gap-3 md:grid-cols-4">
-        <GatewayMetricCard
-          label={t('access.gateway.runtime.queue', '排队 / 运行 / 等待')}
-          value={isLoading ? '—' : `${summary.queued_count} / ${summary.running_count} / ${summary.pending_count}`}
-          detail={t('access.gateway.runtime.queueDetail', '来自 dw-query-gateway 的当前运行态')}
-          tone={summary.pending_count > 0 ? 'warning' : 'neutral'}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.runtime.queueWait', '排队等待')}
-          value={isLoading
-            ? '—'
-            : `${formatDurationMs(summary.avg_queue_wait_ms)} / ${formatDurationMs(summary.max_current_queue_wait_ms)}`}
-          detail={t('access.gateway.runtime.queueWaitDetail', '平均等待 / 当前最大等待，P95 {p95}', {
-            p95: formatDurationMs(summary.queue_wait_p95_ms ?? 0),
-          })}
-          tone={summary.max_current_queue_wait_ms > 0 ? 'warning' : 'neutral'}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.runtime.executeMs', '执行耗时')}
-          value={isLoading
-            ? '—'
-            : `${formatDurationMs(summary.avg_execute_ms)} / ${formatDurationMs(summary.execute_p95_ms ?? 0)}`}
-          detail={t('access.gateway.runtime.executeMsDetail', '平均 / P95 执行耗时')}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.runtime.timeouts', '超时 / 拒绝')}
-          value={isLoading ? '—' : `${summary.timeout_count} / ${summary.rejected_count}`}
-          detail={t('access.gateway.runtime.timeoutsDetail', '远端、客户端等待和策略拒绝')}
-          tone={summary.timeout_count + summary.rejected_count > 0 ? 'warning' : 'neutral'}
-        />
-      </div>
-      <div className="mt-3 grid gap-3 md:grid-cols-5">
-        <GatewayMetricCard
-          label={t('access.gateway.metric.queries', '查询次数')}
-          value={isLoading ? '—' : summary.query_count}
-          detail={t('access.gateway.metric.queriesDetail', '来自 dw-query-gateway 的真实执行记录')}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.metric.allowed', '执行成功')}
-          value={isLoading ? '—' : summary.success_count}
-          detail={t('access.gateway.metric.allowedDetail', '按 gateway query_runs 状态统计')}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.metric.denied', '网关拦截')}
-          value={isLoading ? '—' : gatewayDeniedCount}
-          detail={t('access.gateway.metric.deniedDetail', 'SQL guard 或执行护栏拦截')}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.metric.physicalDenied', '物理拒绝')}
-          value={isLoading ? '—' : summary.physical_denied_count}
-          detail={t('access.gateway.metric.physicalDeniedDetail', '平台放行后 MaxCompute 兜底拒绝')}
-          tone={summary.physical_denied_count > 0 ? 'warning' : 'neutral'}
-        />
-        <GatewayMetricCard
-          label={t('access.gateway.metric.stability', '稳定性')}
-          value={isLoading ? '—' : `${summary.stability}%`}
-          detail={formatGatewayStabilityBasis(summary)}
-        />
-      </div>
-
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="min-w-0">
+      <GatewayDataQualityPanel quality={dataQuality} loading={snapshotQuery.isLoading} />
+      {activeGatewayTab === 'overview' ? (
+        <>
+          <GatewayAlertPanel evaluation={alertEvaluation} loading={snapshotQuery.isLoading} />
+          <GatewayQueryMetricGrid summary={summary} isLoading={isLoading} gatewayDeniedCount={gatewayDeniedCount} />
           <AccessTrendPanel
             rows={trendRows}
             summary={trendSummary}
             quality={dataQuality}
             windowLabel={snapshot?.window ?? GATEWAY_OBSERVABILITY_PARAMS.window}
           />
-        </section>
-
-        <aside className="space-y-4">
-          <GatewayRuntimeObjectPanel summary={summary} loading={isLoading} />
-          <GatewayBreakdownPanel rows={breakdownRows} total={summary.query_count} />
-          <GatewayContractPanel contract={snapshot?.contract_completeness} loading={isLoading} />
-          <PhysicalPermissionPanel
-            physicalDeniedCount={summary.physical_denied_count}
-            credentialIssueCount={credentialIssueCount}
-            deniedCount={gatewayDeniedCount}
-            stabilityRate={`${summary.stability}%`}
-          />
-        </aside>
-      </div>
-      <section className="mt-4 rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
-        <PanelTitle title={t('access.gateway.records.section', '全平台访问记录')} count={snapshot?.query_runs.total ?? rows.length} />
-        <GatewayDataQualityPanel quality={dataQuality} loading={snapshotQuery.isLoading} />
-        {isLoading ? (
-          <LoadingRows />
-        ) : rows.length === 0 ? (
-          <EmptyState text={t('access.gateway.records.empty', '暂无网关执行记录')} />
-        ) : (
-          <>
-            <GatewayExecutionRecordTable rows={paginatedRows.items} onOpenTrace={setTraceRun} />
-            <ListPagination
-              page={paginatedRows.page}
-              pageSize={paginatedRows.pageSize}
-              total={paginatedRows.total}
-              onPageChange={setRecordPage}
+        </>
+      ) : null}
+      {activeGatewayTab === 'runtime' ? (
+        <>
+          <GatewayRuntimeMetricGrid summary={summary} isLoading={isLoading} />
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <GatewayRuntimeObjectPanel summary={summary} loading={isLoading} />
+            <PhysicalPermissionPanel
+              physicalDeniedCount={summary.physical_denied_count}
+              credentialIssueCount={credentialIssueCount}
+              deniedCount={gatewayDeniedCount}
+              stabilityRate={`${summary.stability}%`}
             />
-          </>
-        )}
-      </section>
+          </div>
+        </>
+      ) : null}
+      {activeGatewayTab === 'trace' ? (
+        <section className="rounded-md border p-3" style={{ borderColor: 'var(--border)' }}>
+          <PanelTitle title={t('access.gateway.records.section', '全平台访问记录')} count={snapshot?.query_runs.total ?? rows.length} />
+          {isLoading ? (
+            <LoadingRows />
+          ) : rows.length === 0 ? (
+            <EmptyState text={t('access.gateway.records.empty', '暂无网关执行记录')} />
+          ) : (
+            <>
+              <GatewayExecutionRecordTable rows={paginatedRows.items} onOpenTrace={setTraceRun} />
+              <ListPagination
+                page={paginatedRows.page}
+                pageSize={paginatedRows.pageSize}
+                total={paginatedRows.total}
+                onPageChange={setRecordPage}
+              />
+            </>
+          )}
+        </section>
+      ) : null}
+      {activeGatewayTab === 'quality' ? (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-4">
+            <GatewayContractPanel contract={snapshot?.contract_completeness} loading={isLoading} />
+          </div>
+          <GatewayBreakdownPanel rows={breakdownRows} total={summary.query_count} />
+        </div>
+      ) : null}
       <GatewayTraceDialog run={traceRun} onClose={() => setTraceRun(null)} />
+    </div>
+  )
+}
+
+function GatewayRuntimeMetricGrid({
+  summary,
+  isLoading,
+}: {
+  summary: GatewayTelemetrySummary
+  isLoading: boolean
+}) {
+  return (
+    <div className="grid gap-3 md:grid-cols-4">
+      <GatewayMetricCard
+        label={t('access.gateway.runtime.queue', '排队 / 运行 / 等待')}
+        value={isLoading ? '—' : `${summary.queued_count} / ${summary.running_count} / ${summary.pending_count}`}
+        detail={t('access.gateway.runtime.queueDetail', '当前运行态')}
+        tone={summary.pending_count > 0 ? 'warning' : 'neutral'}
+      />
+      <GatewayMetricCard
+        label={t('access.gateway.runtime.queueWait', '排队等待')}
+        value={isLoading
+          ? '—'
+          : `${formatDurationMs(summary.avg_queue_wait_ms)} / ${formatDurationMs(summary.max_current_queue_wait_ms)}`}
+        detail={t('access.gateway.runtime.queueWaitDetail', '平均等待 / 当前最大等待，P95 {p95}', {
+          p95: formatDurationMs(summary.queue_wait_p95_ms ?? 0),
+        })}
+        tone={summary.max_current_queue_wait_ms > 0 ? 'warning' : 'neutral'}
+      />
+      <GatewayMetricCard
+        label={t('access.gateway.runtime.executeMs', '执行耗时')}
+        value={isLoading
+          ? '—'
+          : `${formatDurationMs(summary.avg_execute_ms)} / ${formatDurationMs(summary.execute_p95_ms ?? 0)}`}
+        detail={t('access.gateway.runtime.executeMsDetail', '平均 / P95 执行耗时')}
+      />
+      <GatewayMetricCard
+        label={t('access.gateway.runtime.timeouts', '超时 / 拒绝')}
+        value={isLoading ? '—' : `${summary.timeout_count} / ${summary.rejected_count}`}
+        detail={t('access.gateway.runtime.timeoutsDetail', '远端、客户端等待和策略拒绝')}
+        tone={summary.timeout_count + summary.rejected_count > 0 ? 'warning' : 'neutral'}
+      />
+    </div>
+  )
+}
+
+function GatewayQueryMetricGrid({
+  summary,
+  isLoading,
+  gatewayDeniedCount,
+}: {
+  summary: GatewayTelemetrySummary
+  isLoading: boolean
+  gatewayDeniedCount: number
+}) {
+  return (
+    <div className="grid gap-3 md:grid-cols-5">
+      <GatewayMetricCard
+        label={t('access.gateway.metric.queries', '查询次数')}
+        value={isLoading ? '—' : summary.query_count}
+        detail={t('access.gateway.metric.queriesDetail', '真实执行记录')}
+      />
+      <GatewayMetricCard
+        label={t('access.gateway.metric.allowed', '执行成功')}
+        value={isLoading ? '—' : summary.success_count}
+        detail={t('access.gateway.metric.allowedDetail', '按 query_runs 状态统计')}
+      />
+      <GatewayMetricCard
+        label={t('access.gateway.metric.denied', '网关拦截')}
+        value={isLoading ? '—' : gatewayDeniedCount}
+        detail={t('access.gateway.metric.deniedDetail', 'SQL guard 或执行护栏拦截')}
+      />
+      <GatewayMetricCard
+        label={t('access.gateway.metric.physicalDenied', '物理拒绝')}
+        value={isLoading ? '—' : summary.physical_denied_count}
+        detail={t('access.gateway.metric.physicalDeniedDetail', '平台放行后的物理权限拒绝')}
+        tone={summary.physical_denied_count > 0 ? 'warning' : 'neutral'}
+      />
+      <GatewayMetricCard
+        label={t('access.gateway.metric.stability', '稳定性')}
+        value={isLoading ? '—' : `${summary.stability}%`}
+        detail={formatGatewayStabilityBasis(summary)}
+      />
     </div>
   )
 }
@@ -1543,7 +1562,7 @@ function GatewayAlertPanel({
               ) : null}
             </div>
             <div className="mt-1" style={{ color: 'var(--text-3)' }}>
-              {t('access.gateway.alerts.source', '基于 dw-query-gateway telemetry / readyz 评价，data-platform 不复制执行状态。')}
+              {t('access.gateway.alerts.source', '基于网关健康检查与运行遥测评价。')}
             </div>
           </div>
         </div>
@@ -1654,9 +1673,9 @@ function GatewayRuntimeObjectPanel({
           danger={!loading && (summary.credential_missing_count ?? 0) + (summary.credential_invalid_count ?? 0) > 0}
         />
         <GatewayCheckRow
-          label={t('access.gateway.runtime.workerEvents', 'Worker / readyz 事件')}
+          label={t('access.gateway.runtime.workerEvents', 'Worker 健康事件')}
           text={loading ? '—' : `${summary.worker_heartbeat_stale_count} / ${summary.worker_orphan_lease_reclaimed_count} / ${summary.gateway_readyz_degraded_count}`}
-          helper={t('access.gateway.runtime.workerEventsDetail', '心跳过期 / 孤儿租约回收 / readyz 降级')}
+          helper={t('access.gateway.runtime.workerEventsDetail', '心跳过期 / 孤儿租约回收 / 健康检查降级')}
           danger={!loading && summary.worker_heartbeat_stale_count + summary.gateway_readyz_degraded_count > 0}
         />
         <GatewayCheckRow
@@ -1701,7 +1720,7 @@ function GatewayDataQualityPanel({
           })}
         </Chip>
         <Chip tone={quality.executionProfileMissingCount > 0 ? 'warning' : 'neutral'}>
-          {t('access.gateway.quality.profileMissing', '执行画像缺失 {count}/{total}', {
+          {t('access.gateway.quality.profileMissing', '执行方式缺失 {count}/{total}', {
             count: quality.executionProfileMissingCount,
             total: quality.total,
           })}
@@ -1784,7 +1803,7 @@ function AccessTrendPanel({
           </div>
           <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
             {summary.usesGatewayTimeseries
-              ? t('access.gateway.trend.helperTimeseries', '按 gateway timeseries 聚合查询量、成功率和执行 P95')
+              ? t('access.gateway.trend.helperTimeseries', '按聚合窗口统计查询量、成功率和执行 P95')
               : t('access.gateway.trend.helper', '按最近执行记录聚合每日查询量、成功/失败和活跃主体')}
           </div>
         </div>
@@ -1959,7 +1978,7 @@ function GatewayContractPanel({
           danger={!loading && Math.min(data.principal_present_rate, data.actor_present_rate) < 95}
         />
         <GatewayCheckRow
-          label={t('access.gateway.contract.policyProfile', '策略 / 执行画像')}
+          label={t('access.gateway.contract.policyProfile', '策略 / 执行方式')}
           text={loading ? '—' : `${formatGatewayContractRate(data.policy_decision_present_rate)} / ${formatGatewayContractRate(data.execution_profile_present_rate)}`}
           helper={t('access.gateway.contract.policyProfileDetail', 'policy_decision / execution_profile present rate')}
           danger={!loading && Math.min(data.policy_decision_present_rate, data.execution_profile_present_rate) < 95}
@@ -2018,9 +2037,10 @@ function GatewayExecutionRecordTable({
                 {row.data_level ? formatDataLevelLabel(row.data_level) : <MissingGatewayField label={t('access.gateway.records.missingLevelShort', '未返回')} title={t('access.gateway.records.missingLevel', '未返回等级')} />}
               </td>
               <td className="px-4 py-2.5">
-                <div className="truncate font-mono text-[11px]" style={{ color: row.execution_profile_code ? 'var(--text-2)' : 'var(--text-3)' }}>
-                  {row.execution_profile_code || <MissingGatewayField label="—" title={t('access.gateway.records.missingProfile', '未返回执行画像')} />}
-                </div>
+                <ExecutionProfileCell
+                  profileCode={row.execution_profile_code}
+                  missingTitle={t('access.gateway.records.missingProfile', '未返回执行方式')}
+                />
                 <div className="mt-1 truncate font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.credential_ref || '—'}</div>
               </td>
               <td className="px-4 py-2.5">
@@ -2050,22 +2070,23 @@ function GatewayExecutionRecordTable({
 }
 
 function GatewayRunActorCell({ row }: { row: GatewayQueryRun }) {
-  if (row.principal_id) return <IdentityName value={row.principal_id} />
-  if (row.actor_id) {
-    return (
-      <div>
-        <div className="font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.actor_id}</div>
-        <div className="mt-1 text-[11px]" style={{ color: 'var(--text-3)' }}>{row.actor_type || t('access.gateway.records.actor', 'actor')}</div>
-      </div>
-    )
-  }
   return (
-    <MissingGatewayField
-      label={t('access.gateway.records.missingActorShort', '未解析')}
-      title={t('access.gateway.records.missingActorHint', 'gateway 未返回 principal / actor')}
-      tone="warning"
-    />
+    <span className="block truncate" title={formatGatewayRunActorDisplayName(row)} style={{ color: 'var(--text-1)' }}>
+      {formatGatewayRunActorDisplayName(row)}
+    </span>
   )
+}
+
+function formatGatewayRunActorDisplayName(row: GatewayQueryRun): string {
+  const displayName = [
+    row.principal_display_name,
+    row.principal_name,
+    row.actor_display_name,
+    row.actor_name,
+  ]
+    .map((value) => String(value || '').trim())
+    .find(Boolean)
+  return displayName || t('access.gateway.records.mysteryUser', '神秘用户')
 }
 
 function MissingGatewayField({
@@ -2087,6 +2108,26 @@ function MissingGatewayField({
       }}
     >
       {label}
+    </span>
+  )
+}
+
+function ExecutionProfileCell({
+  profileCode,
+  missingTitle = t('access.profiles.missing', '未配置执行方式'),
+}: {
+  profileCode?: string | null
+  missingTitle?: string
+}) {
+  if (!String(profileCode || '').trim()) {
+    return <MissingGatewayField label="—" title={missingTitle} />
+  }
+  return (
+    <span
+      className="inline-flex max-w-full items-center truncate rounded px-1.5 py-0.5 text-[11px]"
+      style={{ color: 'var(--text-2)', background: 'var(--bg-surface-2)' }}
+    >
+      {formatExecutionProfileAccessLabel(profileCode)}
     </span>
   )
 }
@@ -2173,7 +2214,7 @@ function GatewayTraceDialog({
   const steps = run ? [
     [t('access.gateway.trace.principal', 'Principal 解析'), run.principal_id || '—'],
     [t('access.gateway.trace.policy', 'DataPolicy 判定'), run.policy_decision_id || '—'],
-    [t('access.gateway.trace.profile', 'ExecutionProfile'), run.execution_profile_code || '—'],
+    [t('access.gateway.trace.profile', '执行方式'), formatExecutionProfileAccessLabel(run.execution_profile_code)],
     [t('access.gateway.trace.runtime', '执行服务'), run.status],
     [t('access.gateway.trace.physical', 'MaxCompute 兜底'), run.physical_denied ? t('access.gateway.trace.physicalDenied', '物理拒绝') : t('access.gateway.trace.physicalPending', '未触发物理拒绝')],
   ] : []
@@ -2258,7 +2299,9 @@ function DataPolicyTable({
             <td className="px-4 py-2.5">{renderChips(row.subject_roles, formatAccessRoleLabel)}</td>
             <td className="px-4 py-2.5">{renderChips(formatPolicyScopeChips(row.resource_scope))}</td>
             <td className="px-4 py-2.5"><StatusChip status={row.effect} /></td>
-            <td className="px-4 py-2.5 font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.execution_profile_code || '—'}</td>
+            <td className="px-4 py-2.5">
+              <ExecutionProfileCell profileCode={row.execution_profile_code} />
+            </td>
             <td className="px-4 py-2.5"><StatusChip status={row.status} /></td>
             <td className="px-4 py-2.5">
               <div className="flex items-center gap-2">
@@ -2300,31 +2343,51 @@ function RowScopeDetail({ row }: { row: AccessPolicyDecision }) {
   const subjectId = scope.subject_principal_id || row.principal_id
   const actingId = row.actor_id || row.principal_id
   const delegated = subjectId !== actingId
+  const entries = scope.entries.map(formatRowScopeEntryLabel)
+  const tooltipId = `row-scope-${row.decision_id}`
+  const summary = formatRowScopeSummary(row)
   return (
-    <div className="mt-1.5 space-y-1 rounded border px-2 py-1.5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
+    <span className="group relative mt-1 inline-flex max-w-full align-middle">
+      <span
+        tabIndex={0}
+        aria-describedby={tooltipId}
+        aria-label={`${summary}: ${entries.join('；')}`}
+        className="inline-flex max-w-full items-center gap-1.5 rounded border px-1.5 py-0.5 text-[11px] outline-none transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}
+      >
         <Chip tone="accent">{t('access.decisions.rowScope.badge', '行级范围')}</Chip>
-        <span>
-          {t('access.decisions.rowScope.subject', '数据主体')}: <span className="font-mono">{subjectId}</span>
-        </span>
-        {delegated ? (
+        <span className="truncate">{summary}</span>
+      </span>
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none invisible absolute left-0 top-full z-[200] mt-1 rounded-md border px-2.5 py-2 text-left text-[11px] opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+        style={{
+          width: 'min(520px, calc(100vw - 48px))',
+          background: 'var(--bg-surface)',
+          borderColor: 'var(--border)',
+          color: 'var(--text-2)',
+        }}
+      >
+        <span className="mb-1.5 flex flex-wrap items-center gap-1.5" style={{ color: 'var(--text-3)' }}>
           <span>
-            {t('access.decisions.rowScope.acting', '执行主体')}: <span className="font-mono">{actingId}</span>
+            {t('access.decisions.rowScope.subject', '数据主体')}: <span className="font-mono">{subjectId}</span>
           </span>
-        ) : null}
-      </div>
-      {scope.entries.map((entry, index) => (
-        <div key={`${entry.table}.${entry.column}.${index}`} className="font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>
-          {entry.table}.{entry.column} {entry.operator} [{(entry.values || []).join(', ')}]
-          <span style={{ color: 'var(--text-3)' }}>
-            {' '}· {t('access.decisions.rowScope.policy', '策略')} {entry.policy_code || '—'}
-            {entry.attribute
-              ? ` · ${t('access.decisions.rowScope.attribute', '属性来源')} ${entry.attribute}`
-              : ''}
-          </span>
-        </div>
-      ))}
-    </div>
+          {delegated ? (
+            <span>
+              {t('access.decisions.rowScope.acting', '执行主体')}: <span className="font-mono">{actingId}</span>
+            </span>
+          ) : null}
+        </span>
+        <span className="block space-y-1">
+          {entries.map((entry, index) => (
+            <span key={`${row.decision_id}-row-scope-${index}`} className="block break-all font-mono">
+              {entry}
+            </span>
+          ))}
+        </span>
+      </span>
+    </span>
   )
 }
 
@@ -2358,7 +2421,9 @@ function PolicyDecisionTable({ rows }: { rows: AccessPolicyDecision[] }) {
               <ReasonCell reasonCode={row.reason_code} reason={row.reason} governanceRequired={row.governance_required} />
               <RowScopeDetail row={row} />
             </td>
-            <td className="px-4 py-2.5 font-mono text-[11px]" style={{ color: 'var(--text-2)' }}>{row.execution_profile_code || '—'}</td>
+            <td className="px-4 py-2.5">
+              <ExecutionProfileCell profileCode={row.execution_profile_code} />
+            </td>
           </tr>
         ))}
       </tbody>
@@ -2422,7 +2487,9 @@ function ExecutionProfileList({
       {rows.map((row) => (
         <div key={row.profile_code} className="rounded border p-3 text-xs" style={{ borderColor: 'var(--border)' }}>
           <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate font-medium" style={{ color: 'var(--text-1)' }}>{row.name}</span>
+            <span className="min-w-0 flex-1 truncate font-medium" style={{ color: 'var(--text-1)' }}>
+              {formatExecutionProfileAccessLabel(row.profile_code)}
+            </span>
             <Chip tone="accent">{formatDataLevelLabel(row.data_level)}</Chip>
             <StatusChip status={row.status} />
             <Can action="access.write" disabledTip={t('access.permissions.writeRequired', '需要权限管理员才能修改访问规则')}>
@@ -2430,7 +2497,7 @@ function ExecutionProfileList({
                 type="button"
                 className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors hover:bg-[color:var(--bg-hover)]"
                 style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-                aria-label={t('access.profiles.editGuardrailAria', '调整执行护栏 {profileCode}', { profileCode: row.profile_code })}
+                aria-label={t('access.profiles.editGuardrailAria', '调整执行方式 {profileName}', { profileName: formatExecutionProfileAccessLabel(row.profile_code) })}
                 onClick={() => onEdit(row)}
               >
                 <Pencil size={11} /> {t('access.profiles.editGuardrail', '调整护栏')}
@@ -2441,7 +2508,7 @@ function ExecutionProfileList({
                 type="button"
                 className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
-                aria-label={t('access.profiles.disableGuardrailAria', '停用执行护栏 {profileCode}', { profileCode: row.profile_code })}
+                aria-label={t('access.profiles.disableGuardrailAria', '停用执行方式 {profileName}', { profileName: formatExecutionProfileAccessLabel(row.profile_code) })}
                 disabled={disabling || row.status === 'disabled'}
                 onClick={() => onDisable(row)}
               >
@@ -2449,7 +2516,9 @@ function ExecutionProfileList({
               </button>
             </Can>
           </div>
-          <div className="mt-1 break-all font-mono text-[11px]" style={{ color: 'var(--text-3)' }}>{row.profile_code}</div>
+          {row.description ? (
+            <div className="mt-1 text-[11px]" style={{ color: 'var(--text-3)' }}>{row.description}</div>
+          ) : null}
           <div className="mt-3">
             <InfoGrid items={[
               [t('access.profiles.credentialMode', '执行模式'), formatExecutionModeLabel(row.credential_mode)],
@@ -2511,8 +2580,8 @@ function ExecutionProfileDialog({
       <form className="space-y-3" onSubmit={(event) => void submit(event)}>
         <div className="rounded border p-3 text-xs" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface-2)' }}>
           <InfoGrid items={[
-            [t('access.profiles.code', '执行画像'), <span className="font-mono">{profile.profile_code}</span>],
-            [t('access.profiles.name', '名称'), profile.name],
+            [t('access.profiles.name', '执行方式'), formatExecutionProfileAccessLabel(profile.profile_code)],
+            [t('access.profiles.description', '说明'), profile.description || '—'],
             [t('access.profiles.credentialMode', '执行模式'), formatExecutionModeLabel(profile.credential_mode)],
             [t('access.profiles.dataLevel', '数据等级'), formatDataLevelLabel(profile.data_level)],
             [t('access.profiles.operations', '允许动作'), profile.allowed_operations.join(', ') || '—'],
@@ -3718,7 +3787,7 @@ function bindingSourceLabel(source: string): string {
     feishu_sync: t('access.bindings.source.feishuSync', '飞书同步'),
     manual: t('access.bindings.source.manual', '手动绑定'),
     bootstrap: t('access.bindings.source.bootstrap', '系统初始化'),
-    demo_bootstrap: t('access.bindings.source.demoBootstrap', '演示初始化'),
+    demo_bootstrap: t('access.bindings.source.demoBootstrap', '初始化导入'),
   }[source] ?? source
 }
 
@@ -4085,6 +4154,8 @@ export function formatAccessRoleLabel(roleCode: string): string {
     data_m0_reader: t('access.role.dataM0Reader', '基础数据读取'),
     data_m1_reader: t('access.role.dataM1Reader', '汇总数据读取'),
     data_m2_detail_reader: t('access.role.dataM2Reader', '明细数据读取'),
+    data_m3_requester: t('access.role.dataM3Requester', '高敏数据申请'),
+    data_m3_approved_reader: t('access.role.dataM3ApprovedReader', '高敏数据读取'),
     data_exporter: t('access.role.dataExporter', '数据开发'),
     platform_admin: t('access.role.platformAdmin', '管理员'),
     semantic_admin: t('access.role.semanticAdmin', '管理员'),
@@ -4142,6 +4213,28 @@ export function formatAccessReasonLabel(reasonCode: string, governanceRequired =
   return labels[reasonCode] ?? reasonCode
 }
 
+export function formatRowScopeEntryLabel(entry: EffectiveRowScopeEntry): string {
+  const values = (entry.values || []).join(', ')
+  const policy = entry.policy_code || '—'
+  const attribute = entry.attribute
+    ? ` · ${t('access.decisions.rowScope.attribute', '属性来源')} ${entry.attribute}`
+    : ''
+  return `${entry.table}.${entry.column} ${entry.operator} [${values}] · ${t('access.decisions.rowScope.policy', '策略')} ${policy}${attribute}`
+}
+
+export function formatRowScopeSummary(row: AccessPolicyDecision): string {
+  const scope = row.effective_row_scope
+  const count = scope?.entries?.length ?? 0
+  const subjectId = scope?.subject_principal_id || row.principal_id
+  if (count === 0) return t('access.decisions.rowScope.empty', '无行级范围')
+  const first = scope?.entries?.[0]
+  const target = first ? `${first.table}.${first.column}` : t('access.decisions.rowScope.unknownTarget', '未知字段')
+  const countText = count > 1
+    ? t('access.decisions.rowScope.more', '等 {count} 条', { count })
+    : t('access.decisions.rowScope.single', '1 条')
+  return `${countText} · ${target} · ${t('access.decisions.rowScope.subject', '数据主体')} ${subjectId}`
+}
+
 function formatTableLayerLabel(layer: string): string {
   const labels: Record<string, string> = {
     dim: 'DIM 维表层',
@@ -4157,12 +4250,43 @@ function formatTableLayerLabel(layer: string): string {
 
 export function formatExecutionModeLabel(mode: string): string {
   const labels: Record<string, string> = {
-    gateway_binding: '网关执行画像',
+    gateway_binding: '网关执行方式',
     internal_query_execution: '已下线执行模式',
     inline_policy_decision: '仅做权限判定',
     preview_only: '仅预览',
   }
   return labels[mode] ?? mode
+}
+
+export function executionProfileCodeToAccessRole(profileCode?: string | null): string | null {
+  const code = String(profileCode || '').trim().toLowerCase()
+  if (!code) return null
+  const explicit: Record<string, string> = {
+    inline_m0: 'data_m0_reader',
+    inline_m1: 'data_m1_reader',
+    inline_m2: 'data_m2_detail_reader',
+    inline_m3: 'data_m3_requester',
+    mc_m0_reader: 'data_m0_reader',
+    mc_m1_reader: 'data_m1_reader',
+    mc_m1_agg_reader: 'data_m1_reader',
+    mc_m2_detail: 'data_m2_detail_reader',
+    mc_m2_detail_reader: 'data_m2_detail_reader',
+    mc_m2_controlled_reader: 'data_m2_detail_reader',
+    mc_m3_raw: 'data_m3_requester',
+    mc_m3_raw_approved: 'data_m3_approved_reader',
+  }
+  if (explicit[code]) return explicit[code]
+  if (/(^|_)m0($|_)/.test(code)) return 'data_m0_reader'
+  if (/(^|_)m1($|_)/.test(code)) return 'data_m1_reader'
+  if (/(^|_)m2($|_)/.test(code)) return 'data_m2_detail_reader'
+  if (/(^|_)m3($|_)/.test(code)) return 'data_m3_requester'
+  return null
+}
+
+export function formatExecutionProfileAccessLabel(profileCode?: string | null): string {
+  const roleCode = executionProfileCodeToAccessRole(profileCode)
+  if (roleCode) return formatAccessRoleLabel(roleCode)
+  return String(profileCode || '').trim() ? t('access.profiles.customExecution', '自定义执行方式') : '—'
 }
 
 export function getCredentialModeOptions(_currentMode?: string | null): string[] {
@@ -4182,12 +4306,12 @@ function formatBooleanLabel(value: boolean): string {
   return value ? t('common.yes', '是') : t('common.no', '否')
 }
 
-function formatExecutionProfileLabel(profiles: AccessExecutionProfile[]): (profileCode: string) => string {
+export function formatExecutionProfileLabel(profiles: AccessExecutionProfile[]): (profileCode: string) => string {
   const profileByCode = new Map(profiles.map((profile) => [profile.profile_code, profile]))
   return (profileCode: string) => {
     const profile = profileByCode.get(profileCode)
-    if (!profile) return profileCode
-    return `${profile.name}（${profile.profile_code}）`
+    if (!profile) return formatExecutionProfileAccessLabel(profileCode)
+    return formatExecutionProfileAccessLabel(profile.profile_code)
   }
 }
 

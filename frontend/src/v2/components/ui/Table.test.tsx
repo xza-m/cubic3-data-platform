@@ -82,6 +82,28 @@ describe('Table', () => {
     expect(onRowClick).toHaveBeenCalledWith({ id: 1, name: 'a', age: 10 })
   })
 
+  it('supports keyboard activation when rows are clickable', async () => {
+    const user = userEvent.setup()
+    const onRowClick = vi.fn()
+    render(
+      <Table<Row>
+        columns={columns}
+        rows={[{ id: 1, name: 'a', age: 10 }]}
+        rowKey={(r) => r.id}
+        onRowClick={onRowClick}
+      />,
+    )
+
+    const row = screen.getByText('a').closest('tr')
+    if (!row) throw new Error('clickable row not found')
+    row.focus()
+    await user.keyboard('{Enter}')
+    await user.keyboard(' ')
+
+    expect(onRowClick).toHaveBeenCalledTimes(2)
+    expect(onRowClick).toHaveBeenLastCalledWith({ id: 1, name: 'a', age: 10 })
+  })
+
   it('renders falsy default values without throwing', () => {
     const cols: TableColumn<{ k: string; v: string | undefined }>[] = [
       { key: 'k', title: 'K' },

@@ -21,8 +21,11 @@ import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 
 import { PeekPanel } from '@v2/components/PeekPanel'
+import { EmptyState as CommonEmptyState } from '@v2/components/common/EmptyState'
+import { TechnicalValue } from '@v2/components/common/TechnicalValue'
 import { useAppShell } from '@v2/layout/AppShell'
 import { DataCenterSyncTabs } from './_shared/data-center-nav'
+import { dataTriggerLabel, technicalIdLabel } from '@v2/lib/displayLabels'
 
 function statusOptions() {
   return [
@@ -40,7 +43,7 @@ function triggerOptions() {
     { value: '', label: t('extractionRuns.filter.trigger.all', '全部触发') },
     { value: 'manual', label: t('extractionRuns.trigger.manual', '手动') },
     { value: 'scheduled', label: t('extractionRuns.trigger.scheduled', '调度') },
-    { value: 'api', label: 'API' },
+    { value: 'api', label: t('extractionRuns.trigger.api', '接口触发') },
   ]
 }
 
@@ -91,7 +94,7 @@ export default function ExtractionRuns() {
         <input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder={t('extractionRuns.filter.searchTask', '搜索任务ID…')}
+          placeholder={t('extractionRuns.filter.searchTask', '搜索同步记录或任务…')}
           className="rounded-md border px-3 py-1.5 text-xs"
           style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)', color: 'var(--text-1)', width: 140 }}
         />
@@ -186,7 +189,7 @@ export default function ExtractionRuns() {
         const result = await rerun.mutateAsync(row.id)
         toast.show({
           tone: 'success',
-          title: t('extractionRuns.toast.rerunSubmitted', '已提交重跑 · 新 Run #{id}', {
+          title: t('extractionRuns.toast.rerunSubmitted', '已提交重跑 · 新同步记录 {id}', {
             id: result.run_id,
           }),
         })
@@ -234,8 +237,8 @@ export default function ExtractionRuns() {
           open={!!peekRow}
           onClose={() => setPeekId(null)}
           onOpenFull={peekRow ? () => openInTab(peekRow) : undefined}
-          title={peekRow ? `Run #${peekRow.id}` : t('extractionRuns.peek.placeholderTitle', '执行详情')}
-          subtitle={peekRow ? `Task #${peekRow.task_id}` : undefined}
+          title={peekRow ? technicalIdLabel(t('extractionRuns.peek.titlePrefix', '同步记录 '), peekRow.id) : t('extractionRuns.peek.placeholderTitle', '执行详情')}
+          subtitle={peekRow ? technicalIdLabel(t('extractionRuns.peek.taskPrefix', '关联任务 '), peekRow.task_id) : undefined}
           badges={peekRow ? runStatusChip(peekRow.status) : null}
         >
           {peekRow ? (
@@ -245,7 +248,7 @@ export default function ExtractionRuns() {
               onRerunSuccess={(newRunId) => {
                 toast.show({
                   tone: 'success',
-                  title: t('extractionRuns.toast.rerunSubmitted', '已提交重跑 · 新 Run #{id}', {
+                  title: t('extractionRuns.toast.rerunSubmitted', '已提交重跑 · 新同步记录 {id}', {
                     id: newRunId,
                   }),
                 })
@@ -281,7 +284,7 @@ function RunTable({
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border)' }}>
             {[
-              t('extractionRuns.col.runId', '运行 #'),
+              t('extractionRuns.col.runId', '同步记录'),
               t('extractionRuns.col.task', '任务'),
               t('extractionRuns.col.status', '状态'),
               t('extractionRuns.col.trigger', '触发'),
@@ -306,12 +309,14 @@ function RunTable({
                 className="cursor-pointer"
                 style={{ borderBottom: '1px solid var(--border)', background: activeId === row.id ? 'var(--bg-hover)' : undefined }}
               >
-                <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--text-1)' }}>#{row.id}</td>
+                <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--text-1)' }}>
+                  {technicalIdLabel(t('extractionRuns.row.runPrefix', '记录 '), row.id)}
+                </td>
                 <td className="px-4 py-2.5">
-                  <code className="text-[11px]" style={{ color: 'var(--text-2)' }}>Task #{row.task_id}</code>
+                  <TechnicalValue label={t('extractionRuns.row.taskPrefix', '任务')} value={row.task_id} />
                 </td>
                 <td className="px-4 py-2.5">{runStatusChip(row.status)}</td>
-                <td className="px-4 py-2.5 text-[11px]" style={{ color: 'var(--text-3)' }}>{row.run_type}</td>
+                <td className="px-4 py-2.5 text-[11px]" style={{ color: 'var(--text-3)' }}>{dataTriggerLabel(row.run_type)}</td>
                 <td className="px-4 py-2.5 text-[11px] tabular-nums" style={{ color: 'var(--text-2)' }}>
                   {row.row_count != null ? row.row_count.toLocaleString() : '—'}
                 </td>
@@ -381,11 +386,10 @@ function SkeletonRows() {
 
 function EmptyState() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2">
-      <Activity size={20} style={{ color: 'var(--text-3)' }} />
-      <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-        {t('extractionRuns.state.empty', '暂无同步记录')}
-      </p>
-    </div>
+    <CommonEmptyState
+      icon={<Activity size={20} aria-hidden />}
+      title={t('extractionRuns.state.empty', '暂无同步记录')}
+      description={t('extractionRuns.state.emptyDesc', '触发同步任务后会在这里显示执行状态。')}
+    />
   )
 }

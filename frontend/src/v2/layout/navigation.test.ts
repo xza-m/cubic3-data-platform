@@ -50,11 +50,11 @@ describe('navigation access entry', () => {
 })
 
 describe('findLayout', () => {
-  it('数据中心采用正式 IA：页面内一级 Tab，不再开启二级侧栏', () => {
+  it('数据中心采用正式 IA：二级侧栏承载模块入口，正文不再重复一级 Tab', () => {
     const dataCenter = NAV_MODULES.find((m) => m.id === 'data-center')!
     const resolved = findLayout('/data-center/connections', dataCenter)
     expect(resolved).toEqual({
-      secondarySidebar: false,
+      secondarySidebar: true,
       inspector: true,
       hideBreadcrumbs: false,
     })
@@ -140,18 +140,18 @@ describe('数据中心导航收敛', () => {
     expect(NAV_MODULES.map((module) => module.id)).not.toContain('data-center-demo')
   })
 
-  it('数据中心二级语义由页面 Tab 承载，路径按连接/资产/同步/影响组织', () => {
+  it('数据中心二级语义由侧栏承载，路径按连接/资产/同步/影响组织', () => {
     const dataCenter = NAV_MODULES.find((module) => module.id === 'data-center')
     expect(dataCenter?.label).toBe('数据中心')
     expect(dataCenter?.description).toBe('连接、资产、同步与影响分析')
     expect(dataCenter?.basePath).toBe('/data-center')
     expect(dataCenter?.defaultPath).toBe('/data-center')
-    expect(dataCenter?.layout?.secondarySidebar).toBe(false)
+    expect(findLayout('/data-center/assets', dataCenter!).secondarySidebar).toBe(true)
     expect(dataCenter?.subnav?.map((item) => item.label)).toEqual([
       '概览',
-      '连接管理',
-      '资产目录',
-      '同步任务',
+      '数据连接',
+      '数据资产',
+      '数据同步',
       '影响分析',
     ])
     expect(dataCenter?.subnav?.map((item) => item.path)).toEqual([

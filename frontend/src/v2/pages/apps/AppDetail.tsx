@@ -20,13 +20,16 @@ import { HealthChip } from '@v2/components/HealthChip'
 import { AppStatusChip, metaOf } from './_shared/app-card'
 import { ExecStatusChip } from './_shared/instance-content'
 import { fmtDuration } from './_shared/execution-content'
+import { appCategoryLabel } from '@v2/lib/appLabels'
+import { StructuredDetails } from '@v2/components/common/StructuredDetails'
+import { TechnicalValue } from '@v2/components/common/TechnicalValue'
 
 type Tab = 'overview' | 'runs' | 'config'
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'overview', label: t('appdetail.tab.overview', '总览') },
   { id: 'runs', label: t('appdetail.tab.runs', '执行记录') },
-  { id: 'config', label: t('appdetail.tab.config', '配置 Schema') },
+  { id: 'config', label: t('appdetail.tab.config', '配置') },
   // drop-frontend: App.capabilities Tab — see plan §3.4
 ]
 
@@ -57,6 +60,18 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       </dd>
     </div>
   )
+}
+
+function schemaSummary(schema: Record<string, unknown> | null): string {
+  if (!schema) return t('app.no_config_schema', '该应用未定义配置结构')
+  const properties = schema.properties && typeof schema.properties === 'object'
+    ? Object.keys(schema.properties as Record<string, unknown>).length
+    : 0
+  const required = Array.isArray(schema.required) ? schema.required.length : 0
+  return t('appdetail.configSchema.summary', '配置项 {properties} 个，必填 {required} 个', {
+    properties,
+    required,
+  })
 }
 
 export default function AppDetail() {
@@ -105,6 +120,7 @@ export default function AppDetail() {
 
   const meta = metaOf(app.category)
   const Icon = meta.icon
+  const categoryLabel = appCategoryLabel(app.category)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -132,7 +148,7 @@ export default function AppDetail() {
               {/* drop-frontend: App.rating — see plan §3.4 */}
               {app.author && <span>{app.author}</span>}
               {app.author && <span className="mx-1.5">·</span>}
-              <span>{app.category}</span>
+              <span>{categoryLabel}</span>
               {app.version && <span className="mx-1.5">v{app.version}</span>}
             </div>
           </div>
@@ -150,7 +166,7 @@ export default function AppDetail() {
               type="button"
               className="btn btn-sm btn-primary"
               onClick={() =>
-                navigate('/apps/instances/new', { state: { app_code: app.code } })
+                navigate(`/apps/instances/new?app_code=${encodeURIComponent(app.code)}`, { state: { app_code: app.code } })
               }
             >
               <Play size={12} />
@@ -228,8 +244,7 @@ export default function AppDetail() {
                 {t('appdetail.section.meta', '元数据')}
               </div>
               <dl>
-                <Row label={t('app.field.code', '应用标识')} value={<code>{app.code}</code>} />
-                <Row label={t('app.field.category', '分类')} value={app.category} />
+                <Row label={t('app.field.category', '分类')} value={categoryLabel} />
                 <Row label={t('app.field.author', '作者')} value={app.author ?? '-'} />
                 <Row label={t('app.field.version', '版本')} value={app.version ?? '-'} />
                 <Row
@@ -270,7 +285,7 @@ export default function AppDetail() {
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}>
-                  <th className="px-4 py-2 text-left font-normal">#</th>
+                    <th className="px-4 py-2 text-left font-normal">{t('exec.field.record', '执行记录')}</th>
                   <th className="px-4 py-2 text-left font-normal">{t('exec.field.status', '状态')}</th>
                   <th className="px-4 py-2 text-left font-normal">{t('exec.field.trigger', '触发')}</th>
                   <th className="px-4 py-2 text-left font-normal">{t('exec.field.started_at', '开始')}</th>
@@ -286,7 +301,7 @@ export default function AppDetail() {
                     onClick={() => navigate(`/apps/executions/${e.id}`)}
                   >
                     <td className="px-4 py-2">
-                      <code>#{e.id}</code>
+                      <TechnicalValue value={e.id} label={t('exec.field.recordShort', '记录')} />
                     </td>
                     <td className="px-4 py-2">
                       <ExecStatusChip status={e.status} />
@@ -322,22 +337,22 @@ export default function AppDetail() {
             style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
           >
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-              {t('appdetail.section.config_schema', '配置 Schema')}
+              {t('appdetail.section.config_schema', '配置结构')}
             </div>
             {app.config_schema ? (
-              <pre
-                className="overflow-auto rounded border p-3 text-xs leading-5"
-                style={{
-                  background: 'var(--bg-surface-2)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--text-2)',
-                }}
-              >
-                {JSON.stringify(app.config_schema, null, 2)}
-              </pre>
+              <StructuredDetails
+                title={t('appdetail.configSchema.detailTitle', '查看结构详情')}
+                value={app.config_schema}
+                summary={
+                  <>
+                    {schemaSummary(app.config_schema)}
+                    {app.updated_at ? ` · ${t('common.updatedAt', '更新时间')} ${fmtDateTime(app.updated_at)}` : ''}
+                  </>
+                }
+              />
             ) : (
               <p className="text-xs" style={{ color: 'var(--text-3)' }}>
-                {t('app.no_config_schema', '该应用未定义配置 Schema')}
+                {t('app.no_config_schema', '该应用未定义配置结构')}
               </p>
             )}
           </div>

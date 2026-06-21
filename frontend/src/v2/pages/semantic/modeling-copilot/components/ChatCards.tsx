@@ -423,7 +423,7 @@ export function DataAssetCandidateEvidence({
       }}
     >
       <div className="flex flex-wrap items-center gap-1.5">
-        <Chip tone="accent">{evidence.assetType}</Chip>
+        <Chip tone="accent">{dataAssetTypeLabel(evidence.assetType)}</Chip>
         {evidence.hasEvidenceBundle ? <Chip>来源证据包</Chip> : null}
         {typeof evidence.runtimeTruth === "boolean" ? (
           <Chip tone={evidence.runtimeTruth ? "success" : "warning"}>
@@ -486,6 +486,24 @@ export function dataAssetEvidenceForCandidate(
     partitionCount: formatProfileNumber(sampleProfile?.partition_count),
     profileStatus: stringValue(sampleProfile?.profile_status),
   };
+}
+
+export function dataAssetTypeLabel(assetType: string): string {
+  switch (assetType) {
+    case "data_asset_table":
+    case "table":
+      return "数据资产表";
+    case "field":
+      return "字段资产";
+    case "dataset":
+      return "数据集";
+    case "cube":
+      return "Cube";
+    case "view":
+      return "视图";
+    default:
+      return "数据资产";
+  }
 }
 
 

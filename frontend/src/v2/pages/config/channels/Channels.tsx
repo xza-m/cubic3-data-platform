@@ -6,13 +6,16 @@
 
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Send } from 'lucide-react'
 import { Chip, SkeletonRows, Switch, Table, useToast, type TableColumn, useConfirm } from '@v2/components/ui'
 import { CreateButton } from '@v2/components/CommonControls'
+import { ActionIconButton } from '@v2/components/ActionIconButton'
+import { PeekPanel } from '@v2/components/PeekPanel'
 import { t } from '@v2/i18n'
 import { fmtDateTime } from '@v2/lib/format'
-import { useChannels, useDeleteChannel, useUpdateChannel } from '@v2/hooks/channels'
+import { useChannels, useDeleteChannel, useTestChannel, useUpdateChannel } from '@v2/hooks/channels'
 import { useCreateChannel } from '@v2/hooks/channels'
-import type { Channel, ChannelType, CreateChannelPayload } from '@v2/api/channels'
+import type { Channel, ChannelTestResult, ChannelType, CreateChannelPayload } from '@v2/api/channels'
 import { IdentityName } from '@v2/components/IdentityName'
 import {
   CHANNEL_TYPE_LABEL,
@@ -21,8 +24,7 @@ import {
 } from '../_shared/channel-content'
 
 // ============================================================================
-// 渠道创建表单（内联简化版，等 X-Crosscut EntityFormDialog 就绪后可重构）
-// TODO: 等待 X-Crosscut EntityFormDialog — 当前使用内联 Dialog
+// 渠道创建表单（内联简化版，保持列表页的轻量编辑路径）
 // ============================================================================
 
 import { Dialog, Input, Select } from '@v2/components/ui'
@@ -233,10 +235,13 @@ export default function Channels() {
   const updateMutation = useUpdateChannel()
   const createMutation = useCreateChannel()
   const deleteMutation = useDeleteChannel()
+  const testMutation = useTestChannel()
 
   const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
   const [editing, setEditing] = useState<Channel | null>(null)
   const [peekRow, setPeekRow] = useState<Channel | null>(null)
+  const [testingId, setTestingId] = useState<number | null>(null)
+  const [testResults, setTestResults] = useState<Record<number, ChannelTestResult>>({})
 
   const openCreate = () => { setEditing(null); setFormMode('create') }
   const openEdit = (row: Channel) => { setEditing(row); setFormMode('edit') }
@@ -263,6 +268,31 @@ export default function Channels() {
   const handleToggle = async (row: Channel) => {
     const payload = { enabled: !row.enabled }
     await updateMutation.mutateAsync({ id: row.id, payload })
+  }
+
+  const handleTest = async (row: Channel) => {
+    setTestingId(row.id)
+    try {
+      const result = await testMutation.mutateAsync(row.id)
+      setTestResults((prev) => ({ ...prev, [row.id]: result }))
+      toast.show({
+        tone: result.ok ? 'success' : 'danger',
+        title: result.ok
+          ? result.dry_run
+            ? t('channel.test.configValidated', '配置校验通过')
+            : t('channel.toast.testOk', '测试发送成功')
+          : t('channel.toast.testFailed', '测试发送失败'),
+        description: result.detail || result.error || row.name,
+      })
+    } catch (error) {
+      toast.show({
+        tone: 'danger',
+        title: t('channel.toast.testFailed', '测试发送失败'),
+        description: error instanceof Error ? error.message : row.name,
+      })
+    } finally {
+      setTestingId(null)
+    }
   }
 
   const typeMap = useMemo(() => {
@@ -328,6 +358,38 @@ export default function Channels() {
         />
       ),
     },
+    {
+      key: 'test',
+      title: t('channel.field.test', '测试'),
+      width: 120,
+      align: 'center',
+      render: (r) => {
+        const result = testResults[r.id]
+        return (
+          <div className="flex items-center justify-center gap-2">
+            <ActionIconButton
+              label={t('channel.action.sendTest', '发送测试消息')}
+              icon={Send}
+              variant="default"
+              loading={testingId === r.id}
+              onClick={(event) => {
+                event.stopPropagation()
+                void handleTest(r)
+              }}
+            />
+            {result ? (
+              <Chip tone={result.ok ? 'success' : 'danger'}>
+                {result.ok
+                  ? result.dry_run
+                    ? t('channel.test.configValidatedShort', '已校验')
+                    : t('channel.test.passedShort', '已通过')
+                  : t('channel.test.failed', '发送失败')}
+              </Chip>
+            ) : null}
+          </div>
+        )
+      },
+    },
   ]
 
   return (
@@ -359,7 +421,7 @@ export default function Channels() {
       </header>
 
       {/* ── 列表 ── */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="p-4">
@@ -377,46 +439,16 @@ export default function Channels() {
           )}
         </div>
 
-        {/* ── Peek Panel ── */}
-        {/* TODO: 等待 X-Crosscut PeekPanel 组件 — 当前用内联 Sheet 替代 */}
-        {peekRow ? (
-          <aside
-            role="complementary"
-            aria-label={t('peek.aria.preview', '行预览')}
-            className="flex w-72 shrink-0 flex-col border-l"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
-          >
-            <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium" style={{ color: 'var(--text-1)' }}>
-                  {peekRow.name}
-                </div>
-                <div className="text-xs" style={{ color: 'var(--text-3)' }}>
-                  {CHANNEL_TYPE_LABEL[peekRow.channel_type]}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPeekRow(null)}
-                aria-label={t('common.close', '关闭')}
-                className="ml-2 shrink-0 rounded p-1 hover:bg-[color:var(--bg-hover)] focus-visible:ring-2"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto">
-              <ChannelDetailContent
-                row={peekRow}
-                actions={{
-                  onTest: () =>
-                    toast.show({ tone: 'success', title: t('channel.toast.testSent', '已发送测试消息'), description: peekRow.name }),
-                  onToggle: () => void handleToggle(peekRow),
-                  onEdit: () => openEdit(peekRow),
-                  onDelete: () => void handleDelete(peekRow),
-                }}
-              />
-            </div>
-            <div className="border-t p-3" style={{ borderColor: 'var(--border)' }}>
+        <PeekPanel
+          open={!!peekRow}
+          onClose={() => setPeekRow(null)}
+          onOpenFull={peekRow ? () => navigate(`/config/channels/${peekRow.id}`) : undefined}
+          title={peekRow?.name ?? t('channel.peek.title', '渠道详情')}
+          subtitle={peekRow ? CHANNEL_TYPE_LABEL[peekRow.channel_type] : undefined}
+          badges={peekRow ? channelTypeChip(peekRow.channel_type) : null}
+          size="narrow"
+          footer={
+            peekRow ? (
               <button
                 type="button"
                 className="btn btn-sm btn-primary w-full"
@@ -424,9 +456,21 @@ export default function Channels() {
               >
                 {t('action.view_detail', '查看详情')}
               </button>
-            </div>
-          </aside>
-        ) : null}
+            ) : null
+          }
+        >
+          {peekRow ? (
+            <ChannelDetailContent
+              row={peekRow}
+              actions={{
+                onTest: () => void handleTest(peekRow),
+                onToggle: () => void handleToggle(peekRow),
+                onEdit: () => openEdit(peekRow),
+                onDelete: () => void handleDelete(peekRow),
+              }}
+            />
+          ) : null}
+        </PeekPanel>
       </div>
 
       {/* ── 创建 / 编辑表单 ── */}

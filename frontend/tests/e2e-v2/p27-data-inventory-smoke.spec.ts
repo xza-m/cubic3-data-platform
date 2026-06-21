@@ -6,7 +6,7 @@
 // 覆盖：
 //   - /data-center/connections 连接管理能打开 + fixture 项可见
 //   - /data-center/assets 资产目录能打开 + fixture 项可见
-//   - /data-center/impact 影响分析能打开 + 职责边界可见
+//   - /data-center/impact 影响分析能打开 + 准备度摘要可见
 //
 // 参考文档：docs/quality/e2e-coverage-gaps.md §5。
 
@@ -35,7 +35,7 @@ test('P27 连接管理首屏能打开并渲染 fixture 项 @p27', async ({ page 
   await expect(page).toHaveURL(/\/data-center\/connections$/)
   await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
   await expect(page.getByText('生产 MaxCompute').first()).toBeVisible()
-  await expect(page.getByRole('tab', { name: /连接管理/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('link', { name: /数据连接/ })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: '新建连接' })).toBeVisible()
 })
 
@@ -61,20 +61,21 @@ test('P27 资产目录首屏能打开并渲染 fixture 项 @p27', async ({ page 
   await expect(page).toHaveURL(/\/data-center\/assets$/)
   await expect(page.getByText('订单宽表').first()).toBeVisible()
   await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
-  await expect(page.getByRole('tab', { name: /资产目录/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('link', { name: /数据资产/ })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('button', { name: '登记资产' })).toBeVisible()
   await expect(page.getByRole('button', { name: '新建连接' })).toHaveCount(0)
 })
 
-test('P27 影响分析首屏能打开并呈现职责边界 @p27', async ({ page }) => {
+test('P27 影响分析首屏能打开并呈现影响摘要 @p27', async ({ page }) => {
   await gotoV2(page, '/data-center/impact')
   await expect(page).toHaveURL(/\/data-center\/impact$/)
-  await expect(page.getByRole('tab', { name: /影响分析/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('link', { name: /影响分析/ })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByText('订单宽表').first()).toBeVisible()
-  await expect(page.getByText('语义中心 / BI / Data Agent')).toBeVisible()
-  await expect(page.getByRole('heading', { name: '职责边界' })).toBeVisible()
-  await expect(page.getByText('Gateway', { exact: true })).toBeVisible()
-  await expect(page.getByText('当前连接 2 个')).toBeVisible()
+  await expect(page.getByText('语义中心 / BI / Data Agent')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '准备度摘要' })).toBeVisible()
+  await expect(page.getByText('可建模资产')).toBeVisible()
+  await expect(page.getByText('暂无阻断项，已同步资产可继续进入语义建设。')).toBeVisible()
+  await expect(page.getByText('教学 PostgreSQL').first()).toBeVisible()
   await expect(page.getByRole('button', { name: '新建连接' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '登记资产' })).toHaveCount(0)
 })

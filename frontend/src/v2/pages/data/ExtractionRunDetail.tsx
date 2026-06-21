@@ -20,8 +20,9 @@ import {
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 import { DataCenterSyncTabs } from './_shared/data-center-nav'
+import { dataTriggerLabel, technicalIdLabel } from '@v2/lib/displayLabels'
 
-// X-Crosscut 提供（编译错误留待 Phase 3 修复）
+// X-Crosscut Shell：详情页通过顶部动作与右侧上下文承载记录操作。
 import { useAppShell } from '@v2/layout/AppShell'
 
 export default function ExtractionRunDetail() {
@@ -51,7 +52,7 @@ export default function ExtractionRunDetail() {
       t('extractionRunDetail.breadcrumb.data', '数据'),
       t('extractionRunDetail.breadcrumb.center', '数据中心'),
       t('extractionRunDetail.breadcrumb.runs', '同步记录'),
-      `#${run.id}`,
+      technicalIdLabel(t('extractionRunDetail.breadcrumb.recordPrefix', '同步记录 '), run.id),
     ])
   }, [run, setBreadcrumbs])
 
@@ -96,10 +97,10 @@ export default function ExtractionRunDetail() {
       title: (
         <div className="flex items-center gap-1.5">
           <Activity size={12} style={{ color: 'var(--text-3)' }} />
-          {t('extractionRunDetail.ctx.title', '运行')} #{run.id}
+          {technicalIdLabel(t('extractionRunDetail.ctx.titlePrefix', '同步记录 '), run.id)}
         </div>
       ),
-      subtitle: `Task #${run.task_id}`,
+      subtitle: technicalIdLabel(t('extractionRunDetail.ctx.taskPrefix', '关联任务 '), run.task_id),
       body: (
         <div className="space-y-4 px-4 py-4">
           <section>
@@ -111,7 +112,7 @@ export default function ExtractionRunDetail() {
             <div className="mt-2 space-y-1 text-xs">
               <Pair label={t('extractionRunDetail.metric.rowCount', '行数')} value={run.row_count != null ? run.row_count.toLocaleString() : '—'} />
               <Pair label={t('extractionRunDetail.metric.duration', '耗时')} value={run.duration_ms != null ? fmtDuration(run.duration_ms) : '—'} />
-              <Pair label={t('extractionRunDetail.metric.trigger', '触发')} value={run.run_type} />
+              <Pair label={t('extractionRunDetail.metric.trigger', '触发')} value={dataTriggerLabel(run.run_type)} />
               <Pair label={t('extractionRunDetail.metric.triggeredBy', '触发人')} value={run.triggered_by ?? '—'} />
             </div>
           </section>
@@ -126,12 +127,12 @@ export default function ExtractionRunDetail() {
             <CtxLabel>{t('extractionRunDetail.ctx.neighbors', '邻接导航')}</CtxLabel>
             <div className="mt-2 space-y-1.5 text-xs">
               <NeighborBtn
-                label={neighbors.prev ? `← Run #${neighbors.prev.id}` : t('extractionRunDetail.neighbor.noPrev', '没有上一项')}
+                label={neighbors.prev ? `← ${technicalIdLabel(t('extractionRunDetail.neighbor.recordPrefix', '同步记录 '), neighbors.prev.id)}` : t('extractionRunDetail.neighbor.noPrev', '没有上一项')}
                 disabled={!neighbors.prev}
                 onClick={neighbors.prev ? () => navigate(`/data-center/sync/runs/${neighbors.prev!.id}`) : undefined}
               />
               <NeighborBtn
-                label={neighbors.next ? `Run #${neighbors.next.id} →` : t('extractionRunDetail.neighbor.noNext', '没有下一项')}
+                label={neighbors.next ? `${technicalIdLabel(t('extractionRunDetail.neighbor.recordPrefix', '同步记录 '), neighbors.next.id)} →` : t('extractionRunDetail.neighbor.noNext', '没有下一项')}
                 disabled={!neighbors.next}
                 onClick={neighbors.next ? () => navigate(`/data-center/sync/runs/${neighbors.next!.id}`) : undefined}
               />
@@ -146,7 +147,7 @@ export default function ExtractionRunDetail() {
                 className="flex w-full rounded-md px-2 py-1 text-left"
                 style={{ color: 'var(--text-2)' }}
               >
-                {t('extractionRunDetail.shortcut.viewTask', '查看任务')} #{run.task_id}
+                {technicalIdLabel(t('extractionRunDetail.shortcut.viewTaskPrefix', '查看关联任务 '), run.task_id)}
               </button>
             </div>
           </section>
@@ -157,7 +158,7 @@ export default function ExtractionRunDetail() {
   }, [run, neighbors, setContextPanel, navigate])
 
   if (!Number.isFinite(numericId)) {
-    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>{t('extractionRunDetail.error.invalidId', '非法的运行 ID')}</div>
+    return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>{t('extractionRunDetail.error.invalidId', '非法的同步记录 ID')}</div>
   }
   if (isLoading) {
     return <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--text-3)' }}>{t('extractionRunDetail.loading', '加载中…')}</div>
@@ -165,7 +166,7 @@ export default function ExtractionRunDetail() {
   if (isError || !run) {
     return (
       <div className="flex flex-1 items-center justify-center text-xs" style={{ color: 'var(--danger)' }}>
-        {t('extractionRunDetail.error.notFound', '未找到运行记录 #{id}', { id: numericId })}
+        {t('extractionRunDetail.error.notFound', '未找到同步记录 {id}', { id: numericId })}
       </div>
     )
   }
@@ -180,15 +181,15 @@ export default function ExtractionRunDetail() {
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[10px] font-semibold"
             style={{ background: 'var(--bg-surface-2)', color: 'var(--text-2)' }}
           >
-            RUN
+            SYNC
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-              <span>Run #{run.id}</span>
+              <span>{technicalIdLabel(t('extractionRunDetail.header.recordPrefix', '同步记录 '), run.id)}</span>
               {runStatusChip(run.status)}
             </div>
             <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
-              Task #{run.task_id} · {run.run_type} · {run.start_time ? fmtRelative(run.start_time) : fmtDateTime(run.created_at)}
+              {technicalIdLabel(t('extractionRunDetail.header.taskPrefix', '关联任务 '), run.task_id)} · {dataTriggerLabel(run.run_type)} · {run.start_time ? fmtRelative(run.start_time) : fmtDateTime(run.created_at)}
             </div>
           </div>
         </div>

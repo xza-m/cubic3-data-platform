@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { fmtDateTime, fmtRelative } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 import type { AppInstance } from '@v2/api/instances'
+import { appInstanceAppLabel } from '@v2/lib/appLabels'
 
 // ============================================================================
 // 工具
@@ -68,7 +69,11 @@ export function ExecStatusChip({ status }: { status: string }) {
     running: { bg: 'var(--accent-soft)', color: 'var(--accent)', label: t('exec.status.running', '运行中') },
     pending: { bg: 'var(--bg-surface-2)', color: 'var(--text-3)', label: t('exec.status.pending', '等待中') },
   }
-  const s = MAP[status] ?? { bg: 'var(--bg-surface-2)', color: 'var(--text-3)', label: status }
+  const s = MAP[status] ?? {
+    bg: 'var(--bg-surface-2)',
+    color: 'var(--text-3)',
+    label: t('exec.status.unknown', '未知状态'),
+  }
   return (
     <span
       className="inline-flex items-center rounded px-1.5 py-px text-xs font-medium"
@@ -89,7 +94,7 @@ export function scheduleLabel(type: string): string {
     cron: t('schedule.cron', '定时（cron）'),
     event: t('schedule.event', '事件触发'),
   }
-  return MAP[type] ?? type
+  return MAP[type] ?? t('schedule.unknown', '未知调度')
 }
 
 // ============================================================================
@@ -112,11 +117,7 @@ export function InstanceDetailContent({
   return (
     <div className="space-y-4 px-4 py-4 text-xs">
       <Section title={t('instance.section.basic', '基础信息')}>
-        <Row label={t('instance.field.id', 'ID')} value={instance.id} />
-        <Row label={t('instance.field.app_code', '应用')} value={<code>{instance.app_code}</code>} />
-        {instance.app && (
-          <Row label={t('instance.field.app_name', '应用名')} value={instance.app.name} />
-        )}
+        <Row label={t('instance.field.app_code', '应用')} value={appInstanceAppLabel(instance)} />
         <Row label={t('instance.field.owner', '所有者')} value={instance.owner} />
         <Row
           label={t('instance.field.status', '状态')}
@@ -185,7 +186,7 @@ export function InstancePeekContent({ instance }: { instance: AppInstance }) {
   return (
     <div className="space-y-4 px-4 py-4 text-xs">
       <Section title={t('instance.section.basic', '基础信息')}>
-        <Row label={t('instance.field.app_code', '应用')} value={<code>{instance.app_code}</code>} />
+        <Row label={t('instance.field.app_code', '应用')} value={appInstanceAppLabel(instance)} />
         <Row label={t('instance.field.owner', '所有者')} value={instance.owner} />
         <Row
           label={t('instance.field.status', '状态')}

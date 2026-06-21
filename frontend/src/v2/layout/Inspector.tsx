@@ -56,7 +56,6 @@ export function Inspector({
         style={{ borderColor: 'var(--border)' }}
       >
         <div className="min-w-0 flex-1">
-          <div className="text-[10px] uppercase tracking-wide text-3">{t('inspector.title', '上下文面板')}</div>
           <div className="truncate text-[13px] font-medium text-1">{title ?? t('inspector.titleShort', '上下文')}</div>
           {subtitle ? (
             <div className="mt-0.5 truncate text-[11px] text-3">{subtitle}</div>

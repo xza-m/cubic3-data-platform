@@ -159,9 +159,78 @@ async function setupInteractionMocks(page: Page): Promise<void> {
   await prepareV2Page(page)
   await installApiCatchAll(page)
   await mockJsonRoute(page, '**/api/v1/access/me/preferences', envelope(prefFx.default))
+  await mockJsonRoute(page, /\/api\/v1\/governance\/gateway\/observability(\?.*)?$/, envelope({
+    window: '24h',
+    bucket: '1h',
+    generated_at: '2026-06-18T10:00:00Z',
+    summary: {
+      query_count: 113,
+      success_count: 104,
+      failed_count: 9,
+      stability: 92.04,
+      success_rate: 92.04,
+      rejected_count: 4,
+      sql_guard_rejected_count: 4,
+      physical_denied_count: 2,
+      by_data_level: { missing: 113 },
+    },
+    timeseries: {
+      bucket: '1h',
+      points: [
+        {
+          bucket_start: '2026-06-18T09:00:00Z',
+          query_total: 113,
+          success: 104,
+          failed: 5,
+          rejected: 4,
+          timeout: 0,
+          success_rate: 92.04,
+          execute_p95_ms: 1800,
+          queue_wait_p95_ms: 120,
+        },
+      ],
+    },
+    breakdowns: {
+      data_level: [{ key: 'missing', count: 113 }],
+    },
+    contract_completeness: {
+      total: 113,
+      platform_governed_count: 0,
+      gateway_only_count: 113,
+      legacy_actor_count: 113,
+      principal_present_rate: 0,
+      actor_present_rate: 0,
+      policy_decision_present_rate: 0,
+      data_level_present_rate: 0,
+      execution_profile_present_rate: 0,
+      credential_ref_present_rate: 0,
+    },
+    query_runs: {
+      total: 113,
+      items: [
+        {
+          query_id: 'gw_q_001',
+          trace_id: 'trace_001',
+          principal_id: null,
+          actor_id: 'ou_35ba9e6b0bcbe69f5cae13da8e1beed7',
+          actor_type: 'user',
+          policy_decision_id: null,
+          data_level: null,
+          execution_profile_code: null,
+          credential_ref: null,
+          status: 'FAILED',
+          reason_code: 'sql_guard_denied',
+          physical_denied: false,
+          created_at: '2026-06-18T09:00:00Z',
+          finished_at: '2026-06-18T09:00:02Z',
+        },
+      ],
+    },
+  }))
 
   await mockJsonRoute(page, /\/api\/v1\/apps\/categories$/, envelope(appCategories))
   await mockJsonRoute(page, /\/api\/v1\/apps(\?.*)?$/, envelope(apps))
+  await mockJsonRoute(page, /\/api\/v1\/apps\/[^/]+\/config-schema$/, envelope({}))
   await mockJsonRoute(page, '**/api/v1/apps/dataset_card_push', envelope(apps[4]))
   await mockJsonRoute(page, /\/api\/v1\/app-instances(\?.*)?$/, envelope({
     items: [instance101],
@@ -357,8 +426,65 @@ async function setupInteractionMocks(page: Page): Promise<void> {
         policy_version: 'v1',
         policy_epoch: 1,
       },
+      {
+        policy_code: 'm2_detail_read',
+        name: 'M2 受控明细访问',
+        description: '',
+        status: 'active',
+        priority: 20,
+        subject_roles: ['data_m2_detail_reader'],
+        resource_scope: {
+          data_levels: ['M2'],
+          table_layers: ['dwd'],
+          table_prefixes: ['dwd_'],
+        },
+        actions: ['query'],
+        effect: 'allow',
+        execution_profile_code: 'mc_m2_detail_reader',
+        reason: null,
+        policy_version: 'v1',
+        policy_epoch: 1,
+      },
+      {
+        policy_code: 'm1_aggregate_read',
+        name: 'M1 聚合数据访问',
+        description: '',
+        status: 'active',
+        priority: 30,
+        subject_roles: ['data_m1_reader'],
+        resource_scope: {
+          data_levels: ['M1'],
+          table_layers: ['dws'],
+          table_prefixes: ['dws_'],
+        },
+        actions: ['query'],
+        effect: 'allow',
+        execution_profile_code: 'mc_m1_reader',
+        reason: null,
+        policy_version: 'v1',
+        policy_epoch: 1,
+      },
+      {
+        policy_code: 'm0_public_read',
+        name: 'M0 基础数据访问',
+        description: '',
+        status: 'active',
+        priority: 40,
+        subject_roles: ['data_m0_reader'],
+        resource_scope: {
+          data_levels: ['M0'],
+          table_layers: ['dim', 'ads'],
+          table_prefixes: ['dim_', 'ads_'],
+        },
+        actions: ['query'],
+        effect: 'allow',
+        execution_profile_code: 'mc_m0_reader',
+        reason: null,
+        policy_version: 'v1',
+        policy_epoch: 1,
+      },
     ],
-    total: 1,
+    total: 4,
   }))
   await mockJsonRoute(page, /\/api\/v1\/governance\/execution-profiles(\?.*)?$/, envelope({
     items: [
@@ -430,7 +556,7 @@ async function expectNoNotFound(page: Page): Promise<void> {
 }
 
 function appCardByName(page: Page, name: string): Locator {
-  return page.getByText(name, { exact: true }).locator('xpath=ancestor::button[1]')
+  return page.getByTestId('marketplace-app-card').filter({ hasText: name }).first()
 }
 
 async function boundingBox(locator: Locator) {
@@ -446,6 +572,15 @@ async function openPeekAndFollowDetail(page: Page, rowText: string, expectedUrl:
   await page.getByRole('button', { name: '查看详情' }).last().click()
   await expect(page).toHaveURL(expectedUrl)
   await expect(page.getByText(detailText).first()).toBeVisible()
+  await expectNoNotFound(page)
+}
+
+async function openPeekAndFollowDetailByTitle(page: Page, rowTitle: string, expectedUrl: RegExp) {
+  await page.locator(`[title="${rowTitle}"]`).first().click()
+  await expect(page.getByRole('complementary', { name: '行预览' })).toBeVisible()
+  await page.getByRole('button', { name: '查看详情' }).last().click()
+  await expect(page).toHaveURL(expectedUrl)
+  await expect(page.locator(`[title="${rowTitle}"]`).first()).toBeVisible()
   await expectNoNotFound(page)
 }
 
@@ -481,6 +616,25 @@ test('C01 应用市场卡片网格保持跨行跨列对齐 @smoke @interaction-c
   await expectNoNotFound(page)
 })
 
+test('C01b 应用市场卡片创建实例跳转到预选应用表单 @smoke @interaction-contract', async ({ page }) => {
+  await gotoV2(page, '/apps')
+
+  const card = appCardByName(page, 'DataAgent 智能问答')
+  await card.getByRole('button', { name: '创建实例' }).click()
+
+  await expect(page).toHaveURL(/\/apps\/instances\/new\?app_code=data_agent$/)
+  await expect(page.getByText('创建应用实例', { exact: true })).toBeVisible()
+  await expect(page.locator('select').first()).toHaveValue('data_agent')
+  await expect(page.getByText('配置结构', { exact: true })).toBeVisible()
+  await expect(page.getByText('当前应用未定义配置结构')).toBeVisible()
+  await expect(page.getByText('查看 Schema')).toHaveCount(0)
+  await expect(page.getByText('配置内容', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '校验' })).toHaveClass(/btn-primary/)
+  await page.getByRole('button', { name: '编辑' }).click()
+  await expect(page.locator('textarea').last()).toHaveValue('{}')
+  await expectNoNotFound(page)
+})
+
 test('C02 应用实例列表行点击打开 PeekPanel，查看详情不落 404 @smoke @interaction-contract', async ({ page }) => {
   await gotoV2(page, '/apps/instances')
   await openPeekAndFollowDetail(page, 'test_push', /\/apps\/instances\/101$/, 'test_push')
@@ -490,12 +644,20 @@ test('C03 执行监控列表行点击打开 PeekPanel，查看详情不落 404 @
   await gotoV2(page, '/executions')
   await expect(page).toHaveURL(/\/apps\/executions$/)
   await expectAppsSecondarySidebar(page)
-  await openPeekAndFollowDetail(page, '#9001', /\/apps\/executions\/9001$/, '#9001')
+  await openPeekAndFollowDetailByTitle(page, '9001', /\/apps\/executions\/9001$/)
   await expectAppsSecondarySidebar(page)
 })
 
 test('C04 渠道列表行点击打开 PeekPanel，查看详情不落 404 @smoke @interaction-contract', async ({ page }) => {
   await gotoV2(page, '/config/channels')
+  const testRequestPromise = page.waitForRequest((request) => (
+    request.method() === 'POST'
+    && request.url().includes('/api/v1/channels/301/test')
+  ))
+  await page.getByRole('button', { name: '发送测试消息' }).first().click()
+  await testRequestPromise
+  await expect(page.getByText(/测试发送成功|配置校验通过|发送成功/).first()).toBeVisible()
+  await expect(page.getByText(/已通过|已校验/).first()).toBeVisible()
   await openPeekAndFollowDetail(page, '测试群', /\/config\/channels\/301$/, '基础信息')
 })
 
@@ -508,6 +670,10 @@ test('C06 访问网关使用 access 成员权限契约加载 @smoke @interaction
   await gotoV2(page, '/config/access')
 
   await expect(page.getByRole('heading', { name: '权限管理' })).toBeVisible()
+  const permissionHeader = page.getByRole('heading', { name: '权限管理' }).locator('xpath=ancestor::header[1]')
+  await expect(permissionHeader.getByRole('tab')).toHaveCount(0)
+  await expect(page.getByRole('tablist', { name: '权限管理分组' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '主体权限' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('link', { name: '权限管理' })).toBeVisible()
   await expect(page.getByRole('link', { name: '权限审计' })).toBeVisible()
   await expect(page.getByRole('link', { name: '网关观测' })).toBeVisible()
@@ -553,6 +719,13 @@ test('C06 访问网关使用 access 成员权限契约加载 @smoke @interaction
   await page.getByRole('button', { name: '取消' }).click()
 
   await page.getByRole('tab', { name: '数据访问规则' }).click()
+  await expect(page.getByText('明细数据读取').first()).toBeVisible()
+  await expect(page.getByText('汇总数据读取').first()).toBeVisible()
+  await expect(page.getByText('基础数据读取').first()).toBeVisible()
+  await expect(page.getByText('mc_m2_detail_reader')).toHaveCount(0)
+  await expect(page.getByText('mc_m1_reader')).toHaveCount(0)
+  await expect(page.getByText('mc_m0_reader')).toHaveCount(0)
+  await expect(page.getByText('最近判定')).toHaveCount(0)
   await expect(page.getByRole('button', { name: '展开剩余 3 项' })).toBeVisible()
   await page.getByRole('button', { name: '展开剩余 3 项' }).click()
   await expect(page.getByText('资源标签 sensitive')).toBeVisible()
@@ -573,14 +746,30 @@ test('C06 访问网关使用 access 成员权限契约加载 @smoke @interaction
   await expect(page.getByRole('heading', { name: '网关观测' })).toBeVisible()
   await expect(page.getByText('治理要求记录')).toHaveCount(0)
   await expect(page.getByText('执行身份')).toHaveCount(0)
+  await expect(page.getByRole('tab', { name: '监控概览' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '运行指标' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Trace 查询' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '契约质量' })).toBeVisible()
+  await expect(page.getByText('最近执行记录存在字段缺失')).toBeVisible()
+  await expect(page.getByText('最近执行记录存在字段缺失')).toHaveCount(1)
   await expect(page.getByText('查询次数', { exact: true })).toBeVisible()
   await expect(page.getByText('稳定性', { exact: true })).toBeVisible()
   await expect(page.getByText('网关拦截', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('查询量日趋势', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('最新日 DAU', { exact: true }).first()).toBeVisible()
-  await expect(page.getByRole('heading', { name: '全平台访问记录' })).toBeVisible()
-  await expect(page.getByText('访问等级分布')).toBeVisible()
+  await expect(page.getByText('最新桶成功率', { exact: true }).first()).toBeVisible()
+  await page.getByRole('tab', { name: '运行指标' }).click()
+  await expect(page.getByText('排队 / 运行 / 等待', { exact: true })).toBeVisible()
+  await expect(page.getByText('运行对象')).toBeVisible()
   await expect(page.getByText('物理权限检查')).toBeVisible()
+  await page.getByRole('tab', { name: '契约质量' }).click()
+  await expect(page.getByText('契约完整度')).toBeVisible()
+  await expect(page.getByText('访问等级分布')).toBeVisible()
+  await expect(page.getByText('最近执行记录存在字段缺失')).toHaveCount(1)
+  await page.getByRole('tab', { name: 'Trace 查询' }).click()
+  await expect(page.getByRole('heading', { name: '全平台访问记录' })).toBeVisible()
+  await expect(page.getByText('最近执行记录存在字段缺失')).toHaveCount(1)
+  await expect(page.getByText('神秘用户')).toBeVisible()
+  await expect(page.getByText('ou_35ba9e6b0bcbe69f5cae13da8e1beed7')).toHaveCount(0)
   const traceButtons = page.getByRole('button', { name: /查看执行 Trace/ })
   if (await traceButtons.count() > 0) {
     await traceButtons.first().click()
@@ -597,10 +786,10 @@ test('C07 执行记录列表有 20 条分页契约，翻页后仍保持应用侧
   await gotoV2(page, '/apps/executions')
 
   await expect(page.getByText('1-20 / 45 条')).toBeVisible()
-  await expect(page.getByText('#9001').first()).toBeVisible()
+  await expect(page.locator('[title="9001"]').first()).toBeVisible()
   await page.getByRole('button', { name: '下一页' }).click()
   await expect(page.getByText('21-40 / 45 条')).toBeVisible()
-  await expect(page.getByText('#9021').first()).toBeVisible()
+  await expect(page.locator('[title="9021"]').first()).toBeVisible()
   await expectAppsSecondarySidebar(page)
   await expectNoNotFound(page)
 })
@@ -624,7 +813,7 @@ test('C08 共性工具栏控件使用统一语义 @smoke @interaction-contract',
   await expect(page.getByRole('button', { name: '刷新执行记录' })).toBeVisible()
 
   await gotoV2(page, '/data-center/sync/tasks')
-  await expect(page.getByRole('tab', { name: /同步任务/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('link', { name: /数据同步/ })).toHaveAttribute('aria-current', 'page')
   await expect(page.getByRole('searchbox', { name: '搜索同步任务' })).toBeVisible()
   await expect(page.getByLabel('筛选任务状态')).toBeVisible()
   await expect(page.getByLabel('筛选任务类型')).toBeVisible()

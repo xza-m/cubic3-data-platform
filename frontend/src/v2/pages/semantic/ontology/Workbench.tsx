@@ -76,8 +76,6 @@ export default function OntologyWorkbench() {
         error={agentPlan.error}
       />
 
-      {/* 搜索栏 */}
-      {/* TODO(B-back-6): 后端全局搜索上线后替换为 API 搜索，移除本地过滤 */}
       <div className="mb-4 flex items-center gap-3">
         <div className="relative max-w-sm flex-1">
           <Search
@@ -88,7 +86,7 @@ export default function OntologyWorkbench() {
           <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder={t('ontology.searchPlaceholder', '搜索对象名称、描述… (本地过滤)')}
+            placeholder={t('ontology.searchPlaceholder', '搜索对象名称、描述…')}
             className="pl-7"
             aria-label={t('ontology.searchLabel', '搜索业务对象')}
           />
@@ -171,12 +169,12 @@ function AgentPreviewPanel({
           </div>
           <div className="min-w-0 space-y-3">
             <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
-              <PreviewMetric icon={Bot} label={t('ontology.agentPreview.mode', 'Mode')} value={runtimeMode || '-'} />
-              <PreviewMetric icon={Bot} label={t('ontology.agentPreview.route', 'Route')} value={routeType || '-'} />
-              <PreviewMetric icon={FileCode2} label={t('ontology.agentPreview.binding', 'Binding')} value={bindingStatus || '-'} />
-              <PreviewMetric icon={ShieldCheck} label={t('ontology.agentPreview.decision', 'Decision')} value={decision || '-'} />
-              <PreviewMetric icon={AlertTriangle} label={t('ontology.agentPreview.level', 'Level')} value={dataLevel || '-'} />
-              <PreviewMetric icon={FileCode2} label={t('ontology.agentPreview.ticket', 'Ticket')} value={enforcement || '-'} />
+              <PreviewMetric icon={Bot} label={t('ontology.agentPreview.mode', '运行模式')} value={runtimeMode || '-'} />
+              <PreviewMetric icon={Bot} label={t('ontology.agentPreview.route', '理解路径')} value={routeType || '-'} />
+              <PreviewMetric icon={FileCode2} label={t('ontology.agentPreview.binding', '语义绑定')} value={bindingStatus || '-'} />
+              <PreviewMetric icon={ShieldCheck} label={t('ontology.agentPreview.decision', '访问决策')} value={decision || '-'} />
+              <PreviewMetric icon={AlertTriangle} label={t('ontology.agentPreview.level', '数据等级')} value={dataLevel || '-'} />
+              <PreviewMetric icon={FileCode2} label={t('ontology.agentPreview.ticket', '执行凭据')} value={enforcement || '-'} />
             </div>
             {logicalSql ? (
               <pre

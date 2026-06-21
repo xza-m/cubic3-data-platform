@@ -300,9 +300,8 @@ export default function CubeEdit() {
             <Card>
               <CardHead title={t('cube.history', '变更历史')} />
               <CardBody>
-                {/* 变更历史基于 YAML 文件；目前后端无专用 history API，通过 git log 实现需 B-back-* 支持 */}
                 <p className="text-xs text-3">
-                  {t('cube.historyPlaceholder', 'YAML 文件的变更历史将在版本管理接入后显示。')}
+                  {t('cube.historyPlaceholder', '暂无变更历史')}
                 </p>
               </CardBody>
             </Card>

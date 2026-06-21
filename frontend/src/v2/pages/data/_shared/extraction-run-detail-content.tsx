@@ -17,6 +17,9 @@ import {
 } from '@v2/hooks/extraction'
 import { RefreshCcw, ScrollText } from 'lucide-react'
 import { t } from '@v2/i18n'
+import { StructuredDetails } from '@v2/components/common/StructuredDetails'
+import { TechnicalValue } from '@v2/components/common/TechnicalValue'
+import { dataTriggerLabel, technicalIdLabel } from '@v2/lib/displayLabels'
 
 // ── 徽章渲染助手 ──────────────────────────────────────────────────────────────
 
@@ -57,7 +60,7 @@ export function runTabLabel(run: ExtractionRun): ReactNode {
         style={{ background: dotColor }}
       />
       <span className="truncate">
-        Run #{run.id} · Task #{run.task_id}
+        {technicalIdLabel(t('extractionRunDetail.tab.recordPrefix', '同步记录 '), run.id)}
       </span>
     </span>
   )
@@ -148,10 +151,10 @@ export function ExtractionRunDetailContent({
           className="divide-y rounded-md border text-xs"
           style={{ borderColor: 'var(--border)' }}
         >
-          <Row label={t('extractionRunDetail.field.runId', '执行 ID')}    value={run.id} />
-          <Row label={t('extractionRunDetail.field.task', '所属任务')}     value={`Task #${run.task_id}`} />
+          <Row label={t('extractionRunDetail.field.runId', '同步记录')}    value={<TechnicalValue value={run.id} />} />
+          <Row label={t('extractionRunDetail.field.task', '所属任务')}     value={<TechnicalValue value={run.task_id} label={t('extractionRunDetail.field.taskPrefix', '任务')} />} />
           <Row label={t('extractionRunDetail.field.status', '状态')}      value={runStatusChip(run.status)} />
-          <Row label={t('extractionRunDetail.field.runType', '触发类型')}  value={run.run_type} />
+          <Row label={t('extractionRunDetail.field.runType', '触发类型')}  value={dataTriggerLabel(run.run_type)} />
           <Row label={t('extractionRunDetail.field.triggeredBy', '触发人')} value={run.triggered_by} />
           <Row label={t('extractionRunDetail.field.startTime', '开始时间')} value={fmtDateTime(run.start_time)} />
           <Row
@@ -180,16 +183,13 @@ export function ExtractionRunDetailContent({
 
       {run.delivery_info ? (
         <Section title={t('extractionRunDetail.section.delivery', '投递详情')}>
-          <pre
-            className="max-h-40 overflow-auto rounded-md border p-2 text-[11px] leading-4"
-            style={{
-              background: 'var(--bg-surface-2)',
-              borderColor: 'var(--border)',
-              color: 'var(--text-2)',
-            }}
-          >
-            {JSON.stringify(run.delivery_info, null, 2)}
-          </pre>
+          <StructuredDetails
+            title={t('extractionRunDetail.delivery.detailTitle', '查看投递详情')}
+            value={run.delivery_info}
+            summary={t('extractionRunDetail.delivery.summary', '投递信息 {count} 项', {
+              count: Object.keys(run.delivery_info).length,
+            })}
+          />
         </Section>
       ) : null}
 

@@ -110,6 +110,14 @@ test('P23 Dashboard 首屏 KPI + 侧卡片可见 @p23', async ({ page }) => {
   await expect(page.getByRole('button', { name: '历史' })).toBeVisible()
   await expect(page.getByRole('button', { name: '变更' })).toBeVisible()
   await expect(page.getByRole('button', { name: '通知' })).toBeVisible()
+
+  // 命令面板只展示可执行动作，不把内部路由或泛化说明暴露给用户。
+  await page.getByRole('button', { name: '打开命令面板' }).first().click()
+  const palette = page.getByRole('dialog', { name: '命令面板' })
+  await expect(palette.getByRole('option', { name: /回到总览/ })).toBeVisible()
+  await expect(palette.getByText('/dashboard')).toHaveCount(0)
+  await expect(palette.getByText('/semantic/ontology')).toHaveCount(0)
+  await expect(palette.getByText('跳转到模块')).toHaveCount(0)
 })
 
 test('P23 顶栏个人入口打开个人信息页 @p23', async ({ page }) => {
