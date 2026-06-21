@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bot, Loader2, MessageSquarePlus, Send, Sparkles } from 'lucide-react'
 import { useDatasets } from '@v2/hooks/datasets'
 import { useAgentSemanticExecute } from '@v2/hooks/agent'
+import { useCubeList } from '@v2/hooks/semantic'
 import {
   useConversation,
   useConversations,
@@ -37,12 +38,14 @@ export default function DataChat() {
   const toast = useToast()
   const { setBreadcrumbs, setTopBarActions, setContextPanel } = useAppShell()
   const datasetsQ = useDatasets({ page: 1, page_size: 100 })
+  const cubesQ = useCubeList({ page: 1, page_size: 50 })
   const conversationsQ = useConversations(DEFAULT_CONVERSATION_PARAMS)
   const createConversationMut = useCreateConversation()
   const sendMessageMut = useSendConversationMessage()
   const executeSemanticMut = useAgentSemanticExecute()
 
   const datasets = useMemo(() => datasetsQ.data?.items ?? [], [datasetsQ.data?.items])
+  const cubes = useMemo(() => cubesQ.data?.cubes ?? [], [cubesQ.data?.cubes])
   const conversations = useMemo(() => conversationsQ.data?.items ?? [], [conversationsQ.data?.items])
   const [selectedDatasetId, setSelectedDatasetId] = useState<number | null>(null)
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null)
@@ -235,6 +238,21 @@ export default function DataChat() {
             </Select>
           </div>
 
+          <div className="border-b p-3" style={{ borderColor: 'var(--border)' }}>
+            <div className="mb-1.5 text-[11px] font-medium text-3">{t('dataChat.catalog.title', '能问什么')}</div>
+            {cubesQ.isLoading ? (
+              <div className="text-[11px] text-3">{t('common.loading', '加载中…')}</div>
+            ) : cubes.length === 0 ? (
+              <div className="text-[11px] text-3">{t('dataChat.catalog.empty', '暂无已发布语义资产')}</div>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {cubes.slice(0, 12).map((cube) => (
+                  <Chip key={cube.name}>{cube.title || cube.name}</Chip>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="min-h-0 overflow-y-auto scroll-thin p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[11px] font-medium text-3">{t('dataChat.history.title', '最近对话')}</span>
@@ -277,7 +295,7 @@ export default function DataChat() {
                   subtitle={
                     selectedDataset
                       ? t('dataChat.activeDataset', '当前数据集：{name}', { name: selectedDataset.dataset_name })
-                      : t('dataChat.noDataset', '请选择一个数据集')
+                      : t('dataChat.noDataset', '全局问数（不限数据集）')
                   }
                   extra={<Chip tone="accent">{t('dataChat.api', '对话记录')}</Chip>}
                 />

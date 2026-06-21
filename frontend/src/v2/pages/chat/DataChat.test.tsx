@@ -20,6 +20,13 @@ vi.mock('@v2/hooks/datasets', () => ({
   }),
 }))
 
+vi.mock('@v2/hooks/semantic', () => ({
+  useCubeList: () => ({
+    data: { cubes: [{ name: 'orders', title: '订单' }] },
+    isLoading: false,
+  }),
+}))
+
 vi.mock('@v2/hooks/agent', () => ({
   useAgentSemanticExecute: () => ({
     mutateAsync: vi.fn(),
