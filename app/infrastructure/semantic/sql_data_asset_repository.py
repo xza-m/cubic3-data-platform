@@ -111,14 +111,25 @@ class SqlDataAssetRepository:
         self.session.commit()
         return _sync_run_from_row(row)
 
-    def list_sync_runs(self, *, limit: int = 50) -> list[AssetSyncRun]:
+    def list_sync_runs(self, *, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+        query = self.session.query(DataAssetSyncRunORM)
+        total = query.count()
+        page = max(1, int(page or 1))
+        page_size = max(1, min(int(page_size or 20), 200))
         rows = (
-            self.session.query(DataAssetSyncRunORM)
+            query
             .order_by(DataAssetSyncRunORM.started_at.desc())
-            .limit(limit)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
             .all()
         )
-        return [_sync_run_from_row(row) for row in rows]
+        return {
+            "items": [_sync_run_from_row(row) for row in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "page_count": (total + page_size - 1) // page_size if total else 0,
+        }
 
     def get_sync_run(self, sync_run_id: str) -> Optional[AssetSyncRun]:
         row = self.session.get(DataAssetSyncRunORM, sync_run_id)

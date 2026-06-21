@@ -115,7 +115,8 @@ def create_semantic_assets_blueprint(
         service = _resolve_data_asset_service(data_asset_service)
         return success(
             service.list_sync_runs(
-                limit=_positive_int_arg("limit", default=50, maximum=200)
+                page=_positive_int_arg("page", default=1),
+                page_size=_positive_int_arg("page_size", default=20, maximum=200),
             )
         )
 

@@ -190,7 +190,7 @@ def test_semantic_assets_api_normalizes_invalid_pagination_args():
     ).status_code == 200
     assert client.get(
         "/api/v1/semantic/assets/sync-runs",
-        query_string={"limit": "bad"},
+        query_string={"page": "-3", "page_size": "bad"},
         headers=_auth_headers(),
     ).status_code == 200
     service.list_tables.assert_called_with(
@@ -203,7 +203,7 @@ def test_semantic_assets_api_normalizes_invalid_pagination_args():
         sync_status=None,
         lifecycle_status=None,
     )
-    service.list_sync_runs.assert_called_with(limit=50)
+    service.list_sync_runs.assert_called_with(page=1, page_size=20)
 
 
 def test_semantic_assets_api_exposes_field_semantic_candidates_from_asset_context():

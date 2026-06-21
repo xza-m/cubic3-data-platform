@@ -318,6 +318,9 @@ DATA_ASSET_SYNC_RUN_LIST_SCHEMA = object_schema(
     {
         "items": array_schema(DATA_ASSET_SYNC_RUN_SCHEMA),
         "total": {"type": "integer"},
+        "page": {"type": "integer"},
+        "page_size": {"type": "integer"},
+        "page_count": {"type": "integer"},
     },
     required=["items", "total"],
 )
@@ -665,9 +668,10 @@ OPENAPI_OPERATION_METADATA: dict[tuple[str, str], dict[str, Any]] = {
         "operationId": "SemanticAssetsSyncRunsList",
         "tags": ["语义资产"],
         "summary": "获取数据资产同步批次列表",
-        "description": "只读查询最近的数据资产元数据同步批次。",
+        "description": "分页查询数据资产元数据同步批次。",
         "parameters": [
-            query_param("limit", {"type": "integer", "default": 50, "maximum": 200}, "返回批次数量"),
+            query_param("page", {"type": "integer", "default": 1, "minimum": 1}, "页码"),
+            query_param("page_size", {"type": "integer", "default": 20, "maximum": 200}, "每页批次数量"),
         ],
         "responses": {"200": json_response(DATA_ASSET_SYNC_RUN_LIST_SCHEMA), **standard_error_responses()},
         **agent_extensions(

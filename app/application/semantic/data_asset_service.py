@@ -151,11 +151,11 @@ class DataAssetService:
             "total": len(fields),
         }
 
-    def list_sync_runs(self, *, limit: int = 50) -> Dict[str, Any]:
-        runs = self._repository.list_sync_runs(limit=limit)
+    def list_sync_runs(self, *, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+        page_payload = self._repository.list_sync_runs(page=page, page_size=page_size)
         return {
-            "items": [_sync_run_to_dict(run) for run in runs],
-            "total": len(runs),
+            **{key: value for key, value in page_payload.items() if key != "items"},
+            "items": [_sync_run_to_dict(run) for run in page_payload.get("items", [])],
         }
 
     def get_sync_run(self, sync_run_id: str) -> Optional[Dict[str, Any]]:

@@ -258,7 +258,7 @@ def test_sql_data_asset_repository_tracks_sync_usage_lineage_and_radar(db_sessio
         )
     )
 
-    assert repo.list_sync_runs()[0].status == "failed"
+    assert repo.list_sync_runs()["items"][0].status == "failed"
     assert repo.list_usage(table.id)[0].usage_count == 5
     assert repo.list_lineage(table.id)[0].target_ref == "student_comment_cube"
     assert repo.radar_summary() == {
@@ -269,6 +269,25 @@ def test_sql_data_asset_repository_tracks_sync_usage_lineage_and_radar(db_sessio
         "drift_risk_count": 0,
         "last_sync_at": None,
     }
+
+
+def test_sql_data_asset_repository_lists_sync_runs_with_pagination(db_session):
+    repo = SqlDataAssetRepository(db_session)
+    for index in range(3):
+        repo.start_sync_run(
+            AssetSyncRun(
+                id=f"sync_{index}",
+                source_id="maxcompute-prod",
+            )
+        )
+
+    page = repo.list_sync_runs(page=2, page_size=2)
+
+    assert page["total"] == 3
+    assert page["page"] == 2
+    assert page["page_size"] == 2
+    assert page["page_count"] == 2
+    assert len(page["items"]) == 1
 
 
 def test_sql_data_asset_repository_radar_counts_latest_sync_failure_per_source(db_session):

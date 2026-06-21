@@ -473,6 +473,6 @@ def test_data_asset_service_covers_empty_optional_and_invalid_nested_payloads(db
     assert valid["stats"]["usage_count"] == 0
     assert valid["stats"]["lineage_count"] == 0
     assert service.get_table(table_id)["name"] == "dwd_comment_empty_optional"
-    assert service.list_sync_runs(limit=10)["total"] == 4
+    assert service.list_sync_runs(page=1, page_size=10)["total"] == 4
     assert service.list_fields("missing") is None
     assert service.build_table_evidence("missing") is None
