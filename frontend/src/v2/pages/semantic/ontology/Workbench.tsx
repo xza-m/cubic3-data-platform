@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Bot, Boxes, FileCode2, GitMerge, Play, Plus, Search, ShieldCheck, TrendingUp } from 'lucide-react'
 // 等待 X-Crosscut：@v2/components/ui
 import { Button, Card, CardBody, CardHead, Chip, Input, Textarea } from '@v2/components/ui'
+import { EmptyState as CommonEmptyState } from '@v2/components/common/EmptyState'
 // 等待 X-Crosscut：@v2/i18n
 import { t } from '@v2/i18n'
 import { fmtRelative } from '@v2/lib/format'
@@ -104,7 +105,16 @@ export default function OntologyWorkbench() {
           <CardBody className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</CardBody>
         </Card>
       ) : filtered.length === 0 ? (
-        <EmptyState onCreate={() => navigate('/semantic/ontology/objects/new')} />
+        <CommonEmptyState
+          icon={<Boxes size={18} />}
+          title={t('ontology.emptyTitle', '本体尚未初始化')}
+          description={t('ontology.emptyDesc', '创建第一个业务对象，开始描述业务语义')}
+          action={
+            <Button size="sm" variant="primary" onClick={() => navigate('/semantic/ontology/objects/new')}>
+              <Plus size={12} /> {t('ontology.createObject', '新建对象')}
+            </Button>
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((o) => (
@@ -261,26 +271,6 @@ function StatCard({
   )
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div
-      className="flex flex-1 flex-col items-center justify-center rounded-md border border-dashed py-16 text-center"
-      style={{ borderColor: 'var(--border)' }}
-    >
-      <div
-        className="flex h-10 w-10 items-center justify-center rounded-md"
-        style={{ background: 'var(--bg-hover)', color: 'var(--text-3)' }}
-      >
-        <Boxes size={18} />
-      </div>
-      <div className="mt-3 text-sm text-1">{t('ontology.emptyTitle', '本体尚未初始化')}</div>
-      <div className="mt-1 text-xs text-3">{t('ontology.emptyDesc', '创建第一个业务对象，开始描述业务语义')}</div>
-      <Button size="sm" variant="primary" className="mt-3" onClick={onCreate}>
-        <Plus size={12} /> {t('ontology.createObject', '新建对象')}
-      </Button>
-    </div>
-  )
-}
 
 function ObjectCard({
   object: o,

@@ -12,6 +12,7 @@ import { Button, Chip } from '@v2/components/ui'
 import { ListPagination } from '@v2/components/ListPagination'
 // 等待 X-Crosscut：@v2/components/EntityFormDialog
 import { EntityFormDialog } from '@v2/components/EntityFormDialog'
+import { EmptyState as CommonEmptyState } from '@v2/components/common/EmptyState'
 // 等待 X-Crosscut：@v2/layout/AppShell
 import { useAppShell } from '@v2/layout/AppShell'
 // 等待 X-Crosscut：@v2/i18n
@@ -67,7 +68,16 @@ export default function Domains() {
       ) : domainsQuery.isError ? (
         <div className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</div>
       ) : domains.length === 0 ? (
-        <EmptyState onCreate={() => setShowCreate(true)} />
+        <CommonEmptyState
+          icon={<Network size={20} />}
+          title={t('domains.emptyTitle', '尚未创建业务上下文')}
+          description={t('domains.emptyDesc', '业务上下文帮助你按主题组织 Cube 与本体引用，不承载具体语义定义')}
+          action={
+            <Button size="sm" variant="primary" onClick={() => setShowCreate(true)}>
+              <Plus size={12} /> {t('domains.create', '新建业务上下文')}
+            </Button>
+          }
+        />
       ) : (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -170,23 +180,3 @@ function domainRouteSegment(domain: DomainSummary): string {
   return encodeURIComponent(domainStableId(domain))
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div
-      className="flex flex-1 flex-col items-center justify-center rounded-md border border-dashed py-20 text-center"
-      style={{ borderColor: 'var(--border)' }}
-    >
-      <div
-        className="flex h-12 w-12 items-center justify-center rounded-md"
-        style={{ background: 'var(--bg-hover)', color: 'var(--text-3)' }}
-      >
-        <Network size={20} />
-      </div>
-      <div className="mt-3 font-semibold text-1">{t('domains.emptyTitle', '尚未创建业务上下文')}</div>
-      <div className="mt-1 text-sm text-3">{t('domains.emptyDesc', '业务上下文帮助你按主题组织 Cube 与本体引用，不承载具体语义定义')}</div>
-      <Button size="sm" variant="primary" className="mt-4" onClick={onCreate}>
-        <Plus size={12} /> {t('domains.create', '新建业务上下文')}
-      </Button>
-    </div>
-  )
-}
