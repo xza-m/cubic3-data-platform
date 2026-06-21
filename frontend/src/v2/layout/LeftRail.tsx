@@ -30,7 +30,7 @@ export function LeftRail({ pathname, onOpenCommandPalette }: LeftRailProps) {
         >
           C³
         </div>
-        {NAV_MODULES.map((m) => {
+        {NAV_MODULES.filter((m) => m.implemented !== false).map((m) => {
           const Icon = m.icon
           const isActive = active?.id === m.id
           return (

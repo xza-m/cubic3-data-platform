@@ -28,6 +28,7 @@ const groupSubnav = (subnav: SubNavItem[] | undefined): SubNavGroup[] => {
   const groups: SubNavGroup[] = []
   const indexBySection = new Map<string, number>()
   for (const item of subnav) {
+    if (item.implemented === false) continue
     const key = item.section ?? '__default__'
     let idx = indexBySection.get(key)
     if (idx === undefined) {

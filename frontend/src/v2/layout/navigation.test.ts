@@ -183,9 +183,9 @@ describe('语义中心导航降噪', () => {
       '语义资产',
       'Cube',
       '本体与关系',
-      '关系画布',
+      'Cube Join 画布',
       '业务上下文',
-      '诊断治理',
+      '语义诊断',
     ])
     expect(subnav.map((item) => item.path)).toEqual([
       '/semantic/modeling-workbench',
@@ -231,10 +231,10 @@ describe('semantic navigation i18n', () => {
     expect(zhMessages['nav.semantic.sub.modelingWorkbench']).toBe('语义建设')
     expect(zhMessages['nav.semantic.sub.assets']).toBe('语义资产')
     expect(zhMessages['nav.semantic.sub.ontologyRelations']).toBe('本体与关系')
-    expect(zhMessages['nav.semantic.sub.diagnosticsGovernance']).toBe('诊断治理')
+    expect(zhMessages['nav.semantic.sub.diagnosticsGovernance']).toBe('语义诊断')
     expect(zhMessages['nav.semantic.sub.cubes']).toBe('Cube')
     expect(zhMessages['nav.semantic.sub.domains']).toBe('业务上下文')
-    expect(zhMessages['nav.semantic.sub.relationCanvas']).toBe('关系画布')
+    expect(zhMessages['nav.semantic.sub.relationCanvas']).toBe('Cube Join 画布')
 
     expect(zhMessages).toHaveProperty('nav.semantic.sub.modelingBuilder')
     expect(zhMessages).toHaveProperty('nav.semantic.sub.batchColdStart')

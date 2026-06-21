@@ -16,7 +16,7 @@ describe('SecondarySidebar', () => {
     )
 
     expect(screen.getByRole('link', { name: /语义资产/ })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('link', { name: /诊断治理/ })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('link', { name: /语义诊断/ })).not.toHaveAttribute('aria-current')
   })
 
   it('数据中心使用二级侧栏承载模块级入口', () => {

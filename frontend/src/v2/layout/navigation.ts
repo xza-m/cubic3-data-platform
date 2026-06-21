@@ -158,7 +158,7 @@ export const NAV_MODULES: NavModule[] = [
         matchPrefix: true,
       },
       {
-        label: t('nav.semantic.sub.relationCanvas', '关系画布'),
+        label: t('nav.semantic.sub.relationCanvas', 'Cube Join 画布'),
         path: '/semantic/relations',
         implemented: true,
       },
@@ -169,7 +169,7 @@ export const NAV_MODULES: NavModule[] = [
         matchPrefix: true,
       },
       {
-        label: t('nav.semantic.sub.diagnosticsGovernance', '诊断治理'),
+        label: t('nav.semantic.sub.diagnosticsGovernance', '语义诊断'),
         path: '/semantic/workbench',
         implemented: true,
       },
