@@ -86,6 +86,29 @@ describe('SemanticModelingWorkbench', () => {
     expect(modelingAgentContexts).toEqual([null])
   })
 
+  it('seeds quick mode source from dataset state (#8)', () => {
+    modelingAgentContexts.length = 0
+    renderWorkbench('/semantic/modeling-workbench/quick', {
+      workbenchMode: 'quick',
+      projectId: 'quick-project',
+      candidateId: 'quick-asset',
+      candidateTitle: 'orders',
+      target: 'semantic_center',
+      source: 'ods_orders_df',
+      grain: '待确认资产粒度',
+      risk: 'medium',
+      evidence: [],
+    })
+
+    expect(screen.getByText('ods_orders_df')).toBeInTheDocument()
+    expect(screen.getByText('工作台内嵌资产建设画布')).toBeInTheDocument()
+    expect(modelingAgentContexts[0]).toMatchObject({
+      workbenchMode: 'quick',
+      source: 'ods_orders_df',
+      target: 'semantic_center',
+    })
+  })
+
   it('renders candidate context when opened from batch queue', () => {
     modelingAgentContexts.length = 0
     renderWorkbench('/semantic/modeling-workbench/batch-project/candidate/fact-learning-activity', {

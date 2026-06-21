@@ -86,7 +86,7 @@ export default function SemanticModelingWorkbench() {
               )}
             </p>
           </div>
-          <ModelingAgent workbenchContext={!isQuickMode && hasCandidateRoute ? context : null} embeddedInWorkbench />
+          <ModelingAgent workbenchContext={isQuickMode ? candidateState : hasCandidateRoute ? context : null} embeddedInWorkbench />
         </section>
       </main>
     </div>

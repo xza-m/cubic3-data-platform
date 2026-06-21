@@ -538,7 +538,20 @@ function AssetsPanel({
               variant="ghost"
               onClick={(event) => {
                 event.stopPropagation()
-                navigate(`/semantic/modeling-workbench?dataset_id=${row.id}`)
+                // #8: 把所选数据集作为快速建模的源表带入，避免上下文丢失。
+                navigate('/semantic/modeling-workbench/quick', {
+                  state: {
+                    workbenchMode: 'quick',
+                    projectId: 'quick-project',
+                    candidateId: 'quick-asset',
+                    candidateTitle: row.dataset_name,
+                    target: 'semantic_center',
+                    source: row.physical_table || row.dataset_name,
+                    grain: t('semantic.modelingWorkbench.fallbackGrainQuick', '待确认资产粒度'),
+                    risk: 'medium',
+                    evidence: [],
+                  },
+                })
               }}
             >
               {t('dataCenter.asset.modeling', '语义建设')}
