@@ -41,6 +41,7 @@ class SemanticRouterPreviewService:
         runtime_service=None,
         runtime_snapshot_service=None,
         policy_guard_service=None,
+        intent_extraction_service=None,
     ):
         self._object_repository = object_repository
         self._metric_repository = metric_repository
@@ -52,6 +53,20 @@ class SemanticRouterPreviewService:
         self._runtime_service = runtime_service
         self._runtime_snapshot_service = runtime_snapshot_service
         self._policy_guard_service = policy_guard_service
+        self._intent_extraction_service = intent_extraction_service
+
+    def _expand_question(self, question: str) -> str:
+        """附加式 LLM 意图抽取：把规范术语拼到匹配文本，增强口语匹配。
+
+        无 LLM / 抽取为空时原样返回，确定性匹配行为不变（零回归）。
+        仅用于实体匹配，semantic_plan_id 与展示仍用原始 question。
+        """
+        if self._intent_extraction_service is None:
+            return question
+        terms = self._intent_extraction_service.extract_terms(question)
+        if not terms:
+            return question
+        return question + " " + " ".join(terms)
 
     def route(
         self,
@@ -77,27 +92,28 @@ class SemanticRouterPreviewService:
         runtime_catalog = self._runtime_catalog(runtime_mode=runtime_mode, runtime_manifest=runtime_manifest)
         mapper_preview_service = self._mapper_preview_service_for(runtime_catalog)
         viewer_roles = self._resolve_roles(viewer_roles=viewer_roles, principal_context=principal_context)
+        match_text = self._expand_question(question)
 
         matched_metric, metric_match_source = self._match_metric(
-            question,
+            match_text,
             runtime_mode=runtime_mode,
             runtime_manifest=runtime_manifest,
             runtime_catalog=runtime_catalog,
         )
         matched_object, object_match_source = self._match_object(
-            question,
+            match_text,
             runtime_mode=runtime_mode,
             runtime_manifest=runtime_manifest,
             runtime_catalog=runtime_catalog,
         )
         matched_relation, relation_match_source = self._match_relation(
-            question,
+            match_text,
             runtime_mode=runtime_mode,
             runtime_manifest=runtime_manifest,
             runtime_catalog=runtime_catalog,
         )
         matched_action, action_match_source = self._match_action(
-            question,
+            match_text,
             runtime_mode=runtime_mode,
             runtime_manifest=runtime_manifest,
             runtime_catalog=runtime_catalog,
