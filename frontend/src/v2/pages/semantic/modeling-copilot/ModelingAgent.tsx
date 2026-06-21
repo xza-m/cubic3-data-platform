@@ -482,7 +482,7 @@ export default function ModelingAgent({
       setArtifactTab("Review");
       toast.show({
         tone: "success",
-        title: "发布预演已生成",
+        title: t("modelingAgent.toast.releasePreviewReady", "发布预演已生成"),
         description:
           "只读预演已更新，不会发布、不应用资产，也不会发起真实查询。",
       });
@@ -508,7 +508,7 @@ export default function ModelingAgent({
     if (!publishGuard.canPublish) {
       setLocalError(publishGuard.reason);
       setActionError({
-        title: "还不能发布",
+        title: t("modelingAgent.toast.cannotPublish", "还不能发布"),
         message: publishGuard.reason,
         detail: publishGuard.detail,
         action: "spec",
@@ -522,7 +522,7 @@ export default function ModelingAgent({
       setArtifactTab("Review");
       toast.show({
         tone: "success",
-        title: "语义已发布",
+        title: t("modelingAgent.toast.published", "语义已发布"),
         description:
           "语义资产已发布到语义中心。Data Agent、BI、数据分析等消费者可以基于同一发布快照做可用性验证。",
       });
@@ -562,7 +562,7 @@ export default function ModelingAgent({
     if (!ok) return;
     try {
       await deleteSession.mutateAsync(target.id);
-      toast.show({ tone: "success", title: "会话已删除" });
+      toast.show({ tone: "success", title: t("modelingAgent.toast.sessionDeleted", "会话已删除") });
       if (target.id === activeSessionId) {
         if (embeddedInWorkbench) {
           clearWorkbenchSession();
@@ -573,7 +573,7 @@ export default function ModelingAgent({
     } catch (error) {
       toast.show({
         tone: "danger",
-        title: "删除失败",
+        title: t("modelingAgent.toast.deleteFailed", "删除失败"),
         description: formatCopilotError(error),
       });
     }
@@ -591,11 +591,11 @@ export default function ModelingAgent({
     if (!trimmed) return;
     try {
       await renameSession.mutateAsync({ sessionId: target.id, title: trimmed });
-      toast.show({ tone: "success", title: "已更新会话标题" });
+      toast.show({ tone: "success", title: t("modelingAgent.toast.titleUpdated", "已更新会话标题") });
     } catch (error) {
       toast.show({
         tone: "danger",
-        title: "重命名失败",
+        title: t("modelingAgent.toast.renameFailed", "重命名失败"),
         description: formatCopilotError(error),
       });
     }
