@@ -47,7 +47,8 @@ export interface ConversationListResponse {
 }
 
 export interface CreateConversationPayload {
-  dataset_id: number
+  /** 可选：不传 / null = 全局问数（不限数据集，走 scope-free 语义主链）。 */
+  dataset_id?: number | null
   title?: string
   description?: string
 }

@@ -123,7 +123,7 @@ describe('DataChat 来源徽标', () => {
     render(<>{payload.body}</>)
 
     expect(screen.getByText('对话记录')).toBeInTheDocument()
-    expect(screen.getByText('先选择数据集，再围绕该数据集发起自然语言问数。')).toBeInTheDocument()
+    expect(screen.getByText('直接提问；可在左侧选择某个数据集以限定范围（可选）。')).toBeInTheDocument()
     expect(screen.queryByText(/conversations|接口返回内容|前端伪造/)).not.toBeInTheDocument()
   })
 

@@ -82,7 +82,7 @@ export default function DataChat() {
       subtitle: t('dataChat.ctx.subtitle', '选择数据集后发起自然语言问数'),
       body: (
         <div className="space-y-3 px-4 py-4 text-xs text-2">
-          <p>{t('dataChat.ctx.datasetFirst', '先选择数据集，再围绕该数据集发起自然语言问数。')}</p>
+          <p>{t('dataChat.ctx.datasetFirst', '直接提问；可在左侧选择某个数据集以限定范围（可选）。')}</p>
           <p>{t('dataChat.ctx.trust', '回答会标注来源，优先使用已验证的语义层结果。')}</p>
         </div>
       ),
@@ -101,12 +101,6 @@ export default function DataChat() {
   ])
 
   useEffect(() => {
-    if (selectedDatasetId == null && datasets.length > 0) {
-      setSelectedDatasetId(datasets[0].id)
-    }
-  }, [datasets, selectedDatasetId])
-
-  useEffect(() => {
     if (activeConversationId == null && conversations.length > 0) {
       const first = conversations[0]
       setActiveConversationId(first.id)
@@ -115,26 +109,17 @@ export default function DataChat() {
   }, [activeConversationId, conversations])
 
   const selectedDataset = datasets.find((item) => item.id === selectedDatasetId) ?? null
-  const canSend = draft.trim().length > 0 && selectedDatasetId != null && !sendMessageMut.isPending && !createConversationMut.isPending
+  // 全局问数：dataset 可选，不再强制选择；selectedDatasetId 为 null 即「全局（不限数据集）」。
+  const canSend = draft.trim().length > 0 && !sendMessageMut.isPending && !createConversationMut.isPending
 
   const handleNewConversation = () => {
     setActiveConversationId(null)
     setDraft('')
-    if (datasets.length > 0 && selectedDatasetId == null) {
-      setSelectedDatasetId(datasets[0].id)
-    }
   }
 
   const handleSend = async () => {
     const question = draft.trim()
     if (!question) return
-    if (selectedDatasetId == null) {
-      toast.show({
-        tone: 'warning',
-        title: t('dataChat.toast.pickDataset', '请先选择数据集'),
-      })
-      return
-    }
 
     try {
       let conversationId = activeConversationId
@@ -229,25 +214,24 @@ export default function DataChat() {
         <aside className="min-h-0 border-r" style={{ borderColor: 'var(--border)' }}>
           <div className="border-b p-3" style={{ borderColor: 'var(--border)' }}>
             <label htmlFor="data-chat-dataset" className="mb-1 block text-[11px] font-medium text-3">
-              {t('dataChat.dataset.label', '选择数据集')}
+              {t('dataChat.dataset.label', '数据集范围（可选）')}
             </label>
             <Select
               id="data-chat-dataset"
               value={selectedDatasetId ?? ''}
               onChange={(event) => setSelectedDatasetId(event.target.value ? Number(event.target.value) : null)}
-              disabled={datasetsQ.isLoading || datasets.length === 0}
+              disabled={datasetsQ.isLoading}
             >
-              {datasetsQ.isLoading ? (
-                <option value="">{t('dataChat.dataset.loading', '加载数据集中...')}</option>
-              ) : datasets.length === 0 ? (
-                <option value="">{t('dataChat.dataset.empty', '暂无可用数据集')}</option>
-              ) : (
-                datasets.map((dataset) => (
-                  <option key={dataset.id} value={dataset.id}>
-                    {dataset.dataset_name}
-                  </option>
-                ))
-              )}
+              <option value="">
+                {datasetsQ.isLoading
+                  ? t('dataChat.dataset.loading', '加载数据集中...')
+                  : t('dataChat.dataset.global', '全局（不限数据集）')}
+              </option>
+              {datasets.map((dataset) => (
+                <option key={dataset.id} value={dataset.id}>
+                  {dataset.dataset_name}
+                </option>
+              ))}
             </Select>
           </div>
 
