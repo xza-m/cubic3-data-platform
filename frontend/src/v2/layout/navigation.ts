@@ -187,7 +187,7 @@ export const NAV_MODULES: NavModule[] = [
   {
     id: 'apps',
     label: t('nav.apps.label', '应用市场'),
-    description: t('nav.apps.desc', '语义应用上架与发布'),
+    description: t('nav.apps.desc', '内置数据应用与实例管理'),
     icon: AppWindow,
     basePath: '/apps',
     group: '应用',

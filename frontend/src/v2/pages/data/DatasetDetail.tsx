@@ -367,7 +367,6 @@ function ProfileTab({
           className="rounded-lg border p-8 text-center text-xs"
           style={{ borderColor: 'var(--border)', color: 'var(--text-3)', borderStyle: 'dashed' }}
         >
-          {/* TODO: 后端 GET /api/v1/data-center/datasets/:id/profile 未就绪，点击"刷新画像"触发生成 */}
           {t(
             'datasetDetail.profile.empty',
             '暂无字段画像数据，请点击右上角"刷新画像"生成',

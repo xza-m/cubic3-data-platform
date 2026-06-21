@@ -3,7 +3,7 @@
 // 应用实例详情页（L3）。
 // 接口：GET /api/v1/app-instances/:id (include_stats=true)
 //       POST /api/v1/app-instances/:id/enable|disable|execute
-// B-back-2: health 字段暂不展示 — see plan §3.4
+// B-back-2: health 经 HealthChip 渲染（字段缺省按 unknown 处理）
 
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
