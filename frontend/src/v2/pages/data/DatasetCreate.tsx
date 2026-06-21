@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Check, FileUp, Table } from 'lucide-react'
 import { useCreateDataset, usePreviewDataset } from '@v2/hooks/datasets'
 import { useDatasources } from '@v2/hooks/datasources'
-import type { DatasetField } from '@v2/api/datasets'
+import { uploadDatasetFile, type DatasetField } from '@v2/api/datasets'
 import { datasourceTypeLabel } from '@v2/lib/datasourceTypes'
 import { t } from '@v2/i18n'
 
@@ -54,6 +54,9 @@ export default function DatasetCreate() {
   const [datasetName, setDatasetName] = useState('')
   const [owner, setOwner] = useState('')
   const [previewFields, setPreviewFields] = useState<DatasetField[]>([])
+  const [filePath, setFilePath] = useState<string | null>(null)
+  const [fileName, setFileName] = useState<string | null>(null)
+  const [uploadingFile, setUploadingFile] = useState(false)
   const [, setDone] = useState(false)
 
   const steps = mode === 'file' ? stepsFile() : stepsPhysical()
@@ -113,6 +116,51 @@ export default function DatasetCreate() {
         fields: previewFields,
         owner: owner || undefined,
         dataset_type: 'physical',
+      })
+      setDone(true)
+      setStep(3)
+    } catch {
+      // error displayed inline
+    }
+  }
+
+  // 文件模式：上传 → 后端解析 schema → 直接进入字段确认步
+  const handleFileUpload = async (file: File) => {
+    setUploadingFile(true)
+    try {
+      const result = await uploadDatasetFile(file)
+      const fields: DatasetField[] = (result.fields ?? []).map((f) => ({
+        physical_name: String(f.physical_name ?? f.name ?? ''),
+        data_type: String(f.data_type ?? f.type ?? 'VARCHAR'),
+        display_name: null,
+        business_type: 'dimension',
+        sensitivity_level: 'public',
+        is_sensitive: false,
+        mask_rule: null,
+        comment: (f.comment as string | undefined) ?? null,
+        field_order: 0,
+      }))
+      setPreviewFields(fields)
+      setFilePath(result.file_path)
+      setFileName(result.file_name)
+      setDatasetName(result.file_name.replace(/\.[^.]+$/, ''))
+      setStep(2)
+    } catch {
+      // error displayed inline
+    } finally {
+      setUploadingFile(false)
+    }
+  }
+
+  const handleSubmitFile = async () => {
+    if (!filePath || !datasetName) return
+    try {
+      await createDataset.mutateAsync({
+        dataset_name: datasetName,
+        fields: previewFields,
+        owner: owner || undefined,
+        dataset_type: 'file',
+        file_metadata: { file_path: filePath },
       })
       setDone(true)
       setStep(3)
@@ -300,17 +348,27 @@ export default function DatasetCreate() {
             </div>
           )}
 
-          {mode === 'file' && step < 3 && (
-            <div className="flex items-center justify-center py-12">
-              <div
-                className="rounded-lg border-2 border-dashed p-8 text-center"
-                style={{ borderColor: 'var(--border)', color: 'var(--text-3)' }}
-              >
-                <FileUp size={24} className="mx-auto mb-2" />
-                <p className="text-xs">
-                  {t('datasetCreate.file.wip', '文件上传功能开发中')}
-                </p>
-              </div>
+          {mode === 'file' && step <= 1 && (
+            <div className="space-y-3">
+              <Field label={t('datasetCreate.file.pick', '选择 CSV / Excel 文件')}>
+                <input
+                  type="file"
+                  accept=".csv,.xls,.xlsx"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) void handleFileUpload(f)
+                  }}
+                  style={inputStyle}
+                />
+              </Field>
+              <p className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-3)' }}>
+                <FileUp size={12} />
+                {uploadingFile
+                  ? t('datasetCreate.file.uploading', '上传解析中…')
+                  : fileName
+                    ? t('datasetCreate.file.uploaded', '已上传并解析：{name}', { name: fileName })
+                    : t('datasetCreate.file.hint', '支持 CSV / Excel，上传后自动解析字段')}
+              </p>
             </div>
           )}
         </div>
@@ -340,7 +398,7 @@ export default function DatasetCreate() {
                     setStep((s) => s + 1)
                   }
                 }}
-                disabled={previewDataset.isPending}
+                disabled={previewDataset.isPending || (mode === 'file' && !filePath)}
                 className="inline-flex items-center gap-1 rounded-md px-4 py-2 text-xs font-medium"
                 style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
               >
@@ -352,13 +410,14 @@ export default function DatasetCreate() {
             ) : (
               <button
                 type="button"
-                onClick={handleSubmit}
-                disabled={createDataset.isPending || !datasetName}
+                onClick={mode === 'file' ? handleSubmitFile : handleSubmit}
+                disabled={createDataset.isPending || !datasetName || (mode === 'file' && !filePath)}
                 className="rounded-md px-4 py-2 text-xs font-medium"
                 style={{
                   background: 'var(--accent)',
                   color: 'var(--on-accent)',
-                  opacity: createDataset.isPending || !datasetName ? 0.6 : 1,
+                  opacity:
+                    createDataset.isPending || !datasetName || (mode === 'file' && !filePath) ? 0.6 : 1,
                 }}
               >
                 {createDataset.isPending

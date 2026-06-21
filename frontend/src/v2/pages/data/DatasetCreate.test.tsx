@@ -15,6 +15,17 @@ vi.mock('@v2/hooks/datasets', () => ({
   }),
 }))
 
+vi.mock('@v2/api/datasets', () => ({
+  uploadDatasetFile: vi.fn().mockResolvedValue({
+    file_name: 'orders.csv',
+    file_path: 'instance/uploads/orders.csv',
+    fields: [
+      { physical_name: 'order_id', data_type: 'BIGINT' },
+      { physical_name: 'amount', data_type: 'DOUBLE' },
+    ],
+  }),
+}))
+
 vi.mock('@v2/hooks/datasources', () => ({
   useDatasources: () => ({
     data: {
@@ -74,5 +85,30 @@ describe('DatasetCreate', () => {
     await userEvent.click(submit)
 
     expect(createDatasetMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('文件上传登记走完整链路并以 file 类型创建', async () => {
+    createDatasetMock.mockClear()
+    const { container } = render(
+      <MemoryRouter>
+        <DatasetCreate />
+      </MemoryRouter>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /从文件上传登记/ }))
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['order_id,amount\n1,2'], 'orders.csv', { type: 'text/csv' })
+    await userEvent.upload(fileInput, file)
+
+    // 上传后自动解析并进入字段确认步 → 提交按钮可达
+    const submit = await screen.findByRole('button', { name: /完成登记/ })
+    await userEvent.click(submit)
+
+    expect(createDatasetMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dataset_type: 'file',
+        file_metadata: { file_path: 'instance/uploads/orders.csv' },
+      }),
+    )
   })
 })

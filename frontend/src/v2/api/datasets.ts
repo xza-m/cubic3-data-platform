@@ -105,6 +105,22 @@ export async function createDataset(payload: CreateDatasetPayload): Promise<Data
   return resp.data.data
 }
 
+export interface UploadedFileResult {
+  file_id?: string
+  file_name: string
+  file_path: string
+  /** parse_tabular_file_metadata 推断的字段（shape 宽松，前端按需映射）。 */
+  fields?: Array<Record<string, unknown>>
+}
+
+/** 上传 CSV/Excel 文件并由后端解析 schema（POST /api/v1/files/upload，multipart）。 */
+export async function uploadDatasetFile(file: File): Promise<UploadedFileResult> {
+  const form = new FormData()
+  form.append('file', file)
+  const resp = await apiClient.post('/files/upload', form)
+  return resp.data.data
+}
+
 export async function updateDataset(id: number, payload: UpdateDatasetPayload): Promise<Dataset> {
   const resp = await apiClient.put(`${BASE}/${id}`, payload)
   return resp.data.data
