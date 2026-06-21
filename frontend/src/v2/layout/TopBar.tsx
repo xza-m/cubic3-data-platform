@@ -1,9 +1,11 @@
 // frontend/src/v2/layout/TopBar.tsx
-import { type ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell, Command, History, LogOut, Rocket, User } from 'lucide-react'
-import { Button, Kbd } from '@v2/components/ui'
+import { Button, Kbd, Sheet } from '@v2/components/ui'
 import { setAccessToken } from '@v2/api/client'
+import { useSemanticReleases } from '@v2/hooks/diagnose'
+import { fmtDateTime } from '@v2/lib/format'
 import { t } from '@v2/i18n'
 
 interface TopBarProps {
@@ -15,6 +17,7 @@ interface TopBarProps {
 
 export function TopBar({ breadcrumbs, actions, onOpenCommandPalette, hideBreadcrumbs = false }: TopBarProps) {
   const navigate = useNavigate()
+  const [notifOpen, setNotifOpen] = useState(false)
   return (
     <header
       className="surface flex h-11 shrink-0 items-center justify-between gap-3 border-b px-3"
@@ -64,8 +67,7 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette, hideBreadcr
           variant="ghost"
           size="sm"
           aria-label={t('topBar.changes', '变更')}
-          title={t('topBar.changesUnavailable', '暂无可查看的变更')}
-          disabled
+          onClick={() => setNotifOpen(true)}
         >
           <Rocket size={12} /> {t('topBar.changes', '变更')}
         </Button>
@@ -73,11 +75,11 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette, hideBreadcr
           variant="ghost"
           size="sm"
           aria-label={t('topBar.notifications', '通知')}
-          title={t('topBar.notificationsUnavailable', '暂无通知')}
-          disabled
+          onClick={() => setNotifOpen(true)}
         >
           <Bell size={12} />
         </Button>
+        {notifOpen ? <NotificationSheet onClose={() => setNotifOpen(false)} /> : null}
         <span className="divider-v mx-1" />
         <div className="flex items-center gap-2 text-[12px] text-2">
           <button
@@ -105,5 +107,38 @@ export function TopBar({ breadcrumbs, actions, onOpenCommandPalette, hideBreadcr
         </div>
       </div>
     </header>
+  )
+}
+
+// 变更/通知面板：展示最近语义发布（平台「有什么新变化」）。仅在打开时挂载并取数。
+function NotificationSheet({ onClose }: { onClose: () => void }) {
+  const releasesQ = useSemanticReleases({ limit: 10 })
+  const items = releasesQ.data?.items ?? []
+  return (
+    <Sheet open onClose={onClose} title={t('topBar.notif.title', '最近变更')} width={380}>
+      {releasesQ.isLoading ? (
+        <p className="text-xs text-3">{t('common.loading', '加载中…')}</p>
+      ) : items.length === 0 ? (
+        <p className="text-xs text-3">{t('topBar.notif.empty', '暂无最近发布')}</p>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((r) => (
+            <li
+              key={r.id}
+              className="rounded border px-3 py-2 text-xs"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-1">
+                  {t('topBar.notif.release', '发布 #{no}', { no: r.release_no })} · {r.namespace}
+                </span>
+                <span className="text-3">{r.status}</span>
+              </div>
+              {r.published_at ? <div className="mt-0.5 text-3">{fmtDateTime(r.published_at)}</div> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Sheet>
   )
 }
