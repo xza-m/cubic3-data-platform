@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react'
 import { Plus, Search, X } from 'lucide-react'
 import { Button, Chip, Input, Select } from '@v2/components/ui'
 import { EntityFormDialog } from '@v2/components/EntityFormDialog'
+import { RetryState } from '@v2/components/LoadState'
 import { t } from '@v2/i18n'
 import { useObjectList, useRelationList, useCreateRelation } from '@v2/hooks/ontology'
 import {
@@ -162,9 +163,14 @@ export default function OntologyRelations() {
               {t('common.loading', '加载中…')}
             </div>
           ) : isError ? (
-            <div className="flex flex-1 items-center justify-center text-sm text-danger">
-              {t('error.loadFailed', '加载失败')}
-            </div>
+            <RetryState
+              className="flex-1"
+              message={t('error.loadFailed', '加载失败')}
+              onRetry={() => {
+                void relationsQuery.refetch()
+                void objectsQuery.refetch()
+              }}
+            />
           ) : (
             <OntologyRelationGraph
               objects={objects}

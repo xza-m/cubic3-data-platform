@@ -13,6 +13,7 @@ import { ListPagination } from '@v2/components/ListPagination'
 // 等待 X-Crosscut：@v2/components/EntityFormDialog
 import { EntityFormDialog } from '@v2/components/EntityFormDialog'
 import { EmptyState as CommonEmptyState } from '@v2/components/common/EmptyState'
+import { RetryState } from '@v2/components/LoadState'
 // 等待 X-Crosscut：@v2/layout/AppShell
 import { useAppShell } from '@v2/layout/AppShell'
 // 等待 X-Crosscut：@v2/i18n
@@ -66,7 +67,7 @@ export default function Domains() {
       {domainsQuery.isLoading ? (
         <div className="py-8 text-center text-sm text-3">{t('common.loading', '加载中…')}</div>
       ) : domainsQuery.isError ? (
-        <div className="py-8 text-center text-sm text-danger">{t('error.loadFailed', '加载失败')}</div>
+        <RetryState className="py-8" message={t('error.loadFailed', '加载失败')} onRetry={() => void domainsQuery.refetch()} />
       ) : domains.length === 0 ? (
         <CommonEmptyState
           icon={<Network size={20} />}
