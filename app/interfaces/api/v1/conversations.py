@@ -40,7 +40,7 @@ def create_conversation():
     user_id = getattr(g, 'user_id', None) or 'anonymous'
     
     command = CreateConversationCommand(
-        dataset_id=data['dataset_id'],
+        dataset_id=data.get('dataset_id'),
         user_id=user_id,
         title=data.get('title'),
         description=data.get('description')

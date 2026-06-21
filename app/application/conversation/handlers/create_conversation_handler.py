@@ -40,16 +40,17 @@ class CreateConversationHandler:
             user_id=command.user_id
         )
         
-        # 验证数据集存在
-        dataset = self.dataset_repository.find_by_id(command.dataset_id)
-        if not dataset:
-            raise ApplicationException(f"数据集不存在: {command.dataset_id}")
-        
-        if not dataset.is_ready():
-            raise ApplicationException(f"数据集未就绪: {dataset.dataset_name}")
-        
-        # 创建对话
-        title = command.title or f"与 {dataset.dataset_name} 的对话"
+        # 数据集可选：全局问数会话不绑定数据集（dataset_id=None），走 scope-free 语义主链；
+        # 仅在显式指定数据集时校验其存在与就绪。
+        if command.dataset_id is not None:
+            dataset = self.dataset_repository.find_by_id(command.dataset_id)
+            if not dataset:
+                raise ApplicationException(f"数据集不存在: {command.dataset_id}")
+            if not dataset.is_ready():
+                raise ApplicationException(f"数据集未就绪: {dataset.dataset_name}")
+            title = command.title or f"与 {dataset.dataset_name} 的对话"
+        else:
+            title = command.title or "全局问数"
         
         conversation = Conversation(
             title=title,

@@ -250,6 +250,26 @@ class SendMessageHandler:
 
     def _handle_via_legacy_llm(self, command, conversation, user_message) -> Dict[str, Any]:
         """传统 LLM 调用（回退路径）——回答显式标注未经语义层验证"""
+        if conversation.dataset_id is None:
+            # 全局问数会话无绑定数据集：语义主链未能作答时，诚实兜底而非退回单表 SQL。
+            ai_content = (
+                "未能在已发布的语义资产中找到可回答该问题的口径。"
+                "请换种问法，或确认相关 Cube / 指标已发布到语义中心。"
+            )
+            ai_message = Message(
+                conversation_id=command.conversation_id,
+                role='assistant',
+                content=ai_content,
+                source='legacy_llm',
+                created_at=utcnow(),
+            )
+            ai_message = self.message_repository.create(ai_message)
+            conversation.updated_at = utcnow()
+            self.conversation_repository.update(conversation)
+            return {
+                'user_message': user_message.to_dict(),
+                'ai_message': ai_message.to_dict(),
+            }
         dataset = self.dataset_repository.find_by_id(conversation.dataset_id)
         if not dataset:
             raise ApplicationException(f"数据集不存在: {conversation.dataset_id}")

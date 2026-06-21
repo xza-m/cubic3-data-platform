@@ -59,6 +59,20 @@ class TestCreateConversationHandler:
         with pytest.raises(ApplicationException, match="数据集未就绪"):
             handler.handle(CreateConversationCommand(dataset_id=10, user_id="u1"))
 
+    def test_handle_creates_global_conversation_without_dataset(self):
+        # 全局问数：dataset_id=None 时不校验数据集，默认标题「全局问数」，dataset_id 透传 None。
+        conversation_repo = MagicMock()
+        dataset_repo = MagicMock()
+        conversation_repo.create.return_value = MagicMock(id=1)
+        handler = CreateConversationHandler(conversation_repo, dataset_repo)
+
+        handler.handle(CreateConversationCommand(dataset_id=None, user_id="u1"))
+
+        dataset_repo.find_by_id.assert_not_called()
+        created = conversation_repo.create.call_args.args[0]
+        assert created.title == "全局问数"
+        assert created.dataset_id is None
+
 
 class TestGetConversationHandler:
     def test_handle_raises_when_conversation_missing(self):
