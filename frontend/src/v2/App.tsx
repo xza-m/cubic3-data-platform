@@ -7,6 +7,7 @@ import { ThemeProvider } from '@v2/components/ThemeProvider'
 import { A11yPreferencesProvider } from '@v2/components/A11yPreferencesProvider'
 import { ToastProvider } from '@v2/components/ui/Toast'
 import { ConfirmProvider } from '@v2/components/ui/ConfirmDialog'
+import { PromptProvider } from '@v2/components/ui/PromptDialog'
 import { createQueryClient } from '@v2/hooks/query-client'
 import { ErrorBoundary } from '@v2/components/ErrorBoundary'
 import { ev, obs } from '@v2/observability'
@@ -20,12 +21,14 @@ export default function App() {
         <A11yPreferencesProvider>
           <ToastProvider>
             <ConfirmProvider>
-              <ErrorBoundary>
-                <BrowserRouter>
-                  <NavigationTracker />
-                  <AppRoutes />
-                </BrowserRouter>
-              </ErrorBoundary>
+              <PromptProvider>
+                <ErrorBoundary>
+                  <BrowserRouter>
+                    <NavigationTracker />
+                    <AppRoutes />
+                  </BrowserRouter>
+                </ErrorBoundary>
+              </PromptProvider>
             </ConfirmProvider>
           </ToastProvider>
         </A11yPreferencesProvider>

@@ -34,6 +34,7 @@ import {
   Button,
   Chip,
   useConfirm,
+  usePrompt,
   useToast,
   type ChipTone,
 } from "@v2/components/ui";
@@ -193,6 +194,7 @@ export default function ModelingAgent({
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const toast = useToast();
   const confirm = useConfirm();
+  const prompt = usePrompt();
 
   const sessionsQ = useSemanticModelingCopilotSessions({ limit: 50 });
   const sessions = useMemo(
@@ -412,8 +414,8 @@ export default function ModelingAgent({
     }
   };
 
-  const handleOverrideConfirmation = (confirmation: CopilotConfirmation) => {
-    const v = window.prompt("给一个替代值：");
+  const handleOverrideConfirmation = async (confirmation: CopilotConfirmation) => {
+    const v = await prompt({ title: t("modelingAgent.prompt.overrideValue", "给一个替代值") });
     if (v != null && v.trim()) {
       void handleConfirm(confirmation, v.trim());
     }
@@ -580,10 +582,10 @@ export default function ModelingAgent({
   const handleRenameSession = async (
     target: SemanticModelingCopilotSession,
   ) => {
-    const next = window.prompt(
-      "新的会话标题：",
-      target.title || target.user_goal || "",
-    );
+    const next = await prompt({
+      title: t("modelingAgent.prompt.renameSession", "新的会话标题"),
+      defaultValue: target.title || target.user_goal || "",
+    });
     if (next == null) return;
     const trimmed = next.trim();
     if (!trimmed) return;

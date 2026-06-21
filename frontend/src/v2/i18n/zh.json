@@ -1794,6 +1794,8 @@
   "metric.dryRun.sampleRows": "样本数据",
   "metric.dryRun.sqlPreview": "SQL 预览",
   "metric.dryRun.title": "公式预览",
+  "modelingAgent.prompt.overrideValue": "给一个替代值",
+  "modelingAgent.prompt.renameSession": "新的会话标题",
   "nav.apps.desc": "内置数据应用与实例管理",
   "nav.apps.label": "应用市场",
   "nav.apps.sub.executions": "执行监控",
