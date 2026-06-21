@@ -330,7 +330,7 @@ export default function DatasetCreate() {
             >
               {t('datasetCreate.action.prev', '上一步')}
             </button>
-            {step < steps.length - 1 ? (
+            {step < steps.length - 2 ? (
               <button
                 type="button"
                 onClick={() => {
