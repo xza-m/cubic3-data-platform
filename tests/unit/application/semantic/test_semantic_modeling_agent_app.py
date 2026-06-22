@@ -12,6 +12,15 @@ from app.domain.semantic.modeling_agent_session import AgentSession
 class _Runtime:
     def __init__(self):
         self.requests = []
+        self.submitted = []
+
+    def submit_run(self, request):
+        self.submitted.append(request)
+        return {
+            "run_id": "run_review_1",
+            "provider_run_id": "provider_review_1",
+            "status": "queued",
+        }
 
     def invoke(self, request):
         self.requests.append(request)
@@ -42,19 +51,6 @@ class _Runtime:
             trace=[{"event_type": "runtime.trace", "seq": 1}],
             error=None,
         )
-
-
-class _RunService:
-    def __init__(self):
-        self.requests = []
-
-    def submit(self, request):
-        self.requests.append(request)
-        return {
-            "run_id": "run_review_1",
-            "provider_run_id": "provider_review_1",
-            "status": "queued",
-        }
 
 
 class _EvidenceBuilder:
@@ -131,8 +127,8 @@ def test_start_review_proposal_builds_async_codex_run_request():
             "source_evidence": {"source_table": {"name": "dwd_student_comment_events"}},
         },
     )
-    run_service = _RunService()
-    app = SemanticModelingAgentApp(runtime=_Runtime(), run_service=run_service)
+    runtime = _Runtime()
+    app = SemanticModelingAgentApp(runtime=runtime)
 
     result = app.start_review_proposal(session=session, proposal_id="proposal_1")
 
@@ -141,7 +137,7 @@ def test_start_review_proposal_builds_async_codex_run_request():
         "provider_run_id": "provider_review_1",
         "status": "queued",
     }
-    request = run_service.requests[0]
+    request = runtime.submitted[0]
     assert request.app_id == "semantic_modeling"
     assert request.action == "semantic.modeling.review_proposal"
     assert request.preferred_runtime == "codex_sdk"
@@ -168,8 +164,8 @@ def test_start_review_proposal_uses_effective_principal_for_legacy_session():
         principal_id=None,
         current_proposal_id="proposal_1",
     )
-    run_service = _RunService()
-    app = SemanticModelingAgentApp(runtime=_Runtime(), run_service=run_service)
+    runtime = _Runtime()
+    app = SemanticModelingAgentApp(runtime=runtime)
 
     app.start_review_proposal(
         session=session,
@@ -177,8 +173,8 @@ def test_start_review_proposal_uses_effective_principal_for_legacy_session():
         principal_id="alice",
     )
 
-    assert run_service.requests[0].principal_id == "alice"
-    assert run_service.requests[0].context_pack["session"]["principal_id"] == "alice"
+    assert runtime.submitted[0].principal_id == "alice"
+    assert runtime.submitted[0].context_pack["session"]["principal_id"] == "alice"
 
 
 def test_start_repair_validation_failure_builds_async_codex_run_request():
@@ -200,13 +196,13 @@ def test_start_repair_validation_failure_builds_async_codex_run_request():
             "source_evidence": {"fields": [{"name": "published_at"}]},
         },
     )
-    run_service = _RunService()
-    app = SemanticModelingAgentApp(runtime=_Runtime(), run_service=run_service)
+    runtime = _Runtime()
+    app = SemanticModelingAgentApp(runtime=runtime)
 
     result = app.start_repair_validation_failure(session=session)
 
     assert result["run_id"] == "run_review_1"
-    request = run_service.requests[0]
+    request = runtime.submitted[0]
     assert request.action == "semantic.modeling.repair_validation_failure"
     assert request.preferred_runtime == "codex_sdk"
     assert request.execution_mode == "async"
@@ -245,12 +241,12 @@ def test_codex_action_context_pack_masks_sensitive_values_and_limits_payload_siz
             "validation_summary": [{"message": f"issue_{idx}"} for idx in range(30)],
         },
     )
-    run_service = _RunService()
-    app = SemanticModelingAgentApp(runtime=_Runtime(), run_service=run_service)
+    runtime = _Runtime()
+    app = SemanticModelingAgentApp(runtime=runtime)
 
     app.start_review_proposal(session=session, proposal_id="proposal_1")
 
-    context_pack = run_service.requests[0].context_pack
+    context_pack = runtime.submitted[0].context_pack
     cube = context_pack["current_state"]["raw_spec"]["cube"]
     assert cube["api_key"] == "********"
     assert len(cube["description"]) <= 4000 + len("...[truncated]")

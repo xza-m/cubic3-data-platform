@@ -511,11 +511,6 @@ class Container(containers.DeclarativeContainer):
         action_bindings=agent_runtime_action_bindings,
     )
 
-    agent_inference_runtime_service = providers.Singleton(
-        AgentInferenceRuntimeService,
-        router=agent_inference_runtime_router,
-    )
-
     agent_codex_sdk_client_registry = providers.Singleton(CodexSdkClientRegistry)
 
     agent_codex_sdk_client_factory = providers.Singleton(
@@ -542,6 +537,13 @@ class Container(containers.DeclarativeContainer):
         config_service_provider=agent_runtime_config_service.provider,
         codex_client_factory=agent_codex_sdk_client_factory,
         repository=agent_inference_runtime_repository,
+    )
+
+    agent_inference_runtime_service = providers.Singleton(
+        AgentInferenceRuntimeService,
+        router=agent_inference_runtime_router,
+        run_service=codex_run_service.provider,
+        bindings=agent_runtime_action_bindings,
     )
 
     # ========================================================================
@@ -1068,7 +1070,6 @@ class Container(containers.DeclarativeContainer):
     semantic_modeling_agent_app = providers.Singleton(
         SemanticModelingAgentApp,
         runtime=agent_inference_runtime_service,
-        run_service=codex_run_service.provider,
         evidence_builder=semantic_evidence_builder,
     )
 

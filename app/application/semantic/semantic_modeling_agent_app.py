@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Mapping, Protocol
+from typing import Any, Dict, List, Mapping, Protocol
 from uuid import uuid4
 
 from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
@@ -21,9 +21,7 @@ class _AgentRuntime(Protocol):
     def invoke(self, request: AgentInferenceRuntimeRequest) -> AgentInferenceRuntimeResult:
         ...
 
-
-class _CodexRunService(Protocol):
-    def submit(self, request: AgentInferenceRuntimeRequest) -> Dict[str, Any]:
+    def submit_run(self, request: AgentInferenceRuntimeRequest) -> Dict[str, Any]:
         ...
 
 
@@ -55,11 +53,9 @@ class SemanticModelingAgentApp:
         self,
         *,
         runtime: _AgentRuntime,
-        run_service: _CodexRunService | Callable[[], _CodexRunService] | None = None,
         evidence_builder: _EvidenceBuilder | None = None,
     ):
         self._runtime = runtime
-        self._run_service = run_service
         self._evidence_builder = evidence_builder or SemanticEvidenceBuilder()
 
     def run_chat(
@@ -108,7 +104,6 @@ class SemanticModelingAgentApp:
         idempotency_key: str | None = None,
     ) -> Dict[str, Any]:
         """提交 Proposal Review 到 Codex SDK 异步生命周期。"""
-        run_service = self._require_run_service()
         normalized_proposal_id = str(proposal_id or "").strip()
         effective_principal_id = session.principal_id or principal_id
         idempotency_key = (
@@ -147,7 +142,7 @@ class SemanticModelingAgentApp:
             semantic_runtime_pin=None,
             asset_revision_refs=[],
         )
-        return run_service.submit(request)
+        return self._runtime.submit_run(request)
 
     def start_repair_validation_failure(
         self,
@@ -157,7 +152,6 @@ class SemanticModelingAgentApp:
         idempotency_key: str | None = None,
     ) -> Dict[str, Any]:
         """提交 validation failure repair 到 Codex SDK 异步生命周期。"""
-        run_service = self._require_run_service()
         state = session.workbench_state or {}
         raw_spec = _sanitize_value(_safe_dict(state.get("raw_spec")))
         validation_summary = _sanitize_value(_safe_list(state.get("validation_summary")))
@@ -200,26 +194,7 @@ class SemanticModelingAgentApp:
             semantic_runtime_pin=None,
             asset_revision_refs=[],
         )
-        return run_service.submit(request)
-
-    def _require_run_service(self) -> _CodexRunService:
-        if self._run_service is None:
-            raise AgentInferenceRuntimeError(
-                "Codex SDK run service is not configured",
-                code="RUNTIME_NOT_CONFIGURED",
-                details={"runtime_name": "codex_sdk"},
-            )
-        if hasattr(self._run_service, "submit"):
-            return self._run_service
-        if callable(self._run_service):
-            resolved = self._run_service()
-            if hasattr(resolved, "submit"):
-                return resolved
-        raise AgentInferenceRuntimeError(
-            "Codex SDK run service is not configured",
-            code="RUNTIME_NOT_CONFIGURED",
-            details={"runtime_name": "codex_sdk"},
-        )
+        return self._runtime.submit_run(request)
 
     def _build_codex_action_context_pack(
         self,

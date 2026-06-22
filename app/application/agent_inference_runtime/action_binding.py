@@ -72,6 +72,7 @@ class ActionRuntimeBindingRegistry:
                 expose_selector=False,
                 requires_connection=True,
                 reason="fixed_codex_workspace",
+                kind="async",
             )
         return RuntimeActionBinding(
             action=action,

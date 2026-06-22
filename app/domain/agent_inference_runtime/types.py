@@ -118,6 +118,7 @@ class RuntimeActionBinding:
     expose_selector: bool
     requires_connection: bool
     reason: str
+    kind: ExecutionMode = "sync"
 
 
 @dataclass(frozen=True)
