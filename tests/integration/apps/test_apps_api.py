@@ -112,3 +112,44 @@ class TestAppsAuth:
     def test_list_requires_auth(self, client_no_auth):
         resp = client_no_auth.get(BASE)
         assert resp.status_code == 401
+
+
+@pytest.mark.redesign
+class TestAppsAdminOps:
+    """应用启用/停用为治理边界操作，仅管理员可执行。"""
+
+    def test_enable_forbidden_for_non_admin(self, client_no_auth, viewer_headers):
+        resp = client_no_auth.post(f"{BASE}/report/enable", headers=viewer_headers)
+        assert resp.status_code == 403
+
+    def test_disable_forbidden_for_non_admin(self, client_no_auth, viewer_headers):
+        resp = client_no_auth.post(f"{BASE}/report/disable", headers=viewer_headers)
+        assert resp.status_code == 403
+
+    def test_enable_unauthenticated_returns_401(self, client_no_auth):
+        resp = client_no_auth.post(f"{BASE}/report/enable")
+        assert resp.status_code == 401
+
+    def test_enable_allows_admin(self, client):
+        svc = MagicMock()
+        svc.set_enabled.return_value = {"code": "report", "enabled": True}
+        with patch(
+            "app.interfaces.api.v1.apps.get_container",
+            return_value=_mock_container(svc),
+        ):
+            resp = client.post(f"{BASE}/report/enable")
+
+        assert resp.status_code == 200
+        svc.set_enabled.assert_called_once_with("report", True)
+
+    def test_disable_allows_admin(self, client):
+        svc = MagicMock()
+        svc.set_enabled.return_value = {"code": "report", "enabled": False}
+        with patch(
+            "app.interfaces.api.v1.apps.get_container",
+            return_value=_mock_container(svc),
+        ):
+            resp = client.post(f"{BASE}/report/disable")
+
+        assert resp.status_code == 200
+        svc.set_enabled.assert_called_once_with("report", False)

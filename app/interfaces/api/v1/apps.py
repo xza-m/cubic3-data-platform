@@ -6,7 +6,7 @@
 from flask import Blueprint, request, g
 
 from app.di.container import get_container
-from app.interfaces.api.middleware.auth import require_auth
+from app.interfaces.api.middleware.auth import require_auth, require_admin
 from app.shared.response import success, not_found, server_error
 from app.shared.utils.logger import get_logger
 
@@ -90,9 +90,9 @@ def validate_config(code: str):
 
 
 @bp.route('/<string:code>/enable', methods=['POST'])
-@require_auth
+@require_admin
 def enable_app(code: str):
-    """启用应用"""
+    """启用应用（仅管理员）"""
     service = _get_service()
     app = service.set_enabled(code, True)
     if not app:
@@ -101,9 +101,9 @@ def enable_app(code: str):
 
 
 @bp.route('/<string:code>/disable', methods=['POST'])
-@require_auth
+@require_admin
 def disable_app(code: str):
-    """停用应用"""
+    """停用应用（仅管理员）"""
     service = _get_service()
     app = service.set_enabled(code, False)
     if not app:
