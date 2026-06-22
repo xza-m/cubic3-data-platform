@@ -1,8 +1,10 @@
 """Agent Runtime provider API Key 密文列
 
-Revision ID: 0015_agent_runtime_secret_ciphertext
+Revision ID: 0015_runtime_secret_ciphertext
 Revises: 0014_platform_token_pair
 Create Date: 2026-06-22
+
+注：revision id 必须 <= alembic_version.version_num 的 varchar(32)。
 """
 from __future__ import annotations
 
@@ -10,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = "0015_agent_runtime_secret_ciphertext"
+revision = "0015_runtime_secret_ciphertext"
 down_revision = "0014_platform_token_pair"
 branch_labels = None
 depends_on = None
