@@ -71,6 +71,10 @@ services:
       - LLM_API_BASE=${LLM_API_BASE:-https://api.openai.com/v1}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+      # AI provider 密钥加密存储（配置中心 UI 直填 API Key）；留空则 UI 填 Key 不可加密保存，回退 LLM_API_KEY
+      - AI_SECRET_KEY=${AI_SECRET_KEY:-}
+      # 全局问 LLM 意图抽取开关（默认关，需真实 LLM 验证后再开）
+      - SEMANTIC_ROUTER_LLM_INTENT_ENABLED=${SEMANTIC_ROUTER_LLM_INTENT_ENABLED:-false}
       - QUERY_GATEWAY_BASE_URL=${QUERY_GATEWAY_BASE_URL:-http://dw-query-gateway:8000}
       - QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN=${QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN}
       - QUERY_GATEWAY_TIMEOUT_SECONDS=${QUERY_GATEWAY_TIMEOUT_SECONDS:-5}
@@ -140,6 +144,10 @@ services:
       - LLM_API_BASE=${LLM_API_BASE:-https://api.openai.com/v1}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
       - LLM_TIMEOUT=${LLM_TIMEOUT:-60}
+      # AI provider 密钥加密存储（配置中心 UI 直填 API Key）；留空则 UI 填 Key 不可加密保存，回退 LLM_API_KEY
+      - AI_SECRET_KEY=${AI_SECRET_KEY:-}
+      # 全局问 LLM 意图抽取开关（默认关，需真实 LLM 验证后再开）
+      - SEMANTIC_ROUTER_LLM_INTENT_ENABLED=${SEMANTIC_ROUTER_LLM_INTENT_ENABLED:-false}
       - QUERY_GATEWAY_BASE_URL=${QUERY_GATEWAY_BASE_URL:-http://dw-query-gateway:8000}
       - QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN=${QUERY_GATEWAY_PLATFORM_SERVICE_TOKEN}
       - QUERY_GATEWAY_TIMEOUT_SECONDS=${QUERY_GATEWAY_TIMEOUT_SECONDS:-5}
