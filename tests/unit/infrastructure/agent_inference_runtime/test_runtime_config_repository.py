@@ -91,6 +91,54 @@ def test_runtime_config_repository_preserves_secret_when_api_key_omitted(db_sess
     assert saved.endpoint == "e2"
 
 
+def test_runtime_config_repository_preserves_endpoint_model_extra_when_omitted(db_session):
+    repo = SqlRuntimeConfigRepository(db_session)
+    repo.upsert_provider_config(
+        RuntimeProviderConfigUpdate(
+            runtime_name="codex_sdk",
+            enabled=True,
+            endpoint="http://codex:8799",
+            model="gpt-5.1-codex",
+            api_key=None,
+            extra={"timeout_seconds": 600, "sandbox": "workspace-write"},
+            updated_by="alice",
+        )
+    )
+
+    # 仅切 enabled，endpoint/model/extra 全省略(None)→ 应保留现有，不被清空
+    repo.upsert_provider_config(
+        RuntimeProviderConfigUpdate(
+            runtime_name="codex_sdk",
+            enabled=False,
+            endpoint=None,
+            model=None,
+            api_key=None,
+            extra=None,
+            updated_by="bob",
+        )
+    )
+
+    saved = repo.get_provider_config("codex_sdk")
+    assert saved.enabled is False
+    assert saved.endpoint == "http://codex:8799"
+    assert saved.model == "gpt-5.1-codex"
+    assert saved.extra == {"timeout_seconds": 600, "sandbox": "workspace-write"}
+
+    # 显式 extra={} 才清空
+    repo.upsert_provider_config(
+        RuntimeProviderConfigUpdate(
+            runtime_name="codex_sdk",
+            enabled=False,
+            endpoint=None,
+            model=None,
+            api_key=None,
+            extra={},
+            updated_by="bob",
+        )
+    )
+    assert repo.get_provider_config("codex_sdk").extra == {}
+
+
 def test_runtime_config_public_output_masks_sensitive_extra_keys(db_session):
     repo = SqlRuntimeConfigRepository(db_session)
 

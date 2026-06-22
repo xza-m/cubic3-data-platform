@@ -173,7 +173,8 @@ class RuntimeProviderConfigUpdate:
     endpoint: str | None
     model: str | None
     api_key: str | None
-    extra: dict[str, Any]
+    # endpoint/model/extra 与 api_key 一致：None=省略(保留现有)；extra={} 才是显式清空
+    extra: dict[str, Any] | None
     updated_by: str
 
 

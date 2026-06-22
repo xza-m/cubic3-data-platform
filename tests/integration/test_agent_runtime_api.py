@@ -435,14 +435,18 @@ class _RuntimeConfigRepository:
         else:
             secret_ref = None
             ciphertext = None
+        # endpoint/model/extra：None=保留现有
+        endpoint = update.endpoint if update.endpoint is not None else (existing.endpoint if existing else None)
+        model = update.model if update.model is not None else (existing.model if existing else None)
+        extra = update.extra if update.extra is not None else (existing.extra if existing else {})
         snapshot = RuntimeProviderConfigSnapshot(
             runtime_name=update.runtime_name,
             enabled=update.enabled,
-            endpoint=update.endpoint,
-            model=update.model,
+            endpoint=endpoint,
+            model=model,
             secret_ref=secret_ref,
             secret_ciphertext=ciphertext,
-            extra=update.extra,
+            extra=extra,
             updated_by=update.updated_by,
             updated_at=None,
         )

@@ -96,7 +96,33 @@ class SendMessageHandler:
         )
         execution_results = plan_result.get("execution_results") or []
         if not execution_results:
-            return None
+            # 路由级阻断(权限/运行时未就绪)有明确原因时诚实回传,不伪装成"找不到口径";
+            # 纯未命中实体(reason 以"未命中"开头)交给 legacy 兜底。
+            blocked = self._build_blocked_route_message(plan_result)
+            if blocked is None:
+                return None
+            ai_message = self.message_repository.create(Message(
+                conversation_id=command.conversation_id,
+                role='assistant',
+                content=blocked["content"],
+                generated_sql=None,
+                query_result=None,
+                visualization_config=None,
+                error=blocked["reason"],
+                source='semantic',
+                created_at=utcnow(),
+            ))
+            self._record_query_log(
+                command,
+                source='semantic_router',
+                response=blocked["content"],
+                sql=None,
+                status='blocked',
+            )
+            return {
+                'user_message': user_message.to_dict(),
+                'ai_message': ai_message.to_dict(),
+            }
 
         primary_result = execution_results[0]
         primary_traceability = primary_result.get("traceability") or {}
@@ -138,6 +164,24 @@ class SendMessageHandler:
             'user_message': user_message.to_dict(),
             'ai_message': ai_message.to_dict()
         }
+
+    @staticmethod
+    def _build_blocked_route_message(plan_result) -> Dict[str, str] | None:
+        """路由级阻断（权限/运行时未就绪）有明确原因时构造诚实回复；纯未命中实体返回 None 交 legacy。"""
+        route = plan_result.get("route") or {}
+        if route.get("route_type") != "blocked":
+            return None
+        reason = route.get("reason") or plan_result.get("reason")
+        if not reason:
+            return None
+        reason_str = str(reason)
+        if reason_str.startswith("未命中"):
+            return None  # 未命中业务实体 → legacy 的"找不到口径"本就诚实
+        if any(k in reason_str for k in ("runtime", "not_ready", "manifest", "运行清单", "未就绪")):
+            content = "语义运行时尚未就绪，暂时无法回答；请稍后重试或联系管理员发布语义运行时。"
+        else:
+            content = f"该问题命中了语义资产，但被访问策略或运行时限制阻断：{reason_str}"
+        return {"content": content, "reason": reason_str}
 
     def _handle_via_agent(self, command, conversation, user_message) -> Dict[str, Any] | None:
         """通过 DataChatChannel + AgentService 处理"""

@@ -357,12 +357,16 @@ def create_agent_runtime_blueprint(
         payload = {} if not raw_body.strip() and parsed_payload is None else parsed_payload
         if not isinstance(payload, Mapping):
             return _invalid_provider_config_payload("body")
-        extra_payload = payload.get("extra") or {}
-        if not isinstance(extra_payload, Mapping):
-            return _invalid_provider_config_payload("extra")
-        blocked_extra = _blocked_provider_extra_key(runtime_name, extra_payload)
-        if blocked_extra is not None:
-            return _invalid_provider_config_payload(f"extra.{blocked_extra}")
+        raw_extra = payload.get("extra")
+        if raw_extra is None:
+            extra_value = None  # 省略 = 保留现有 extra（与 api_key 一致的三态）
+        else:
+            if not isinstance(raw_extra, Mapping):
+                return _invalid_provider_config_payload("extra")
+            blocked_extra = _blocked_provider_extra_key(runtime_name, raw_extra)
+            if blocked_extra is not None:
+                return _invalid_provider_config_payload(f"extra.{blocked_extra}")
+            extra_value = dict(raw_extra)
         for field in ("endpoint", "model", "api_key"):
             value = payload.get(field)
             if value is not None and not isinstance(value, str):
@@ -375,7 +379,7 @@ def create_agent_runtime_blueprint(
                     endpoint=payload.get("endpoint"),
                     model=payload.get("model"),
                     api_key=payload.get("api_key"),
-                    extra=dict(extra_payload),
+                    extra=extra_value,
                     updated_by=_principal_id() or "unknown",
                 )
             )

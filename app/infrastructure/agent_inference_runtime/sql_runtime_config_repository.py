@@ -40,9 +40,12 @@ class SqlRuntimeConfigRepository:
             self.session.add(row)
 
         row.enabled = update.enabled
-        row.endpoint = update.endpoint
-        row.model = update.model
-        # API Key 三态：None=保留现有密钥；非空=加密落库(secret_ref=db)；空串=清除密钥
+        # endpoint/model/extra/api_key 统一"省略即保留"三态：None=保留现有
+        if update.endpoint is not None:
+            row.endpoint = update.endpoint
+        if update.model is not None:
+            row.model = update.model
+        # API Key：None=保留现有密钥；非空=加密落库(secret_ref=db)；空串=清除密钥
         if update.api_key is None:
             pass
         elif update.api_key.strip():
@@ -51,7 +54,9 @@ class SqlRuntimeConfigRepository:
         else:
             row.secret_ciphertext = None
             row.secret_ref = None
-        row.extra_json = dict(update.extra or {})
+        # extra：None=保留现有；显式 dict(含 {})=覆盖
+        if update.extra is not None:
+            row.extra_json = dict(update.extra)
         row.updated_by = update.updated_by
         self.session.commit()
         return self._config_from_row(row)
