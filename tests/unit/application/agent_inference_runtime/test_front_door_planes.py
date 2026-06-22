@@ -194,3 +194,21 @@ class TestSyncProviderMethods:
                 "semantic.modeling.generate_candidates", "q", preferred_runtime="codex_sdk"
             )
         assert exc.value.code == "RUNTIME_NOT_ALLOWED_FOR_ACTION"
+
+
+class TestGatewayChatAdapter:
+    def test_routes_illmport_chat_to_gateway_by_action(self):
+        from app.infrastructure.adapters.llm.gateway_chat_adapter import GatewayChatAdapter
+
+        calls = []
+
+        class _GW:
+            def chat(self, action, messages, tools=None, temperature=0.0):
+                calls.append((action, messages, tools, temperature))
+                return _FakeResponse("ok")
+
+        adapter = GatewayChatAdapter(gateway=_GW(), action="agent.loop")
+        out = adapter.chat([{"role": "user", "content": "hi"}], tools=[{"name": "q"}], temperature=0.0)
+
+        assert out.content == "ok"
+        assert calls == [("agent.loop", [{"role": "user", "content": "hi"}], [{"name": "q"}], 0.0)]

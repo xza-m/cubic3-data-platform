@@ -252,6 +252,7 @@ from app.application.conversation.handlers.list_conversations_handler import Lis
 # Infrastructure - LLM Service
 from app.infrastructure.llm.openai_service import OpenAIService
 from app.infrastructure.adapters.llm.openai_compatible import OpenAICompatibleAdapter
+from app.infrastructure.adapters.llm.gateway_chat_adapter import GatewayChatAdapter
 from app.infrastructure.agent_inference_runtime.openai_compatible_adapter import (
     OpenAICompatibleRuntimeAdapter,
 )
@@ -980,7 +981,11 @@ class Container(containers.DeclarativeContainer):
 
     agent_loop_service = providers.Singleton(
         AgentLoopService,
-        llm=agent_llm_adapter
+        llm=providers.Singleton(
+            GatewayChatAdapter,
+            gateway=agent_inference_runtime_service,
+            action="agent.loop",
+        ),
     )
 
     # ========================================================================
