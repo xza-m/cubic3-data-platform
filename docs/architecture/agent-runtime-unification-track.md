@@ -86,4 +86,4 @@ relates_to:
 
 - 不引入 agent marketplace、不把 codex 当普通 LLM provider（沿用 [agent-runtime-platform.md](agent-runtime-platform.md) §2.2 非目标）。
 - 不在内网单机上线前启动本 track；不为收口顺带翻新语义/发布链路。
-- 设计决策 (A) 一旦落地，应补一条 ADR-016 固化"推理 runtime 双平面单前门"，本文档届时降级为执行记录。
+- 设计决策 (A) 已由 [ADR-016 底层 AI 能力切换规范](decisions/ADR-016-ai-capability-switching-spec.md) 固化「三轴 · 单前门 · 双平面」契约与纪律；本 track 是其执行步骤，落地后降级为执行记录。

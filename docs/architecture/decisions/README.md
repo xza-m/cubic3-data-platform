@@ -33,3 +33,4 @@ last_reviewed: 2026-06-12
 - [ADR-013 轻量权限中心与网关执行闭环](ADR-013-lightweight-access-governance.md)（「暂不做行级」边界已由 [semantic-binding-and-rls.md](../semantic-binding-and-rls.md) 解除，实体骨架不变）
 - [ADR-014 双层语义采用并行双门面 + 单一编译脊柱](ADR-014-dual-facade-single-spine-semantics.md)（配套落地设计见 [semantic-binding-and-rls.md](../semantic-binding-and-rls.md)）
 - [ADR-015 建模助手采用「Agent 广度 + Copilot 深度」双形态共享脊柱](ADR-015-modeling-assistant-agent-copilot.md)（冷启动批量扫描真实化，发布权在人，无 LLM 可降级）
+- [ADR-016 底层 AI 能力切换规范（capability / provider / binding 三轴 · 单前门 · 双平面）](ADR-016-ai-capability-switching-spec.md)（复用既有 RuntimeName/binding/port/secret_ref，不新建框架；执行见 [agent-runtime-unification-track.md](../agent-runtime-unification-track.md)）
