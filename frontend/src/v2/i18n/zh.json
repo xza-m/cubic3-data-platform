@@ -495,6 +495,7 @@
   "agentRuntime.config.apiKey": "API Key",
   "agentRuntime.config.apiKeyPlaceholderEmpty": "输入 API Key",
   "agentRuntime.config.apiKeyPlaceholderSet": "已配置，留空保留现有",
+  "agentRuntime.config.clearApiKey": "清除已配置的密钥",
   "agentRuntime.config.enabled": "启用",
   "agentRuntime.config.enabledAriaLabel": "启用此 provider",
   "agentRuntime.config.endpoint": "Endpoint",

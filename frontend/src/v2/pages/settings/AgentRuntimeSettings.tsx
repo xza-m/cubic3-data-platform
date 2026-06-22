@@ -127,6 +127,8 @@ function ProviderConfigForm({ runtimeName, canManage }: ProviderConfigFormProps)
   const [model, setModel] = useState<string | null>(null)
   // apiKey 输入框：始终为空 placeholder，用户输入表示"想要更新"，不输入表示"保留现有"
   const [apiKeyInput, setApiKeyInput] = useState('')
+  // 显式清除已配置密钥（勾选后发送 api_key:'' 清空）
+  const [clearApiKey, setClearApiKey] = useState(false)
   const [saveFeedback, setSaveFeedback] = useState<{ tone: 'success' | 'danger'; message: string } | null>(null)
 
   // 表单显示值（优先用本地草稿，否则读服务端）
@@ -141,18 +143,23 @@ function ProviderConfigForm({ runtimeName, canManage }: ProviderConfigFormProps)
     enabled !== null ||
     endpoint !== null ||
     model !== null ||
-    apiKeyInput !== ''
+    apiKeyInput !== '' ||
+    clearApiKey
 
   async function handleSave() {
     if (!canManage) return
     setSaveFeedback(null)
 
-    // 构建 payload：api_key 只在用户有输入时传递
+    // 构建 payload：api_key 三态 —— 勾选清除发空串；有输入发新值；否则省略(保留现有)
     const payload = {
       enabled: displayEnabled,
       endpoint: displayEndpoint.trim() || null,
       model: displayModel.trim() || null,
-      ...(apiKeyInput !== '' ? { api_key: apiKeyInput } : {}),
+      ...(clearApiKey
+        ? { api_key: '' }
+        : apiKeyInput !== ''
+          ? { api_key: apiKeyInput }
+          : {}),
     }
 
     try {
@@ -166,6 +173,7 @@ function ProviderConfigForm({ runtimeName, canManage }: ProviderConfigFormProps)
       setEndpoint(null)
       setModel(null)
       setApiKeyInput('')
+      setClearApiKey(false)
     } catch (err) {
       setSaveFeedback({
         tone: 'danger',
@@ -179,6 +187,7 @@ function ProviderConfigForm({ runtimeName, canManage }: ProviderConfigFormProps)
     setEndpoint(null)
     setModel(null)
     setApiKeyInput('')
+    setClearApiKey(false)
     setSaveFeedback(null)
   }
 
@@ -254,9 +263,9 @@ function ProviderConfigForm({ runtimeName, canManage }: ProviderConfigFormProps)
         </label>
         <Input
           type="password"
-          value={apiKeyInput}
+          value={clearApiKey ? '' : apiKeyInput}
           onChange={(e) => setApiKeyInput(e.target.value)}
-          disabled={fieldDisabled}
+          disabled={fieldDisabled || clearApiKey}
           placeholder={
             hasStoredApiKey
               ? t('agentRuntime.config.apiKeyPlaceholderSet', '已配置，留空保留现有')
@@ -264,6 +273,17 @@ function ProviderConfigForm({ runtimeName, canManage }: ProviderConfigFormProps)
           }
           autoComplete="new-password"
         />
+        {hasStoredApiKey ? (
+          <label className="flex items-center gap-2 text-[11px] text-3">
+            <input
+              type="checkbox"
+              checked={clearApiKey}
+              disabled={fieldDisabled}
+              onChange={(e) => setClearApiKey(e.target.checked)}
+            />
+            {t('agentRuntime.config.clearApiKey', '清除已配置的密钥')}
+          </label>
+        ) : null}
       </div>
 
       {/* actions */}
