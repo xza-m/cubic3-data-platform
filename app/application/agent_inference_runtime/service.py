@@ -27,15 +27,64 @@ class AgentInferenceRuntimeService:
         router: AgentInferenceRuntimeRouter,
         run_service: Any | None = None,
         bindings: ActionRuntimeBindingRegistry | None = None,
+        provider_factory: Any | None = None,
     ):
         self._router = router
         self._run_service = run_service
         self._bindings = bindings or ActionRuntimeBindingRegistry()
+        self._provider_factory = provider_factory
 
     def invoke(self, request: AgentInferenceRuntimeRequest) -> AgentInferenceRuntimeResult:
         self._assert_kind(request.action, "sync")
         adapter = self._router.select(request)
         return adapter.invoke(request)
+
+    def chat(
+        self,
+        action: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        *,
+        temperature: float = 0.0,
+        preferred_runtime: str | None = None,
+    ) -> Any:
+        """同步工具调用对话(LLMResponse)：按 action 选 provider 后调用其 ILLMPort.chat。"""
+        self._assert_kind(action, "sync")
+        adapter = self._sync_adapter(action, preferred_runtime)
+        return adapter.chat(messages, tools, temperature)
+
+    def complete(
+        self,
+        action: str,
+        prompt: str,
+        *,
+        preferred_runtime: str | None = None,
+    ) -> str:
+        """同步单次补全：按 action 选 provider，单条 user 消息取文本回复。"""
+        self._assert_kind(action, "sync")
+        adapter = self._sync_adapter(action, preferred_runtime)
+        response = adapter.chat([{"role": "user", "content": prompt}])
+        return response.content or ""
+
+    def _sync_adapter(self, action: str, preferred_runtime: str | None) -> Any:
+        if self._provider_factory is None:
+            raise AgentInferenceRuntimeError(
+                "sync provider factory is not configured",
+                code="SYNC_PROVIDER_UNAVAILABLE",
+            )
+        binding = self._bindings.resolve(action)
+        chosen = preferred_runtime or binding.default_runtime
+        if chosen not in binding.allowed_runtimes:
+            raise AgentInferenceRuntimeError(
+                f"runtime={chosen} is not allowed for action={action}",
+                code="RUNTIME_NOT_ALLOWED_FOR_ACTION",
+                details={
+                    "action": action,
+                    "runtime_name": chosen,
+                    "allowed_runtimes": binding.allowed_runtimes,
+                },
+            )
+        return self._provider_factory(chosen)
 
     def submit_run(self, request: AgentInferenceRuntimeRequest) -> dict[str, Any]:
         self._assert_kind(request.action, "async")

@@ -73,11 +73,28 @@ def _request(action: str, *, execution_mode="sync", preferred_runtime=None) -> A
     )
 
 
-def _service(run_service=None):
+class _FakeResponse:
+    def __init__(self, content):
+        self.content = content
+        self.tool_calls = []
+
+
+class _FakeLLM:
+    def __init__(self, content="结果文本"):
+        self.content = content
+        self.calls = []
+
+    def chat(self, messages, tools=None, temperature=0.0):
+        self.calls.append((messages, tools, temperature))
+        return _FakeResponse(self.content)
+
+
+def _service(run_service=None, provider_factory=None):
     return AgentInferenceRuntimeService(
         router=AgentInferenceRuntimeRouter(adapters=[_FakeAdapter()]),
         run_service=run_service,
         bindings=ActionRuntimeBindingRegistry(),
+        provider_factory=provider_factory,
     )
 
 
@@ -139,3 +156,41 @@ class TestAsyncPlane:
         out = _service(rs).poll("run_x", "alice")
         assert out == {"run_id": "run_x", "status": "running"}
         assert rs.polled == [("run_x", "alice")]
+
+
+class TestSyncProviderMethods:
+    def test_complete_wraps_prompt_and_returns_content(self):
+        llm = _FakeLLM("销售额 地区")
+        out = _service(provider_factory=lambda name: llm).complete(
+            "global_ask.intent_extract", "各区域卖得怎样"
+        )
+        assert out == "销售额 地区"
+        assert llm.calls[0][0] == [{"role": "user", "content": "各区域卖得怎样"}]
+
+    def test_chat_passes_messages_tools_and_returns_response(self):
+        llm = _FakeLLM()
+        resp = _service(provider_factory=lambda name: llm).chat(
+            "agent.loop", [{"role": "user", "content": "hi"}], tools=[{"name": "q"}], temperature=0.0
+        )
+        assert resp.content == "结果文本"
+        assert llm.calls[0][1] == [{"name": "q"}]
+
+    def test_complete_without_provider_factory_raises(self):
+        with pytest.raises(AgentInferenceRuntimeError) as exc:
+            _service().complete("global_ask.intent_extract", "q")
+        assert exc.value.code == "SYNC_PROVIDER_UNAVAILABLE"
+
+    def test_complete_rejects_async_action_kind_mismatch(self):
+        with pytest.raises(AgentInferenceRuntimeError) as exc:
+            _service(provider_factory=lambda name: _FakeLLM()).complete(
+                "semantic.modeling.review_proposal", "q"
+            )
+        assert exc.value.code == "RUNTIME_KIND_MISMATCH"
+
+    def test_sync_adapter_rejects_runtime_not_allowed(self):
+        # 固定 openai 的 action 不允许 preferred=codex_sdk
+        with pytest.raises(AgentInferenceRuntimeError) as exc:
+            _service(provider_factory=lambda name: _FakeLLM()).complete(
+                "semantic.modeling.generate_candidates", "q", preferred_runtime="codex_sdk"
+            )
+        assert exc.value.code == "RUNTIME_NOT_ALLOWED_FOR_ACTION"

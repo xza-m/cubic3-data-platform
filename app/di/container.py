@@ -125,6 +125,43 @@ def _openai_runtime_adapter_from_config_service(config_service_provider):
     )
 
 
+def _sync_provider_factory_from_config_service(config_service_provider):
+    """前门同步平面 provider 工厂：按 management_config 构建/缓存 ILLMPort adapter（单一事实源）。"""
+
+    cache: dict = {}
+
+    def factory(runtime_name):
+        if runtime_name != "openai_compatible":
+            raise AgentInferenceRuntimeError(
+                f"sync provider not available: {runtime_name}",
+                code="SYNC_PROVIDER_UNAVAILABLE",
+            )
+        cfg = config_service_provider().management_config("openai_compatible")
+        key = (cfg.get("api_key"), cfg.get("api_base"), cfg.get("model"), cfg.get("timeout"))
+        if key not in cache:
+            cache.clear()
+            cache[key] = OpenAICompatibleAdapter(
+                api_key=cfg.get("api_key") or "",
+                api_base=cfg.get("api_base") or "",
+                model=cfg.get("model") or "",
+                timeout=cfg.get("timeout") or 60,
+            )
+        return cache[key]
+
+    return factory
+
+
+def _intent_extraction_from_gateway(gateway):
+    """全局问 LLM 意图抽取：默认关，开启(SEMANTIC_ROUTER_LLM_INTENT_ENABLED)时经前门 complete。"""
+
+    enabled = _parse_bool(os.getenv("SEMANTIC_ROUTER_LLM_INTENT_ENABLED", "false"))
+    if not enabled:
+        return LlmIntentExtractionService(None)
+    return LlmIntentExtractionService(
+        complete_fn=lambda prompt: gateway.complete("global_ask.intent_extract", prompt)
+    )
+
+
 def _codex_run_service_from_config_service(repository, config_service_provider, codex_client_factory):
     """让 Codex run 每次提交/轮询前读取当前 SDK 配置。"""
 
@@ -231,6 +268,8 @@ from app.application.agent_inference_runtime.codex_run_service import CodexRunSe
 from app.application.agent_inference_runtime.router import AgentInferenceRuntimeRouter
 from app.application.agent_inference_runtime.runtime_config_service import RuntimeConfigService
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
+from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
+from app.application.semantic_router.llm_intent_extraction import LlmIntentExtractionService
 
 # Application - Agent
 from app.application.agent.services.knowledge_service import KnowledgeService
@@ -539,11 +578,22 @@ class Container(containers.DeclarativeContainer):
         repository=agent_inference_runtime_repository,
     )
 
+    agent_sync_provider_factory = providers.Singleton(
+        _sync_provider_factory_from_config_service,
+        config_service_provider=agent_runtime_config_service.provider,
+    )
+
     agent_inference_runtime_service = providers.Singleton(
         AgentInferenceRuntimeService,
         router=agent_inference_runtime_router,
         run_service=codex_run_service.provider,
         bindings=agent_runtime_action_bindings,
+        provider_factory=agent_sync_provider_factory,
+    )
+
+    semantic_intent_extraction_service = providers.Singleton(
+        _intent_extraction_from_gateway,
+        gateway=agent_inference_runtime_service,
     )
 
     # ========================================================================
@@ -888,6 +938,7 @@ class Container(containers.DeclarativeContainer):
         compiler_preview_service=execution_compiler_preview_service,
         runtime_snapshot_service=runtime_snapshot_service,
         policy_guard_service=ontology_policy_guard_service,
+        intent_extraction_service=semantic_intent_extraction_service,
     )
 
     ontology_workbench_read_service = providers.Singleton(
