@@ -992,6 +992,7 @@
   "dataChat.eyebrow": "Semantic Conversation",
   "dataChat.history.empty": "暂无对话",
   "dataChat.history.error": "对话加载失败",
+  "dataChat.history.globalScope": "全局问数",
   "dataChat.history.messageCount": "条消息",
   "dataChat.history.title": "最近对话",
   "dataChat.input.placeholder": "输入你的数据问题，例如：查询本月销售前 10 的产品",

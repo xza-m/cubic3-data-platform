@@ -107,7 +107,8 @@ export default function DataChat() {
     if (activeConversationId == null && conversations.length > 0) {
       const first = conversations[0]
       setActiveConversationId(first.id)
-      if (first.dataset_id != null) setSelectedDatasetId(first.dataset_id)
+      // 全局会话(dataset_id==null)需清空上次选择,避免误显示"当前数据集:X"
+      setSelectedDatasetId(first.dataset_id ?? null)
     }
   }, [activeConversationId, conversations])
 
@@ -277,7 +278,8 @@ export default function DataChat() {
                     active={conversation.id === activeConversationId}
                     onClick={() => {
                       setActiveConversationId(conversation.id)
-                      if (conversation.dataset_id != null) setSelectedDatasetId(conversation.dataset_id)
+                      // 切到全局会话(dataset_id==null)时清空选择,显示为全局问数
+                      setSelectedDatasetId(conversation.dataset_id ?? null)
                     }}
                   />
                 ))}
@@ -377,7 +379,7 @@ function ConversationButton({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs">{conversation.title}</span>
         <span className="block truncate text-[11px] text-3">
-          {conversation.dataset_name ?? '-'} · {conversation.message_count ?? 0}{' '}
+          {conversation.dataset_name ?? t('dataChat.history.globalScope', '全局问数')} · {conversation.message_count ?? 0}{' '}
           {t('dataChat.history.messageCount', '条消息')}
         </span>
       </span>
