@@ -5,12 +5,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '@v2/hooks/query-client'
 import {
+  getAgentRuntimeProviderConfig,
   getAgentRuntimeStatus,
   restartAgentRuntimeProvider,
   startAgentRuntimeProvider,
   testAgentRuntimeProvider,
+  updateAgentRuntimeProviderConfig,
   type AgentRuntimeManagementSnapshot,
   type AgentRuntimeName,
+  type AgentRuntimeProviderConfig,
+  type UpdateAgentRuntimeProviderConfigPayload,
 } from '@v2/api/agent-runtime'
 
 export function useAgentRuntimeStatus() {
@@ -48,6 +52,33 @@ export function useRestartAgentRuntimeProvider() {
     mutationFn: (runtimeName: AgentRuntimeName) => restartAgentRuntimeProvider(runtimeName),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk('agent-runtime', 'status') })
+    },
+  })
+}
+
+export function useAgentRuntimeProviderConfig(runtimeName: AgentRuntimeName) {
+  return useQuery<AgentRuntimeProviderConfig>({
+    queryKey: qk('agent-runtime', 'config', runtimeName),
+    queryFn: () => getAgentRuntimeProviderConfig(runtimeName),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    enabled: Boolean(runtimeName),
+  })
+}
+
+export function useUpdateAgentRuntimeProviderConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      runtimeName,
+      payload,
+    }: {
+      runtimeName: AgentRuntimeName
+      payload: UpdateAgentRuntimeProviderConfigPayload
+    }) => updateAgentRuntimeProviderConfig(runtimeName, payload),
+    onSuccess: (_data, { runtimeName }) => {
+      qc.invalidateQueries({ queryKey: qk('agent-runtime', 'status') })
+      qc.invalidateQueries({ queryKey: qk('agent-runtime', 'config', runtimeName) })
     },
   })
 }

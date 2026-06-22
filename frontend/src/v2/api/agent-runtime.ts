@@ -17,6 +17,9 @@ const get = <T>(url: string): Promise<T> =>
 const post = <T>(url: string, body?: unknown): Promise<T> =>
   apiClient.post<Envelope<T>>(url, body).then((r) => r.data.data)
 
+const put = <T>(url: string, body?: unknown): Promise<T> =>
+  apiClient.put<Envelope<T>>(url, body).then((r) => r.data.data)
+
 export type AgentRuntimeName = 'openai_compatible' | 'codex_sdk' | string
 export type AgentRuntimeOperationName =
   | 'test'
@@ -46,6 +49,34 @@ export interface AgentRuntimeActionBinding {
   expose_selector: boolean
   requires_connection: boolean
   reason: string
+  /** 调用形态：sync = 同步补全/工具调用，async = 异步 agentic run */
+  kind?: 'sync' | 'async'
+}
+
+export interface AgentRuntimeProviderConfig {
+  runtime_name: AgentRuntimeName
+  enabled: boolean
+  endpoint: string | null
+  model: string | null
+  /** 始终脱敏返回（"********" 或 null），前端不可还原原始值 */
+  api_key: string | null
+  extra: Record<string, unknown>
+  updated_by: string | null
+  updated_at: string | null
+}
+
+export interface UpdateAgentRuntimeProviderConfigPayload {
+  enabled: boolean
+  endpoint?: string | null
+  model?: string | null
+  /**
+   * api_key 语义：
+   *  - 省略/undefined/null = 保留现有密钥
+   *  - 非空字符串 = 更新密钥
+   *  - 空字符串 = 清除密钥
+   */
+  api_key?: string | null
+  extra?: Record<string, unknown>
 }
 
 export interface AgentRuntimeManagementSnapshot {
@@ -95,3 +126,12 @@ export const getAgentRuntimeProviderLogs = (runtimeName: AgentRuntimeName) =>
 
 export const getAgentRuntimeProviderCapabilities = (runtimeName: AgentRuntimeName) =>
   get<AgentRuntimeCapabilities>(`/agent-runtime/providers/${runtimeName}/capabilities`)
+
+export const getAgentRuntimeProviderConfig = (runtimeName: AgentRuntimeName) =>
+  get<AgentRuntimeProviderConfig>(`/agent-runtime/providers/${runtimeName}/config`)
+
+export const updateAgentRuntimeProviderConfig = (
+  runtimeName: AgentRuntimeName,
+  payload: UpdateAgentRuntimeProviderConfigPayload,
+) =>
+  put<AgentRuntimeProviderConfig>(`/agent-runtime/providers/${runtimeName}/config`, payload)
