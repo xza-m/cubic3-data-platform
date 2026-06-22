@@ -37,4 +37,3 @@ export function humanizeTechnicalValue(value: string | null | undefined, fallbac
 function normalizeKey(value: string | null | undefined): string {
   return String(value ?? '').trim().toLowerCase()
 }
-

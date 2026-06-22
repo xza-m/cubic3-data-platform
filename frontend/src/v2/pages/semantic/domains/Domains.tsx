@@ -180,4 +180,3 @@ function domainStableId(domain: DomainSummary): string {
 function domainRouteSegment(domain: DomainSummary): string {
   return encodeURIComponent(domainStableId(domain))
 }
-

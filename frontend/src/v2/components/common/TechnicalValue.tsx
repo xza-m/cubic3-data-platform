@@ -37,4 +37,3 @@ export function TechnicalValue({ value, label, className = '' }: TechnicalValueP
     </span>
   )
 }
-

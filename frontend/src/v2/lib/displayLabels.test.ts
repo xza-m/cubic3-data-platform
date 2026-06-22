@@ -25,4 +25,3 @@ describe('displayLabels', () => {
     expect(technicalIdLabel('同步记录 ', 42)).toBe('同步记录 42')
   })
 })
-
