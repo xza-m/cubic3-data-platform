@@ -1,89 +1,138 @@
 ---
-doc_type: architecture-track
+doc_type: implementation-plan
 status: proposed
 source_of_truth: secondary
 owner: engineering
 last_reviewed: 2026-06-22
 relates_to:
+  - architecture/decisions/ADR-016-ai-capability-switching-spec.md
   - architecture/agent-runtime-platform.md
-  - architecture/decisions/ADR-015-modeling-assistant-agent-copilot.md
 ---
 
-# 推理 Runtime 统一收口 Track（`agent_inference_runtime` 单前门）
+# 底层 AI 能力切换 · 完整实施方案
 
-> 统一目标态愿景已定义在 [agent-runtime-platform.md](agent-runtime-platform.md)（统一 `AgentInferenceRuntimeService`、action binding、openai/codex 双 runtime）。
-> **本文不重述愿景**，只记录「目标态 vs 当前实现」的真实缺口，给出增量收口计划，供上线后架构 track 立项。
+> 规范(契约与纪律）见 [ADR-016](decisions/ADR-016-ai-capability-switching-spec.md)；目标态愿景见 [agent-runtime-platform.md](agent-runtime-platform.md)。
+> **本文是可执行的完整方案**：目标形态 → 现状盘点 → 数据模型 → 后端/前端改造 → 分阶段交付（每阶段可独立上线/回滚）→ 验收。
+> 定位：**上线后架构 track，不阻塞内网单机上线**；其中 P1 可先行。
 
-## 状态
+## 0. 一句话
 
-**Proposed** —— 属上线后架构 track，**不阻塞当前内网单机上线**。符合 CLAUDE.md「当前阶段不做大规模架构翻新」：本 track 是把已有抽象**补全/收口**，不是重写。
+把"底层 AI 能力切换"收口成**一张配置页 + 一条调用主链**：页上半配「提供方（调用形态）」、下半配「模块调用关系」；所有业务模块只经**单一前门**按 `action` 路由到 provider，配置只有 C 层一份事实源。
 
----
+## 1. 目标形态（已认可）
 
-## 1. 背景：愿景已实现一半，三处缺口让"模块自由选 codex/openai"目前不成立
+统一配置页（落在 `配置中心`），两段：
 
-`agent-runtime-platform.md` 的 Implementation Status（2026-05-29）声称统一 runtime + 两个 consumer 已接入。核对代码后，**统一模块确实存在且部分承载**，但有三处实现缺口，使得"任意模块按 action 自由选 openai/codex"这个核心目标**当前并未真正生效**：
+- **上半「提供方」**：每个 AI 后端一张卡 = 凭据/模型/超时 + 它能服务的**调用形态**（capability：同步补全 / 工具调用对话 / 异步 agentic run）。改模型/密钥只改这一处。
+- **下半「模块调用关系」**：每个业务动作（action）一行 = 调用形态 + 默认提供方 + 能否切换。加动作 = 加一行，零代码。
 
-| # | 缺口 | 证据 | 后果 |
+三轴心智模型（ADR-016）：**capability**（做什么形态）· **provider**（谁来算）· **binding**（哪个 action 派给谁）。
+
+## 2. 现状盘点（已核代码，✓=已具备 / △=部分 / ✗=缺）
+
+| 面 | 项 | 状态 | 证据 / 缺口 |
 |---|---|---|---|
-| G1 | **router 只注册了 openai adapter** | [container.py:510](../../app/di/container.py) `adapters=providers.List(agent_openai_runtime_adapter)`；`CodexSdkRuntimeAdapter` 已实现同一端口却未注册 | `AgentInferenceRuntimeRouter.select()`（[router.py:24](../../app/application/agent_inference_runtime/router.py)）永远路由不到 codex |
-| G2 | **codex 走旁路，不经 router** | `SemanticModelingAgentApp` 同时拿 `runtime=agent_inference_runtime_service` 和 `run_service=codex_run_service`（[container.py:1070-1071](../../app/di/container.py)） | per-action openai/codex 仲裁被旁路：消费方靠"握两个句柄"自己分流，而非 binding registry 统一裁决 |
-| G3 | **平台核心问数/Agent loop 根本不走统一模块** | 会话 `OpenAIService`（[container.py:467](../../app/di/container.py)）+ DataAgent `OpenAICompatibleAdapter`（[container.py:479](../../app/di/container.py)）都直挂 `config.llm`(`LLM_PROVIDER`)，与 runtime 模块无关 | 真正高频的消费链（问数、agent loop）完全在统一开关之外 |
+| 后端契约 | 同步端口 `AgentInferenceRuntimePort.invoke` | ✓ | openai/codex/fake adapter 均实现 |
+| 后端契约 | 异步 `CodexRunService.submit/poll` | ✓ | [codex_run_service.py:46](../../app/application/agent_inference_runtime/codex_run_service.py) |
+| 后端契约 | `RuntimeActionBinding` 带 `kind`(sync/async) | ✗ | [types.py:113](../../app/domain/agent_inference_runtime/types.py) 无 kind；平面靠调用点硬编码 |
+| 后端路由 | codex 注册进 router | ✗ **G1** | [container.py:510](../../app/di/container.py) 只 openai |
+| 后端前门 | service 含异步平面 | ✗ | [service.py:11](../../app/application/agent_inference_runtime/service.py) 只 sync invoke |
+| 后端消费 | 建模 Copilot 单句柄 | ✗ **G2** | [semantic_modeling_agent_app.py:54](../../app/application/semantic/semantic_modeling_agent_app.py) 持 runtime+run_service |
+| 后端消费 | 会话/agent-loop 经前门 | ✗ **G3** | 直挂 [container.py:467/479](../../app/di/container.py) config.llm |
+| 后端配置 | openai 单一事实源 | ✗ **G4** | config.llm 与 agent_openai 两份 |
+| 管理 API | `GET /providers/status` | ✓ | [agent_runtime.py:305](../../app/interfaces/api/v1/agent_runtime.py) |
+| 管理 API | `GET/PUT /providers/<r>/config` | ✓ | provider 配置可读写 |
+| 管理 API | `GET /actions/<a>/binding` | △ | 只读；**无写**（模块关系不可在 UI 改） |
+| 管理 API | test/logs/capabilities | ✓ | 已具备 |
+| 数据 | binding 持久化可编辑 | ✗ | 代码写死在 `ActionRuntimeBindingRegistry`，非 DB |
+| 前端 | 提供方页 | △ | [AgentRuntimeSettings.tsx](../../frontend/src/v2/pages/settings/AgentRuntimeSettings.tsx) 已显示状态+连接测试；缺能力展示与 config 编辑 |
+| 前端 | 模块关系表 | ✗ | 未建 |
+| 前端 | API client/hooks | △ | [agent-runtime.ts](../../frontend/src/v2/api/agent-runtime.ts) 有 status/test/logs/capabilities；缺 config/binding 读写 |
 
-**净结论**：统一 runtime 目前只覆盖「建模 Copilot / 数据资产」两个 Agent App，且即便在这里 codex 也只是侧挂句柄；平台的核心问数/agent-loop 在另一套 `LLM_PROVIDER` 配置上。开关碎成两档（`config.llm` 与 `agent_openai`/`AGENT_CODEX_ENABLED`）。
+**结论**：契约与管理 API 大半已在，缺口集中在「kind 字段 + 单前门异步平面 + 消费方収編 + 配置单源 + binding 可写 + 前端两段页」。是**收口接线**，非从零造。
 
-## 2. 现状全景：三套推理路径 + 两套 openai provider 配置
+## 3. 数据模型（C 层 management_config，唯一事实源）
 
-| 栈 | 实现 | 端口/形状 | 配置开关 | 消费方 | 经统一 router? |
+复用既有 `RuntimeProviderConfigSnapshot`（已含 `secret_ref` 间接 + `to_public_dict` 脱敏）。新增 binding 持久化与 `kind`。
+
+```yaml
+ai_providers:                      # 上半页数据源（已有 GET/PUT config）
+  openai_compatible:
+    enabled: true
+    base_url: ...
+    secret_ref: "env:LLM_API_KEY"  # 复用既有间接引用，不入库明文
+    model: gpt-4o
+    capabilities: [completion, chat_tools]   # 调用形态(能力)声明
+    timeout_s: 30
+  codex:
+    enabled: true
+    workspace_required: true
+    capabilities: [agentic_run]
+    timeout_s: 600
+
+ai_bindings:                       # 下半页数据源（需新增写接口 + 持久化）
+  - {action: datachat.completion,          kind: sync,  default: openai_compatible, allowed: [openai_compatible], selectable: none}
+  - {action: global_ask.intent_extract,    kind: sync,  default: openai_compatible, allowed: [openai_compatible], selectable: none}
+  - {action: agent.loop,                   kind: sync,  default: openai_compatible, allowed: [openai_compatible], selectable: none}
+  - {action: modeling.generate_candidates, kind: sync,  default: openai_compatible, allowed: [openai_compatible, codex], selectable: expert}
+  - {action: modeling.review_proposal,     kind: async, default: codex,             allowed: [codex],            selectable: none}
+  - {action: modeling.repair/audit,        kind: async, default: codex,             allowed: [codex],            selectable: none}
+```
+
+`RuntimeName` 维持封闭 Literal；新 provider（claude/local）走**扩 Literal**，不自由字符串化。
+
+## 4. 后端改造（concrete）
+
+详见 ADR-016 落地映射；要点：
+
+1. **binding 加 `kind`**（[types.py](../../app/domain/agent_inference_runtime/types.py) `RuntimeActionBinding` + `action_binding.py` 各策略补 kind）。`ExecutionMode` 第 9 行已存在。
+2. **前门长出异步平面**（[service.py](../../app/application/agent_inference_runtime/service.py)）：`invoke`(sync) + `submit_run/poll`(async)，用 `binding.kind` 做平面权威校验，注入 `run_service`。
+3. **codex 注册进 router**（[container.py:510](../../app/di/container.py) adapters 列表加 `CodexSdkRuntimeAdapter`）→ 闭合 G1。
+4. **消费方去双句柄**（[semantic_modeling_agent_app.py](../../app/application/semantic/semantic_modeling_agent_app.py) 去掉 `run_service` 参数，改调 `self._runtime.submit_run(...)`）→ 闭合 G2。
+5. **会话/loop 改调前门**（conversation handler / `AgentLoopService` 带 `action` 调前门，不再直挂 config.llm）→ 闭合 G3。
+6. **配置合一**（`config.llm` 与 `agent_openai` 指向同一条 `management_config.openai_compatible`）→ 闭合 G4。
+7. **binding 写接口 + 持久化**（新增 `PUT /actions/<a>/binding`；binding 从代码写死迁到 management_config，`ActionRuntimeBindingRegistry` 改为从 C 层加载 + 代码兜底种子）。
+8. **启动期自检**：遍历 binding，校验 default/allowed provider 已注册、enabled、supports(kind)；不满足启动失败（防 G1 复发）。
+
+## 5. 前端改造
+
+- **扩展** [AgentRuntimeSettings.tsx](../../frontend/src/v2/pages/settings/AgentRuntimeSettings.tsx)（而非新建）为两段页：
+  - 上半「提供方」：在现有状态/连接测试基础上，加**能力标签展示** + **config 编辑表单**（接已有 `GET/PUT /providers/<r>/config`）。
+  - 下半「模块调用关系」：新表（接 `GET /actions/<a>/binding` 列表 + 新增 `PUT` 写），`selectable=expert` 行显示下拉。
+- **API client** [agent-runtime.ts](../../frontend/src/v2/api/agent-runtime.ts)：补 `getProviderConfig/updateProviderConfig`、`listBindings/updateBinding`。
+- i18n：新增文案走 `t()`（遵循门禁）。
+
+## 6. 分阶段交付（每阶段独立可上线 + 可回滚）
+
+| 阶段 | 内容 | 闭合 | 改动面 | 验收 | 回滚 |
 |---|---|---|---|---|---|
-| **S1** | `OpenAIService` | `chat_completion`/`generate_sql` | `LLM_PROVIDER`(config.llm) | 会话/DataChat（[1469](../../app/di/container.py)） | ❌ |
-| **S2** | `OpenAICompatibleAdapter` | `ILLMPort.chat→LLMResponse` | `LLM_PROVIDER`(config.llm，同 S1) | AgentLoopService（[930](../../app/di/container.py)） | ❌ |
-| **S3** | `agent_inference_runtime`（router + openai adapter） | `AgentInferenceRuntimePort.invoke` | `agent_openai`/management_config | 建模 Copilot（[1070](../../app/di/container.py)）、数据资产（[693](../../app/di/container.py)） | ✅（仅 openai） |
-| **Codex** | `CodexSdkRuntimeAdapter` / `codex_run_service` | 异步 run（submit/poll/artifact） | `AGENT_CODEX_ENABLED` | 同上 Agent App，**侧挂 `run_service`** | ❌（旁路） |
+| **P1** | codex 注册进 router | G1 | container.py ~8 行 | codex action 经 `select()` 命中 codex adapter；`make test-platform-agent-runtime` 绿 | 单 commit 回退 |
+| **P2** | binding 加 kind + 前门异步平面 + Copilot 去双句柄 | G2 | types/action_binding/service/agent_app + container ~60 行 | Copilot review 经前门 `submit_run`；建模回归无降级 | 保留旧 run_service 注入灰度 |
+| **P3** | 会话/agent-loop 収編前门 | G3 | conversation/agent_loop + container 中 | 问数/loop 经前门；DataChat 回归绿 | 旧 config.llm 直挂保留为 fail-open，灰度切 |
+| **P4** | 配置合一 | G4 | container + runtime_config_service 中 | openai 只剩一条 management_config 记录；两入口读同源 | 回退 container 装配 |
+| **P5** | binding 可写 + 持久化 | — | 新 PUT 端点 + registry 从 C 加载 ~中 | UI 改 binding 落库生效；启动自检通过 | registry 退回代码种子 |
+| **P6** | 前端两段页 | — | AgentRuntimeSettings + api/hooks 中 | 配置页可看/改 provider + binding；i18n 门禁绿 | 前端 feature 隐藏 |
+| **P7** | 全局问 intent 抽取接前门 | — | semantic_router + binding 一行 | `global_ask.intent_extract` 经前门；失败诚实兜底 | 退回过渡期 config.llm 挂法 |
+| **P8** | 配置收尾：env 前缀 `LLM_*/AGENT_*`→`AI_*` | — | config_schema/env.sample/部署文档 | 文档同步、`make verify-docs` 绿 | 独立末步，单独回退 |
 
-## 3. 关键设计决策（先定，再迁移）
+> **过渡期**：全局问 intent 抽取若在 P7 前需要，按 ADR-016 先挂 `config.llm`（默认关 `SEMANTIC_ROUTER_LLM_INTENT_ENABLED`，零回归），P7 再迁到前门。
 
-端口 `AgentInferenceRuntimePort.invoke()` 是**同步单次推理**，而 codex 是**异步长跑 run**（submit/poll/artifact）。统一时必须先定边界，两个选项：
+## 7. 整体验收
 
-- **(A) 双平面收口（推荐）**：
-  - **同步补全平面** = openai-compatible（会话、agent loop、候选生成、字段语义、全局问意图抽取）统一走 `router.select()→invoke()`。
-  - **agentic-run 平面** = codex（review/repair/audit/workspace）保持 submit/poll 形态，但**也由 `ActionRuntimeBindingRegistry` 统一声明**（哪些 action 属 codex），消费方通过**单一 service 入口**拿到正确平面，而不是自己握两个句柄。
-  - 现有 binding registry 的 `requires_connection`/`fixed_codex`/`fixed_openai`（[action_binding.py:48](../../app/application/agent_inference_runtime/action_binding.py)）已经编码了这个边界，几乎不用改策略，只需把"分流"从消费方上移到 service。
-- **(B) 单端口吞两形态**：让 `invoke()` 同时表达同步/异步 run。更"纯"但改动大、风险高，不符合"不翻新"。
+- 任一 action 的 runtime 由 binding 唯一裁决；消费方只持前门一个句柄。
+- openai 凭据/开关只在 C 层一条记录；`config.llm` 仅作 bootstrap 种子。
+- 配置页可读/改 provider 与 binding，改动落库即生效。
+- `make test-platform-agent-runtime` + 会话/loop/建模回归全绿；前端 i18n/tokens/lint/test:unit 绿。
 
-→ **采用 (A)**。
+## 8. 风险与回滚
 
-## 4. 增量迁移步骤（每步可独立交付 + 验证，随时可停）
+- 每阶段独立提交、独立回滚；P2/P3 保留旧直挂为 fail-open 灰度，降低收編风险。
+- P8 env 改名为大爆破，置于最后、单独、带 env.sample/部署文档同步。
+- 守"简单队列+状态回写"：前门不接管 codex run 生命周期，仍委托 `CodexRunService`，不升级为工作流引擎。
 
-| Step | 动作 | 文件 | 价值 | 风险 |
-|---|---|---|---|---|
-| **1** | `CodexSdkRuntimeAdapter` 注册进 router 的 adapters 列表 | container.py:508-512 | `select()` 真能路由 codex，**你原设计立刻通**（最小一刀） | 低 |
-| **2** | 把 codex 分流从 `SemanticModelingAgentApp`(握两句柄)上移到 service：消费方只持 `runtime_service`，按 action 由 router 决定 openai/codex 平面 | semantic_modeling_agent_app.py、container.py:1069-1073 | 消除 G2，单前门 | 中 |
-| **3** | 会话 S1 收编：`send_message_handler` 改经 `runtime_service`，action=`conversation.answer` | conversation handlers、container.py:1469 | 消除 G3（问数进统一开关） | 中 |
-| **4** | Agent loop S2 收编：`AgentLoopService` 改经 service，action=`agent.loop_step` | agent_loop、container.py:930 | 消除 G3 | 中 |
-| **5** | 配置收敛：`LLM_PROVIDER`/`AGENT_CODEX_ENABLED` 退化为「binding(选 runtime) + 各 runtime provider 配置」 | config_schema.py、container.py、env.sample | 两档开关合一 | 中 |
-| **6** | 新 action `semantic_router.intent_extract`→openai(低延迟)，全局问意图抽取作为统一模块消费方 | action_binding.py、semantic_router | 新功能即新 binding，无 bespoke 开关 | 低 |
+## 9. 不做什么（scope guard，来自 ADR-016）
 
-> Step 1 可单独先做（小、低风险、补全你原设计）；Step 2-5 是真正的收口主体，建议成块排期；Step 6 依赖前序，亦可在过渡期先挂 `config.llm`（见下）。
-
-## 5. 与"全局问 LLM 意图抽取"的关系（过渡建议）
-
-全局问 intent 抽取**不要绑在本 track 上**。过渡期先挂 `config.llm`（与 S2 同源、默认关 `SEMANTIC_ROUTER_LLM_INTENT_ENABLED=false`、零回归）；本 track 落到 Step 6 时再改为 action binding 接入统一 service。避免把小功能押在大重构上。
-
-## 6. 验收标准
-
-- 任一 action 的 runtime 由 `ActionRuntimeBindingRegistry` **唯一裁决**；消费方不再持有多个 runtime 句柄。
-- openai 补全类调用 100% 经 `agent_inference_runtime_service`；`config.llm` 仅作为 openai runtime 的 provider 配置存在，不再被业务直挂。
-- codex run 由 binding 声明、经统一 service 入口取得。
-- `make test-platform-agent-runtime` 全绿 + 会话/agent-loop 回归无降级。
-
-## 7. 风险与回滚
-
-- 每步独立提交、独立可回滚；S1/S2 收编保留旧 provider 直挂作为 fail-open 兜底，灰度切换。
-- 配置收敛（Step 5）需同步 `env.sample` 与部署文档，最后做。
-
-## 8. 不做什么（scope guard）
-
-- 不引入 agent marketplace、不把 codex 当普通 LLM provider（沿用 [agent-runtime-platform.md](agent-runtime-platform.md) §2.2 非目标）。
-- 不在内网单机上线前启动本 track；不为收口顺带翻新语义/发布链路。
-- 设计决策 (A) 已由 [ADR-016 底层 AI 能力切换规范](decisions/ADR-016-ai-capability-switching-spec.md) 固化「三轴 · 单前门 · 双平面」契约与纪律；本 track 是其执行步骤，落地后降级为执行记录。
+- 不新建 `AICapability` 枚举 / `SyncInferencePort`·`AgenticRunPort` 端口族 / `AIGateway` 上帝类。
+- embedding / structured_output / failover 逻辑 / claude provider —— 留扩展点，待真实需求再做。
+- 不引入 provider 注册中心/网关中间件等重型设施；前门是进程内 application 服务。
+- 不在内网单机上线前启动本 track（P1 除外，可先行）。

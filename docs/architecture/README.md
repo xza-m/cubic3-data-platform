@@ -62,7 +62,7 @@ last_reviewed: 2026-06-09
 - [agent-runtime-platform.md](agent-runtime-platform.md)
   - 当前基线与目标设计；Agent 推理 Runtime 上提为平台级能力层，通过统一 `AgentInferenceRuntimeService / AgentInferenceRuntimeRouter / Context Pack / ToolSpec Adapter / Runtime Policy / Trace` 对接 OpenAI-compatible LLM 和 Codex SDK；OpenAI-compatible 已接入低延迟主链，语义建模 Copilot 是首个消费者，Codex SDK 当前保持 workspace / client / adapter、fake tests 和显式 opt-in live smoke
 - [agent-runtime-unification-track.md](agent-runtime-unification-track.md)
-  - 推理 Runtime 统一收口 track；对齐 `agent-runtime-platform.md` 目标态与当前实现的三处缺口（codex 未注册进 router、消费方侧挂双句柄、会话/agent-loop 仍直挂 `LLM_PROVIDER`），给出双平面单前门的增量迁移步骤；属上线后架构债，不阻塞内网单机上线
+  - 底层 AI 能力切换 · 完整实施方案；ADR-016 规范的可执行落地：目标形态（提供方 + 模块调用关系配置页）、现状盘点、数据模型、后端/前端改造、P1-P8 分阶段交付（每阶段可独立上线/回滚）、验收；属上线后架构 track（P1 可先行），不阻塞内网单机上线
 - [semantic-binding-and-rls.md](semantic-binding-and-rls.md)
   - ADR-014 配套落地设计；Cube↔Ontology 显式绑定 Schema（`cube_bindings` / `measure_refs[primary]`）、发布期断链校验矩阵、运行时 catalog 收口、Copilot 草稿即绑定，以及 RLS 五构件（DataPolicy.row_scope 模板、PrincipalDataScope、post_compile 求值、GatewayAccessContext.v2 合约、双 hash 审计）
 - [agent-ready-semantic-governance.md](agent-ready-semantic-governance.md)
