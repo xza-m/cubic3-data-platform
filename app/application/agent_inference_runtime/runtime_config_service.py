@@ -10,6 +10,7 @@ from app.domain.agent_inference_runtime.types import (
     RuntimeProviderConfigSnapshot,
     RuntimeProviderConfigUpdate,
 )
+from app.infrastructure.agent_inference_runtime.secret_cipher import decrypt_secret
 
 
 class RuntimeConfigService:
@@ -45,6 +46,9 @@ class RuntimeConfigService:
             endpoint=override.endpoint if override.endpoint is not None else base.endpoint,
             model=override.model if override.model is not None else base.model,
             secret_ref=override.secret_ref if override.secret_ref is not None else base.secret_ref,
+            secret_ciphertext=(
+                override.secret_ciphertext if override.secret_ref is not None else base.secret_ciphertext
+            ),
             extra={**base.extra, **_runtime_extra(runtime_name, override.extra)},
             updated_by=override.updated_by,
             updated_at=override.updated_at,
@@ -96,6 +100,8 @@ class RuntimeConfigService:
         raise KeyError(runtime_name)
 
     def _openai_api_key(self, snapshot: RuntimeProviderConfigSnapshot) -> str:
+        if snapshot.secret_ref == "db":
+            return decrypt_secret(snapshot.secret_ciphertext)
         if snapshot.secret_ref == "env:AGENT_OPENAI_API_KEY":
             return str(self._openai_config.get("api_key") or "").strip()
         return ""

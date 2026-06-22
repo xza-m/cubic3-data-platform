@@ -77,6 +77,7 @@ class AgentRuntimeProviderConfigORM(db.Model):
     endpoint = Column(String(512), nullable=True)
     model = Column(String(255), nullable=True)
     secret_ref = Column(String(255), nullable=True)
+    secret_ciphertext = Column(Text, nullable=True)
     extra_json = Column(JsonType, nullable=False, default=dict)
     updated_by = Column(String(191), nullable=True)
     updated_at = Column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

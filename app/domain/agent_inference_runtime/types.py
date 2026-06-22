@@ -187,6 +187,7 @@ class RuntimeProviderConfigSnapshot:
     extra: dict[str, Any]
     updated_by: str | None
     updated_at: datetime | None
+    secret_ciphertext: str | None = None
 
     def to_public_dict(self) -> dict[str, Any]:
         return {

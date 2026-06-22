@@ -367,8 +367,6 @@ def create_agent_runtime_blueprint(
             value = payload.get(field)
             if value is not None and not isinstance(value, str):
                 return _invalid_provider_config_payload(field)
-        if isinstance(payload.get("api_key"), str) and payload["api_key"].strip():
-            return _invalid_provider_config_payload("api_key")
         try:
             provider_config = management.update_provider_config(
                 RuntimeProviderConfigUpdate(

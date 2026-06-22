@@ -12,6 +12,7 @@ from app.infrastructure.agent_inference_runtime.models import (
     AgentRuntimeAuditLogORM,
     AgentRuntimeProviderConfigORM,
 )
+from app.infrastructure.agent_inference_runtime.secret_cipher import encrypt_secret
 
 
 class SqlRuntimeConfigRepository:
@@ -33,9 +34,6 @@ class SqlRuntimeConfigRepository:
         self,
         update: RuntimeProviderConfigUpdate,
     ) -> RuntimeProviderConfigSnapshot:
-        if update.api_key and update.api_key.strip():
-            raise ValueError("runtime config secret store is not configured")
-
         row = self.session.get(AgentRuntimeProviderConfigORM, update.runtime_name)
         if row is None:
             row = AgentRuntimeProviderConfigORM(runtime_name=update.runtime_name)
@@ -44,7 +42,15 @@ class SqlRuntimeConfigRepository:
         row.enabled = update.enabled
         row.endpoint = update.endpoint
         row.model = update.model
-        row.secret_ref = None
+        # API Key 三态：None=保留现有密钥；非空=加密落库(secret_ref=db)；空串=清除密钥
+        if update.api_key is None:
+            pass
+        elif update.api_key.strip():
+            row.secret_ciphertext = encrypt_secret(update.api_key.strip())
+            row.secret_ref = "db"
+        else:
+            row.secret_ciphertext = None
+            row.secret_ref = None
         row.extra_json = dict(update.extra or {})
         row.updated_by = update.updated_by
         self.session.commit()
@@ -97,6 +103,7 @@ class SqlRuntimeConfigRepository:
             endpoint=row.endpoint,
             model=row.model,
             secret_ref=row.secret_ref,
+            secret_ciphertext=row.secret_ciphertext,
             extra=dict(row.extra_json or {}),
             updated_by=row.updated_by,
             updated_at=row.updated_at,

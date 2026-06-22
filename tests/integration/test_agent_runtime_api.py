@@ -424,14 +424,24 @@ class _RuntimeConfigRepository:
         return self.configs.get(runtime_name)
 
     def upsert_provider_config(self, update):
-        if update.api_key and update.api_key.strip():
-            raise ValueError("runtime config secret store is not configured")
+        existing = self.configs.get(update.runtime_name)
+        secret_ref = existing.secret_ref if existing else None
+        ciphertext = existing.secret_ciphertext if existing else None
+        if update.api_key is None:
+            pass
+        elif update.api_key.strip():
+            secret_ref = "db"
+            ciphertext = "enc:" + update.api_key.strip()
+        else:
+            secret_ref = None
+            ciphertext = None
         snapshot = RuntimeProviderConfigSnapshot(
             runtime_name=update.runtime_name,
             enabled=update.enabled,
             endpoint=update.endpoint,
             model=update.model,
-            secret_ref=None,
+            secret_ref=secret_ref,
+            secret_ciphertext=ciphertext,
             extra=update.extra,
             updated_by=update.updated_by,
             updated_at=None,
@@ -1432,7 +1442,7 @@ def test_agent_runtime_api_updates_provider_config_without_returning_secret():
     assert data["updated_by"] == "alice"
 
 
-def test_agent_runtime_api_rejects_provider_api_key_until_secret_store_exists():
+def test_agent_runtime_api_stores_provider_api_key_via_secret_store():
     runtime_config_repository = _RuntimeConfigRepository()
     runtime_management = AgentRuntimeManagementService(
         openai_config={"api_key": "", "api_base": "", "model": ""},
@@ -1457,12 +1467,12 @@ def test_agent_runtime_api_rejects_provider_api_key_until_secret_store_exists():
         },
     )
 
-    assert resp.status_code == 400
-    assert resp.get_json()["details"] == {
-        "code": "RUNTIME_PROVIDER_CONFIG_INVALID",
-        "field": "api_key",
-    }
-    assert runtime_config_repository.configs == {}
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert data["api_key"] == "********"
+    stored = runtime_config_repository.configs["openai_compatible"]
+    assert stored.secret_ref == "db"
+    assert stored.secret_ciphertext and stored.secret_ciphertext != "sk-live-value"
 
 
 def test_agent_runtime_api_rejects_non_admin_mutating_management_routes_outside_testing():
