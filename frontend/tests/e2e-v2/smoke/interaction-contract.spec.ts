@@ -585,7 +585,7 @@ async function openPeekAndFollowDetailByTitle(page: Page, rowTitle: string, expe
 }
 
 async function expectAppsSecondarySidebar(page: Page) {
-  await expect(page.getByText('语义应用上架与发布')).toBeVisible()
+  await expect(page.getByText('内置数据应用与实例管理')).toBeVisible()
   await expect(page.getByRole('link', { name: '应用列表' })).toBeVisible()
   await expect(page.getByRole('link', { name: '应用实例' })).toBeVisible()
   await expect(page.getByRole('link', { name: '执行监控' })).toBeVisible()

@@ -46,7 +46,7 @@ test('P32 Data Chat 直达路由渲染对话工作台 @p32', async ({ page }) =>
   await expect(page).toHaveURL(/\/data-chat$/)
   await expect(page.getByTestId('v2-data-chat')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Data Chat' })).toBeVisible()
-  await expect(page.getByLabel('选择数据集')).toContainText('订单宽表')
+  await expect(page.getByLabel('数据集范围（可选）')).toContainText('订单宽表')
   await expect(page.getByPlaceholder(/输入你的数据问题/)).toBeVisible()
 })
 
