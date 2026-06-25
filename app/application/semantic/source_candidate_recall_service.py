@@ -61,7 +61,7 @@ class SourceCandidateRecallService:
         active_ids = self._active_datasource_ids(accessible_datasource_ids)
         candidates: List[Dict[str, Any]] = []
         candidates.extend(self._semantic_candidates(semantic_assets or {}, terms))
-        candidates.extend(self._data_asset_candidates(terms))
+        candidates.extend(self._data_asset_candidates(terms, active_ids))
         candidates.extend(self._dataset_candidates(terms, active_ids))
         candidates.extend(self._table_candidates(terms, active_ids))
         candidates = [self._apply_intent_adjustment(candidate, query, terms) for candidate in candidates]
@@ -159,7 +159,9 @@ class SourceCandidateRecallService:
                 })
         return candidates
 
-    def _data_asset_candidates(self, terms: Sequence[str]) -> List[Dict[str, Any]]:
+    def _data_asset_candidates(
+        self, terms: Sequence[str], active_ids: Optional[set[int]]
+    ) -> List[Dict[str, Any]]:
         if self._data_asset_service is None:
             return []
         candidates: List[Dict[str, Any]] = []
@@ -188,13 +190,23 @@ class SourceCandidateRecallService:
                 score, matched = self._score_candidate(terms, text)
                 if score <= 0:
                     continue
+                # 归一化 source_id 为 int 并按活跃数据源过滤：data_asset 证据的 source_id 是独立字符串，
+                # 历史脏证据(如 '4' 指向已删除数据源、或非整型)若不归一化/过滤，会让候选漂移进
+                # proposal/spec/binding，导致发布、执行网关指向过期数据源。
+                raw_source_id = item.get("source_id")
+                try:
+                    source_id = int(raw_source_id) if raw_source_id not in (None, "") else None
+                except (TypeError, ValueError):
+                    continue
+                if active_ids is not None and (source_id is None or source_id not in active_ids):
+                    continue
                 evidence_bundle = self._build_asset_evidence(table_id)
                 asset_ref = self._first_asset_ref(evidence_bundle)
                 candidates.append({
                     "id": f"asset:{table_id}",
                     "asset_type": "data_asset_table",
                     "source_kind": "physical_table",
-                    "source_id": item.get("source_id"),
+                    "source_id": source_id,
                     "database": item.get("database"),
                     "schema": item.get("schema"),
                     "table": item.get("name"),

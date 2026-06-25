@@ -195,7 +195,7 @@ def test_recall_prefers_data_asset_table_with_asset_ref_and_evidence_bundle():
                 "items": [
                     {
                         "id": "tbl_comment",
-                        "source_id": "maxcompute-prod",
+                        "source_id": "7",
                         "database": "df_cb_258187",
                         "schema": "dw",
                         "name": "dwd_interaction_comment_reports_df",
@@ -240,3 +240,60 @@ def test_recall_prefers_data_asset_table_with_asset_ref_and_evidence_bundle():
     assert candidate["asset_ref"]["qualified_name"] == "df_cb_258187.dw.dwd_interaction_comment_reports_df"
     assert candidate["evidence_bundle"]["runtime_truth"] is False
     assert candidate["evidence_bundle"]["schema_snapshot"]["columns"][0]["name"] == "school_id"
+    assert candidate["source_id"] == 7  # 归一化为 int 且指向活跃数据源
+
+
+def _data_asset_service_with_source_id(source_id):
+    class _DataAssetService:
+        def list_tables(self, *, keyword="", page=1, page_size=20):
+            if keyword not in {"comment", "comments", "评论"}:
+                return {"items": [], "total": 0}
+            return {
+                "items": [
+                    {
+                        "id": "tbl_comment",
+                        "source_id": source_id,
+                        "database": "df_cb_258187",
+                        "schema": "dw",
+                        "name": "dwd_interaction_comment_reports_df",
+                        "title": "学生评论举报明细事实表",
+                        "description": "学生评论和举报事实",
+                        "field_count": 12,
+                        "row_count": 1000,
+                    }
+                ],
+                "total": 1,
+            }
+
+        def build_table_evidence(self, table_id):
+            return {"runtime_truth": False, "asset_refs": [], "schema_snapshot": {}, "sample_profile": {}}
+
+    return _DataAssetService()
+
+
+def test_data_asset_candidate_with_inactive_source_id_is_filtered():
+    # source_id=8 指向 is_active=False 的数据源 → 应被剔除,不漂移进候选/proposal/binding
+    service = SourceCandidateRecallService(
+        datasource_repository=_FakeDatasourceRepository(),
+        table_cache_service=SimpleNamespace(cached_table_entries=[], datasets=[]),
+        data_asset_service=_data_asset_service_with_source_id("8"),
+    )
+
+    result = service.recall("查询最近 7 天学生评论数")
+
+    assert result["state"] == "no_candidate"
+    assert all(c.get("source_id") != 8 for c in result["candidates"])
+
+
+def test_data_asset_candidate_with_nonint_source_id_is_dropped():
+    # 历史脏证据 source_id 非整型(已删数据源遗留的 slug)→ 不产出指向无效源的候选
+    service = SourceCandidateRecallService(
+        datasource_repository=_FakeDatasourceRepository(),
+        table_cache_service=SimpleNamespace(cached_table_entries=[], datasets=[]),
+        data_asset_service=_data_asset_service_with_source_id("maxcompute-prod"),
+    )
+
+    result = service.recall("查询最近 7 天学生评论数")
+
+    assert result["state"] == "no_candidate"
+    assert result["candidates"] == []
