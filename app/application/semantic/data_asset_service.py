@@ -538,8 +538,14 @@ def _schema_snapshot_payload(table: AssetTable, fields: list[AssetField]) -> Dic
                 "nullable": field.nullable,
                 "comment": field.comment,
                 "ordinal": field.ordinal,
+                "is_partition": bool((field.profile or {}).get("is_partition")),
             }
             for field in fields
+        ],
+        "partitions": [
+            field.name
+            for field in fields
+            if bool((field.profile or {}).get("is_partition"))
         ],
     }
 

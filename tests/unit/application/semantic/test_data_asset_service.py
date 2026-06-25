@@ -133,8 +133,8 @@ def test_data_asset_service_schema_snapshot_carries_partition_markers(db_session
     assert schema_snapshot["partitions"] == ["ds"]
     assert columns_by_name["ds"]["is_partition"] is True
     assert columns_by_name["school_id"]["is_partition"] is False
-    # 既有列字段不回归
-    assert columns_by_name["school_id"]["type"] == "bigint"
+    # 既有列字段不回归（type 被规整为大写）
+    assert columns_by_name["school_id"]["type"] == "BIGINT"
     assert columns_by_name["ds"]["comment"] == "分区日期"
 
 
