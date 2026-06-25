@@ -48,6 +48,14 @@
 | Copilot 工作台 API 口径 | `PATCH /spec` 传 `{"spec": ...}` 为整体替换，局部修改（如补 partition）必须传 `{"cube": ...}` 部分覆盖；订阅按 `app_instance_id` 绑定，新实例需配套新订阅 |
 | 架构基线 | 2026-06 架构优化六阶段完成：后端 ≈8.5 / 前端 ≈9.0；i18n 收敛为中文单语；ModelingAgent 与 semantic blueprint 已拆分；APScheduler 以单 worker + `ENABLE_SCHEDULER_JOBS` 约束 |
 
+## Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260625-ros | 修复冷启动发布缺口:schema 快照透传分区标记(is_partition + partitions)以绑定 metric 时间维度 | 2026-06-25 | cc8bd5a | [260625-ros-schema-metric](./quick/260625-ros-schema-metric/) |
+
+> 上线缺口根因:`_schema_snapshot_payload` 丢弃列级 `is_partition`/不生成顶层 `partitions`,使 `modeling_spec_repair` 派生链读不到分区 → ds 进不了 cube.dimensions → metric.time_dimension 为空 → 撞 `modeling_validation_matrix` 的 `metric_time_dimension_missing` 发布门禁。冷启动确定性建模对真实分区表无法发布(仅评论 canonical 路径可发)。修复为单点增量透传,3 个确定性单测全绿。**存量回填前提**:`build_table_evidence` 优先读旧持久化快照,修复只对新写入生效;已落地旧表(如 `dws_study_student_answer_kb_stat_di`)需部署后重新同步才带上 partitions。
+
 ## Next Actions
 
 1. ~~MaxCompute 凭证~~ 已完成（2026-06-10）：plan→execute 真实出数 ✅、schema_drift_check 复跑 ✅。
