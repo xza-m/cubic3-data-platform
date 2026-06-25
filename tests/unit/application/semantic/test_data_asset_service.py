@@ -89,6 +89,55 @@ def test_data_asset_service_syncs_payload_and_builds_evidence(db_session):
     assert evidence["lineage_evidence"][0]["target_ref"] == "student_comment_cube"
 
 
+def test_data_asset_service_schema_snapshot_carries_partition_markers(db_session):
+    service = DataAssetService(SqlDataAssetRepository(db_session))
+
+    sync_run = service.sync_from_payload(
+        {
+            "source_id": "maxcompute-prod",
+            "database": "df_cb_258187",
+            "schema": "dw",
+            "tables": [
+                {
+                    "name": "dws_study_student_answer_kb_stat_di",
+                    "title": "学生答题知识点统计",
+                    "layer": "dws",
+                    "fields": [
+                        {
+                            "name": "school_id",
+                            "type": "bigint",
+                            "nullable": False,
+                            "comment": "学校 ID",
+                            "profile": {"null_rate": 0, "cardinality": 12},
+                        },
+                        {
+                            "name": "ds",
+                            "type": "string",
+                            "nullable": False,
+                            "comment": "分区日期",
+                            "profile": {"is_partition": True},
+                        },
+                    ],
+                }
+            ],
+        }
+    )
+    tables = service.list_tables(keyword="answer_kb_stat", page=1, page_size=10)
+    table_id = tables["items"][0]["id"]
+    evidence = service.build_table_evidence(table_id)
+
+    schema_snapshot = evidence["schema_snapshot"]
+    columns_by_name = {column["name"]: column for column in schema_snapshot["columns"]}
+
+    assert sync_run["status"] == "success"
+    assert schema_snapshot["partitions"] == ["ds"]
+    assert columns_by_name["ds"]["is_partition"] is True
+    assert columns_by_name["school_id"]["is_partition"] is False
+    # 既有列字段不回归
+    assert columns_by_name["school_id"]["type"] == "bigint"
+    assert columns_by_name["ds"]["comment"] == "分区日期"
+
+
 def test_data_asset_service_rebinds_fields_when_natural_key_keeps_existing_table_id(db_session):
     service = DataAssetService(SqlDataAssetRepository(db_session))
 
