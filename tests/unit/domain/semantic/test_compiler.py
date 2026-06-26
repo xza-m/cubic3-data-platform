@@ -508,14 +508,27 @@ class TestCompilerDerivedMeasures:
         assert "SUM" in result.sql
         assert "NULLIF" in result.sql
 
-    def test_latest_partition_fallback(self, compiler):
-        """无时间范围时应注入 MAX_PT"""
+    def test_latest_partition_fallback(self):
+        """Phase 10 翻转：latest_expr 空的 date 型分区 cube + 无显式过滤
+        → 注入默认 7 天窗口范围谓词（绝不注 MAX_PT）。
+
+        固定时钟 today=date(2026, 6, 26)，ANSWER max_range_days=90 → win=7
+        → start=20260620, end=20260626。本波仍为 RED（compiler 尚未实现注入）。
+        """
+        compiler = QueryCompiler(
+            JoinGraph([ANSWER, STUDENT, SCHOOL]),
+            dialect=MaxComputeDialect(),
+            today=date(2026, 6, 26),
+        )
         dsl = QueryDSL(
             measures=["answer_records.total_count"],
         )
-        # answer_records 没有 latest_expr，不应注入
         result = compiler.compile(dsl)
+        # latest_expr 空 → 走范围谓词，绝不注 MAX_PT
         assert "MAX_PT" not in result.sql
+        # 已注入默认 7 天窗口
+        assert "answer_records.answer_date >= '20260620'" in result.sql
+        assert "answer_records.answer_date <= '20260626'" in result.sql
 
 
 # ── Compiler 错误处理 ──
