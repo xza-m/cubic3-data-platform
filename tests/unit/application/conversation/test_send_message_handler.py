@@ -260,6 +260,59 @@ class TestSendMessageHandlerAgent:
         ai_message_entity = msg_repo.create.call_args_list[1][0][0]
         assert ai_message_entity.source == "semantic"
 
+    def test_semantic_router_called_with_official_runtime_mode(self, mock_repos):
+        """Phase 8 D1（RED）：DataChat 全局问数必须以 official 运行时调 execute_plan。
+
+        当前 _handle_via_semantic_router 只传 question/viewer_roles、不传 runtime_mode，
+        故 call_args.kwargs 无 runtime_mode → 断言失败（RED）。Wave 2 改 handler 后转 GREEN。
+        execute_plan 的 runtime_mode 为 keyword-only（preview_service.py:582），故读 call_args.kwargs。
+        """
+        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
+        semantic_router_service = MagicMock()
+        handler = SendMessageHandler(
+            conversation_repository=conv_repo,
+            message_repository=msg_repo,
+            dataset_repository=dataset_repo,
+            llm_service=llm_service,
+            semantic_router_service=semantic_router_service,
+        )
+
+        conversation = MagicMock()
+        conversation.id = 1
+        conversation.user_id = "user_123"
+        conversation.dataset_id = 10
+        conv_repo.find_by_id.return_value = conversation
+
+        user_message = MagicMock()
+        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "学生答题统计 总数"}
+        ai_message = MagicMock()
+        ai_message.to_dict.return_value = {"id": 2, "role": "assistant", "content": "语义路由回答"}
+        msg_repo.create.side_effect = [user_message, ai_message]
+
+        semantic_router_service.execute_plan.return_value = {
+            "route": {"route_type": "cube"},
+            "execution_results": [
+                {
+                    "status": "executed",
+                    "target_type": "sql",
+                    "result": {"columns": [], "data": [], "row_count": 1},
+                    "traceability": {},
+                }
+            ],
+            "traceability": {},
+        }
+
+        handler.handle(
+            SendMessageCommand(conversation_id=1, user_id="user_123", content="学生答题统计 总数")
+        )
+
+        semantic_router_service.execute_plan.assert_called_once()
+        call_kwargs = semantic_router_service.execute_plan.call_args.kwargs
+        # 锚定问法（实测 official 下命中 student_total_count）
+        assert call_kwargs.get("question") == "学生答题统计 总数"
+        # 核心断言（当前 RED）：handler 必须以 official 运行时调用语义执行
+        assert call_kwargs.get("runtime_mode") == "official"
+
     def test_semantic_router_path_records_agent_query_log(self, mock_repos):
         """Phase 5：semantic 路径补写 AgentQueryLog，llm_provider=semantic_router。"""
         conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
