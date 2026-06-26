@@ -1,0 +1,318 @@
+"""Phase 8（08-consume-02）集成测试：DataChat 全局问数经 official runtime 消费已发布 cube。
+
+坐实三条闭环边界（全程 stub 隔离，不实连真实数据源、不实连 DB）：
+- Test A：含答题 ontology（metric aliases 对得上「学生答题统计 总数」）的 active manifest →
+  经 SendMessageHandler/official 问 → 走 semantic 主链（route_type∈{cube,hybrid}、有 execution_results、
+  ai_message.source=='semantic'、不落 legacy「未能找到口径」）。
+- Test B：无 active 快照（semantic_runtime_not_ready）→ 诚实回「语义运行时尚未就绪」，不 500、不伪造。
+- Test C：comment / YAML-only cube 在 official 下不命中（坐实 D3 预期方向，不为保 comment 做 YAML 并集）。
+
+机制说明：SendMessageHandler 注入真实 SemanticRouterPreviewService（08-02 已让 handler 传
+runtime_mode="official"），preview_service 真实走 official 分支
+（_load_runtime_manifest → RuntimeSemanticCatalog.from_manifest → execution_targets），
+仅在 runtime_service.execute 边界用 stub 截断返固定行数（不实连数据源）。
+绝不 mock execute_plan 返回值——那会退化成 08-01 的契约测试而非出数集成测试。
+"""
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import pytest
+
+from app.application.conversation.commands.send_message import SendMessageCommand
+from app.application.conversation.handlers.send_message_handler import SendMessageHandler
+from app.application.execution_compiler.preview_service import ExecutionCompilerPreviewService
+from app.application.ontology.policy_guard_service import PolicyGuardService
+from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
+from app.application.semantic_router.preview_service import SemanticRouterPreviewService
+from app.domain.entities.conversation import Message
+from app.infrastructure.ontology.yaml_action_repository import YamlBusinessActionRepository
+from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
+from app.infrastructure.ontology.yaml_metric_repository import YamlBusinessMetricRepository
+from app.infrastructure.ontology.yaml_object_repository import YamlBusinessObjectRepository
+from app.infrastructure.ontology.yaml_policy_repository import YamlPolicyMetadataRepository
+from app.infrastructure.ontology.yaml_relation_repository import YamlBusinessRelationRepository
+from app.infrastructure.semantic.yaml_cube_repository import YamlCubeRepository
+
+# 出数问法（CONTEXT 实测 official 下命中 student_total_count），归一化后 = "学生答题统计总数"
+OFFICIAL_QUESTION = "学生答题统计 总数"
+# stub runtime 固定行数（不实连真实数据源，仅坐实「有出数」形状）
+STUB_ROW_COUNT = 39_890_000
+
+
+class _RuntimeSnapshotServiceStub:
+    """get_active_manifest 返回固定 payload（active manifest 或 not_ready）。"""
+
+    def __init__(self, payload):
+        self.payload = payload
+
+    def get_active_manifest(self, namespace="default"):
+        assert namespace == "default"
+        return self.payload
+
+
+class _StubRuntimeService:
+    """最小语义执行运行时：execute 返固定 1 行，不实连数据源。
+
+    截断在 execute 边界 —— preview_service 的 plan()/official 分支仍真实执行，
+    只把「真打真实数据源」替换为固定行数，坐实闭环形状。
+    """
+
+    def __init__(self):
+        self.execute_calls = []
+
+    def execute(self, *, target_type, metric_name=None, runtime_mode=None, **kwargs):
+        self.execute_calls.append(
+            {"target_type": target_type, "metric_name": metric_name, "runtime_mode": runtime_mode}
+        )
+        return {
+            "status": "executed",
+            "target_type": "sql",
+            "execution_request": {
+                "sql_query": "SELECT COUNT(1) AS student_total_count FROM df.dws_study_student_answer_kb_stat_di"
+            },
+            "result": {
+                "columns": [{"name": "student_total_count", "type": "number"}],
+                "data": [{"student_total_count": STUB_ROW_COUNT}],
+                "row_count": 1,
+            },
+            "traceability": {
+                "business_metric": {"title": "学生答题统计 总数", "name": metric_name},
+                "analysis_measure": {"cube_name": "dws_study_student_answer_kb_stat_di"},
+                "runtime_mode": runtime_mode,
+            },
+        }
+
+
+def _answer_manifest():
+    """含答题 cube + metric student_total_count（aliases 覆盖「学生答题统计」「总数」）的 active manifest。
+
+    照 test_preview_service.py::test_official_runtime_routes_and_compiles_from_snapshot_manifest_without_yaml
+    的 manifest 构造法（metric.measure_refs 指向 cube.measure），切到答题域 + 对得上口径的 aliases。
+    """
+    return {
+        "ok": True,
+        "snapshot_id": "snap_answer",
+        "release_id": "rel_answer",
+        "asset_manifest_json": {
+            "schema_version": "semantic-runtime-manifest/v1",
+            "assets": [
+                {
+                    "asset_id": "asset_metric_student_total_count",
+                    "asset_type": "ontology",
+                    "asset_key": "metric:student_total_count",
+                    "revision_id": "rev_metric_answer",
+                    "spec_checksum": "a" * 64,
+                    "status": "published",
+                    "spec": {
+                        "metric": {
+                            "name": "student_total_count",
+                            "title": "学生答题统计 总数",
+                            "object_name": "StudentAnswer",
+                            "semantic_formula": "学生答题记录总条数",
+                            "measure_refs": ["student_answer_cube.total_count"],
+                            "aliases": ["学生答题统计", "总数", "答题总数"],
+                            "status": "active",
+                        }
+                    },
+                },
+                {
+                    "asset_id": "asset_cube_student_answer",
+                    "asset_type": "cube",
+                    "asset_key": "student_answer_cube",
+                    "revision_id": "rev_cube_answer",
+                    "spec_checksum": "c" * 64,
+                    "status": "published",
+                    "spec": {
+                        "cube": {
+                            "name": "student_answer_cube",
+                            "title": "学生答题",
+                            "table": "df_cb_258187.dws_study_student_answer_kb_stat_di",
+                            "source_id": 1,
+                            "source_database": "df_cb_258187",
+                            "dimensions": {
+                                "school_name": {
+                                    "title": "学校名称",
+                                    "type": "string",
+                                    "sql": "{CUBE}.school_name",
+                                },
+                                "ds": {"title": "分区日期", "type": "time", "sql": "{CUBE}.ds"},
+                            },
+                            "measures": {
+                                "total_count": {
+                                    "title": "总数",
+                                    "type": "number",
+                                    "sql": "COUNT(1)",
+                                    "certified": True,
+                                }
+                            },
+                            "partition": {
+                                "field": "ds",
+                                "type": "date",
+                                "format": "yyyyMMdd",
+                                "max_range_days": 30,
+                            },
+                        }
+                    },
+                },
+            ],
+        },
+        "binding_manifest_json": {"schema_version": "semantic-runtime-manifest/v1", "bindings": []},
+        "policy_manifest_json": {"schema_version": "semantic-runtime-manifest/v1", "policies": []},
+    }
+
+
+def _build_router(tmp_path, *, snapshot_payload, runtime_service=None):
+    """组装真实 SemanticRouterPreviewService：空 YAML repos + stub runtime + stub snapshot。
+
+    official 模式下 ontology/cube 全部从 active manifest（snapshot_payload）出，
+    空 YAML repos 仅满足构造，不污染 official 命中范围。
+    """
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    return SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        runtime_service=runtime_service,
+        runtime_snapshot_service=_RuntimeSnapshotServiceStub(snapshot_payload),
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+
+
+def _build_handler(router):
+    """组装 SendMessageHandler：dataset_id=None（全局问数），llm_service 不应被调用。"""
+    conv_repo = MagicMock()
+    msg_repo = MagicMock()
+    dataset_repo = MagicMock()
+    llm_service = MagicMock()
+
+    conversation = MagicMock()
+    conversation.id = 1
+    conversation.user_id = "user_123"
+    conversation.dataset_id = None  # 全局问数会话：无绑定数据集
+    conversation.context = {}
+    conv_repo.find_by_id.return_value = conversation
+
+    # 真实 Message 实体（带 to_dict / source / content），create 原样回写
+    msg_repo.create.side_effect = lambda message: message
+
+    handler = SendMessageHandler(
+        conversation_repository=conv_repo,
+        message_repository=msg_repo,
+        dataset_repository=dataset_repo,
+        llm_service=llm_service,
+        semantic_router_service=router,
+    )
+    return handler, conv_repo, msg_repo, dataset_repo, llm_service, conversation
+
+
+def _ai_message(result):
+    return result["ai_message"]
+
+
+def test_official_consume_routes_to_cube_and_returns_rows(tmp_path):
+    """Test A：official + 对得上口径的问法 → semantic 主链出数，不落 legacy「未能找到口径」。"""
+    runtime_service = _StubRuntimeService()
+    router = _build_router(tmp_path, snapshot_payload=_answer_manifest(), runtime_service=runtime_service)
+    handler, _, msg_repo, _, llm_service, conversation = _build_handler(router)
+
+    result = handler.handle(
+        SendMessageCommand(conversation_id=1, user_id="user_123", content=OFFICIAL_QUESTION)
+    )
+
+    ai = _ai_message(result)
+    # 走 semantic 主链：source=='semantic'、有出数、未退 legacy
+    assert ai["source"] == "semantic"
+    assert "未能" not in ai["content"]  # 不落 legacy 诚实兜底「未能找到口径」
+
+    # AI 消息实体确认 source / query_result（出数形状）
+    ai_entity = msg_repo.create.call_args_list[-1][0][0]
+    assert isinstance(ai_entity, Message)
+    assert ai_entity.source == "semantic"
+    assert ai_entity.query_result is not None
+    assert ai_entity.query_result["row_count"] == 1
+    assert ai_entity.query_result["data"][0]["student_total_count"] == STUB_ROW_COUNT
+
+    # route_type∈{cube,hybrid}：从 handler 写入 conversation.context 的 semantic_plan.route 读真实路由结果
+    persisted_context = conversation.update_context.call_args[0][0]
+    route_type = persisted_context["semantic_plan"]["route"]["route_type"]
+    assert route_type in {"cube", "hybrid"}
+
+    # execute_plan 真实经 official 分支命中 cube，并真实调 stub runtime（runtime_mode 透传 official）
+    assert len(runtime_service.execute_calls) >= 1
+    assert runtime_service.execute_calls[0]["runtime_mode"] == "official"
+
+    # 全局问数未退 legacy 直连 LLM
+    llm_service.generate_sql.assert_not_called()
+
+
+def test_official_no_active_snapshot_returns_honest_not_ready(tmp_path):
+    """Test B：无 active 快照 → 诚实「语义运行时尚未就绪」，不 500、不伪造、不落「未能找到口径」。"""
+    runtime_service = _StubRuntimeService()
+    router = _build_router(
+        tmp_path,
+        snapshot_payload={"ok": False, "error_code": "semantic_runtime_not_ready"},
+        runtime_service=runtime_service,
+    )
+    handler, _, msg_repo, _, llm_service, _ = _build_handler(router)
+
+    result = handler.handle(
+        SendMessageCommand(conversation_id=1, user_id="user_123", content=OFFICIAL_QUESTION)
+    )
+
+    ai = _ai_message(result)
+    assert ai["source"] == "semantic"
+    assert "语义运行时尚未就绪" in ai["content"]
+    assert "未能" not in ai["content"]  # 非 legacy「未能找到口径」
+
+    ai_entity = msg_repo.create.call_args_list[-1][0][0]
+    assert ai_entity.error == "semantic_runtime_not_ready"
+
+    # 无快照诚实兜底：blocked 不出数，不调 runtime.execute，不退 legacy
+    assert runtime_service.execute_calls == []
+    llm_service.generate_sql.assert_not_called()
+
+
+def test_official_yaml_only_comment_not_matched(tmp_path):
+    """Test C：用答题 manifest（不含 comment）问「统计学生评论数」→ 不命中（D3 预期方向）。
+
+    坐实 YAML-only comment 切 official 后不再被 DataChat 命中是既定方向，不为保 comment 做并集：
+    official 未命中 → legacy 诚实兜底「未能找到口径」（dataset_id is None），不伪造、不出数。
+    """
+    runtime_service = _StubRuntimeService()
+    router = _build_router(tmp_path, snapshot_payload=_answer_manifest(), runtime_service=runtime_service)
+    handler, _, msg_repo, _, llm_service, _ = _build_handler(router)
+
+    result = handler.handle(
+        SendMessageCommand(conversation_id=1, user_id="user_123", content="统计学生评论数")
+    )
+
+    ai = _ai_message(result)
+    # comment 不在答题 manifest → official 未命中 → legacy 诚实兜底「未能找到口径」
+    assert "未能在已发布的语义资产中找到" in ai["content"]
+    assert ai["source"] == "legacy_llm"
+
+    # 不出数、不实连：未命中走 legacy 兜底分支，runtime.execute 未被调用
+    assert runtime_service.execute_calls == []
+    # 全局问数（dataset_id is None）legacy 兜底不调直连 LLM
+    llm_service.generate_sql.assert_not_called()
