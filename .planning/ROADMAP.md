@@ -27,6 +27,7 @@
 | 8.1 | 语义消费收口·治理地基与物理直表收口 | 让 DataChat 主链与全局 Agent API 走同一治理管线（pre_route/post_compile + principal 透传 + 拒匿名），彻底删除两条"直接扫物理表产 SQL"旁路（legacy 第3层 + agent 第2层），统一收敛到诚实兜底；堵死"从 Ontology 直接产 SQL / 直接扫物理表"的红线。 | `CONSUME-04` | DataChat / 问数入口 |
 | 8.2 | 语义消费收口·L1 意图理解升级 | 把 L1 从纯字符串子串匹配升级为"LLM 抽取 → 严格 grounding 白名单（只认已发布 candidate）→ 诚实兜底"，先建 eval 护栏，全程 env 默认关、真实 LLM 验证后再开。 | `CONSUME-05` | 无前端（后端 router） |
 | 9 | 语义消费收口·文档对齐与验收 | 文档把"semantic router 已切 RuntimeSemanticCatalog/manifest"从应然标为已落地，全平台 verify 回归。 | `CONSUME-03` | 文档 |
+| 10 | 语义消费收口·编译器默认分区注入 | 编译器对有 partition 但 latest_expr 空的 cube、且查询无显式分区/时间过滤时，注入默认日期窗口（最近 7 天，走 dialect.partition_condition），绕开 MaxCompute 全表扫描保护 ODPS-0130071，让 DataChat 问数真出数；不 override 用户显式过滤、方言安全、时钟可测。 | `CONSUME-06` | 无前端（后端编译器） |
 
 ## 里程碑 M7：语义消费收口（2026-06-26 立项）
 
@@ -151,3 +152,22 @@ Plans:
 
 - `docs/architecture/semantic-binding-and-rls.md` §1.4 / `README` 把"router 已统一切 RuntimeSemanticCatalog/manifest"由应然标为已落地。
 - 全平台 `make verify` 回归通过；`p34 / p32` 不回归。
+
+### Phase 10: 语义消费收口·编译器默认分区注入（`CONSUME-06`）
+
+> 背景：第④道门（四道门最后一道）。`compiler.py:204-218` 块7 是全仓唯一"无显式时间→注入分区谓词"落点，进入条件 `if cube.partition.latest_expr:`——21/28 分区 cube 的 latest_expr 为空（含答题 cube）→ 短路 → 裸 `SELECT ... FROM table`（无 WHERE）→ ODPS-0130071 全表扫描保护 → DataChat 问数答不出。锁定口径（2026-06-26，workflow needs-adjustment + 用户拍板 7 天窗口）：详见 `.planning/phases/10-default-partition/10-CONTEXT.md` D1–D5。
+
+- **默认注入**：对有 partition、`type=="date"`、`source_sql` 为空、且查询无显式分区/时间过滤的 cube，块7 扩为「latest_expr 优先 > 默认日期窗口（最近 7 天）> 不注入」，走 `dialect.partition_condition` 渲染 ds 范围谓词（四方言安全，非 MaxCompute 绝不注 MAX_PT），绕开 ODPS-0130071。
+- **不 override 用户**：`_has_explicit_partition_filter`（按 DSL 结构判定，比对 `(cube.name, part.field)`）命中 filters/time_dimensions 即跳过默认注入；收紧旧 `has_time_range` 只比 cube.name 不比 field 的缺口。
+- **可测时钟**：`__init__` 加 keyword-only `today: date | None = None`（生产调用点全位置参 → 零破坏）；块7 取 `today = self._today or date.today()`。
+- **确定性兜底**：未知 partition.format → `raise CompilationError`（不静默产错字面量命中空分区返 0 行）。
+- **单文件边界**：仅改 `app/domain/semantic/compiler.py`（+模块常量 `DEFAULT_PARTITION_WINDOW_DAYS=7`、`_fmt_strftime`、`_has_explicit_partition_filter`、`__init__ today`）+ `tests/unit/domain/semantic/test_compiler.py`；不改 dialects.py 签名、不改 entities.py、不写 YAML、不动生产调用点。
+- **回归**：整套 test_compiler.py 全绿（既有 46 + 新增/翻转）；逐条确认无 exact/negative 断言因多出 WHERE 段失败；`test_latest_partition_fallback` 语义翻转为「latest_expr 空 → 注入默认窗口」。
+- **产品口径变更（已拍板）**："总数"等无时间口径问数返回最近 7 天而非历史全量——绕开全表扫描的必然取舍；建模侧可配 latest_expr 或显式 date_range 覆盖。
+- **运维验证（执行者侧）**：真实出数（DataChat 问"学生答题统计 总数"绕过 ODPS-0130071）+ docker 复跑不回归；容器 TZ=+08 确认或登记 risk。
+
+**Plans:** 2 plans（wave 1 RED → wave 2 GREEN，TDD）
+
+Plans:
+- [ ] 10-PLAN.md — Wave 1: RED 默认分区注入失败断言（TestCompilerDefaultPartitionInjection 含时钟/守护/format兜底/安全锚点 + 翻转 test_latest_partition_fallback）
+- [ ] 10-02-PLAN.md — Wave 2: GREEN 块7 默认注入（最近7天窗口/守护显式过滤/方言安全/可测时钟/未知format兜底）+ 跑满 test_compiler.py 全套校准
