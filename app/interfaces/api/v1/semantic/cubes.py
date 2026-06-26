@@ -14,86 +14,19 @@ def register_cube_routes(bp, ctx):
     modeling_service = ctx.modeling_service
     modeling_source_service = ctx.modeling_source_service
     field_candidate_service = ctx.field_candidate_service
-    runtime_snapshot_service = getattr(ctx, "runtime_snapshot_service", None)
     _contains_keyword = ctx._contains_keyword
     _build_list_payload = ctx._build_list_payload
     _get_cube_listing_service = ctx._get_cube_listing_service
-
-    def _cubes_from_active_manifest():
-        """D2（Phase 8）discovery 同源：cube 列表从 active manifest 出，与 grounding 命中范围一致。
-
-        返回 None 表示无 active 快照或无可用 runtime_snapshot_service → 由调用方回落 registry。
-        manifest 优先、registry 兜底；无快照不 500，保持现有行为（现有 cube 列表测试为回落护栏）。
-
-        牵连面收窄（CONTEXT D2）：manifest 侧只含已发布 cube 的结构定义，
-        registry 派生字段（domain projection / state_summary / sync_status / last_modified_at 等）
-        无来源，以安全缺省置空，并附 source="active_manifest" 来源标记。
-        前端列表只读 name/title/description/domain_name/计数，缺省置空不破坏结构。
-        """
-        if runtime_snapshot_service is None:
-            return None
-        try:
-            manifest = runtime_snapshot_service.get_active_manifest("default")
-        except Exception:
-            logger.warning("cube_discovery_active_manifest_failed", exc_info=True)
-            return None
-        if not isinstance(manifest, dict) or not manifest.get("ok"):
-            return None
-        from app.application.semantic.runtime_manifest_catalog import RuntimeSemanticCatalog
-
-        try:
-            catalog = RuntimeSemanticCatalog.from_manifest(manifest)
-            cubes = catalog.list_entities("cube")
-        except Exception:
-            logger.warning("cube_discovery_manifest_catalog_failed", exc_info=True)
-            return None
-        payload = []
-        for cube in cubes:
-            dimensions = getattr(cube, "dimensions", {}) or {}
-            measures = getattr(cube, "measures", {}) or {}
-            joins = getattr(cube, "joins", {}) or {}
-            payload.append({
-                "name": cube.name,
-                "title": getattr(cube, "title", None) or cube.name,
-                "description": getattr(cube, "description", "") or "",
-                "table": getattr(cube, "table", None),
-                "dimensions": list(dimensions.keys()),
-                "measures": list(measures.keys()),
-                "dimension_count": len(dimensions),
-                "measure_count": len(measures),
-                "join_count": len(joins),
-                "status": getattr(cube, "status", "active"),
-                # registry 派生字段无 manifest 来源 → 安全缺省（不破坏前端列表结构）
-                "domain_id": None,
-                "domain_name": None,
-                "domain_ids": [],
-                "domains": [],
-                "domain_count": 0,
-                "source_id": getattr(cube, "source_id", None),
-                "source_database": getattr(cube, "source_database", None),
-                "source_schema": getattr(cube, "source_schema", None),
-                "sync_status": None,
-                "state_summary": {},
-                "downstream_bi_count": 0,
-                "last_modified_at": None,
-                # discovery 同源来源标记：该 cube 来自 active manifest（已发布、可被 grounding 命中）
-                "source": "active_manifest",
-            })
-        return payload
 
     # ── Cubes ──
 
     @bp.route('/cubes', methods=['GET'])
     @require_auth
     def list_cubes():
-        # D2：discovery 与 grounding 同源 —— 优先读 active manifest（已发布 cube）；
-        # 无 active 快照 / 无 runtime_snapshot_service → 回落 registry（保持现有行为，不 500）。
-        cubes = _cubes_from_active_manifest()
-        if cubes is None:
-            try:
-                cubes = _get_cube_listing_service().list_cubes_with_derivatives()
-            except Exception:
-                cubes = semantic_service.list_cubes()
+        try:
+            cubes = _get_cube_listing_service().list_cubes_with_derivatives()
+        except Exception:
+            cubes = semantic_service.list_cubes()
         keyword = (request.args.get("q") or "").strip()
         filtered = [
             cube for cube in cubes
