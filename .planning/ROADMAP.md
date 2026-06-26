@@ -22,6 +22,13 @@
 | 4 | 应用模板与实例消费 | 用最小可运行模板验证语义层消费能力，落地至少一个应用实例样板并约束在现有模板体系内。 | `APP-01` `APP-02` `APP-03` `APP-04` `APP-05` | 应用中心、订阅管理 |
 | 5 | 受控智能问数验证 | 在已稳定的语义层之上打通问数闭环，重点验证流程完整、结果可追踪，而不是追求效果最优。 | `AIQ-01` `AIQ-02` | DataChat / 问数入口 |
 | 6 | DataAgent 验证与最终生产收敛 | 用垂直 `DataAgent` 场景证明语义层可支撑智能扩展，并把部署后的核心页面与流程收敛到内部可用标准。 | `DAG-01` `DAG-02` `OPS-02` `OPS-03` | DataAgent 工作台、系统状态页 |
+| 7 | 语义消费收口·发布累积 | 让 active runtime manifest 累积 namespace 内所有已发布资产、成为完整多 cube 目录（含基线重建），消除"每次发布整盘替换、活菜单只剩 1 个 cube"的结构缺陷；只动发布/release 侧，不碰消费侧。 | `CONSUME-01` | 无前端（后端 release 服务） |
+| 8 | 语义消费收口·问数切 official | DataChat 全局问数 grounding/discovery 统一读 active manifest（runtime_mode=official），打通"自助建模发布的 cube → 问数能消费出数"；comment demo 不回归。 | `CONSUME-02` | DataChat / 问数入口 |
+| 9 | 语义消费收口·文档对齐与验收 | 文档把"semantic router 已切 RuntimeSemanticCatalog/manifest"从应然标为已落地，全平台 verify 回归。 | `CONSUME-03` | 文档 |
+
+## 里程碑 M7：语义消费收口（2026-06-26 立项）
+
+> 打通"自助建模发布的 cube → DataChat 问数能消费出数"。根因：语义消费"双轨断点"——发布只写运行时快照且不累积（manifest 永远单 cube）；DataChat 问数读 YAML 而非 manifest。修复方向 = 统一到单一事实源 active manifest（不写 YAML，贴合 `docs/architecture/semantic-binding-and-rls.md` §1.4）。Phase 7→8→9 顺序执行，各自独立可上线/回滚。
 
 ## Current Position
 
@@ -77,3 +84,28 @@
 - 部署后的核心链路可以实际运行，覆盖数据接入、语义中心、查询能力和应用实例。
 - 内网主要页面和功能流在目标部署环境下保持基本顺滑和稳定。
 - 生产收敛以单机 Docker 可用为边界，不扩展到多租户、权限治理或云原生目标。
+
+### Phase 7: 语义消费收口·发布累积（`CONSUME-01`）
+
+- 连续发布 cube A、再发布 cube B 后，active runtime manifest 同时包含 A 与 B（按 `asset_key` 去重、新覆盖旧），不再被整盘替换为单 cube。
+- `rollback_to` 语义为"恢复那一版的全量目录"；现有 release 状态机不回归（published→superseded、单 namespace 单 active 不变量保持）。
+- 一次性基线重建：当前应在线的 cube 集合（至少答题 cube + comment demo cube）合并进一个全量 active release 作为起点。
+- 全程不写 YAML、不改消费侧（不切 official / 不改 grounding / 不改 discovery）；comment demo 既有发布链路（`p34-modeling-agent-live`）不被打挂。
+
+**Plans:** 2 plans（wave 1 RED → wave 2 GREEN，TDD）
+
+Plans:
+- [ ] 07-PLAN.md — Wave 1: 发布累积 RED 测试（坐实不累积 + comment 不在 manifest）
+- [ ] 07-02-PLAN.md — Wave 2: publish 按 asset_key 累积合并（GREEN）+ compatibility 累积口径 + rollback 护栏 + 基线重建 service 方法
+
+### Phase 8: 语义消费收口·问数切 official（`CONSUME-02`）
+
+- DataChat 全局问数读 active manifest（`send_message_handler` 传 `runtime_mode="official"`），自助建模发布的 cube 可被问到并出数。
+- "能问什么" discovery 与 grounding 同源（均来自 active manifest）。
+- comment demo 经 DataChat 仍可问到出数（前提：其 cube 已在全量 manifest，由 Phase 7 基线保证）。
+- 无 active 快照时诚实回"运行时尚未就绪"，不 500、不伪造。
+
+### Phase 9: 语义消费收口·文档对齐与验收（`CONSUME-03`）
+
+- `docs/architecture/semantic-binding-and-rls.md` §1.4 / `README` 把"router 已统一切 RuntimeSemanticCatalog/manifest"由应然标为已落地。
+- 全平台 `make verify` 回归通过；`p34 / p32` 不回归。
