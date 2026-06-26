@@ -133,7 +133,7 @@ Plans:
 **Plans:** 3 plans（wave 1 RED → wave 2 GREEN 原子批次 → wave 3 收尾，TDD）
 
 Plans:
-- [ ] 08.1-01-PLAN.md — Wave 1: RED + 定向探查（坐实治理缺口/物理直表/兜底不统一/匿名放行 + execute_plan 顶层无 resource_set 须重编译）
+- [x] 08.1-01-PLAN.md — Wave 1: RED + 定向探查（坐实治理缺口/物理直表/兜底不统一/匿名放行 + execute_plan 顶层无 resource_set 须重编译）
 - [ ] 08.1-02-PLAN.md — Wave 2: GREEN 原子批次（治理对齐 pre_route/post_compile + principal 透传 + 拒匿名 + 删两条物理路 + 统一诚实兜底 + DI 装配）
 - [ ] 08.1-03-PLAN.md — Wave 3: 收尾（前端未登录引导 + 跨入口一致性冒烟 + 文档同步 production-acceptance.md:80 + make verify + 真实闭环 checkpoint）
 
