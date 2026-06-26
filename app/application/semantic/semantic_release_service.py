@@ -135,32 +135,17 @@ class SemanticReleaseService:
             idempotency_key=idempotency_key,
             published_by=actor,
         )
-        release_assets: list[SemanticReleaseAsset] = []
-        manifest_assets: list[dict[str, Any]] = []
-        for revision in revisions:
-            asset = self._release_repository.get_asset_by_id(revision.asset_id)
-            if asset is None:
-                raise ValueError(f"semantic asset not found: {revision.asset_id}")
-            release_assets.append(
-                SemanticReleaseAsset(
-                    release_id=release.id,
-                    asset_id=asset.id,
-                    revision_id=revision.id,
-                    asset_type=asset.asset_type,
-                    asset_key=asset.asset_key,
-                )
-            )
-            manifest_assets.append(
-                {
-                    "asset_id": asset.id,
-                    "asset_type": asset.asset_type,
-                    "asset_key": asset.asset_key,
-                    "revision_id": revision.id,
-                    "spec_checksum": revision.spec_checksum,
-                    "spec": self._activated_spec(revision.spec_json),
-                    "status": "published",
-                }
-            )
+        # D1 发布累积：先取 namespace 当前 active release 的全量 assets，再用本批
+        # revisions 按 (asset_type, asset_key) 覆盖去重，避免每次发布整盘替换 active
+        # manifest（活菜单只剩最后一个 cube）。prev_id 为空（首次发布）时退化为只含本批。
+        merged_assets = self._merge_prev_active_with_revisions(
+            namespace=namespace,
+            revisions=revisions,
+        )
+        release_assets, manifest_assets = self._build_assets_from_merged(
+            merged_assets,
+            release_id=release.id,
+        )
 
         snapshot = RuntimeSnapshot(
             id=f"snap_{uuid.uuid4().hex}",
@@ -192,6 +177,80 @@ class SemanticReleaseService:
             snapshot,
             audit_writer=resolved_audit_writer,
         )
+
+    def _merge_prev_active_with_revisions(
+        self,
+        *,
+        namespace: str,
+        revisions: list[Any],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        """合并「namespace 当前 active release 全量 assets」与「本批 revisions」。
+
+        以 (asset_type, asset_key) 为键去重：先放 prev active（保留既有资产），再用
+        本批 revisions 覆盖同 key 项（新覆盖旧）。prev_id 为空（首次发布）时仅含本批，
+        行为与改前一致（D1 退化要求）。
+        """
+        merged_assets: dict[tuple[str, str], dict[str, Any]] = {}
+        prev_id = self._release_repository.get_active_release_id(namespace)
+        if prev_id:
+            for prev_asset in self._release_repository.list_release_assets(prev_id):
+                prev_revision = self._release_repository.get_revision(prev_asset.revision_id)
+                if prev_revision is None:
+                    # 防御：跳过孤儿 revision，不阻断发布
+                    continue
+                merged_assets[(prev_asset.asset_type, prev_asset.asset_key)] = {
+                    "asset_id": prev_asset.asset_id,
+                    "asset_type": prev_asset.asset_type,
+                    "asset_key": prev_asset.asset_key,
+                    "revision_id": prev_asset.revision_id,
+                    "spec_checksum": prev_revision.spec_checksum,
+                    "spec_json": prev_revision.spec_json,
+                }
+        for revision in revisions:
+            asset = self._release_repository.get_asset_by_id(revision.asset_id)
+            if asset is None:
+                raise ValueError(f"semantic asset not found: {revision.asset_id}")
+            merged_assets[(asset.asset_type, asset.asset_key)] = {
+                "asset_id": asset.id,
+                "asset_type": asset.asset_type,
+                "asset_key": asset.asset_key,
+                "revision_id": revision.id,
+                "spec_checksum": revision.spec_checksum,
+                "spec_json": revision.spec_json,
+            }
+        return merged_assets
+
+    def _build_assets_from_merged(
+        self,
+        merged_assets: dict[tuple[str, str], dict[str, Any]],
+        *,
+        release_id: str,
+    ) -> tuple[list[SemanticReleaseAsset], list[dict[str, Any]]]:
+        """从合并结果生成 release_assets 与 manifest_assets（形状与改前一致）。"""
+        release_assets: list[SemanticReleaseAsset] = []
+        manifest_assets: list[dict[str, Any]] = []
+        for entry in merged_assets.values():
+            release_assets.append(
+                SemanticReleaseAsset(
+                    release_id=release_id,
+                    asset_id=entry["asset_id"],
+                    revision_id=entry["revision_id"],
+                    asset_type=entry["asset_type"],
+                    asset_key=entry["asset_key"],
+                )
+            )
+            manifest_assets.append(
+                {
+                    "asset_id": entry["asset_id"],
+                    "asset_type": entry["asset_type"],
+                    "asset_key": entry["asset_key"],
+                    "revision_id": entry["revision_id"],
+                    "spec_checksum": entry["spec_checksum"],
+                    "spec": self._activated_spec(entry["spec_json"]),
+                    "status": "published",
+                }
+            )
+        return release_assets, manifest_assets
 
     def rollback_to(
         self,
