@@ -10,6 +10,15 @@ from app.infrastructure.semantic.models import SemanticReleaseORM
 from app.infrastructure.semantic.sql_asset_registry_repository import SqlAssetRegistryRepository
 
 
+def _allow_binding_gate(specs, *, active_catalog=None):
+    """放行的 binding gate stub，签名匹配 check_binding_matrix(specs, *, active_catalog)。
+
+    多 cube 累积场景下用于关闭与本期累积逻辑正交的发布期断链校验
+    （断链校验本身另有 test_publish_gate_service.py 专项覆盖）。
+    """
+    return {"ok": True, "skipped": True, "checked": {"objects": 0, "metrics": 0}}
+
+
 def test_semantic_release_service_publishes_release_snapshot_and_audit_atomically(db_session):
     repo = SqlAssetRegistryRepository(db_session)
     release_service = SemanticReleaseService(repo)
@@ -321,7 +330,8 @@ def test_publish_declares_compatibility_against_previous_manifest(db_session):
     assert second.gate_result_json["compatibility"]["level"] == "compatible"
     assert second.gate_result_json["compatibility"]["changed_assets"] == ["cube:cube_a"]
 
-    # 发布另一个资产：cube_a 退出运行时 manifest → breaking + removed_assets
+    # 累积口径（D1）：发布 cube_b 后 cube_a 因累积保留在 active manifest，
+    # 不再退出运行时 → compatible + added_assets=[cube_b]、removed_assets 恒空。
     revision_b1 = repo.append_revision(asset_b.id, {"cube": {"name": "cube_b", "v": 1}})
     third = release_service.publish(
         namespace="qa_live_1",
@@ -330,8 +340,8 @@ def test_publish_declares_compatibility_against_previous_manifest(db_session):
         gate_result={"decision": "allow"},
         idempotency_key="pub_3",
     )
-    assert third.gate_result_json["compatibility"]["level"] == "breaking"
-    assert third.gate_result_json["compatibility"]["removed_assets"] == ["cube:cube_a"]
+    assert third.gate_result_json["compatibility"]["level"] == "compatible"
+    assert third.gate_result_json["compatibility"]["removed_assets"] == []
     assert third.gate_result_json["compatibility"]["added_assets"] == ["cube:cube_b"]
 
 
@@ -380,3 +390,70 @@ def test_semantic_release_service_rollback_creates_new_release_and_snapshot(db_s
     active = repo.get_active_snapshot("qa_live_1")
     assert active.release_id == rollback.id
     assert repo.resolve_asset(active.id, "cube", "student_comment").revision_id == revision_v1.id
+
+
+def test_rollback_to_accumulated_release_has_no_duplicate_keys(db_session):
+    """累积护栏：rollback 到含多 asset 的全量 release 后无重复 asset_key。
+
+    连续发布 cube_a、cube_b（累积，active release 含 a+b 两条），再发 cube_a v2
+    （active 仍 a+b、a 为 v2）；rollback 到「含 a+b 的那个 release」，断言 rollback
+    后 active manifest 的 asset_key 集合 == {cube_a, cube_b} 且无重复 (type,key)。
+    rollback_to 生产代码不改（已是复制 target 全量、自洽），本测试坐实不回归。
+    """
+    ns = "qa_rollback_accum"
+    repo = SqlAssetRegistryRepository(db_session)
+    release_service = SemanticReleaseService(repo, binding_matrix_checker=_allow_binding_gate)
+
+    asset_a = repo.create_or_update_asset(
+        SemanticAsset(id="asset_a", namespace=ns, asset_type="cube", asset_key="cube_a")
+    )
+    asset_b = repo.create_or_update_asset(
+        SemanticAsset(id="asset_b", namespace=ns, asset_type="cube", asset_key="cube_b")
+    )
+
+    rev_a1 = repo.append_revision(asset_a.id, {"cube": {"name": "cube_a", "v": 1}})
+    release_service.publish(
+        namespace=ns,
+        revision_ids=[rev_a1.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_a",
+    )
+
+    rev_b1 = repo.append_revision(asset_b.id, {"cube": {"name": "cube_b", "v": 1}})
+    release_with_a_and_b = release_service.publish(
+        namespace=ns,
+        revision_ids=[rev_b1.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_b",
+    )
+
+    # cube_a v2：active 仍 a+b，a 为 v2
+    rev_a2 = repo.append_revision(
+        asset_a.id, {"cube": {"name": "cube_a", "v": 2}}, force_new_revision=True
+    )
+    release_service.publish(
+        namespace=ns,
+        revision_ids=[rev_a2.id],
+        actor="alice",
+        gate_result={"decision": "allow"},
+        idempotency_key="pub_a2",
+    )
+
+    # rollback 到含 a+b 的那个全量 release
+    release_service.rollback_to(
+        namespace=ns,
+        release_id=release_with_a_and_b.id,
+        actor="alice",
+        idempotency_key="rollback_accum",
+    )
+
+    active = repo.get_active_snapshot(ns)
+    assert active is not None
+    assets = active.asset_manifest_json["assets"]
+    keys = {a["asset_key"] for a in assets}
+    assert keys == {"cube_a", "cube_b"}
+    # 无重复 asset_key：每个 (asset_type, asset_key) 仅一行
+    typed_keys = {(a["asset_type"], a["asset_key"]) for a in assets}
+    assert len(assets) == len(typed_keys)

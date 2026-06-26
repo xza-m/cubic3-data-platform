@@ -406,9 +406,10 @@ class SemanticReleaseService:
     ) -> dict[str, Any]:
         """对比上一 active manifest 与本批资产，声明 compatible | breaking。
 
-        当前发布模型按「本批 scope 替换 active manifest」工作，因此上一 manifest
-        中不在本批的资产将从运行时退出（视为 breaking 信号）；同 key 资产
-        spec_checksum 变化记为 changed（compatible 范畴）。该声明只记录不阻断。
+        累积发布模型下，本批未覆盖的既有资产保留在 active manifest（D1：publish 先
+        取 prev active 全量再合并本批），发布不移除资产，故 removed_assets 恒空、
+        level 不再因 removed 判 breaking。added（current - previous）与 changed
+        （同 key spec_checksum 变化）保留。该声明只记录不阻断。
         """
         previous: dict[tuple[str, str], str] = {}
         get_snapshot = getattr(self._release_repository, "get_active_snapshot", None)
@@ -426,9 +427,9 @@ class SemanticReleaseService:
                 continue
             current[(asset.asset_type, asset.asset_key)] = str(revision.spec_checksum or "")
 
-        removed = sorted(
-            f"{asset_type}:{asset_key}" for (asset_type, asset_key) in previous.keys() - current.keys()
-        )
+        # 累积模型下发布不移除资产：本批未覆盖的既有资产保留在 active manifest，
+        # 故 removed 恒空、level 不再因 removed 判 breaking。
+        removed: list[str] = []
         added = sorted(
             f"{asset_type}:{asset_key}" for (asset_type, asset_key) in current.keys() - previous.keys()
         )
