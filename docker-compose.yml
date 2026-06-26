@@ -41,6 +41,8 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/cubic3_data_platform
       - REDIS_URL=redis://redis:6379/0
       - FLASK_ENV=production
+      # 与 MaxCompute +08 业务日历对齐：编译器默认分区窗口 date.today() 按 +08 计算（Phase 10）
+      - TZ=${TZ:-Asia/Shanghai}
       - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
       - FEISHU_APP_ID=${FEISHU_APP_ID}
       - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
@@ -120,6 +122,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/cubic3_data_platform
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app
+      - TZ=${TZ:-Asia/Shanghai}
       - FEISHU_APP_ID=${FEISHU_APP_ID}
       - FEISHU_APP_SECRET=${FEISHU_APP_SECRET}
       - FEISHU_ADMIN_OPEN_IDS=${FEISHU_ADMIN_OPEN_IDS}
