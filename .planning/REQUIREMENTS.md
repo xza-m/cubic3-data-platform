@@ -143,11 +143,14 @@
 | OPS-01 | Phase 1 | Completed |
 | OPS-02 | Phase 6 | Pending |
 | OPS-03 | Phase 6 | Pending |
+| CONSUME-04 | Phase 8.1 | In Progress |
 
 **Coverage:**
 - v1 requirements: 35 total
 - Mapped to phases: 35
 - Unmapped: 0
+
+> 脚注：`CONSUME-0x` 系列为 v1 后增量收口需求（问数语义消费链路：治理地基对齐 + 物理直表收口 + 诚实兜底），**不并入上表 v1 35 条 Coverage 计数**，仅补登台账可追溯性。`CONSUME-04`（Phase 8.1，治理地基 + 物理直表收口）状态随 Wave 3 收尾推进；`CONSUME-05`（L1 意图理解升级）留 Phase 8.2。
 
 ---
 *Requirements defined: 2026-03-25*
