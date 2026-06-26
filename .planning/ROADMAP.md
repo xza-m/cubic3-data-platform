@@ -130,6 +130,13 @@ Plans:
 - **零新框架/端口/枚举**：全部复用既有构件（`AccessPolicyDecisionService` / `PrincipalResolver` / 诚实兜底范式 / 统一响应异常）；AI 入口净减少（删一条绕前门的 `OpenAIService.generate_sql` 路径）。
 - **回归与文档**：改 `test_datachat_official_consume.py:313`（`legacy_llm`→`fallback`）+ 改写受影响 GREEN 单测 + 更新 `docs/runbooks/production-acceptance.md:80`；前端 DataChat dataset 选择器文案校准为"范围提示（可选）"；全平台 `make verify` 回归通过。
 
+**Plans:** 3 plans（wave 1 RED → wave 2 GREEN 原子批次 → wave 3 收尾，TDD）
+
+Plans:
+- [ ] 08.1-01-PLAN.md — Wave 1: RED + 定向探查（坐实治理缺口/物理直表/兜底不统一/匿名放行 + execute_plan 顶层无 resource_set 须重编译）
+- [ ] 08.1-02-PLAN.md — Wave 2: GREEN 原子批次（治理对齐 pre_route/post_compile + principal 透传 + 拒匿名 + 删两条物理路 + 统一诚实兜底 + DI 装配）
+- [ ] 08.1-03-PLAN.md — Wave 3: 收尾（前端未登录引导 + 跨入口一致性冒烟 + 文档同步 production-acceptance.md:80 + make verify + 真实闭环 checkpoint）
+
 ### Phase 8.2: 语义消费收口·L1 意图理解升级（`CONSUME-05`）
 
 > 背景：L1 当前是纯 `_normalize(candidate) in normalized_question` 子串首命中匹配，LLM 抽取只是"盲拼词袋到 match_text"无 grounding，坏术语直接污染。锁定口径（2026-06-26）：严格 grounding 白名单（同义词靠 glossary aliases）。依赖 Phase 8.1 的诚实兜底作为 grounding 失败的安全落点。
