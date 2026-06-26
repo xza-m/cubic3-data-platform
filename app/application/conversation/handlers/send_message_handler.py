@@ -90,9 +90,16 @@ class SendMessageHandler:
         """优先走双层语义 Router/Planner 主链。"""
         if self.semantic_router_service is None:
             return None
+        # D1（Phase 8）：全局问数读 active manifest（runtime official），只消费已发布 cube。
+        # 语义来源见 CONTEXT D1 / docs/architecture/semantic-binding-and-rls.md §1.4：
+        # 单一事实源——只有发布进 active manifest 的 cube 才可被 DataChat 消费。
+        # 兜底（在 _build_blocked_route_message 固化，不扩行为）：
+        #   - 无 active 快照 → reason=semantic_runtime_not_ready → 诚实回「语义运行时尚未就绪」；
+        #   - 未命中已发布业务语义（reason 以「未命中」开头）→ 返 None → legacy 诚实兜底「未能找到口径」。
         plan_result = self.semantic_router_service.execute_plan(
             question=command.content,
             viewer_roles=[],
+            runtime_mode="official",
         )
         execution_results = plan_result.get("execution_results") or []
         if not execution_results:
@@ -167,7 +174,16 @@ class SendMessageHandler:
 
     @staticmethod
     def _build_blocked_route_message(plan_result) -> Dict[str, str] | None:
-        """路由级阻断（权限/运行时未就绪）有明确原因时构造诚实回复；纯未命中实体返回 None 交 legacy。"""
+        """路由级阻断（权限/运行时未就绪）有明确原因时构造诚实回复；纯未命中实体返回 None 交 legacy。
+
+        D1（Phase 8）official 兜底两条路径在此固化，行为不扩：
+        - 无 active 快照：preview_service._blocked_runtime_route 返
+          route_type="blocked"、reason="semantic_runtime_not_ready" → 命中下方
+          ("runtime","not_ready","manifest","运行清单","未就绪") 关键词分支 →
+          诚实回「语义运行时尚未就绪」（不 500、不伪造）。
+        - 未命中已发布业务语义：reason 以「未命中」开头 → 返 None → 交 legacy；
+          全局问数（dataset_id is None）落 _handle_via_legacy_llm 的诚实兜底「未能找到口径」。
+        """
         route = plan_result.get("route") or {}
         if route.get("route_type") != "blocked":
             return None
