@@ -85,6 +85,10 @@ class TestSendMessageHandlerErrors:
 
 
 class TestSendMessageHandlerLegacyLlm:
+    @pytest.mark.xfail(
+        strict=False,
+        reason="08.1-02 删除物理 legacy 路（_handle_via_legacy_llm 物理分支 + LEGACY_DISCLAIMER）",
+    )
     def test_legacy_llm_success(self, handler, command, mock_repos):
         """传统 LLM 路径成功"""
         conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
@@ -407,7 +411,14 @@ class TestSendMessageHandlerAgent:
         # 消息写入走容器 scoped_session，handler 返回前必须在同一 session 提交
         conv_repo.commit.assert_called_once()
 
-    def test_agent_failure_falls_back_to_legacy_llm(self, handler, command, mock_repos):
+    def test_agent_failure_falls_back_to_honest_fallback(self, handler, command, mock_repos):
+        """Phase 8.1（RED，决策 5）：agent 软失败 → 统一诚实兜底，不退 legacy 物理出数。
+
+        坐实「兜底不统一」缺陷：当前 agent 失败会回落 _handle_via_legacy_llm 物理分支，
+        调 llm_service.generate_sql + legacy_adapter.execute_query 真出物理表数（source='legacy_llm'）。
+        GREEN（08.1-02）后应统一收敛到 _build_unanswerable_fallback（source='fallback'），
+        不产 SQL、不碰物理表。本用例对当前代码 RED（当前 source=='legacy_llm' 且 generate_sql 被调）。
+        """
         conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
 
         conversation = MagicMock()
@@ -419,9 +430,8 @@ class TestSendMessageHandlerAgent:
 
         user_message = MagicMock()
         user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "查询"}
-        ai_message = MagicMock()
-        ai_message.to_dict.return_value = {"id": 2, "role": "assistant", "content": "已回退到传统 LLM"}
-        msg_repo.create.side_effect = [user_message, ai_message]
+        # 真实 Message 实体（带 source/to_dict），create 原样回写——便于断言 source 而非 mock 占位
+        msg_repo.create.side_effect = lambda message: message
 
         dataset = MagicMock()
         dataset.physical_table = "sales"
@@ -452,21 +462,193 @@ class TestSendMessageHandlerAgent:
                 with patch("app.interfaces.channels.datachat_channel.DataChatChannel", return_value=channel_instance):
                     with patch("app.domain.entities.agent_query_log.AgentQueryLog", return_value=log_entry):
                         with patch("app.extensions.db", mock_db):
-                            # agent 路径 2 次 + legacy 路径（t0 / duration）2 次
                             with patch("time.monotonic", side_effect=[2.0, 2.4, 3.0, 3.5]):
-                                with patch("app.application.conversation.handlers.send_message_handler.logger") as mock_logger:
-                                    with patch(
-                                        "app.infrastructure.adapters.datasources.factory.AdapterFactory.create_adapter",
-                                        return_value=legacy_adapter,
-                                    ):
-                                        result = handler.handle(command)
+                                with patch(
+                                    "app.infrastructure.adapters.datasources.factory.AdapterFactory.create_adapter",
+                                    return_value=legacy_adapter,
+                                ):
+                                    result = handler.handle(command)
 
-        assert result["ai_message"]["content"] == "已回退到传统 LLM"
-        log_entry.mark_error.assert_called_once()
-        agent_adapter.close.assert_called_once()
-        legacy_adapter.execute_query.assert_called_once_with("SELECT amount FROM sales LIMIT 1000")
-        mock_logger.warning.assert_called_once()
+        # GREEN 目标：agent 软失败 → 统一诚实兜底，source=='fallback'、不出物理表数
+        ai_entity = msg_repo.create.call_args_list[-1][0][0]
+        assert ai_entity.source == "fallback"
+        assert ai_entity.to_dict()["via_semantic_layer"] is False
+        # 兜底不产 SQL、不碰物理表（当前 RED：回退 legacy 时这两者都被调）
+        llm_service.generate_sql.assert_not_called()
+        legacy_adapter.execute_query.assert_not_called()
 
+    def test_unanswerable_fallback_via_semantic_layer_false(self, mock_repos):
+        """Phase 8.1（RED，决策 5）：全局会话答不出 → 统一诚实兜底 source=='fallback'。
+
+        坐实「兜底不统一」：当前全局会话（dataset_id is None）走 _handle_via_legacy_llm 诚实
+        兜底块落 source='legacy_llm'（send_message_handler.py:313-325）。GREEN 后应统一为
+        source='fallback'（决策 5），且 to_dict()['via_semantic_layer'] is False（防回归把 fallback
+        误判为经语义层，conversation.py:192）。本用例对当前代码 RED（当前 source=='legacy_llm'）。
+        """
+        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
+        semantic_router_service = MagicMock()
+        handler = SendMessageHandler(
+            conversation_repository=conv_repo,
+            message_repository=msg_repo,
+            dataset_repository=dataset_repo,
+            llm_service=llm_service,
+            semantic_router_service=semantic_router_service,
+        )
+
+        conversation = MagicMock()
+        conversation.id = 1
+        conversation.user_id = "user_123"
+        conversation.dataset_id = None  # 全局问数会话：无绑定数据集
+        conversation.updated_at = None
+        conversation.context = {}
+        conv_repo.find_by_id.return_value = conversation
+
+        user_message = MagicMock()
+        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "查询销售额"}
+        # 真实 Message 实体（带 source/to_dict），create 原样回写
+        msg_repo.create.side_effect = lambda message: message
+
+        # semantic 主链未命中（execution_results 为空且非 blocked）→ 返 None 交兜底
+        semantic_router_service.execute_plan.return_value = {
+            "route": {"route_type": "blocked", "reason": "未命中已发布业务语义"},
+            "execution_results": [],
+            "traceability": {},
+        }
+
+        result = handler.handle(
+            SendMessageCommand(conversation_id=1, user_id="user_123", content="查询销售额")
+        )
+
+        ai_entity = msg_repo.create.call_args_list[-1][0][0]
+        # GREEN 目标：统一诚实兜底 source=='fallback'，via_semantic_layer is False
+        assert ai_entity.source == "fallback"
+        assert ai_entity.to_dict()["via_semantic_layer"] is False
+        # 兜底不调直连 LLM、不出物理表数
+        llm_service.generate_sql.assert_not_called()
+
+    def test_agent_global_session_short_circuits(self, mock_repos):
+        """Phase 8.1（RED，决策 5）：全局会话（dataset_id is None）agent 第 2 层短路。
+
+        坐实「agent 第 2 层物理直表旁路」死路径：当前 _handle_via_agent 对全局会话不短路——
+        调 DataChatChannel.to_agent_request（取物理 schema + 建物理 adapter）并 db.session.add
+        一条 running AgentQueryLog，随后抛错被吞，残留 running log。GREEN（08.1-02）后应 return None
+        短路、不调 to_agent_request、不建 log。本用例对当前代码 RED（当前会建 adapter/log）。
+        """
+        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
+        handler = SendMessageHandler(
+            conversation_repository=conv_repo,
+            message_repository=msg_repo,
+            dataset_repository=dataset_repo,
+            llm_service=llm_service,
+        )
+
+        conversation = MagicMock()
+        conversation.id = 1
+        conversation.user_id = "user_123"
+        conversation.dataset_id = None  # 全局问数会话
+        conv_repo.find_by_id.return_value = conversation
+
+        user_message = MagicMock()
+        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "查询销售额"}
+
+        container = MagicMock()
+        adapter = MagicMock()
+        channel_instance = MagicMock()
+        channel_instance.to_agent_request.return_value = ("req", {"table": "sales"}, adapter)
+        agent_service = MagicMock()
+        log_entry = MagicMock()
+        mock_db = SimpleNamespace(session=MagicMock())
+
+        with patch("app.di.container.get_container", return_value=container):
+            with patch("app.application.agent.agent_factory.get_data_agent_service", return_value=agent_service):
+                with patch("app.interfaces.channels.datachat_channel.DataChatChannel", return_value=channel_instance):
+                    with patch("app.domain.entities.agent_query_log.AgentQueryLog", return_value=log_entry):
+                        with patch("app.extensions.db", mock_db):
+                            with patch("time.monotonic", side_effect=[1.0, 1.25]):
+                                result = handler._handle_via_agent(
+                                    SendMessageCommand(
+                                        conversation_id=1, user_id="user_123", content="查询销售额"
+                                    ),
+                                    conversation,
+                                    user_message,
+                                )
+
+        # GREEN 目标：全局会话 agent 第 2 层短路 → return None，不取物理 schema、不建 running log
+        assert result is None
+        channel_instance.to_agent_request.assert_not_called()
+        mock_db.session.add.assert_not_called()
+
+    @pytest.mark.xfail(
+        strict=False,
+        reason="08.1-02 principal 透传（决策 4）：handler 应传 command.principal_context；当前写死 viewer_roles=[] 不传 principal_context",
+    )
+    def test_semantic_router_should_receive_principal_context(self, mock_repos):
+        """Phase 8.1（RED/xfail，决策 4）：principal 透传命门——execute_plan 应收 principal_context。
+
+        治理命门重述（对账实测）：DataChat execute_plan → runtime_service.execute 的 post_compile
+        治理已在链路（runtime_service.py:113/126，decision!=allow → blocked），命门不是「无治理管线」
+        而是「handler 写死 viewer_roles=[]、零 principal_context → 真实角色到不了治理引擎 → 即便主体持
+        data_m1_reader 也 deny」。RED 坐实当前未透传：execute_plan 被调用时 principal_context is None
+        且 viewer_roles==[]；GREEN（08.1-02）后 handler 应透传 command.principal_context → 转绿。
+
+        当前 SendMessageCommand 无 principal_context 字段（决策 4 在 08.1-02 新增），故本 RED 用
+        SimpleNamespace 模拟带 principal_context 的 command 表达 GREEN 期望。
+        """
+        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
+        semantic_router_service = MagicMock()
+        handler = SendMessageHandler(
+            conversation_repository=conv_repo,
+            message_repository=msg_repo,
+            dataset_repository=dataset_repo,
+            llm_service=llm_service,
+            semantic_router_service=semantic_router_service,
+        )
+
+        conversation = MagicMock()
+        conversation.id = 1
+        conversation.user_id = "user_123"
+        conversation.dataset_id = 10
+        conv_repo.find_by_id.return_value = conversation
+
+        user_message = MagicMock()
+        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "学生答题统计 总数"}
+        ai_message = MagicMock()
+        ai_message.to_dict.return_value = {"id": 2, "role": "assistant", "content": "语义路由回答"}
+        msg_repo.create.side_effect = [user_message, ai_message]
+
+        semantic_router_service.execute_plan.return_value = {
+            "route": {"route_type": "cube"},
+            "execution_results": [
+                {
+                    "status": "executed",
+                    "target_type": "sql",
+                    "result": {"columns": [], "data": [], "row_count": 1},
+                    "traceability": {},
+                }
+            ],
+            "traceability": {},
+        }
+
+        # GREEN 期望：command 带 principal_context（决策 4 在 08.1-02 给 Command 加字段）
+        principal_context = {"principal_id": "p", "roles": ["data_m1_reader"]}
+        command = SimpleNamespace(
+            conversation_id=1,
+            user_id="user_123",
+            content="学生答题统计 总数",
+            principal_context=principal_context,
+        )
+
+        handler.handle(command)
+
+        semantic_router_service.execute_plan.assert_called_once()
+        call_kwargs = semantic_router_service.execute_plan.call_args.kwargs
+        # 核心断言（当前 RED）：handler 必须把 command.principal_context 透传给治理引擎
+        assert call_kwargs.get("principal_context") == principal_context
+
+    @pytest.mark.xfail(
+        strict=False,
+        reason="08.1-02 删除 _execute_query（绕 gateway 的物理出口随物理 legacy 路一并删除）",
+    )
     def test_execute_query_rejects_non_select(self, handler):
         dataset = MagicMock()
         dataset.source = MagicMock()
