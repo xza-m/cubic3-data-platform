@@ -154,6 +154,88 @@ class TestCubeListDerivativeFields:
 
 
 @pytest.mark.redesign
+class TestCubeListDiscoverySameSource:
+    """D2（Phase 8）：GET /semantic/cubes discovery 与 grounding 同源 —— 有 active 快照从 manifest 出。"""
+
+    _ANSWER_MANIFEST = {
+        "ok": True,
+        "snapshot_id": "snap_disc",
+        "release_id": "rel_disc",
+        "asset_manifest_json": {
+            "schema_version": "semantic-runtime-manifest/v1",
+            "assets": [
+                {
+                    "asset_id": "asset_cube_student_answer",
+                    "asset_type": "cube",
+                    "asset_key": "student_answer_cube",
+                    "revision_id": "rev_cube_disc",
+                    "spec_checksum": "c" * 64,
+                    "status": "published",
+                    "spec": {
+                        "cube": {
+                            "name": "student_answer_cube",
+                            "title": "学生答题",
+                            "table": "df.dws_study_student_answer_kb_stat_di",
+                            "source_id": 1,
+                            "source_database": "df",
+                            "dimensions": {"ds": {"title": "分区日期", "type": "time", "sql": "{CUBE}.ds"}},
+                            "measures": {"total_count": {"title": "总数", "type": "number", "sql": "COUNT(1)"}},
+                        }
+                    },
+                }
+            ],
+        },
+        "binding_manifest_json": {"schema_version": "semantic-runtime-manifest/v1", "bindings": []},
+        "policy_manifest_json": {"schema_version": "semantic-runtime-manifest/v1", "policies": []},
+    }
+
+    def _client(self, snapshot_payload):
+        flask_app = Flask(__name__)
+        flask_app.config["TESTING"] = True
+        # registry 侧故意放与 manifest 不同的 cube，证明 discovery 确实来自 manifest 而非 registry
+        svc = _make_semantic_service(n=2)
+        snapshot_stub = MagicMock()
+        snapshot_stub.get_active_manifest.return_value = snapshot_payload
+        bp = create_semantic_blueprint(
+            semantic_service=svc,
+            dataset_repo=MagicMock(),
+            dataset_handler=MagicMock(),
+            publish_service=_make_publish_service(),
+            runtime_snapshot_service=snapshot_stub,
+        )
+        flask_app.register_blueprint(bp)
+        register_error_handlers(flask_app)
+        from tests.conftest import install_default_admin_auth
+        return install_default_admin_auth(flask_app.test_client())
+
+    def test_active_manifest_drives_discovery(self):
+        """有 active 快照 → cube 列表来自 manifest（已发布 cube），带 source=active_manifest 标记。"""
+        resp = self._client(self._ANSWER_MANIFEST).get("/api/v1/semantic/cubes")
+        assert resp.status_code == 200
+        cubes = resp.get_json()["data"]["cubes"]
+        names = {c["name"] for c in cubes}
+        assert names == {"student_answer_cube"}  # 来自 manifest，非 registry 的 cube_0/cube_1
+        cube = cubes[0]
+        assert cube["source"] == "active_manifest"
+        assert cube["measure_count"] == 1
+        # registry 派生字段安全缺省，不破坏前端列表结构
+        assert cube["downstream_bi_count"] == 0
+        assert cube["domain_count"] == 0
+
+    def test_no_active_snapshot_falls_back_to_registry(self):
+        """无 active 快照 → 回落 registry（保持现有行为，不 500）。"""
+        resp = self._client({"ok": False, "error_code": "semantic_runtime_not_ready"}).get(
+            "/api/v1/semantic/cubes"
+        )
+        assert resp.status_code == 200
+        cubes = resp.get_json()["data"]["cubes"]
+        names = {c["name"] for c in cubes}
+        assert names == {"cube_0", "cube_1"}  # 回落 registry
+        # 回落路径不带 manifest 来源标记
+        assert all(c.get("source") != "active_manifest" for c in cubes)
+
+
+@pytest.mark.redesign
 class TestCubeListPerformance:
     """P95 ≤ 300ms 基准测试（100 cube 内存操作）。"""
 
