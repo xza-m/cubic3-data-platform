@@ -1,7 +1,7 @@
 """QueryCompiler — DSL → SQL 编译器"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -83,15 +83,23 @@ def _quote_val(val: Any) -> str:
     return str(val)
 
 
+# ── 默认分区窗口（D2：无显式时间口径时注入最近 N 天，绕开 MaxCompute 全表扫描保护）──
+DEFAULT_PARTITION_WINDOW_DAYS = 7
+_FMT_STRFTIME = {"yyyyMMdd": "%Y%m%d", "yyyy-MM-dd": "%Y-%m-%d"}
+
+
 class QueryCompiler:
 
     def __init__(
         self,
         join_graph: JoinGraph,
         dialect: Optional[SQLDialect] = None,
+        *,
+        today: date | None = None,
     ):
         self._graph = join_graph
         self._dialect = dialect or MaxComputeDialect()
+        self._today = today
 
     # ── 公共入口 ──
 
@@ -201,21 +209,33 @@ class QueryCompiler:
             else:
                 raise CompilationError(f"Unknown filter operator: '{filt.operator}'")
 
-        # 7. WHERE — partition latest_expr
+        # 7. WHERE — partition latest_expr 优先 > 默认日期窗口 > 不注入（D1/D2）
         for cube in cubes.values():
-            if cube.partition and cube.partition.latest_expr:
-                has_time_range = any(
-                    td.date_range and self._parse_ref(td.dimension)[0] == cube.name
-                    for td in dsl.time_dimensions
+            part = cube.partition
+            if not part:
+                continue
+            if self._has_explicit_partition_filter(dsl, cube):
+                continue  # 守护 D3：用户已显式过滤分区字段 → 不动
+            if part.latest_expr:
+                # 既有契约：静态 latest_expr cube 走 MAX_PT（8 个 dim cube 不变）
+                condition = f"{cube.name}.{part.field} = {part.latest_expr}"
+            elif part.type == "date" and not str(cube.source_sql or "").strip():
+                # 默认窗口：date 型分区 + 物理表（非 source_sql 派生）→ 注入最近 N 天
+                today = self._today or date.today()
+                win = min(DEFAULT_PARTITION_WINDOW_DAYS, max(part.max_range_days - 1, 1))
+                start = today - timedelta(days=win - 1)
+                fmt = self._fmt_strftime(part.format)  # 未知 format → CompilationError（D5）
+                start_ds = start.strftime(fmt)
+                end_ds = today.strftime(fmt)
+                condition = self._dialect.partition_condition(
+                    f"{cube.name}.{part.field}", start_ds, end_ds, part.format
                 )
-                if not has_time_range:
-                    latest_condition = (
-                        f"{cube.name}.{cube.partition.field} = {cube.partition.latest_expr}"
-                    )
-                    if cube.name == primary.name:
-                        where_parts.append(latest_condition)
-                    elif cube.name in join_on_parts:
-                        join_on_parts[cube.name].append(latest_condition)
+            else:
+                continue  # 非 date 型 / source_sql 派生 → 不注入
+            if cube.name == primary.name:
+                where_parts.append(condition)
+            elif cube.name in join_on_parts:
+                join_on_parts[cube.name].append(condition)
 
         # 8. ORDER BY
         for pair in dsl.order:
@@ -348,6 +368,33 @@ class QueryCompiler:
         if len(parts) != 2:
             raise CompilationError(f"Invalid reference format: '{ref}', expected 'cube.field'")
         return parts[0], parts[1]
+
+    @staticmethod
+    def _fmt_strftime(fmt: str) -> str:
+        """分区 format → strftime；未知 format → CompilationError（D5：禁止静默产错字面量）。"""
+        mapped = _FMT_STRFTIME.get(fmt)
+        if mapped is None:
+            raise CompilationError(
+                f"Unsupported partition format for default window: '{fmt}'"
+            )
+        return mapped
+
+    def _has_explicit_partition_filter(self, dsl: QueryDSL, cube: CubeDefinition) -> bool:
+        """守护 D3：按 DSL 结构判定 filters / time_dimensions 是否已显式命中分区字段。
+
+        命中即返 True → 块7 跳过默认注入（不 override 用户显式过滤，亦防与
+        :150-158 既有 date_range 注入重复）。比对 (cube.name, part.field)。
+        """
+        part = cube.partition
+        if part is None:
+            return False
+        for td in dsl.time_dimensions:
+            if td.date_range and self._parse_ref(td.dimension) == (cube.name, part.field):
+                return True
+        for f in dsl.filters:
+            if self._parse_ref(f.target) == (cube.name, part.field):
+                return True
+        return False
 
     @staticmethod
     def _ref_alias(ref: str) -> str:
