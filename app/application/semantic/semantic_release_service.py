@@ -338,6 +338,90 @@ class SemanticReleaseService:
             audit_writer=resolved_audit_writer,
         )
 
+    def rebuild_active_baseline(
+        self,
+        *,
+        namespace: str,
+        asset_keys: list[tuple[str, str]],
+        actor: str | None,
+        idempotency_key: str | None = None,
+        audit_writer: Callable[[dict[str, Any]], None] | None = None,
+    ) -> SemanticRelease:
+        """把指定 asset 集合合并发一个全量 active release 作为基线起点（D3）。
+
+        因历史每次发布都整盘替换，「当前应在线的 cube 集合」信息已丢（只剩最后 active）。
+        本方法读指定 `(asset_type, asset_key)` 集合，各取「最新已发布 revision」
+        （current_revision_id），按 (asset_type, asset_key) 去重合并为一个 published
+        release + active snapshot。可重复执行（每次产新 published release，沿用
+        publish_with_snapshot 的 supersede 旧 active 行为），不写迁移、不写 YAML。
+        缺失 asset/revision 时 fail-loud。
+        """
+        merged_assets: dict[tuple[str, str], dict[str, Any]] = {}
+        for asset_type, asset_key in asset_keys:
+            asset = self._release_repository.get_asset(namespace, asset_type, asset_key)
+            if asset is None:
+                raise ValueError(f"baseline_asset_not_found: {asset_type}:{asset_key}")
+            revision = None
+            if asset.current_revision_id:
+                revision = self._release_repository.get_revision(asset.current_revision_id)
+            if revision is None:
+                raise ValueError(f"baseline_asset_not_found: {asset_type}:{asset_key}")
+            merged_assets[(asset.asset_type, asset.asset_key)] = {
+                "asset_id": asset.id,
+                "asset_type": asset.asset_type,
+                "asset_key": asset.asset_key,
+                "revision_id": revision.id,
+                "spec_checksum": revision.spec_checksum,
+                "spec_json": revision.spec_json,
+            }
+
+        release = SemanticRelease(
+            id=f"rel_{uuid.uuid4().hex}",
+            release_no=0,
+            namespace=namespace,
+            status="published",
+            scope_json={"baseline_rebuild": [list(key) for key in asset_keys]},
+            gate_result_json={"decision": "allow", "baseline_rebuild": True},
+            previous_release_id=self._release_repository.get_active_release_id(namespace),
+            idempotency_key=idempotency_key,
+            published_by=actor,
+        )
+        release_assets, manifest_assets = self._build_assets_from_merged(
+            merged_assets,
+            release_id=release.id,
+        )
+
+        snapshot = RuntimeSnapshot(
+            id=f"snap_{uuid.uuid4().hex}",
+            release_id=release.id,
+            namespace=namespace,
+            status="active",
+            asset_manifest_json={
+                "schema_version": RUNTIME_MANIFEST_SCHEMA_VERSION,
+                "assets": manifest_assets,
+            },
+            binding_manifest_json={
+                "schema_version": RUNTIME_MANIFEST_SCHEMA_VERSION,
+                "bindings": [],
+            },
+            policy_manifest_json={
+                "schema_version": RUNTIME_MANIFEST_SCHEMA_VERSION,
+                "policies": [],
+            },
+        )
+        resolved_audit_writer = audit_writer or self._build_governance_audit_writer(
+            release=release,
+            release_assets=release_assets,
+            actor=actor,
+            action="baseline_rebuild",
+        )
+        return self._release_repository.publish_with_snapshot(
+            release,
+            release_assets,
+            snapshot,
+            audit_writer=resolved_audit_writer,
+        )
+
     def deprecate(
         self,
         *,
