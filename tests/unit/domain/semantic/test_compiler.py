@@ -2,6 +2,7 @@
 
 覆盖 PRD 6.11 测试用例矩阵中的核心场景"""
 import types
+from datetime import date
 
 import pytest
 
@@ -736,6 +737,149 @@ class TestCompilerErrors:
         assert compiler._wrap_agg("min", "score") == "MIN(score)"
         assert compiler._wrap_agg("max", "score") == "MAX(score)"
         assert compiler._wrap_agg("unknown", "score") == "score"
+
+
+# ── Compiler 默认分区注入（Phase 10 RED） ──
+
+class TestCompilerDefaultPartitionInjection:
+    """Phase 10 RED：date 型分区 cube（latest_expr 空）+ 无显式时间过滤
+    → 应注入默认最近 7 天窗口范围谓词，绕开 MaxCompute 全表扫描保护。
+
+    固定时钟 today=date(2026, 6, 26)，窗口算法 D2：
+      win = min(7, max(max_range_days - 1, 1))；end = today；start = today - (win - 1)
+      ANSWER max_range_days=90 → win=7 → start=20260620, end=20260626（含两端 7 天）。
+
+    本波全部用例应为 RED（compiler 尚未实现注入 / today= 触发 TypeError）。
+    """
+
+    def _make_compiler(self, cubes):
+        return QueryCompiler(
+            JoinGraph(cubes),
+            dialect=MaxComputeDialect(),
+            today=date(2026, 6, 26),
+        )
+
+    def test_a_date_partition_no_filter_injects_default_window(self):
+        """Test A：date 型分区无过滤 → 注入默认 7 天窗口范围谓词。"""
+        compiler = self._make_compiler([ANSWER, STUDENT, SCHOOL])
+        result = compiler.compile(QueryDSL(measures=["answer_records.total_count"]))
+        assert "answer_records.answer_date >= '20260620'" in result.sql
+        assert "answer_records.answer_date <= '20260626'" in result.sql
+
+    def test_b_explicit_filter_on_partition_field_skips_default(self):
+        """Test B：显式 filters 命中分区字段 → 不注入默认（守护 D3），保留用户过滤。"""
+        compiler = self._make_compiler([ANSWER, STUDENT, SCHOOL])
+        result = compiler.compile(
+            QueryDSL(
+                measures=["answer_records.total_count"],
+                filters=[
+                    FilterDef(
+                        dimension="answer_records.answer_date",
+                        operator="gte",
+                        values=["20260101"],
+                    )
+                ],
+            )
+        )
+        assert "'20260620'" not in result.sql
+        assert "answer_records.answer_date >= '20260101'" in result.sql
+
+    def test_c_explicit_time_dimension_range_skips_default(self):
+        """Test C：显式 time_dimensions date_range 命中分区字段 → 不注入默认（守护 D3）。"""
+        compiler = self._make_compiler([ANSWER, STUDENT, SCHOOL])
+        result = compiler.compile(
+            QueryDSL(
+                measures=["answer_records.total_count"],
+                time_dimensions=[
+                    TimeDimensionDef(
+                        dimension="answer_records.answer_date",
+                        date_range=["2026-02-21", "2026-02-27"],
+                    )
+                ],
+            )
+        )
+        assert "answer_date >= '20260221'" in result.sql
+        assert "answer_date <= '20260227'" in result.sql
+        assert "'20260620'" not in result.sql
+
+    def test_d_string_partition_not_injected(self):
+        """Test D：非 date 型分区（type="string"）不注入默认窗口、不注 MAX_PT。"""
+        string_cube = _make_cube(
+            "string_part_cube",
+            "fact_string_part",
+            dims={
+                "id": DimensionDef(title="ID", type="string", sql="{CUBE}.id", primary_key=True),
+                "ds": DimensionDef(title="分区日", type="string", sql="{CUBE}.ds"),
+            },
+            measures={"cnt": MeasureDef(title="数量", type="count", sql="{CUBE}.id")},
+            partition=PartitionDef(field="ds", type="string", format="yyyyMMdd"),
+        )
+        compiler = self._make_compiler([string_cube])
+        result = compiler.compile(QueryDSL(measures=["string_part_cube.cnt"]))
+        assert "'20260620'" not in result.sql
+        assert "MAX_PT" not in result.sql
+
+    def test_e_source_sql_cube_not_injected(self):
+        """Test E：source_sql 派生 cube 不注入默认窗口。"""
+        source_cube = _make_cube(
+            "src_part_cube",
+            "fact_src_part",
+            dims={
+                "id": DimensionDef(title="ID", type="string", sql="{CUBE}.id", primary_key=True),
+                "answer_date": DimensionDef(title="答题日期", type="string", sql="{CUBE}.answer_date"),
+            },
+            measures={"cnt": MeasureDef(title="数量", type="count", sql="{CUBE}.id")},
+        ).model_copy(
+            update={
+                "source_sql": "SELECT * FROM t",
+                "partition": PartitionDef(field="answer_date", type="date", format="yyyyMMdd"),
+            }
+        )
+        compiler = self._make_compiler([source_cube])
+        result = compiler.compile(QueryDSL(measures=["src_part_cube.cnt"]))
+        assert "'20260620'" not in result.sql
+        assert "'20260626'" not in result.sql
+
+    def test_f_latest_expr_still_uses_max_pt(self):
+        """Test F：latest_expr 非空仍走 MAX_PT（契约不变，优先级高于默认窗口）。"""
+        latest_cube = _make_cube(
+            "latest_part_cube",
+            "fact_latest_part",
+            dims={
+                "id": DimensionDef(title="ID", type="string", sql="{CUBE}.id", primary_key=True),
+                "ds": DimensionDef(title="分区日", type="string", sql="{CUBE}.ds"),
+            },
+            measures={"cnt": MeasureDef(title="数量", type="count", sql="{CUBE}.id")},
+            partition=PartitionDef(field="ds", format="yyyyMMdd", latest_expr="MAX_PT('fact_latest')"),
+        )
+        compiler = self._make_compiler([latest_cube])
+        result = compiler.compile(QueryDSL(measures=["latest_part_cube.cnt"]))
+        assert "ds = MAX_PT('fact_latest')" in result.sql
+        assert "'20260620'" not in result.sql
+
+    def test_g_unknown_format_raises_compilation_error(self):
+        """Test G：未知 format → CompilationError（D5 确定性兜底，禁止静默产错字面量）。"""
+        weird_cube = _make_cube(
+            "weird_fmt_cube",
+            "fact_weird_fmt",
+            dims={
+                "id": DimensionDef(title="ID", type="string", sql="{CUBE}.id", primary_key=True),
+                "ds": DimensionDef(title="分区日", type="string", sql="{CUBE}.ds"),
+            },
+            measures={"cnt": MeasureDef(title="数量", type="count", sql="{CUBE}.id")},
+            partition=PartitionDef(field="ds", type="date", format="weird-fmt"),
+        )
+        compiler = self._make_compiler([weird_cube])
+        with pytest.raises(CompilationError):
+            compiler.compile(QueryDSL(measures=["weird_fmt_cube.cnt"]))
+
+    def test_h_scoped_table_refs_unaffected_by_injection(self):
+        """Test H：默认注入只改 where_parts，不动 scoped_table_refs（审查补正③安全锚点）。"""
+        compiler = self._make_compiler([ANSWER, STUDENT, SCHOOL])
+        result = compiler.compile(QueryDSL(measures=["answer_records.total_count"]))
+        assert result.scoped_table_refs == [
+            {"table": "dwd_answer", "alias": "answer_records", "scan_anchor": "from"}
+        ]
 
 
 # ── Dialect 测试 ──
