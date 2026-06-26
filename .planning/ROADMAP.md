@@ -24,11 +24,19 @@
 | 6 | DataAgent 验证与最终生产收敛 | 用垂直 `DataAgent` 场景证明语义层可支撑智能扩展，并把部署后的核心页面与流程收敛到内部可用标准。 | `DAG-01` `DAG-02` `OPS-02` `OPS-03` | DataAgent 工作台、系统状态页 |
 | 7 | 语义消费收口·发布累积 | 让 active runtime manifest 累积 namespace 内所有已发布资产、成为完整多 cube 目录（含基线重建），消除"每次发布整盘替换、活菜单只剩 1 个 cube"的结构缺陷；只动发布/release 侧，不碰消费侧。 | `CONSUME-01` | 无前端（后端 release 服务） |
 | 8 | 语义消费收口·问数切 official | DataChat 全局问数 grounding/discovery 统一读 active manifest（runtime_mode=official），打通"自助建模发布的 cube → 问数能消费出数"；comment demo 不回归。 | `CONSUME-02` | DataChat / 问数入口 |
+| 8.1 | 语义消费收口·治理地基与物理直表收口 | 让 DataChat 主链与全局 Agent API 走同一治理管线（pre_route/post_compile + principal 透传 + 拒匿名），彻底删除两条"直接扫物理表产 SQL"旁路（legacy 第3层 + agent 第2层），统一收敛到诚实兜底；堵死"从 Ontology 直接产 SQL / 直接扫物理表"的红线。 | `CONSUME-04` | DataChat / 问数入口 |
+| 8.2 | 语义消费收口·L1 意图理解升级 | 把 L1 从纯字符串子串匹配升级为"LLM 抽取 → 严格 grounding 白名单（只认已发布 candidate）→ 诚实兜底"，先建 eval 护栏，全程 env 默认关、真实 LLM 验证后再开。 | `CONSUME-05` | 无前端（后端 router） |
 | 9 | 语义消费收口·文档对齐与验收 | 文档把"semantic router 已切 RuntimeSemanticCatalog/manifest"从应然标为已落地，全平台 verify 回归。 | `CONSUME-03` | 文档 |
 
 ## 里程碑 M7：语义消费收口（2026-06-26 立项）
 
-> 打通"自助建模发布的 cube → DataChat 问数能消费出数"。根因：语义消费"双轨断点"——发布只写运行时快照且不累积（manifest 永远单 cube）；DataChat 问数读 YAML 而非 manifest。修复方向 = 统一到单一事实源 active manifest（不写 YAML，贴合 `docs/architecture/semantic-binding-and-rls.md` §1.4）。Phase 7→8→9 顺序执行，各自独立可上线/回滚。
+> 打通"自助建模发布的 cube → DataChat 问数能消费出数"。根因：语义消费"双轨断点"——发布只写运行时快照且不累积（manifest 永远单 cube）；DataChat 问数读 YAML 而非 manifest。修复方向 = 统一到单一事实源 active manifest（不写 YAML，贴合 `docs/architecture/semantic-binding-and-rls.md` §1.4）。Phase 7→8→8.1→8.2→9 顺序执行，各自独立可上线/回滚。Phase 8.1/8.2（2026-06-26 追加）把"问数符合 L1→L2 架构"的三处偏离收口：8.1 治理地基对齐 + 删两条物理直表旁路，8.2 L1 grounding 升级。
+
+**完成状态（2026-06-26，Phase 7/8/9）**：
+- ✅ **Phase 7 发布累积**：`semantic_release_service.publish` 改按 `asset_key` 累积 namespace 全部已发布资产 + `rebuild_active_baseline` 基线重建；附带修 `_build_compatibility_declaration` 保留资产误报 breaking。在线坐实 active manifest 单 cube → 2 cube。443 语义单测 + 27 release 集成全绿。
+- ✅ **Phase 8 DataChat 切 official**：`send_message_handler` 传 `runtime_mode="official"`，DataChat 主链读 active manifest，official 下 grounding 命中已发布 cube 并编译 SQL（实测 "学生答题统计 总数" → route_type=cube）。**D2 discovery 同源已回退**（commit dc0da25）——`GET /semantic/cubes` 是 Cube 管理列表通用契约，切 manifest 越界打破管理页；留 follow-up（应走 DataChat 专属 manifest 端点，不复用通用列表）。
+- ✅ **Phase 9 文档对齐 + verify**：§1.4 标注 DataChat 主链已落地 official；全后端 2671 passed / 3 skipped。
+- 🔴 **遗留（独立 M3 RLS 待办，非 M7 范围）**：published cube 经 DataChat 消费出数被治理访问层默认拒绝（`governance/access.py:698` 无匹配访问策略→deny；handler `viewer_roles=[]` 写死；`observe` 模式在 router 路径仍阻断）。命脉前两道门（manifest 单一事实源 + grounding/编译）已通，第③道门（访问授权）属 M3——需给已发布 cube 配访问策略 + handler 传真实角色 + 查 observe 为何在 router 路径阻断。旁证：DataAgent 运行时工具路径已真出数 3989 万（cube 确实可消费）。
 
 ## Current Position
 
@@ -110,6 +118,27 @@ Plans:
 Plans:
 - [x] 08-PLAN.md — Wave 1: RED 测试（坐实 send_message_handler 未传 runtime_mode="official"）✅ 2026-06-26（`cf7ae51`）
 - [x] 08-02-PLAN.md — Wave 2: D1 切 official（GREEN）+ 兜底语义确认 + D2 discovery 同源 + official 出数/无快照诚实兜底/comment 不命中集成测试 ✅ 2026-06-26（`e5151cb`/`73862ce`/`674dcd1`，四文件 38 passed）；D4 运维桥接 + 真实闭环验证待执行者做
+
+### Phase 8.1: 语义消费收口·治理地基与物理直表收口（`CONSUME-04`）
+
+> 背景：Phase 8 切 official 后，问数"符合 L1→L2 架构"仍有三处偏离，本期收口前两处（治理地基 + 物理直表），L1 升级留 Phase 8.2。锁定口径（2026-06-26）：完整治理对齐 / 彻底删两条物理直表路 / 必须登录。详见 `.planning/phases/08.1-*/08.1-CONTEXT.md`。
+
+- **治理管线对齐**：DataChat 主链（`send_message_handler._handle_via_semantic_router`）与全局 Agent API（`/agent/semantic/plan`）走同一治理裁决——复用 `AccessPolicyDecisionService` 的 `pre_route` / `post_compile`（DI 已有，`container.py:323`），不再只写死 `viewer_roles=[]`；同一治理主体在两入口提同一问，`policy_decision.decision` 一致。
+- **principal 透传 + 拒匿名**：`conversations.py` send-message 从 `optional_auth` 收紧为必须登录（与 `agent.py` 同口径），principal 解析只在 interfaces 层（碰 `g`），经 `SendMessageCommand` 透传进 application；不在 handler 注入 `PrincipalResolver`（`execute_plan` 内部已 `_resolve_roles`）。
+- **两条物理直表旁路彻底删除**：① legacy 第 3 层 `_handle_via_legacy_llm` 物理分支 + `_execute_query`（绕 dw-query-gateway，违反 `base_adapter.py:117`）；② agent 第 2 层 `DataChatChannel`→`tool_registry.py:144 self._adapter.execute_query`。两条都删，无 env 灰度回退口子。
+- **统一诚实兜底**：语义/agent 答不出（semantic 软失败 / 未命中 / agent 短路）统一收敛到 `_build_unanswerable_fallback()`（`source='fallback'` / `status='unanswerable'`），不产 SQL、不碰物理表；`_handle_via_agent` 对全局会话（`dataset_id is None`）短路 `return None` 消除死路径。
+- **零新框架/端口/枚举**：全部复用既有构件（`AccessPolicyDecisionService` / `PrincipalResolver` / 诚实兜底范式 / 统一响应异常）；AI 入口净减少（删一条绕前门的 `OpenAIService.generate_sql` 路径）。
+- **回归与文档**：改 `test_datachat_official_consume.py:313`（`legacy_llm`→`fallback`）+ 改写受影响 GREEN 单测 + 更新 `docs/runbooks/production-acceptance.md:80`；前端 DataChat dataset 选择器文案校准为"范围提示（可选）"；全平台 `make verify` 回归通过。
+
+### Phase 8.2: 语义消费收口·L1 意图理解升级（`CONSUME-05`）
+
+> 背景：L1 当前是纯 `_normalize(candidate) in normalized_question` 子串首命中匹配，LLM 抽取只是"盲拼词袋到 match_text"无 grounding，坏术语直接污染。锁定口径（2026-06-26）：严格 grounding 白名单（同义词靠 glossary aliases）。依赖 Phase 8.1 的诚实兜底作为 grounding 失败的安全落点。
+
+- **严格 grounding 白名单**：LLM 抽取的术语只采纳能 `_normalize` 命中 official active manifest **已发布 candidate**（metric/object/relation/action name·title·aliases + glossary term·canonical·aliases）的，命不中即丢弃；grounding 单点落 router 的 `_ground_terms`（真值来自 `RuntimeSemanticCatalog.from_manifest`），并加最小长度护栏（防短 candidate 如"量""数"变污染源）。
+- **不过度工程**（对抗审查结论）：砍掉打分/阈值/多候选消歧体系（现状首命中只在同类型多命中才"盲取第一个"，罕见），只加一行"更长 candidate 优先"；砍双重 grounding（不给 `LlmIntentExtractionService` 加永远传 None 的 `grounding_fn`）；不复用语义不匹配的 `_dimension_match_score`。
+- **eval 护栏先建**：新增 `test_intent_grounding_eval.py`（坏术语污染必被丢弃 / 口语问句→期望 route_type / grounding 全丢→blocked→下游兜底文案），作为开 env 的硬前置门。
+- **AI 仍走单前门**：经 `AgentInferenceRuntimeService.complete('global_ask.intent_extract')`，不新增 action/枚举/端口/provider；`SEMANTIC_ROUTER_LLM_INTENT_ENABLED` 默认 false（**新增** `env.sample` 条目，当前缺失），关闭态与今天逐字节等价；内网真实 LLM 验证达标后手动置 true。
+- 文档：`docs/architecture/README.md`（L1 路由命中语义由"子串"变"已发布 candidate grounding"）+ `docs/quality/testing.md`（新 eval 入口）同步。
 
 ### Phase 9: 语义消费收口·文档对齐与验收（`CONSUME-03`）
 

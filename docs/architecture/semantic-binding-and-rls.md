@@ -95,6 +95,7 @@ measure_refs:
 - **路由与编译只走显式 ref**：`SemanticRouterPreviewService` 与 `ExecutionCompiler` 的 metric→measure、object→cube 解析删除 fuzzy 回退分支；解析失败返回结构化失败码（如 `metric_binding_unresolved`），不静默降级。
 - **mapper 降级为建模态推荐服务**：`app/application/semantic_mapper/preview_service.py` 的模糊匹配仅服务 Copilot 与本体工作台的绑定建议，不再被任何运行时路径调用。
 - **catalog 统一**：semantic router、Agent 语义工具（`list_cubes / describe_cube / query`）、DevTools 回放、View 发布的运行时读取统一切到 `RuntimeSemanticCatalog`（published manifest）；YAML 仓储仅保留建模态 / preview 用途。
+  - **M7（2026-06-26）落地状态**：DataChat 全局问数 `/conversations` 主链已落地 official（`send_message_handler._handle_via_semantic_router` 传 `runtime_mode="official"`，里程碑 M7 Phase 8），不再默认 preview/YAML；active manifest 已改为按 `asset_key` **累积** namespace 全部已发布资产（M7 Phase 7，`semantic_release_service.publish` + `rebuild_active_baseline`），不再每次发布整盘替换为单 cube。**未落地（独立 M3 RLS 待办）**：published cube 经 DataChat 消费出数仍被治理访问层默认拒绝（`governance/access.py` 无匹配访问策略→deny，且 handler `viewer_roles=[]` 写死、`observe` 模式在 router 路径仍阻断）——需给已发布 cube 配套访问授权策略 + handler 传真实角色，属 M3 RLS 范围。`GET /semantic/cubes` 仍为 registry（Cube 管理列表契约），DataChat discovery 同源留作独立 follow-up（应走专属 manifest 端点，不复用通用列表）。
 - **信道对齐**：Agent 语义工具集对 feishu 与 datachat 信道一致暴露（`app/application/agent/services/tool_registry.py` 取消 channel 裁剪）。
 - **生命周期一致**：资产状态以 registry / release 为准，逐步移除 manifest 加载期的 draft 强制提升补丁（`runtime_manifest_catalog._activate_*`）；过渡期保留补丁但记录告警。
 
