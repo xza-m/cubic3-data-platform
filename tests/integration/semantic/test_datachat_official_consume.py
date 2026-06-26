@@ -15,7 +15,7 @@ runtime_mode="official"），preview_service 真实走 official 分支
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -81,6 +81,31 @@ class _StubRuntimeService:
                 "analysis_measure": {"cube_name": "dws_study_student_answer_kb_stat_di"},
                 "runtime_mode": runtime_mode,
             },
+        }
+
+
+class _DenyRuntimeService:
+    """模拟下游治理 post_compile deny：execute 返 status=='blocked'。
+
+    Phase 8.1 对账修订第 1 项：治理 post_compile 实测已在 runtime_service.py:113/126 链路，
+    集成层不重建治理引擎——这里只在 execute 边界用 stub 模拟「下游裁决 deny」的结果，
+    坐实 handler 对 blocked 当前不落 fallback。
+    """
+
+    def __init__(self, *, reason="data_policy_not_matched"):
+        self.execute_calls = []
+        self.reason = reason
+
+    def execute(self, *, target_type, metric_name=None, runtime_mode=None, **kwargs):
+        self.execute_calls.append(
+            {"target_type": target_type, "metric_name": metric_name, "runtime_mode": runtime_mode}
+        )
+        return {
+            "status": "blocked",
+            "target_type": "sql",
+            "reason": self.reason,
+            "execution_request": {"sql_query": None},
+            "traceability": {},
         }
 
 
@@ -293,11 +318,16 @@ def test_official_no_active_snapshot_returns_honest_not_ready(tmp_path):
     llm_service.generate_sql.assert_not_called()
 
 
+@pytest.mark.xfail(
+    strict=False,
+    reason="08.1-02 统一诚实兜底（决策 5）：dataset_id is None 未命中应落 source='fallback'（当前 legacy_llm）",
+)
 def test_official_yaml_only_comment_not_matched(tmp_path):
     """Test C：用答题 manifest（不含 comment）问「统计学生评论数」→ 不命中（D3 预期方向）。
 
     坐实 YAML-only comment 切 official 后不再被 DataChat 命中是既定方向，不为保 comment 做并集：
-    official 未命中 → legacy 诚实兜底「未能找到口径」（dataset_id is None），不伪造、不出数。
+    official 未命中 → 统一诚实兜底「未能找到口径」（dataset_id is None），不伪造、不出数。
+    Phase 8.1（决策 5）：兜底统一为 source='fallback'（当前 legacy_llm，本用例 xfail 待 GREEN 转绿）。
     """
     runtime_service = _StubRuntimeService()
     router = _build_router(tmp_path, snapshot_payload=_answer_manifest(), runtime_service=runtime_service)
@@ -308,11 +338,79 @@ def test_official_yaml_only_comment_not_matched(tmp_path):
     )
 
     ai = _ai_message(result)
-    # comment 不在答题 manifest → official 未命中 → legacy 诚实兜底「未能找到口径」
+    # comment 不在答题 manifest → official 未命中 → 统一诚实兜底「未能找到口径」
     assert "未能在已发布的语义资产中找到" in ai["content"]
-    assert ai["source"] == "legacy_llm"
+    # 决策 5：统一诚实兜底 source='fallback'（当前 RED：handler 落 legacy_llm）
+    assert ai["source"] == "fallback"
 
-    # 不出数、不实连：未命中走 legacy 兜底分支，runtime.execute 未被调用
+    # 不出数、不实连：未命中走兜底分支，runtime.execute 未被调用
     assert runtime_service.execute_calls == []
-    # 全局问数（dataset_id is None）legacy 兜底不调直连 LLM
+    # 全局问数（dataset_id is None）兜底不调直连 LLM
+    llm_service.generate_sql.assert_not_called()
+
+
+@pytest.mark.xfail(
+    strict=False,
+    reason="08.1-02 principal 透传（决策 4）：handler 应把 command.principal_context 透传给 execute_plan；当前写死 viewer_roles=[] 不传 principal_context",
+)
+def test_semantic_router_receives_principal_context(tmp_path):
+    """Phase 8.1（RED/xfail，决策 4）：principal 透传命门——execute_plan 应收非空 principal_context。
+
+    治理命门重述（对账实测）：DataChat execute_plan → runtime_service.execute 的 post_compile 治理
+    已在链路（runtime_service.py:113/126），命门是「handler 写死 viewer_roles=[]、零 principal_context
+    → 真实角色到不了治理引擎 PrincipalResolver.resolve（只读 principal_context.roles）→ 即便主体持
+    data_m1_reader 也不命中 m1_aggregate_read → deny」。本用例 spy SemanticRouterPreviewService.execute_plan，
+    断言被调用时收到含 data_m1_reader 的 principal_context（GREEN 后命中出数）。当前 RED：未透传。
+    """
+    runtime_service = _StubRuntimeService()
+    router = _build_router(tmp_path, snapshot_payload=_answer_manifest(), runtime_service=runtime_service)
+    handler, _, _, _, _, _ = _build_handler(router)
+
+    principal_context = {"principal_id": "p", "roles": ["data_m1_reader"]}
+
+    with patch.object(
+        router, "execute_plan", wraps=router.execute_plan
+    ) as spy_execute_plan:
+        handler.handle(
+            SendMessageCommand(
+                conversation_id=1,
+                user_id="user_123",
+                content=OFFICIAL_QUESTION,
+            )
+        )
+
+    spy_execute_plan.assert_called_once()
+    call_kwargs = spy_execute_plan.call_args.kwargs
+    # 核心断言（当前 RED）：handler 必须把含 data_m1_reader 的 principal_context 透传给治理引擎
+    assert call_kwargs.get("principal_context") == principal_context
+
+
+@pytest.mark.xfail(
+    strict=False,
+    reason="08.1-02 统一诚实兜底（决策 5）：下游治理 deny(blocked) 应落 source='fallback'（当前 semantic）",
+)
+def test_governance_deny_falls_back(tmp_path):
+    """Phase 8.1（RED/xfail，决策 5）：下游治理 deny(blocked) → 统一诚实兜底，不伪造出数。
+
+    对账修订第 1 项：治理 post_compile 实测已在 runtime_service.py:113/126 链路，集成层不重建治理引擎——
+    用 _DenyRuntimeService 在 execute 边界模拟「下游裁决 deny」（runtime_service.py:126 decision!=allow
+    → status='blocked'）。决策 5：三类答不出（含治理 deny）统一收敛到诚实兜底 source='fallback'。
+    当前 handler 对 blocked 落 source='semantic'（_build_blocked_route_message），故本用例 RED（xfail 待 GREEN）。
+    """
+    runtime_service = _DenyRuntimeService(reason="data_policy_not_matched")
+    router = _build_router(tmp_path, snapshot_payload=_answer_manifest(), runtime_service=runtime_service)
+    handler, _, msg_repo, _, llm_service, _ = _build_handler(router)
+
+    result = handler.handle(
+        SendMessageCommand(conversation_id=1, user_id="user_123", content=OFFICIAL_QUESTION)
+    )
+
+    ai = _ai_message(result)
+    # 决策 5：治理 deny → 统一诚实兜底 source='fallback'（当前 RED：handler 落 semantic）
+    assert ai["source"] == "fallback"
+
+    # 无伪造出数：deny 不产 query_result
+    ai_entity = msg_repo.create.call_args_list[-1][0][0]
+    assert ai_entity.query_result is None
+    # 全局问数兜底不调直连 LLM
     llm_service.generate_sql.assert_not_called()
