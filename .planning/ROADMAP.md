@@ -102,8 +102,14 @@ Plans:
 
 - DataChat 全局问数读 active manifest（`send_message_handler` 传 `runtime_mode="official"`），自助建模发布的 cube 可被问到并出数。
 - "能问什么" discovery 与 grounding 同源（均来自 active manifest）。
-- comment demo 经 DataChat 仍可问到出数（前提：其 cube 已在全量 manifest，由 Phase 7 基线保证）。
+- comment demo 经 DataChat 仍可问到出数 **当且仅当其 cube 已发布进全量 manifest**（由 Phase 7 基线重建保证）；切 official 后，仅在 YAML、未发布的 cube 不再被命中是预期方向（CONTEXT D3，单一事实源），本期不为保 comment 做 YAML 并集。
 - 无 active 快照时诚实回"运行时尚未就绪"，不 500、不伪造。
+
+**Plans:** 2 plans（wave 1 RED → wave 2 GREEN，TDD）
+
+Plans:
+- [ ] 08-PLAN.md — Wave 1: RED 测试（坐实 send_message_handler 未传 runtime_mode="official"）
+- [ ] 08-02-PLAN.md — Wave 2: D1 切 official（GREEN）+ 兜底语义确认 + D2 discovery 同源 + official 出数/无快照诚实兜底/comment 不命中集成测试
 
 ### Phase 9: 语义消费收口·文档对齐与验收（`CONSUME-03`）
 
