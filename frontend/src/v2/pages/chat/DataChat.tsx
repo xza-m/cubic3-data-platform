@@ -4,10 +4,12 @@
 // 选择数据集 → 创建/选择对话 → 发送问题。
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Bot, Loader2, MessageSquarePlus, Send, Sparkles } from 'lucide-react'
 import { useDatasets } from '@v2/hooks/datasets'
 import { useAgentSemanticExecute } from '@v2/hooks/agent'
 import { useCubeList } from '@v2/hooks/semantic'
+import { useAccessPermissions } from '@v2/hooks/accessPermissions'
 import {
   useConversation,
   useConversations,
@@ -36,6 +38,8 @@ function messageTone(role: string): 'accent' | 'neutral' {
 
 export default function DataChat() {
   const toast = useToast()
+  const navigate = useNavigate()
+  const { isAuthenticated } = useAccessPermissions()
   const { setBreadcrumbs, setTopBarActions, setContextPanel } = useAppShell()
   const datasetsQ = useDatasets({ page: 1, page_size: 100 })
   const cubesQ = useCubeList({ page: 1, page_size: 50 })
@@ -121,9 +125,21 @@ export default function DataChat() {
     setDraft('')
   }
 
+  // 决策3 前端侧：send-message 已收紧 @require_auth（后端拒匿名）。
+  // 未登录时引导登录而非发空请求被静默 401——与 client 401 拦截同口径（/login?redirect=...）。
+  const redirectToLogin = useCallback(() => {
+    toast.show({ tone: 'warning', title: t('dataChat.auth.required', '请先登录后再发起数据问答') })
+    navigate(`/login?redirect=${encodeURIComponent('/data-chat')}`, { replace: true })
+  }, [navigate, toast])
+
   const handleSend = async () => {
     const question = draft.trim()
     if (!question) return
+
+    if (!isAuthenticated) {
+      redirectToLogin()
+      return
+    }
 
     try {
       let conversationId = activeConversationId

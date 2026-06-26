@@ -456,3 +456,159 @@ def test_dataset_session_main_chain_fails_falls_back(tmp_path):
     dataset_repo.find_by_id.assert_not_called()
     llm_service.generate_sql.assert_not_called()
     assert ai_entity.query_result is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 8.1 Wave 3（08.1-03，决策 1/4）：跨入口治理一致性冒烟
+#
+# 一致性本质（对账修订第 1 项）：DataChat 与 /agent/semantic/plan 是两条入口，但两者
+# 都把「同一真实 principal」透传给各自的治理链——
+#   · DataChat 主链：execute_plan → runtime_service.execute 的 post_compile（已在链路）；
+#   · agent 入口：AgentPlanHandler.handle → AccessPolicyDecisionService.post_compile。
+# 一致性来自「两入口透传同一 principal 给同一治理裁决」，不在测试内重建治理引擎：
+#   · DataChat 侧用 _StubRuntimeService（治理 allow→出数）/ _DenyRuntimeService（治理 deny→blocked）
+#     在 execute 边界表达「下游治理裁决结果」；
+#   · agent 侧用真实 PrincipalResolver + AccessPolicyDecisionService，断言同一 principal 透达治理链。
+# 断言：① 含 data_m1_reader 的 principal 在两入口都被透传到治理链；
+#       ② 治理 allow 时 DataChat 出数（source='semantic'），无角色 principal 时 DataChat
+#          走 deny→统一诚实兜底（source='fallback'）——与 agent 入口「同主体同问 decision」方向一致。
+# ---------------------------------------------------------------------------
+
+
+def _build_agent_handler():
+    """组装 agent 对照入口（/agent/semantic/plan 背后的 AgentPlanHandler）。
+
+    用真实 PrincipalResolver + AccessPolicyDecisionService（同一治理引擎），router/compiler
+    用最小 stub——只为坐实「同一 principal 经 agent 入口同样透达治理链」，不重建治理规则。
+    """
+    from app.application.agent.handlers.agent_plan_handler import AgentPlanHandler
+    from app.application.governance.access import (
+        AccessPolicyDecisionService,
+        PrincipalResolver,
+    )
+
+    seen = {"router_principal": None, "compiler_principal": None}
+
+    class _AgentRouterStub:
+        def plan(self, *, question, principal_context=None, viewer_roles=None, runtime_mode=None):
+            seen["router_principal"] = principal_context
+            return {
+                "semantic_plan_id": "sp_parity",
+                "question": question,
+                "runtime_mode": runtime_mode,
+                "route": {"route_type": "cube", "matched": {"metric_name": "student_total_count"}},
+                "steps": [{"step_key": "semantic_match"}],
+                "execution_targets": [
+                    {"target_type": "sql", "metric_name": "student_total_count", "target_key": "metric:x:sql"}
+                ],
+                "traceability": {"question": question},
+            }
+
+    class _AgentCompilerStub:
+        def compile_preview(self, *, target_type, metric_name=None, principal_context=None, **_):
+            seen["compiler_principal"] = principal_context
+            return {
+                "status": "ready",
+                "target_type": target_type,
+                "logical_sql": "SELECT COUNT(1) FROM dws_study_student_answer_kb_stat_di",
+                "resource_set": ["dws_study_student_answer_kb_stat_di"],
+                "sql_hash": "sha256:parity",
+                "data_level": "M1",
+                "bindings": {"metric_name": metric_name},
+            }
+
+    handler = AgentPlanHandler(
+        principal_resolver=PrincipalResolver(),
+        access_policy_service=AccessPolicyDecisionService(),
+        router_service=_AgentRouterStub(),
+        compiler_service=_AgentCompilerStub(),
+    )
+    return handler, seen
+
+
+def test_two_entrances_principal_parity(tmp_path):
+    """决策 1/4：DataChat 与 /agent/semantic/plan 透传同一 principal 给各自治理链。
+
+    ① 含 data_m1_reader 的 principal：
+       · DataChat 主链把它透给 execute_plan（→ runtime_service post_compile），治理 allow（stub runtime）→ 出数 source='semantic'；
+       · agent 入口把同一 principal 透给 AgentPlanHandler 治理链（router/compiler 收到含 data_m1_reader 的 roles）。
+    ② 治理 deny（下游 post_compile decision!=allow → blocked）：
+       · DataChat 主链对 blocked 落统一诚实兜底 source='fallback'，不伪造出数；
+       · agent 入口同一 principal 同样透达治理链并产出 policy_decision（同主体同治理裁决出口）。
+       两入口一致性 = 透传同一 principal 给各自治理链 + 治理结果驱动同向行为（allow→出数/deny→不出数）。
+
+    注：真实 deny 的钥匙是 DB 侧 access_data_policies（CONTEXT 对账：deny=data_policy_not_matched
+    在 access-grant 段、依赖真实 DB 策略与主体 data_ 角色），单测沙箱无 DB 策略仓库时
+    AccessPolicyDecisionService 走 preview（M1 默认 allow）。本一致性测试不重建 DB 治理规则，
+    deny 行为由 DataChat 侧 _DenyRuntimeService 在 execute 边界表达；真实 deny 闭环留 Task 3 真实环境验证。
+    """
+    principal_with_role = {"principal_id": "p:reader", "roles": ["data_m1_reader"]}
+    principal_no_role = {"principal_id": "p:norole", "roles": []}
+
+    # --- 入口 A：DataChat（治理 allow，含 data_m1_reader）→ 透传 + 出数 ---
+    allow_runtime = _StubRuntimeService()
+    allow_router = _build_router(tmp_path, snapshot_payload=_answer_manifest(), runtime_service=allow_runtime)
+    dc_handler, _, dc_msg_repo, _, _, _ = _build_handler(allow_router)
+    with patch.object(allow_router, "execute_plan", wraps=allow_router.execute_plan) as spy_dc_plan:
+        dc_allow = dc_handler.handle(
+            SendMessageCommand(
+                conversation_id=1,
+                user_id="user_123",
+                content=OFFICIAL_QUESTION,
+                principal_context=principal_with_role,
+                viewer_roles=["data_m1_reader"],
+            )
+        )
+    # DataChat 入口把含 data_m1_reader 的 principal 透给治理链（execute_plan → runtime post_compile）
+    spy_dc_plan.assert_called_once()
+    assert spy_dc_plan.call_args.kwargs.get("principal_context") == principal_with_role
+    # 治理 allow（stub runtime 出数）→ source='semantic'
+    assert _ai_message(dc_allow)["source"] == "semantic"
+    dc_allow_entity = dc_msg_repo.create.call_args_list[-1][0][0]
+    assert dc_allow_entity.query_result is not None
+
+    # --- 入口 B：agent（同一含 data_m1_reader 的 principal）→ 透达治理链 ---
+    agent_handler, agent_seen = _build_agent_handler()
+    agent_allow = agent_handler.handle(
+        question=OFFICIAL_QUESTION,
+        principal_context=principal_with_role,
+        viewer_roles=["data_m1_reader"],
+    )
+    # agent 入口把同一 principal 透给治理链：router/compiler 收到含 data_m1_reader 的 roles
+    assert "data_m1_reader" in (agent_seen["router_principal"] or {}).get("roles", [])
+    assert "data_m1_reader" in (agent_seen["compiler_principal"] or {}).get("roles", [])
+    # agent 入口同样把 principal 透到 policy_decision（同主体同治理链）
+    assert agent_allow["principal_context"]["principal_id"] == "p:reader"
+    assert "data_m1_reader" in agent_allow["principal_context"]["roles"]
+
+    # --- 治理 deny：DataChat 主链对 blocked 统一兜底 + agent 同一 principal 透达治理链 ---
+    deny_runtime = _DenyRuntimeService(reason="data_policy_not_matched")
+    deny_router = _build_router(tmp_path, snapshot_payload=_answer_manifest(), runtime_service=deny_runtime)
+    dc_deny_handler, _, dc_deny_msg_repo, _, _, _ = _build_handler(deny_router)
+    with patch.object(deny_router, "execute_plan", wraps=deny_router.execute_plan) as spy_dc_deny_plan:
+        dc_deny = dc_deny_handler.handle(
+            SendMessageCommand(
+                conversation_id=1,
+                user_id="user_123",
+                content=OFFICIAL_QUESTION,
+                principal_context=principal_no_role,
+                viewer_roles=[],
+            )
+        )
+    # DataChat 入口：同样透传 principal 给治理链；下游治理 deny(blocked) → 统一诚实兜底 source='fallback'，不出数
+    spy_dc_deny_plan.assert_called_once()
+    assert spy_dc_deny_plan.call_args.kwargs.get("principal_context") == principal_no_role
+    assert _ai_message(dc_deny)["source"] == "fallback"
+    assert dc_deny_msg_repo.create.call_args_list[-1][0][0].query_result is None
+
+    # agent 入口：同一 principal 经真实治理链产出 policy_decision（同主体同治理裁决出口，decision 字段成立）
+    agent_deny_handler, agent_deny_seen = _build_agent_handler()
+    agent_deny = agent_deny_handler.handle(
+        question=OFFICIAL_QUESTION,
+        principal_context=principal_no_role,
+        viewer_roles=[],
+    )
+    # 同一 principal 透达 agent 治理链（router/compiler 收到该 principal），并产出 decision（同主体同治理出口）
+    assert agent_deny_seen["compiler_principal"]["principal_id"] == "p:norole"
+    assert agent_deny["policy_decision"]["decision"] in {"allow", "deny", "require_approval", "review"}
+    assert agent_deny["principal_context"]["principal_id"] == "p:norole"

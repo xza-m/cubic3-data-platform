@@ -967,6 +967,7 @@
   "dataChat.action.send": "发送",
   "dataChat.activeDataset": "当前数据集：{name}",
   "dataChat.api": "对话记录",
+  "dataChat.auth.required": "请先登录后再发起数据问答",
   "dataChat.catalog.empty": "暂无已发布语义资产",
   "dataChat.catalog.title": "能问什么",
   "dataChat.ctx.datasetFirst": "直接提问；可在左侧选择某个数据集以限定范围（可选）。",
