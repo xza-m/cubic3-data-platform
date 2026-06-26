@@ -10,7 +10,8 @@ from app.application.conversation.queries.list_conversations import ListConversa
 from app.di.utils import get_app_container
 from app.shared.response import success, created
 from app.shared.utils.logger import get_logger
-from app.interfaces.api.middleware.auth import optional_auth
+from app.interfaces.api.middleware.auth import optional_auth, require_auth
+from app.interfaces.api.v1.principal_context import principal_context_from_bearer
 
 logger = get_logger(__name__)
 bp = Blueprint('conversations', __name__, url_prefix='/api/v1/conversations')
@@ -155,7 +156,7 @@ def delete_conversation(conversation_id):
 
 
 @bp.route('/<int:conversation_id>/messages', methods=['POST'])
-@optional_auth
+@require_auth
 def send_message(conversation_id):
     """
     发送消息
@@ -176,12 +177,18 @@ def send_message(conversation_id):
         }
     """
     data = request.get_json()
-    user_id = getattr(g, 'user_id', None) or 'anonymous'
-    
+    user_id = g.user_id  # require_auth 已注入；拒匿名后无 'anonymous' 兜底
+
+    # 决策 4（08.1-02）：principal 解析（碰 Flask g）只在 interfaces 层完成，经 Command 透传进 application。
+    # 角色统一来自 access_role_bindings（治理主体权威源），非 JWT roles。
+    pc = principal_context_from_bearer(source="datachat_bearer")
+
     command = SendMessageCommand(
         conversation_id=conversation_id,
         user_id=user_id,
-        content=data['content']
+        content=data['content'],
+        principal_context=pc,
+        viewer_roles=pc.get("roles") or [],
     )
     
     container = get_app_container()
