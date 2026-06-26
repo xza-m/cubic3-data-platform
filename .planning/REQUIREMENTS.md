@@ -144,13 +144,14 @@
 | OPS-02 | Phase 6 | Pending |
 | OPS-03 | Phase 6 | Pending |
 | CONSUME-04 | Phase 8.1 | In Progress |
+| CONSUME-06 | Phase 10 | Completed |
 
 **Coverage:**
 - v1 requirements: 35 total
 - Mapped to phases: 35
 - Unmapped: 0
 
-> 脚注：`CONSUME-0x` 系列为 v1 后增量收口需求（问数语义消费链路：治理地基对齐 + 物理直表收口 + 诚实兜底），**不并入上表 v1 35 条 Coverage 计数**，仅补登台账可追溯性。`CONSUME-04`（Phase 8.1，治理地基 + 物理直表收口）状态随 Wave 3 收尾推进；`CONSUME-05`（L1 意图理解升级）留 Phase 8.2。
+> 脚注：`CONSUME-0x` 系列为 v1 后增量收口需求（问数语义消费链路：治理地基对齐 + 物理直表收口 + 诚实兜底 + 编译器默认分区注入），**不并入上表 v1 35 条 Coverage 计数**，仅补登台账可追溯性。`CONSUME-04`（Phase 8.1，治理地基 + 物理直表收口）状态随 Wave 3 收尾推进；`CONSUME-05`（L1 意图理解升级）留 Phase 8.2；`CONSUME-06`（Phase 10，编译器默认分区注入：date 型分区 cube 无显式过滤时注入默认最近 7 天窗口绕开 ODPS-0130071）已于 2026-06-26 GREEN 落地、代码侧关账（commit `cfbe55e`，整套 test_compiler.py `54 passed`），真实出数/docker 复跑为运维待办。
 
 ---
 *Requirements defined: 2026-03-25*

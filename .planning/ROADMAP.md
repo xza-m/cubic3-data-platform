@@ -27,7 +27,7 @@
 | 8.1 | 语义消费收口·治理地基与物理直表收口 | 让 DataChat 主链与全局 Agent API 走同一治理管线（pre_route/post_compile + principal 透传 + 拒匿名），彻底删除两条"直接扫物理表产 SQL"旁路（legacy 第3层 + agent 第2层），统一收敛到诚实兜底；堵死"从 Ontology 直接产 SQL / 直接扫物理表"的红线。 | `CONSUME-04` | DataChat / 问数入口 |
 | 8.2 | 语义消费收口·L1 意图理解升级 | 把 L1 从纯字符串子串匹配升级为"LLM 抽取 → 严格 grounding 白名单（只认已发布 candidate）→ 诚实兜底"，先建 eval 护栏，全程 env 默认关、真实 LLM 验证后再开。 | `CONSUME-05` | 无前端（后端 router） |
 | 9 | 语义消费收口·文档对齐与验收 | 文档把"semantic router 已切 RuntimeSemanticCatalog/manifest"从应然标为已落地，全平台 verify 回归。 | `CONSUME-03` | 文档 |
-| 10 | 语义消费收口·编译器默认分区注入 | 编译器对有 partition 但 latest_expr 空的 cube、且查询无显式分区/时间过滤时，注入默认日期窗口（最近 7 天，走 dialect.partition_condition），绕开 MaxCompute 全表扫描保护 ODPS-0130071，让 DataChat 问数真出数；不 override 用户显式过滤、方言安全、时钟可测。 | `CONSUME-06` | 无前端（后端编译器） |
+| 10 | 语义消费收口·编译器默认分区注入 | 2/2 | Complete   | 2026-06-26 |
 
 ## 里程碑 M7：语义消费收口（2026-06-26 立项）
 
@@ -166,8 +166,8 @@ Plans:
 - **产品口径变更（已拍板）**："总数"等无时间口径问数返回最近 7 天而非历史全量——绕开全表扫描的必然取舍；建模侧可配 latest_expr 或显式 date_range 覆盖。
 - **运维验证（执行者侧）**：真实出数（DataChat 问"学生答题统计 总数"绕过 ODPS-0130071）+ docker 复跑不回归；容器 TZ=+08 确认或登记 risk。
 
-**Plans:** 2 plans（wave 1 RED ✅ → wave 2 GREEN，TDD）；1/2 executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 10-PLAN.md — Wave 1: RED 默认分区注入失败断言（TestCompilerDefaultPartitionInjection 含时钟/守护/format兜底/安全锚点 + 翻转 test_latest_partition_fallback）✅ 2026-06-26（9 failed, 45 passed；零生产代码改动）
-- [ ] 10-02-PLAN.md — Wave 2: GREEN 块7 默认注入（最近7天窗口/守护显式过滤/方言安全/可测时钟/未知format兜底）+ 跑满 test_compiler.py 全套校准
+- [x] 10-02-PLAN.md — Wave 2: GREEN 块7 默认注入（最近7天窗口/守护显式过滤/方言安全/可测时钟/未知format兜底）+ 跑满 test_compiler.py 全套校准
