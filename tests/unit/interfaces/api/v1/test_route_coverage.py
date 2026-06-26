@@ -1534,9 +1534,20 @@ def test_conversation_routes_cover_crud_and_message_paths(monkeypatch):
     assert delete_resp.status_code == 200
     repo.delete.assert_called_once_with(1)
 
+    # send-message 收紧为拒匿名（08.1-02 决策 3）：无 Bearer → 401
+    anon_send = client.post('/api/v1/conversations/1/messages', json={'content': '你好'})
+    assert anon_send.status_code == 401
+
+    # 携带 admin Bearer（test_admin 触发 principal_context_from_bearer 的 TESTING 兜底）→ 200，principal 透传
+    _install_admin_auth(client)
     send_resp = client.post('/api/v1/conversations/1/messages', json={'content': '你好'})
     assert send_resp.status_code == 200
-    assert send_handler.handle.call_args.args[0].content == '你好'
+    sent_command = send_handler.handle.call_args.args[0]
+    assert sent_command.content == '你好'
+    assert sent_command.user_id == 'test_admin'
+    # 决策 4：principal_context 经 command 透传（access_role_bindings 治理主体上下文）
+    assert sent_command.principal_context is not None
+    assert sent_command.principal_context.get('principal_id') == 'test_admin'
 
 
 def test_semantic_routes_cover_file_management_schema_sync_and_error_paths(tmp_path, monkeypatch):

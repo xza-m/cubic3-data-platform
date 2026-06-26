@@ -96,18 +96,28 @@ class SendMessageHandler:
         # 兜底（在 _build_blocked_route_message 固化，不扩行为）：
         #   - 无 active 快照 → reason=semantic_runtime_not_ready → 诚实回「语义运行时尚未就绪」；
         #   - 未命中已发布业务语义（reason 以「未命中」开头）→ 返 None → legacy 诚实兜底「未能找到口径」。
+        # 决策 4（08.1-02）：透传真实治理主体上下文（access_role_bindings 权威源），不再写死空角色。
+        # 治理裁决已在下游 runtime_service.execute 链路（真实角色裁决并强制 deny），handler 不重复实现治理管线。
         plan_result = self.semantic_router_service.execute_plan(
             question=command.content,
-            viewer_roles=[],
+            principal_context=command.principal_context,
+            viewer_roles=command.viewer_roles or [],
             runtime_mode="official",
         )
         execution_results = plan_result.get("execution_results") or []
         if not execution_results:
             # 路由级阻断(权限/运行时未就绪)有明确原因时诚实回传,不伪装成"找不到口径";
-            # 纯未命中实体(reason 以"未命中"开头)交给 legacy 兜底。
+            # 纯未命中实体(reason 以"未命中"开头)交给统一诚实兜底（决策 5）。
             blocked = self._build_blocked_route_message(plan_result)
             if blocked is None:
-                return None
+                return self._build_unanswerable_fallback(
+                    command,
+                    conversation,
+                    user_message,
+                    reason=(plan_result.get("route") or {}).get("reason")
+                    or plan_result.get("reason")
+                    or "未命中已发布语义资产",
+                )
             ai_message = self.message_repository.create(Message(
                 conversation_id=command.conversation_id,
                 role='assistant',
@@ -132,6 +142,15 @@ class SendMessageHandler:
             }
 
         primary_result = execution_results[0]
+        # 决策 5（08.1-02）：下游治理裁决 deny → execute 返 status=='blocked'（runtime_service.py:126）。
+        # 治理 deny 不伪造出数，统一收敛到诚实兜底（不落 source='semantic'）。
+        if primary_result.get("status") == "blocked":
+            return self._build_unanswerable_fallback(
+                command,
+                conversation,
+                user_message,
+                reason=primary_result.get("reason") or "访问策略未命中",
+            )
         primary_traceability = primary_result.get("traceability") or {}
         ai_content = self._build_semantic_router_response(plan_result)
         generated_sql = self._extract_generated_sql(primary_result)
@@ -201,6 +220,11 @@ class SendMessageHandler:
 
     def _handle_via_agent(self, command, conversation, user_message) -> Dict[str, Any] | None:
         """通过 DataChatChannel + AgentService 处理"""
+        # 决策 2/5（08.1-02）：全局问数会话（dataset_id is None）不走 agent 第 2 层物理直表旁路。
+        # 在建 adapter / 写 running AgentQueryLog 前短路，消除"建 adapter→抛错被吞→残留 running log"死路径；
+        # 全局会话由 semantic 主链处理，未命中落统一诚实兜底。
+        if conversation.dataset_id is None:
+            return None
         import time
         from app.di.container import get_container
         from app.interfaces.channels.datachat_channel import DataChatChannel
@@ -275,9 +299,6 @@ class SendMessageHandler:
             if hasattr(adapter, 'close'):
                 adapter.close()
 
-    # legacy 回退路径回答的前置提示（Phase 5 可信标注）
-    LEGACY_DISCLAIMER = "【未经语义层验证】本回答由直连 LLM 根据物理表结构生成，未经语义层口径校验，请谨慎采信。"
-
     def _record_query_log(
         self,
         command,
@@ -309,112 +330,61 @@ class SendMessageHandler:
             logger.warning("agent_query_log write failed", source=source, error=str(exc))
 
     def _handle_via_legacy_llm(self, command, conversation, user_message) -> Dict[str, Any]:
-        """传统 LLM 调用（回退路径）——回答显式标注未经语义层验证"""
+        """三层回退终点（决策 2/5，08.1-02）：物理直表旁路已彻底删除。
+
+        semantic 主链 / agent 第 2 层均未能作答时（dataset_id is None 全局会话或 dataset 有值会话），
+        统一收敛到诚实兜底 _build_unanswerable_fallback（source='fallback'），不再退回直连 LLM 扫物理表产 SQL。
+        本方法是 handle() 终点（-> Dict 非 Optional），两条路径（None / 有值）都必须显式 return，不能落空。
+        """
         if conversation.dataset_id is None:
-            # 全局问数会话无绑定数据集：语义主链未能作答时，诚实兜底而非退回单表 SQL。
-            ai_content = (
-                "未能在已发布的语义资产中找到可回答该问题的口径。"
-                "请换种问法，或确认相关 Cube / 指标已发布到语义中心。"
+            # 全局问数会话无绑定数据集：未命中已发布语义资产 → 诚实兜底。
+            return self._build_unanswerable_fallback(
+                command, conversation, user_message, reason="未命中已发布语义资产"
             )
-            ai_message = Message(
-                conversation_id=command.conversation_id,
-                role='assistant',
-                content=ai_content,
-                source='legacy_llm',
-                created_at=utcnow(),
-            )
-            ai_message = self.message_repository.create(ai_message)
-            conversation.updated_at = utcnow()
-            self.conversation_repository.update(conversation)
-            return {
-                'user_message': user_message.to_dict(),
-                'ai_message': ai_message.to_dict(),
-            }
-        dataset = self.dataset_repository.find_by_id(conversation.dataset_id)
-        if not dataset:
-            raise ApplicationException(f"数据集不存在: {conversation.dataset_id}")
+        # dataset 有值会话：物理直表旁路已删，主链未作答同样落统一诚实兜底（不扫物理表）。
+        return self._build_unanswerable_fallback(
+            command, conversation, user_message, reason="未命中已发布语义资产"
+        )
 
-        fields = dataset.fields.all()
-        schema = {
-            'table_name': dataset.physical_table,
-            'source_type': dataset.source.source_type if dataset.source else 'unknown',
-            'fields': [
-                {
-                    'physical_name': f.physical_name,
-                    'data_type': f.data_type,
-                    'description': f.comment or ''
-                }
-                for f in fields
-            ]
+    def _build_unanswerable_fallback(
+        self,
+        command,
+        conversation,
+        user_message,
+        *,
+        reason: str | None = None,
+    ) -> Dict[str, Any]:
+        """统一诚实兜底（决策 5，08.1-02）：三类答不出（治理 deny / 未命中 / agent 软失败）统一收敛。
+
+        落 Message(source='fallback')（to_dict()['via_semantic_layer'] is False，conversation.py:192），
+        AgentQueryLog status='unanswerable'；不产 SQL、不碰物理表。
+        """
+        ai_content = (
+            "未能在已发布的语义资产中找到可回答该问题的口径。"
+            "请换种问法，或确认相关 Cube / 指标已发布到语义中心。"
+        )
+        ai_message = Message(
+            conversation_id=command.conversation_id,
+            role='assistant',
+            content=ai_content,
+            error=reason,
+            source='fallback',
+            created_at=utcnow(),
+        )
+        ai_message = self.message_repository.create(ai_message)
+        conversation.updated_at = utcnow()
+        self.conversation_repository.update(conversation)
+        self._record_query_log(
+            command,
+            source='semantic_router',
+            response=ai_content,
+            sql=None,
+            status='unanswerable',
+        )
+        return {
+            'user_message': user_message.to_dict(),
+            'ai_message': ai_message.to_dict(),
         }
-
-        import time
-        t0 = time.monotonic()
-        try:
-            logger.info("Calling legacy LLM to generate SQL", conversation_id=command.conversation_id)
-            llm_result = self.llm_service.generate_sql(
-                question=command.content,
-                schema=schema
-            )
-
-            generated_sql = llm_result['sql']
-            explanation = llm_result['explanation']
-            visualization_config = llm_result.get('visualization_suggestion', {})
-
-            query_result = self._execute_query(dataset, generated_sql)
-
-            ai_content = f"{self.LEGACY_DISCLAIMER}\n\n{explanation or '已为您生成查询并执行。'}"
-            ai_message = Message(
-                conversation_id=command.conversation_id,
-                role='assistant',
-                content=ai_content,
-                generated_sql=generated_sql,
-                query_result=query_result,
-                visualization_config=visualization_config,
-                source='legacy_llm',
-                created_at=utcnow()
-            )
-            ai_message = self.message_repository.create(ai_message)
-
-            conversation.updated_at = utcnow()
-            self.conversation_repository.update(conversation)
-
-            self._record_query_log(
-                command,
-                source='legacy_llm',
-                response=ai_content,
-                sql=generated_sql,
-                status='success',
-                duration=int((time.monotonic() - t0) * 1000),
-            )
-
-            return {
-                'user_message': user_message.to_dict(),
-                'ai_message': ai_message.to_dict()
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to process message: {e}", conversation_id=command.conversation_id)
-            error_message = Message(
-                conversation_id=command.conversation_id,
-                role='assistant',
-                content="抱歉，处理您的问题时遇到了错误。",
-                error=str(e),
-                source='legacy_llm',
-                created_at=utcnow()
-            )
-            error_message = self.message_repository.create(error_message)
-            self._record_query_log(
-                command,
-                source='legacy_llm',
-                response=str(e),
-                status='error',
-                duration=int((time.monotonic() - t0) * 1000),
-            )
-            return {
-                'user_message': user_message.to_dict(),
-                'ai_message': error_message.to_dict()
-            }
 
     def _build_semantic_router_response(self, plan_result: Dict[str, Any]) -> str:
         route_type = (plan_result.get("route") or {}).get("route_type") or "unknown"
@@ -450,24 +420,3 @@ class SendMessageHandler:
             return None
         result = primary_result.get("result")
         return result if isinstance(result, dict) else None
-
-    def _execute_query(self, dataset, sql: str) -> Dict[str, Any]:
-        """执行 SQL 查询（传统路径）"""
-        from app.infrastructure.adapters.datasources.factory import AdapterFactory
-
-        sql_upper = sql.strip().upper()
-        if not sql_upper.startswith('SELECT'):
-            raise ApplicationException("仅支持 SELECT 查询")
-        if 'LIMIT' not in sql_upper:
-            sql += ' LIMIT 1000'
-
-        adapter = AdapterFactory.create_adapter(
-            dataset.source.source_type,
-            dataset.source.connection_config
-        )
-
-        try:
-            result = adapter.execute_query(sql)
-            return result
-        finally:
-            adapter.close()

@@ -84,13 +84,16 @@ class TestSendMessageHandlerErrors:
 # ============================================================================
 
 
-class TestSendMessageHandlerLegacyLlm:
-    @pytest.mark.xfail(
-        strict=False,
-        reason="08.1-02 删除物理 legacy 路（_handle_via_legacy_llm 物理分支 + LEGACY_DISCLAIMER）",
-    )
-    def test_legacy_llm_success(self, handler, command, mock_repos):
-        """传统 LLM 路径成功"""
+class TestSendMessageHandlerLegacyTerminal:
+    """三层回退终点（08.1-02 决策 2/5）：物理直表旁路已删，未作答统一落诚实兜底 source='fallback'。"""
+
+    def test_dataset_session_unmatched_falls_back(self, handler, command, mock_repos):
+        """dataset 有值会话：semantic/agent 未作答 → 统一诚实兜底，不扫物理表、不调直连 LLM。
+
+        替代原 test_legacy_llm_success / test_legacy_llm_dataset_not_found_raises /
+        test_legacy_llm_error_creates_error_message——物理 legacy 路（_handle_via_legacy_llm 物理分支 +
+        _execute_query + LEGACY_DISCLAIMER）随决策 2 删除，dataset 有值会话现走 _build_unanswerable_fallback。
+        """
         conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
 
         conversation = MagicMock()
@@ -100,118 +103,23 @@ class TestSendMessageHandlerLegacyLlm:
         conversation.updated_at = None
         conv_repo.find_by_id.return_value = conversation
 
-        user_message = MagicMock()
-        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "查询"}
-        ai_message = MagicMock()
-        ai_message.to_dict.return_value = {"id": 2, "role": "assistant", "content": "已生成查询"}
-        msg_repo.create.side_effect = [user_message, ai_message]
+        # 真实 Message 实体（带 source/to_dict），create 原样回写——便于断言 source
+        msg_repo.create.side_effect = lambda message: message
 
-        dataset = MagicMock()
-        dataset.physical_table = "sales"
-        dataset.source = MagicMock()
-        dataset.source.source_type = "mysql"
-        dataset.source.connection_config = {}
-        dataset.fields = MagicMock()
-        dataset.fields.all.return_value = [
-            MagicMock(physical_name="amount", data_type="decimal", description="金额"),
-        ]
-        dataset_repo.find_by_id.return_value = dataset
-
-        llm_service.generate_sql.return_value = {
-            "sql": "SELECT SUM(amount) FROM sales",
-            "explanation": "已生成查询",
-            "visualization_suggestion": {},
-        }
-
-        mock_adapter = MagicMock()
-        mock_adapter.execute_query.return_value = {"rows": [[1000]], "columns": ["total"]}
-
-        with patch(
-            "app.application.agent.agent_factory.get_data_agent_service",
-            return_value=None,
-        ):
-            with patch(
-                "app.infrastructure.adapters.datasources.factory.AdapterFactory.create_adapter",
-                return_value=mock_adapter,
-            ):
-                result = handler.handle(command)
-
-        assert "user_message" in result
-        assert "ai_message" in result
-        assert result["user_message"]["content"] == "查询"
-        msg_repo.create.assert_called()
-        llm_service.generate_sql.assert_called_once()
-
-        # Phase 5 可信标注：legacy 路径 AI 消息标注 source 并前置未验证提示
-        ai_message_entity = msg_repo.create.call_args_list[1][0][0]
-        assert ai_message_entity.source == "legacy_llm"
-        assert ai_message_entity.content.startswith(SendMessageHandler.LEGACY_DISCLAIMER)
-
-    def test_legacy_llm_dataset_not_found_raises(self, handler, command, mock_repos):
-        """数据集不存在时抛出"""
-        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
-
-        conversation = MagicMock()
-        conversation.id = 1
-        conversation.user_id = "user_123"
-        conversation.dataset_id = 999
-        conv_repo.find_by_id.return_value = conversation
-
-        user_message = MagicMock()
-        user_message.to_dict.return_value = {}
-        msg_repo.create.return_value = user_message
-
-        dataset_repo.find_by_id.return_value = None
-
-        with patch(
-            "app.application.agent.agent_factory.get_data_agent_service",
-            return_value=None,
-        ):
-            with pytest.raises(ApplicationException, match="数据集不存在"):
-                handler.handle(command)
-
-    def test_legacy_llm_error_creates_error_message(self, handler, command, mock_repos):
-        """LLM 或查询异常时创建错误消息"""
-        conv_repo, msg_repo, dataset_repo, llm_service = mock_repos
-
-        conversation = MagicMock()
-        conversation.id = 1
-        conversation.user_id = "user_123"
-        conversation.dataset_id = 10
-        conversation.updated_at = None
-        conv_repo.find_by_id.return_value = conversation
-
-        user_message = MagicMock()
-        user_message.to_dict.return_value = {"id": 1, "role": "user", "content": "查询"}
-        error_ai_message = MagicMock()
-        error_ai_message.to_dict.return_value = {
-            "id": 2,
-            "role": "assistant",
-            "content": "抱歉，处理您的问题时遇到了错误。",
-            "error": "LLM 服务不可用",
-        }
-        msg_repo.create.side_effect = [user_message, error_ai_message]
-
-        dataset = MagicMock()
-        dataset.physical_table = "sales"
-        dataset.source = MagicMock()
-        dataset.source.source_type = "mysql"
-        dataset.source.connection_config = {}
-        dataset.fields = MagicMock()
-        dataset.fields.all.return_value = []
-        dataset_repo.find_by_id.return_value = dataset
-
-        llm_service.generate_sql.side_effect = Exception("LLM 服务不可用")
-
+        # semantic_router 不可用（handler 无 router）、agent 不可用 → 落 _handle_via_legacy_llm 终点
         with patch(
             "app.application.agent.agent_factory.get_data_agent_service",
             return_value=None,
         ):
             result = handler.handle(command)
 
-        assert "ai_message" in result
-        assert result["ai_message"].get("error") == "LLM 服务不可用"
-        assert "抱歉" in result["ai_message"].get("content", "")
+        ai_entity = msg_repo.create.call_args_list[-1][0][0]
+        # 决策 5：统一诚实兜底 source='fallback'，via_semantic_layer is False
+        assert ai_entity.source == "fallback"
+        assert ai_entity.to_dict()["via_semantic_layer"] is False
+        # 物理直表旁路已删：不扫物理表（不取 dataset）、不调直连 LLM
+        llm_service.generate_sql.assert_not_called()
+        dataset_repo.find_by_id.assert_not_called()
 
 
 class TestSendMessageHandlerAgent:
@@ -578,10 +486,6 @@ class TestSendMessageHandlerAgent:
         channel_instance.to_agent_request.assert_not_called()
         mock_db.session.add.assert_not_called()
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="08.1-02 principal 透传（决策 4）：handler 应传 command.principal_context；当前写死 viewer_roles=[] 不传 principal_context",
-    )
     def test_semantic_router_should_receive_principal_context(self, mock_repos):
         """Phase 8.1（RED/xfail，决策 4）：principal 透传命门——execute_plan 应收 principal_context。
 
@@ -629,31 +533,19 @@ class TestSendMessageHandlerAgent:
             "traceability": {},
         }
 
-        # GREEN 期望：command 带 principal_context（决策 4 在 08.1-02 给 Command 加字段）
+        # GREEN（08.1-02 决策 4）：command 带 principal_context/viewer_roles（Command 新增可选字段）
         principal_context = {"principal_id": "p", "roles": ["data_m1_reader"]}
         command = SimpleNamespace(
             conversation_id=1,
             user_id="user_123",
             content="学生答题统计 总数",
             principal_context=principal_context,
+            viewer_roles=["data_m1_reader"],
         )
 
         handler.handle(command)
 
         semantic_router_service.execute_plan.assert_called_once()
         call_kwargs = semantic_router_service.execute_plan.call_args.kwargs
-        # 核心断言（当前 RED）：handler 必须把 command.principal_context 透传给治理引擎
+        # 核心断言（GREEN）：handler 必须把 command.principal_context 透传给治理引擎
         assert call_kwargs.get("principal_context") == principal_context
-
-    @pytest.mark.xfail(
-        strict=False,
-        reason="08.1-02 删除 _execute_query（绕 gateway 的物理出口随物理 legacy 路一并删除）",
-    )
-    def test_execute_query_rejects_non_select(self, handler):
-        dataset = MagicMock()
-        dataset.source = MagicMock()
-        dataset.source.source_type = "mysql"
-        dataset.source.connection_config = {}
-
-        with pytest.raises(ApplicationException, match="仅支持 SELECT 查询"):
-            handler._execute_query(dataset, "DELETE FROM sales")
