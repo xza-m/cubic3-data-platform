@@ -11,7 +11,7 @@
 - **Milestone status:** 2026-03 后大量能力经 roadmap 外主线落地（Modeling Copilot、semantic release、权限中心、query gateway、架构优化六阶段）
 - **Current focus:** Phase 3-6 全部外设验收项已关账，单机 Docker 生产验收完成；2026-06-12 双层语义绑定规范定稿后，**M1+M2 已实施收敛并通过真实环境 E2E 验收**（Release 12 主链路 + 收敛批次：release 状态机 / Agent 通道优先级合约 / free SQL 同链裁决，证据见 `docs/runbooks/production-acceptance.md` 2026-06-12 复跑记录）；**M3 RLS 平台侧已实施完成**（2026-06-12 深夜：五构件 + 双主体 + metadata visibility + Key 模式 A/B + release pin 消费方；2026-06-14 过渡口径改为 `RLS_ENFORCEMENT_MODE` 开关、默认 `observe`——求值写审计但不阻断、网关零感知，先闭环语义评估，`deny`/`enforce` 留待 gateway 注入就绪；见 Next Actions 8）
 - **Plan readiness:** D-01 已按 D-09 口径修订：DevTools 是唯一调试与证据入口，但运营动作（物化）保留在详情页
-- **Phase 8 进行中（语义消费收口·问数切 official）:** Wave 1 (08-01, TDD-RED) 已完成（2026-06-26, commit `cf7ae51`）——立失败断言坐实 `SendMessageHandler._handle_via_semantic_router` 调 `execute_plan` 时未传 `runtime_mode="official"`（实测 kwargs 仅 `{question, viewer_roles}`，RED 指向 `None != 'official'`）。下一步 Wave 2 (08-02, GREEN) 改 handler 传 official 转绿。纯测试、零产品代码改动。
+- **Phase 8 进行中（语义消费收口·问数切 official）:** Wave 1 (08-01, TDD-RED) 已完成（2026-06-26, commit `cf7ae51`）——立失败断言坐实 `SendMessageHandler._handle_via_semantic_router` 调 `execute_plan` 时未传 `runtime_mode="official"`。**Wave 2 (08-02, GREEN) 已完成（2026-06-26, commits `e5151cb`/`73862ce`/`674dcd1`）**：D1 核心一行 handler 切 `runtime_mode="official"`（08-01 RED 转 GREEN）；兜底两条路径经确认正确（无快照→诚实「语义运行时尚未就绪」；未命中→legacy 诚实兜底「未能找到口径」），仅加注释固化不扩行为；D2 cube discovery 切 active manifest（manifest 优先 + registry 兜底，与 grounding 同源）；新增 official 三条闭环边界集成测试（出数/无快照诚实兜底/comment 不命中 D3，全程 stub 不实连真实数据源）。四文件合并 **38 passed**，未碰 grounding/intent/编译器/YAML。**待执行者做 D4 运维桥接 + 真实闭环验证**（重启 docker 加载 Phase 7+8、跑 `rebuild_active_baseline`、经真实 DataChat 问"学生答题统计 总数"断言真实出数；见 08-02-SUMMARY 待办）。
 
 ## Completed Setup
 

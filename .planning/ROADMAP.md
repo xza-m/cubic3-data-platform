@@ -108,8 +108,8 @@ Plans:
 **Plans:** 2 plans（wave 1 RED → wave 2 GREEN，TDD）
 
 Plans:
-- [ ] 08-PLAN.md — Wave 1: RED 测试（坐实 send_message_handler 未传 runtime_mode="official"）
-- [ ] 08-02-PLAN.md — Wave 2: D1 切 official（GREEN）+ 兜底语义确认 + D2 discovery 同源 + official 出数/无快照诚实兜底/comment 不命中集成测试
+- [x] 08-PLAN.md — Wave 1: RED 测试（坐实 send_message_handler 未传 runtime_mode="official"）✅ 2026-06-26（`cf7ae51`）
+- [x] 08-02-PLAN.md — Wave 2: D1 切 official（GREEN）+ 兜底语义确认 + D2 discovery 同源 + official 出数/无快照诚实兜底/comment 不命中集成测试 ✅ 2026-06-26（`e5151cb`/`73862ce`/`674dcd1`，四文件 38 passed）；D4 运维桥接 + 真实闭环验证待执行者做
 
 ### Phase 9: 语义消费收口·文档对齐与验收（`CONSUME-03`）
 
