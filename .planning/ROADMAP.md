@@ -166,8 +166,8 @@ Plans:
 - **产品口径变更（已拍板）**："总数"等无时间口径问数返回最近 7 天而非历史全量——绕开全表扫描的必然取舍；建模侧可配 latest_expr 或显式 date_range 覆盖。
 - **运维验证（执行者侧）**：真实出数（DataChat 问"学生答题统计 总数"绕过 ODPS-0130071）+ docker 复跑不回归；容器 TZ=+08 确认或登记 risk。
 
-**Plans:** 2 plans（wave 1 RED → wave 2 GREEN，TDD）
+**Plans:** 2 plans（wave 1 RED ✅ → wave 2 GREEN，TDD）；1/2 executed
 
 Plans:
-- [ ] 10-PLAN.md — Wave 1: RED 默认分区注入失败断言（TestCompilerDefaultPartitionInjection 含时钟/守护/format兜底/安全锚点 + 翻转 test_latest_partition_fallback）
+- [x] 10-PLAN.md — Wave 1: RED 默认分区注入失败断言（TestCompilerDefaultPartitionInjection 含时钟/守护/format兜底/安全锚点 + 翻转 test_latest_partition_fallback）✅ 2026-06-26（9 failed, 45 passed；零生产代码改动）
 - [ ] 10-02-PLAN.md — Wave 2: GREEN 块7 默认注入（最近7天窗口/守护显式过滤/方言安全/可测时钟/未知format兜底）+ 跑满 test_compiler.py 全套校准
