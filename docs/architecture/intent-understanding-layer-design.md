@@ -132,11 +132,20 @@ LLM 产物**不可信任结构即语义**。校验：
 
 阈值 `τ_high/τ_low/δ` **由 §6 eval 的 coverage-accuracy 曲线标定**，不拍脑袋；代码留常量 + 可配。
 
-### 5.5 与现有 `route()` 的集成点
+### 5.5 与现有 `route()` 的集成点（低风险 enrichment 接入）
 
-- `route()`（`preview_service.py:71-373`）保持**确定性主体作为 fallback**：env 关 或 LLM 失败 时，行为=今天。
-- env 开时：在 `_expand_question` 之处改为「调 ②③④」——若 ④ 判高置信，用 `GroundedIntent` 直接产出 `business_intent`/`execution_targets`（覆盖子串匹配结果）；中/低置信走澄清/兜底；**LLM 完全不产 SQL**，只产「选了哪些已发布资产」，下游 ⑤⑥⑦不变。
-- 返回结构：在现有 `business_intent` 上**新增** `confidence`、`grounding`（命中详情）、`clarification`（中态时）字段，旧消费方不破。
+**关键洞察**：现有 `_match_*`（`preview_service.py:1024` 等）本身**已是 grounding**——它只对**已发布候选**做 `_normalize(candidate) in match_text` 子串匹配。所以 LLM 的职责是**把口语映射到已发布候选的规范名**（提升召回），grounding 保证只把"已发布候选规范名"拼进 `match_text`（保证精度、不污染）。这比"覆盖 business_intent"侵入小得多，且天然 fallback-safe / env 关零回归。
+
+集成（改 `_expand_question`，`preview_service.py:58-69`，签名加 `runtime_catalog`）：
+
+1. env 关 / service 不可用 / LLM 失败 → **原样返回 `question`**（行为=今天，零回归）；
+2. env 开 → 从 `runtime_catalog` 经 `_runtime_entities` 建**已发布候选词表** `vocab`（metric/object/relation/action/glossary 的 name·title·aliases 归一化）；
+3. 调 ② `extract_intent(question, candidate_assets=vocab_keys)` 得 `IntentExtraction`；
+4. ③ `ground_terms(intent.all_terms(), vocab, MIN_GROUND_LEN)` → **命中的已发布规范名**（剔除越界/幻觉/过短）；
+5. 把命中的规范名拼进 `match_text`（既有 `_match_*` 据此命中正确实体）；`intent_type` 用于 **OR 增强** `wants_analysis/knowledge/tool`（口语动词不在关键词表也能点亮）；
+6. `business_intent` 上**新增** `confidence`/`grounding`/`candidates` 字段（旧消费方不破）。
+
+**三态门控（8.2 范围）**：高置信（有 grounded target）→ `_match_*` 命中 → ⑤⑥⑦正常出数；低（grounded 全空且子串也不中）→ 既有 blocked → Phase 8.1 `_build_unanswerable_fallback`。**中态澄清**：8.2 先在 `business_intent.candidates` 回候选列表，**完整澄清问句生成留 8.3**。`route()` 下游主体（target_flags/execution_targets）**不改**。
 
 ### 5.6 DI 变更
 
