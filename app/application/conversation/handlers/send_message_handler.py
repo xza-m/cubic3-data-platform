@@ -107,10 +107,13 @@ class SendMessageHandler:
         # 分析型 Data Agent 层 MVP（Phase 8.4）：可回答性门控前置短路。
         # 域内但所需维度未建（out_of_coverage，如"按学校"但无学校维度）/ 根本不在语义层（out_of_scope）
         # → 直接诚实告知缺口，不返回可能错粒度的执行结果（避免静默答非所问）。L1 关时门控为 None，不触发（零回归）。
-        gap_message = self._answerability_gap_message(plan_result)
-        if gap_message:
+        answerability = ((plan_result.get("business_intent") or {}).get("answerability")) or {}
+        gate_state = answerability.get("state")
+        if gate_state in ("out_of_coverage", "out_of_scope"):
+            # 可观测：status 记具体门控状态（而非笼统 unanswerable），便于聚合"哪些维度常被问但没建"。
             return self._build_unanswerable_fallback(
-                command, conversation, user_message, reason="coverage_gap", message=gap_message,
+                command, conversation, user_message,
+                reason="coverage_gap", message=answerability.get("message"), status=gate_state,
             )
 
         execution_results = plan_result.get("execution_results") or []
@@ -355,17 +358,6 @@ class SendMessageHandler:
             command, conversation, user_message, reason="未命中已发布语义资产"
         )
 
-    @staticmethod
-    def _answerability_gap_message(plan_result) -> str | None:
-        """分析型 Data Agent 层（8.4）：覆盖缺口（out_of_coverage）/ 库外（out_of_scope）→ 返回具体诚实告知文案；否则 None。
-
-        L1（8.2）关闭时 business_intent.answerability 为 None → 返回 None，不改变兜底行为（零回归）。
-        """
-        answerability = ((plan_result or {}).get("business_intent") or {}).get("answerability") or {}
-        if answerability.get("state") in ("out_of_coverage", "out_of_scope"):
-            return answerability.get("message") or None
-        return None
-
     def _build_unanswerable_fallback(
         self,
         command,
@@ -374,6 +366,7 @@ class SendMessageHandler:
         *,
         reason: str | None = None,
         message: str | None = None,
+        status: str = 'unanswerable',
     ) -> Dict[str, Any]:
         """统一诚实兜底（决策 5，08.1-02）：三类答不出（治理 deny / 未命中 / agent 软失败）统一收敛。
 
@@ -401,7 +394,7 @@ class SendMessageHandler:
             source='semantic_router',
             response=ai_content,
             sql=None,
-            status='unanswerable',
+            status=status,
         )
         return {
             'user_message': user_message.to_dict(),
