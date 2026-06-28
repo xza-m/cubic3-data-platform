@@ -2,8 +2,8 @@
 
 底层：container.data_asset_service()（读 PG 的 data_asset_tables/fields/snapshots，
 不触 adapter / MaxCompute live）。这是 agent 绕开 MaxCompute live 的事实底座。
-list/show/fields 返回已是纯 dict；evidence 返回 EvidenceBundle（有 .to_dict()）。
-按 id 的三个方法返回 None 表示 table 不存在 → not-found。
+list/show/fields/evidence 均返回已是纯 dict（evidence 由 build_table_evidence 内部
+构造 EvidenceBundle 后 .to_dict() 返回）。按 id 的三个方法返回 None 表示 table 不存在 → not-found。
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def asset() -> None:
 
 @asset.command("list", help="列出数据资产物理表（缓存态）")
 @click.option("--keyword", "-k", default="", help="关键词")
-@click.option("--source-id", default=None, type=int, help="数据源 id")
+@click.option("--source-id", default=None, type=str, help="数据源 id（字符串标识，如 maxcompute-default）")
 @click.option("--database", default=None, help="库名")
 @click.option("--schema", default=None, help="schema 名")
 @click.option("--sync-status", default=None, help="同步状态")
@@ -77,6 +77,6 @@ def asset_evidence(obj, table_id) -> None:
         result = container.data_asset_service().build_table_evidence(table_id)
         if result is None:
             not_found(f"未找到资产表: {table_id}", obj.output)
-        return result.to_dict() if hasattr(result, "to_dict") else result
+        return result  # build_table_evidence 内部已 .to_dict()，返回纯 dict
 
     run(obj, body)

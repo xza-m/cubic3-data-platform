@@ -68,11 +68,24 @@ def test_datasource_list_serializes_entities(runner, patch_ctx):
 
 
 def test_datasource_show_not_found_exit4(runner, patch_ctx):
-    handler = types.SimpleNamespace(handle=lambda q: None)
+    from app.shared.exceptions import ApplicationException
+
+    def _raise(_q):
+        raise ApplicationException("数据源不存在: 999")  # 真实 handler not-found 契约
+
+    handler = types.SimpleNamespace(handle=_raise)
     patch_ctx(_container(get_datasource_handler=handler))
     result = runner.invoke(cli, ["datasource", "show", "999"])
     assert result.exit_code == 4
     assert _payload(result)["code"] == -1
+
+
+def test_datasource_list_invalid_bool_is_usage_exit2(runner, patch_ctx):
+    # --is-active 非法值是用法错 → click BadParameter → exit 2（区别于运行时 error exit 1）
+    handler = types.SimpleNamespace(handle=lambda q: {"items": [], "total": 0})
+    patch_ctx(_container(list_datasources_handler=handler))
+    result = runner.invoke(cli, ["datasource", "list", "--is-active", "maybe"])
+    assert result.exit_code == 2
 
 
 # --- cube ---------------------------------------------------------------------
