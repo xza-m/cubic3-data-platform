@@ -5,6 +5,7 @@ import hashlib
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.application.data_agent.answerability import assess_from_intent
 from app.application.semantic.runtime_manifest_catalog import RuntimeSemanticCatalog
 from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
 from app.application.semantic_router.intent_understanding import add_candidates, ground_terms
@@ -105,12 +106,27 @@ class SemanticRouterPreviewService:
                 return default
             grounded = ground_terms(intent.all_terms(), vocab)
             match_text = question + " " + " ".join(grounded) if grounded else question
+            # 分析型 Data Agent 层 MVP（Phase 8.4）：顺带算可回答性门控（零额外 LLM，复用已有 intent+vocab+catalog）。
+            # 域内但所需维度未建→out_of_coverage 诚实告知缺口；根本不在语义层→out_of_scope。挂 business_intent 供兜底用。
+            dim_labels, dim_vocab = self._published_dimension_info(runtime_catalog)
+            verdict = assess_from_intent(
+                intent,
+                asset_vocab=vocab,
+                published_dimensions=dim_labels,
+                dimension_vocab=dim_vocab,
+            )
             return {
                 "match_text": match_text,
                 "intent_type": intent.intent_type,
                 "confidence": intent.confidence,
                 "grounded": grounded,
                 "candidates": candidate_keys[:20],
+                "answerability": {
+                    "state": verdict.state,
+                    "message": verdict.message,
+                    "missing_dimensions": verdict.missing_dimensions,
+                    "available_alternatives": verdict.available_alternatives,
+                },
             }
 
         # 向后兼容：旧词袋 service
@@ -156,6 +172,41 @@ class SemanticRouterPreviewService:
         seen = set()
         uniq_keys = [k for k in keys if not (k in seen or seen.add(k))]
         return vocab, uniq_keys
+
+    @staticmethod
+    def _published_dimension_info(
+        runtime_catalog: RuntimeSemanticCatalog | None,
+    ) -> Tuple[List[str], Dict[str, str]]:
+        """已发布 cube 维度：(人类可读标签列表, grounding 词表)。
+
+        - labels：title 优先，供"可答粒度"诚实告知文案；
+        - vocab：normalize(label/name/synonym) -> label，让中文维度词能命中（真实 cube title 多为英文，
+          须靠 synonyms 才能 ground，否则任意中文维度词都被误判为覆盖缺口）。
+        防御性：catalog 无 cube_repository（如测试桩）/异常 → 返回 ([], {})。
+        """
+        repo = getattr(runtime_catalog, "cube_repository", None)
+        if repo is None:
+            return [], {}
+        try:
+            cubes = repo.list_all()
+        except Exception:
+            return [], {}
+        labels: List[str] = []
+        vocab: Dict[str, str] = {}
+        seen = set()
+        for cube in cubes:
+            for name, dd in (getattr(cube, "dimensions", {}) or {}).items():
+                label = str(getattr(dd, "title", None) or name).strip()
+                # 备选粒度只列有中文标签的业务维度（避免把自动生成的英文技术维度当建议噪声）；
+                # grounding 词表 vocab 仍纳入全部 label/name/synonym（命中判定不受影响）。
+                if label and label not in seen and re.search(r"[一-鿿]", label):
+                    seen.add(label)
+                    labels.append(label)
+                for token in (label, name, *(getattr(dd, "synonyms", None) or [])):
+                    nt = _normalize(str(token or ""))
+                    if nt:
+                        vocab.setdefault(nt, label)
+        return labels, vocab
 
     def route(
         self,
@@ -452,6 +503,8 @@ class SemanticRouterPreviewService:
                 "grounded": expansion.get("grounded", []),
                 "candidates": expansion.get("candidates", []),
             },
+            # 分析型 Data Agent 层（8.4）：可回答性门控判定，L1 关时为 None（不影响行为）。
+            "answerability": expansion.get("answerability"),
         }
 
         return {

@@ -104,6 +104,15 @@ class SendMessageHandler:
             viewer_roles=command.viewer_roles or [],
             runtime_mode="official",
         )
+        # 分析型 Data Agent 层 MVP（Phase 8.4）：可回答性门控前置短路。
+        # 域内但所需维度未建（out_of_coverage，如"按学校"但无学校维度）/ 根本不在语义层（out_of_scope）
+        # → 直接诚实告知缺口，不返回可能错粒度的执行结果（避免静默答非所问）。L1 关时门控为 None，不触发（零回归）。
+        gap_message = self._answerability_gap_message(plan_result)
+        if gap_message:
+            return self._build_unanswerable_fallback(
+                command, conversation, user_message, reason="coverage_gap", message=gap_message,
+            )
+
         execution_results = plan_result.get("execution_results") or []
         if not execution_results:
             # 路由级阻断(权限/运行时未就绪)有明确原因时诚实回传,不伪装成"找不到口径";
@@ -346,6 +355,17 @@ class SendMessageHandler:
             command, conversation, user_message, reason="未命中已发布语义资产"
         )
 
+    @staticmethod
+    def _answerability_gap_message(plan_result) -> str | None:
+        """分析型 Data Agent 层（8.4）：覆盖缺口（out_of_coverage）/ 库外（out_of_scope）→ 返回具体诚实告知文案；否则 None。
+
+        L1（8.2）关闭时 business_intent.answerability 为 None → 返回 None，不改变兜底行为（零回归）。
+        """
+        answerability = ((plan_result or {}).get("business_intent") or {}).get("answerability") or {}
+        if answerability.get("state") in ("out_of_coverage", "out_of_scope"):
+            return answerability.get("message") or None
+        return None
+
     def _build_unanswerable_fallback(
         self,
         command,
@@ -353,13 +373,15 @@ class SendMessageHandler:
         user_message,
         *,
         reason: str | None = None,
+        message: str | None = None,
     ) -> Dict[str, Any]:
         """统一诚实兜底（决策 5，08.1-02）：三类答不出（治理 deny / 未命中 / agent 软失败）统一收敛。
 
         落 Message(source='fallback')（to_dict()['via_semantic_layer'] is False，conversation.py:192），
         AgentQueryLog status='unanswerable'；不产 SQL、不碰物理表。
+        message 非空时优先使用（分析型 Data Agent 层 8.4：覆盖缺口/库外的具体诚实告知文案）。
         """
-        ai_content = (
+        ai_content = message or (
             "未能在已发布的语义资产中找到可回答该问题的口径。"
             "请换种问法，或确认相关 Cube / 指标已发布到语义中心。"
         )

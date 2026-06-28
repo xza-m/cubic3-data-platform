@@ -37,7 +37,9 @@ class IntentExtraction:
     intent_type: str = "analysis"          # analysis | knowledge | tool
     target_asset: Optional[str] = None     # 已发布候选名；找不到 None
     metrics: List[str] = field(default_factory=list)
-    dimensions: List[str] = field(default_factory=list)
+    dimensions: List[str] = field(default_factory=list)     # 受约束：从已发布候选选（用于查询）
+    # 不受约束：问题需要按哪些维度分析/筛选，无论是否已发布（用于可回答性/覆盖缺口检测，如"学校""年级"）
+    required_dimensions: List[str] = field(default_factory=list)
     time_range: Optional[Dict[str, Any]] = None
     filters: List[Dict[str, Any]] = field(default_factory=list)
     order_by: Optional[str] = None
@@ -113,7 +115,8 @@ _INTENT_SCHEMA_DESC = {
     "intent_type": "analysis|knowledge|tool，三选一：查数=analysis，问口径/解释=knowledge，执行动作=tool",
     "target_asset": "从 candidate_assets 里选最匹配的一个已发布资产名；找不到填 null，禁止编造",
     "metrics": "从 candidate_assets 里选用户想要的指标名列表；找不到填 []",
-    "dimensions": "用户想按哪些维度分组/筛选（如 年级、科目、日期）；找不到填 []",
+    "dimensions": "从 candidate_assets 里选用户想按其分组/筛选的维度；找不到填 []",
+    "required_dimensions": "问题在业务上需要按哪些维度分析或筛选，无论是否已建模（如 学校、年级、地区）；据问题如实列出，不受 candidate_assets 限制",
     "time_range": '时间范围，如 {"kind":"last_n_days","n":7} 或 null',
     "filters": "筛选条件列表，如 [] ",
     "order_by": "排序意图，如 'desc' / 'top' / null",
@@ -240,6 +243,7 @@ class IntentUnderstandingService:
             target_asset=target,
             metrics=_str_list(raw.get("metrics")),
             dimensions=_str_list(raw.get("dimensions")),
+            required_dimensions=_str_list(raw.get("required_dimensions")),
             time_range=time_range,
             filters=filters[:_MAX_SLOT_ITEMS],
             order_by=order_by,

@@ -114,25 +114,33 @@ def assess_from_intent(
     *,
     asset_vocab: Dict[str, str],
     published_dimensions: List[str],
+    dimension_vocab: Optional[Dict[str, str]] = None,
     needs_time_window: bool = False,
 ) -> AnswerabilityVerdict:
     """从 L1（8.2）的 IntentExtraction + 已发布候选 桥接到四态判定。
 
     asset_vocab: 已发布 metric/object/... 的 grounding 白名单（preview_service._candidate_vocabulary 产出）。
-    published_dimensions: 目标 cube 已发布的维度名/标题列表（备选粒度）。
+    published_dimensions: 目标 cube 已发布维度的人类可读标签（备选粒度，用于诚实告知文案）。
+    dimension_vocab: 维度 grounding 白名单（normalize(label/name/synonym) -> label）；
+        未提供时退化为只用 published_dimensions 的字面（不含同义词）。
+        真实 cube 维度 title 多为英文，须靠 synonyms 才能让中文维度词命中，避免误判覆盖缺口。
     """
     # 域内判定：target_asset 或任一 metric 能绑到已发布资产
     target_hit = bool(intent.target_asset and ground_terms([intent.target_asset], asset_vocab))
     metric_hits = ground_terms(intent.metrics, asset_vocab)
     in_domain = bool(target_hit or metric_hits)
 
-    # 所需维度里未命中已发布维度的 → 覆盖缺口
-    dim_vocab: Dict[str, str] = {}
-    for d in published_dimensions:
-        nd = _normalize(d)
-        if nd:
-            dim_vocab.setdefault(nd, str(d))
-    ungrounded = [d for d in intent.dimensions if not ground_terms([d], dim_vocab)]
+    # 所需维度里未命中已发布维度的 → 覆盖缺口（用 dimension_vocab 含同义词的白名单判定）
+    if dimension_vocab is None:
+        dimension_vocab = {}
+        for d in published_dimensions:
+            nd = _normalize(d)
+            if nd:
+                dimension_vocab.setdefault(nd, str(d))
+    # 覆盖缺口检测优先用不受约束的 required_dimensions（问题真正需要的维度，含未发布的，如"学校"）；
+    # 它为空时退回 dimensions（受约束的已发布选择，向后兼容）。
+    needed = list(getattr(intent, "required_dimensions", None) or []) or list(intent.dimensions)
+    ungrounded = [d for d in needed if not ground_terms([d], dimension_vocab)]
 
     has_tw = intent.time_range is not None
     return classify_answerability(

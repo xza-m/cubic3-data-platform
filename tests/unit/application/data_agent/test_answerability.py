@@ -82,6 +82,32 @@ class TestAssessFromIntent:
         assert v.state == OUT_OF_COVERAGE
         assert v.missing_dimensions == ["学校"]
 
+    def test_required_dimensions_drives_gap_even_when_dimensions_grounded(self):
+        # 真实路径：dimensions 受约束只含已发布(知识点)，required_dimensions 含问题真正需要的(学校,未发布)
+        intent = IntentExtraction(
+            target_asset="答题总数", metrics=["答题总数"],
+            dimensions=["知识点"], required_dimensions=["学校", "知识点"],
+        )
+        v = assess_from_intent(
+            intent,
+            asset_vocab=_asset_vocab("答题总数"),
+            published_dimensions=PUBLISHED_DIMS,
+            dimension_vocab={"知识点": "知识点"},  # 知识点已发布(含同义词), 学校未发布
+        )
+        assert v.state == OUT_OF_COVERAGE
+        assert v.missing_dimensions == ["学校"]  # 只缺学校, 知识点已 ground
+
+    def test_dimension_vocab_synonyms_avoid_false_gap(self):
+        # 英文 title 维度 + 中文同义词词表 → 中文维度词能 ground, 不误判
+        intent = IntentExtraction(target_asset="答题总数", metrics=["答题总数"], required_dimensions=["知识点"])
+        v = assess_from_intent(
+            intent,
+            asset_vocab=_asset_vocab("答题总数"),
+            published_dimensions=["知识点名称"],
+            dimension_vocab={"knowledgename": "知识点名称", "知识点": "知识点名称"},
+        )
+        assert v.state == ANSWERABLE
+
     def test_nothing_grounds_is_out_of_scope(self):
         intent = IntentExtraction(target_asset="dwd日志表", metrics=["rb_cnt"], dimensions=["请求"])
         v = assess_from_intent(
