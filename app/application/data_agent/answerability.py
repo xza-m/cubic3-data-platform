@@ -140,7 +140,13 @@ def assess_from_intent(
     # 覆盖缺口检测优先用不受约束的 required_dimensions（问题真正需要的维度，含未发布的，如"学校"）；
     # 它为空时退回 dimensions（受约束的已发布选择，向后兼容）。
     needed = list(getattr(intent, "required_dimensions", None) or []) or list(intent.dimensions)
-    ungrounded = [d for d in needed if not ground_terms([d], dimension_vocab)]
+    # 只有"既不绑已发布维度、也不绑已发布度量/资产"才算缺口：绑到度量说明该概念已建模
+    # （只是作为度量而非切片维度，如"快速答题"=度量），避免把度量概念误判为缺维度。
+    ungrounded = [
+        d
+        for d in needed
+        if not ground_terms([d], dimension_vocab) and not ground_terms([d], asset_vocab)
+    ]
 
     has_tw = intent.time_range is not None
     return classify_answerability(
