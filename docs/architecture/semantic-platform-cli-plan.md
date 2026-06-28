@@ -16,28 +16,27 @@
 
 **现状（重要）**：仓库**已有一个 CLI** `cli/cubic3_dp_cli/`（Typer，**HTTP-client 风格**，打 `/api/v1`，bearer/api-key 鉴权），已覆盖 `auth / datasource / governance / describe`。本方案是**扩展它**到全域，而非从零建。
 
-## 2. 关键架构决策：一个 in-process 命令核 + 多前端（CLI / MCP）
+## 2. 关键架构决策：一个 in-process 命令核 + 两前端（本地 CLI / 现有 HTTP）
 
-这是 CLI 化的**枢纽决策**。原来的"HTTP-client vs in-process"二选一框错了——正确的是**"一个 in-process 命令核 + 多前端"**：
+这是 CLI 化的**枢纽决策**。形态是**"一个 in-process 命令核 + 前端"**（已定 2026-06-28：**本地 CLI 为主 + 复用现有 HTTP，不做 MCP**）：
 
 ```
-        ┌─ 本地 CLI ──────────  agent 能 exec/SSH 进平台机器时（当前 docker exec 即是）
-in-process │
-命令核 ────┼─ MCP server ───────  agent 远程、只有网络访问时（server co-located 跑，远程 agent 用 MCP 协议调）
-(薄封装DI) │
-        └─ 现有 HTTP API ────  人的 UI 继续用
+        ┌─ 本地 CLI（主）────  in-process: create_app(role='cli') 直调 DI，全覆盖 60+ 操作零端点
+in-process │                   agent 能 exec/SSH 进平台机器时用（当前 docker exec 即是）
+命令核 ────┤
+(薄封装DI) └─ 现有 HTTP ───────  cubic3_dp_cli / API：agent 远程、只有网络时用既有端点子集
 ```
 
-- **in-process 命令核**：`create_app(role='cli') + app_context` 直调 DI 服务（参考 `wsgi.py`/`run_worker.py`），是**唯一的能力实现**，薄封装、全覆盖 60+ 操作、零新建端点。
-- **前端 A — 本地 CLI**：在平台机器上（容器内/exec/SSH）跑命令核。
-- **前端 B — MCP server**：把命令核包成 MCP server（co-located 跑），**远程 agent（Claude/Codex）用 MCP 协议调**——兼得"全能力 + 远程可达"，不必为远程退化成 HTTP-client-CLI。
-- **现有 `cubic3_dp_cli`（HTTP-client）**：作为前端之一保留（auth/datasource 已有），或迁到命令核之上。
+- **in-process 命令核**：`create_app(role='cli') + app_context` 直调 DI 服务（参考 `wsgi.py`/`run_worker.py`），是**唯一的能力实现**，薄封装、全覆盖 60+ 操作、零新建端点。**这是 agent 的主操作面。**
+- **前端 A — 本地 CLI（主）**：在平台机器上（容器内/exec/SSH）跑命令核。当前 session 即 `docker exec` 进容器，已验证此路可行。
+- **前端 B — 现有 HTTP（`cubic3_dp_cli` / API）**：agent 远程、无 shell 时走既有 API 端点子集（auth/datasource/governance/describe 已有）。**不为全部 60+ 操作补端点**——远程只覆盖已有端点的能力，全能力靠本地 CLI。
+- **不做 MCP**（用户 2026-06-28 决定）：本地 CLI + HTTP 已够，不引入额外协议层。
 
 **关键洞察（远程拓扑）**：决定"agent 与平台不同位置能不能用"的，**不是 in-process vs HTTP，而是 agent 有没有办法在平台机器上执行进程**：
-- **能 exec/SSH**（哪怕 agent 本体在别处）→ 直接用本地 CLI（当前 session 就是 `docker exec` 进容器跑）。
-- **只有网络、无 shell** → 挂 **MCP server** 前端（或 HTTP）。
+- **能 exec/SSH**（哪怕 agent 本体在别处）→ 本地 CLI（全能力）。当前 `docker exec` 即是。
+- **只有网络、无 shell** → 走现有 HTTP 端点子集（能力受现有端点限制）。
 
-**建议（待你拍板）**：**以 in-process 命令核为骨干**，先做本地 CLI 前端（当前 exec 场景即可用），**MCP server 前端作为"远程 agent"的解法在 P2/P3 增量挂上**（复用同一核，零额外能力开发）。若坚持纯 HTTP-client（为 60+ 操作补端点），成本大得多且无远程优势——MCP 已覆盖远程。
+**结论**：以 **in-process 命令核 + 本地 CLI** 为骨干和主操作面；远程用既有 HTTP，不补端点、不做 MCP。
 
 ## 3. 命令树（七域全景）
 
