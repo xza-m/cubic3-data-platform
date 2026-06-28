@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.application.semantic.runtime_manifest_catalog import RuntimeSemanticCatalog
 from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
+from app.application.semantic_router.intent_understanding import add_candidates, ground_terms
 from app.domain.ontology.entities import BusinessAction, BusinessMetric, BusinessObject, BusinessRelation
 from app.domain.ontology.ports.action_repository import IBusinessActionRepository
 from app.domain.ontology.ports.glossary_repository import IGlossaryRepository
@@ -61,12 +62,100 @@ class SemanticRouterPreviewService:
         无 LLM / 抽取为空时原样返回，确定性匹配行为不变（零回归）。
         仅用于实体匹配，semantic_plan_id 与展示仍用原始 question。
         """
-        if self._intent_extraction_service is None:
+        if self._intent_extraction_service is None or not hasattr(self._intent_extraction_service, "extract_terms"):
             return question
         terms = self._intent_extraction_service.extract_terms(question)
         if not terms:
             return question
         return question + " " + " ".join(terms)
+
+    def _understand(
+        self,
+        question: str,
+        *,
+        runtime_mode: str | None,
+        runtime_manifest: dict[str, Any] | None,
+        runtime_catalog: RuntimeSemanticCatalog | None,
+        semantic_plan_id: str | None,
+        principal_context: dict[str, Any] | None,
+    ) -> Dict[str, Any]:
+        """L1 结构化意图理解 + grounding（Phase 8.2）。
+
+        - 新结构化 service（有 extract_intent）且 available → LLM 抽意图 → grounding 到已发布候选
+          → 把命中的规范名拼进 match_text（既有 _match_* 据此命中），并带回 intent_type/confidence。
+        - 旧词袋 service（extract_terms）→ 回退 _expand_question（向后兼容既有注入/测试）。
+        - 未启用 / 无 service / 抽取失败 → match_text=question（行为=今天，零回归）。
+        """
+        default = {"match_text": question, "intent_type": None, "confidence": 0.0, "grounded": [], "candidates": []}
+        service = self._intent_extraction_service
+        if service is None:
+            return default
+
+        if hasattr(service, "extract_intent"):
+            if not getattr(service, "available", False):
+                return default
+            vocab, candidate_keys = self._candidate_vocabulary(
+                runtime_mode=runtime_mode, runtime_manifest=runtime_manifest, runtime_catalog=runtime_catalog
+            )
+            principal_id = (principal_context or {}).get("principal_id")
+            intent = service.extract_intent(
+                question, candidate_assets=candidate_keys, principal_id=principal_id, plan_id=semantic_plan_id
+            )
+            if intent is None:
+                return default
+            grounded = ground_terms(intent.all_terms(), vocab)
+            match_text = question + " " + " ".join(grounded) if grounded else question
+            return {
+                "match_text": match_text,
+                "intent_type": intent.intent_type,
+                "confidence": intent.confidence,
+                "grounded": grounded,
+                "candidates": candidate_keys[:20],
+            }
+
+        # 向后兼容：旧词袋 service
+        if hasattr(service, "extract_terms"):
+            return {**default, "match_text": self._expand_question(question)}
+        return default
+
+    def _candidate_vocabulary(
+        self,
+        *,
+        runtime_mode: str | None,
+        runtime_manifest: dict[str, Any] | None,
+        runtime_catalog: RuntimeSemanticCatalog | None,
+    ) -> Tuple[Dict[str, str], List[str]]:
+        """从已发布候选（active manifest 过滤后）建 grounding 白名单词表 + 候选名列表。"""
+        vocab: Dict[str, str] = {}
+        keys: List[str] = []
+
+        def _named(entities, *, primary: str, title: str = "title", aliases: str = "aliases"):
+            for ent in entities:
+                p = getattr(ent, primary, None)
+                add_candidates(vocab, p, getattr(ent, title, None), *(getattr(ent, aliases, None) or []))
+                if p:
+                    keys.append(str(p))
+
+        common = dict(runtime_mode=runtime_mode, runtime_manifest=runtime_manifest, runtime_catalog=runtime_catalog)
+        _named(self._runtime_entities(self._metric_repository.list_all(), entity_type="metric", **common), primary="name")
+        _named(self._runtime_entities(self._object_repository.list_all(), entity_type="object", **common), primary="name")
+        _named(self._runtime_entities(self._relation_repository.list_all(), entity_type="relation", **common), primary="name")
+        _named(self._runtime_entities(self._action_repository.list_all(), entity_type="action", **common), primary="name")
+        for g in self._runtime_entities(self._glossary_repository.list_all(), entity_type="glossary", **common):
+            add_candidates(
+                vocab,
+                getattr(g, "term", None),
+                getattr(g, "canonical_name", None),
+                *(getattr(g, "aliases", None) or []),
+            )
+            term = getattr(g, "term", None) or getattr(g, "canonical_name", None)
+            if term:
+                keys.append(str(term))
+
+        # 去重保序
+        seen = set()
+        uniq_keys = [k for k in keys if not (k in seen or seen.add(k))]
+        return vocab, uniq_keys
 
     def route(
         self,
@@ -92,7 +181,15 @@ class SemanticRouterPreviewService:
         runtime_catalog = self._runtime_catalog(runtime_mode=runtime_mode, runtime_manifest=runtime_manifest)
         mapper_preview_service = self._mapper_preview_service_for(runtime_catalog)
         viewer_roles = self._resolve_roles(viewer_roles=viewer_roles, principal_context=principal_context)
-        match_text = self._expand_question(question)
+        expansion = self._understand(
+            question,
+            runtime_mode=runtime_mode,
+            runtime_manifest=runtime_manifest,
+            runtime_catalog=runtime_catalog,
+            semantic_plan_id=semantic_plan_id,
+            principal_context=principal_context,
+        )
+        match_text = expansion["match_text"]
 
         matched_metric, metric_match_source = self._match_metric(
             match_text,
@@ -118,9 +215,10 @@ class SemanticRouterPreviewService:
             runtime_manifest=runtime_manifest,
             runtime_catalog=runtime_catalog,
         )
-        wants_knowledge = any(keyword in question for keyword in self._KNOWLEDGE_KEYWORDS)
-        wants_analysis = any(keyword in question for keyword in self._ANALYSIS_KEYWORDS)
-        wants_tool = any(keyword in question for keyword in self._TOOL_KEYWORDS)
+        _intent_hint = expansion.get("intent_type")
+        wants_knowledge = any(keyword in question for keyword in self._KNOWLEDGE_KEYWORDS) or _intent_hint == "knowledge"
+        wants_analysis = any(keyword in question for keyword in self._ANALYSIS_KEYWORDS) or _intent_hint == "analysis"
+        wants_tool = any(keyword in question for keyword in self._TOOL_KEYWORDS) or _intent_hint == "tool"
         matched_entities: List[Dict[str, Any]] = []
         if matched_metric is not None:
             matched_entities.append(
@@ -349,6 +447,11 @@ class SemanticRouterPreviewService:
             "matched_entities": matched_entities,
             "primary_match": primary_entity,
             "analysis_intent": analysis_intent,
+            "intent_understanding": {
+                "confidence": expansion.get("confidence", 0.0),
+                "grounded": expansion.get("grounded", []),
+                "candidates": expansion.get("candidates", []),
+            },
         }
 
         return {

@@ -152,14 +152,12 @@ def _sync_provider_factory_from_config_service(config_service_provider):
 
 
 def _intent_extraction_from_gateway(gateway):
-    """全局问 LLM 意图抽取：默认关，开启(SEMANTIC_ROUTER_LLM_INTENT_ENABLED)时经前门 complete。"""
+    """全局问 L1 结构化意图理解（Phase 8.2）：默认关，开启(SEMANTIC_ROUTER_LLM_INTENT_ENABLED)时
+    经前门 invoke()+output_schema 做结构化意图抽取，由 router grounding 到已发布候选。
+    见 docs/architecture/intent-understanding-layer-design.md。关闭态行为=今天（零回归）。"""
 
     enabled = _parse_bool(os.getenv("SEMANTIC_ROUTER_LLM_INTENT_ENABLED", "false"))
-    if not enabled:
-        return LlmIntentExtractionService(None)
-    return LlmIntentExtractionService(
-        complete_fn=lambda prompt: gateway.complete("global_ask.intent_extract", prompt)
-    )
+    return IntentUnderstandingService(runtime_service=gateway, enabled=enabled)
 
 
 def _codex_run_service_from_config_service(repository, config_service_provider, codex_client_factory):
@@ -271,6 +269,7 @@ from app.application.agent_inference_runtime.runtime_config_service import Runti
 from app.application.agent_inference_runtime.service import AgentInferenceRuntimeService
 from app.application.agent_inference_runtime.errors import AgentInferenceRuntimeError
 from app.application.semantic_router.llm_intent_extraction import LlmIntentExtractionService
+from app.application.semantic_router.intent_understanding import IntentUnderstandingService
 
 # Application - Agent
 from app.application.agent.services.knowledge_service import KnowledgeService
