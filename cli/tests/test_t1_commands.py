@@ -104,13 +104,13 @@ def test_intent_answerability_projects(mock_call):
 
 def test_query_compile_bad_json_exit2(mock_call):
     mock_call(_env({}))
-    res = _invoke("query", "compile", "--dsl", "{bad json")
+    res = _invoke("query", "compile", "{bad json")
     assert res.exit_code == 2  # BadParameter → usage
 
 
 def test_query_compile_missing_file_exit2():
     # @缺失文件 → usage exit 2（与 semctl 对齐，不抛裸 traceback）
-    res = _invoke("query", "compile", "--dsl", "@/no/such/file.json")
+    res = _invoke("query", "compile", "@/no/such/file.json")
     assert res.exit_code == 2
 
 
@@ -123,7 +123,7 @@ def test_intent_route_passes_runtime_mode(mock_call):
 
 def test_query_compile_inline_json(mock_call):
     cap = mock_call(_env({"sql": "SELECT 1"}))
-    res = _invoke("query", "compile", "--dsl", '{"measures":["m"]}')
+    res = _invoke("query", "compile", '{"measures":["m"]}')
     assert res.exit_code == 0
     assert cap["json_body"] == {"measures": ["m"]}
     assert cap["path"] == "/api/v1/semantic/compile"

@@ -84,6 +84,27 @@ def test_no_legacy_semantic_group():
     assert "semantic" not in {p.split()[0] for p in _ALL_PATHS}
 
 
+def _options_for(path: str) -> set:
+    node = get_command(app)
+    for part in path.split():
+        node = node.commands[part]
+    return {opt for p in node.params for opt in getattr(p, "opts", []) if opt.startswith("--")}
+
+
+# 带语义参数的命令两路必须暴露同名 option（防"同名命令、参数漂移"——parity 仅命令名时漏检的根）
+RUNTIME_MODE_COMMANDS = {"query plan", "query explain", "intent route", "intent extract", "intent answerability"}
+
+
+def test_runtime_mode_commands_expose_option():
+    for cmd in RUNTIME_MODE_COMMANDS:
+        assert "--runtime-mode" in _options_for(cmd), f"{cmd} 缺 --runtime-mode（与 semctl 漂移）"
+
+
+def test_query_compile_takes_positional_dsl():
+    # 两路 query compile 入参形态一致：位置参，不是 --dsl 选项
+    assert "--dsl" not in _options_for("query compile")
+
+
 def test_output_contract_exit_codes_canonical():
     # 退出码契约与 semctl 一致：0/1/2/4/5
     assert (

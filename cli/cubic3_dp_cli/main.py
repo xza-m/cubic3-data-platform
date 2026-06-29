@@ -16,7 +16,11 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(result, int):
             return result
     except Cubic3DpError as exc:
-        print(str(exc), file=sys.stderr)
+        # 网络/传输失败也输出与 semctl 同形的失败 envelope 到 stdout（JSON 是 agent 契约），保留退出码
+        import json
+
+        json.dump({"code": -1, "message": str(exc), "trace_id": None}, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
+        sys.stdout.write("\n")
         return exc.exit_code
     except click.ClickException as exc:
         exc.show(file=sys.stderr)

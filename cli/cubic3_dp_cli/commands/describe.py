@@ -43,7 +43,7 @@ def _description(base_url: str) -> dict:
         _command("ontology.list", "ontology <kind> list", "列出本体（kind: object/property/metric/glossary/relation/action/policy）", "GET /api/v1/ontology/{plural}", True, False),
         _command("ontology.show", "ontology <kind> show <key>", "查看单个本体", "GET /api/v1/ontology/{plural}/{key}", True, False),
         _command("ontology.status", "ontology <kind> status <key>", "查本体状态（投影 show.status）", "GET /api/v1/ontology/{plural}/{key}", True, False),
-        _command("query.compile", "query compile --dsl <json>", "QueryDSL→SQL（纯编译）", "POST /api/v1/semantic/compile", True, False),
+        _command("query.compile", "query compile <dsl-json>", "QueryDSL→SQL（纯编译）", "POST /api/v1/semantic/compile", True, False),
         _command("query.plan", "query plan <question>", "NL→语义规划", "POST /api/v1/semantic-router/plan", True, False),
         _command("query.explain", "query explain <question>", "NL→编译预览 SQL（不出数）", "POST /api/v1/semantic-router/execute-plan-preview", True, False),
         _command("intent.route", "intent route <question>", "语义路由", "POST /api/v1/semantic-router/route", True, False),

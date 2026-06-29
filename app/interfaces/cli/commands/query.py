@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import click
 
-from app.interfaces.cli.output import load_json_arg, run
+from app.interfaces.cli.output import load_json_arg_or_fail, run
 
 
 @click.group("query")
@@ -25,8 +25,9 @@ def query() -> None:
 @click.argument("dsl")
 @click.pass_obj
 def query_compile(obj, dsl) -> None:
+    dsl_dict = load_json_arg_or_fail(dsl, output=obj.output)  # 坏 DSL → usage exit 2（与 cubic3-dp 对齐）
+
     def body(container):
-        dsl_dict = load_json_arg(dsl)
         result = container.semantic_query_service().compile_query(dsl_dict)
         return {
             "sql": result.sql,

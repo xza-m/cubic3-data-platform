@@ -125,8 +125,6 @@ def root(
         auth_source=auth_source,
         access_token=resolved_access_token,
         refresh_token=resolved_refresh_token,
-        access_expires_at=stored_profile.access_expires_at,
-        refresh_expires_at=stored_profile.refresh_expires_at,
         api_key=resolved_api_key,
     )
 

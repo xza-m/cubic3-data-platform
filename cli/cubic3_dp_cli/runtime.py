@@ -25,14 +25,12 @@ class RuntimeContext:
     auth_source: str
     access_token: str | None = None
     refresh_token: str | None = None
-    access_expires_at: str | None = None
-    refresh_expires_at: str | None = None
     api_key: str | None = None
 
 
 class OutputFormat(str, Enum):
     json = "json"
-    table = "table"
+    human = "human"  # 与 semctl 对齐（单一规范词，非 table）
 
 
 def runtime(ctx: typer.Context) -> RuntimeContext:

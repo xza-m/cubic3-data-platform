@@ -6,7 +6,7 @@ from typing import Any, Iterable
 
 
 def emit(data: Any, *, output: str = "json") -> None:
-    if output == "table":
+    if output == "human":
         _emit_table(data)
         return
     json.dump(data, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)

@@ -59,6 +59,25 @@ def test_write_commands_present():
     assert not missing, f"semctl 缺写域命令：{sorted(missing)}"
 
 
+def _options_for(path: str) -> set:
+    node = cli
+    for part in path.split():
+        node = node.commands[part]
+    return {opt for p in node.params for opt in getattr(p, "opts", []) if opt.startswith("--")}
+
+
+RUNTIME_MODE_COMMANDS = {"query plan", "query explain", "intent route", "intent extract", "intent answerability"}
+
+
+def test_runtime_mode_commands_expose_option():
+    for cmd in RUNTIME_MODE_COMMANDS:
+        assert "--runtime-mode" in _options_for(cmd), f"{cmd} 缺 --runtime-mode（与 cubic3-dp 漂移）"
+
+
+def test_query_compile_takes_positional_dsl():
+    assert "--dsl" not in _options_for("query compile")
+
+
 def test_output_contract_exit_codes_canonical():
     assert (
         output.EXIT_OK, output.EXIT_ERROR, output.EXIT_USAGE,

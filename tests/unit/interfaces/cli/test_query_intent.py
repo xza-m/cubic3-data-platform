@@ -53,11 +53,12 @@ def test_query_compile_serializes_compile_result(runner, patch_ctx):
     assert data == {"sql": "SELECT 1", "primary_cube": "c", "joined_cubes": ["c2"], "scoped_table_refs": ["t"]}
 
 
-def test_query_compile_bad_json_errors(runner, patch_ctx):
+def test_query_compile_bad_json_is_usage_exit2(runner, patch_ctx):
+    # 坏 DSL = 用法错 → exit 2（load_json_arg_or_fail，与 cubic3-dp 对齐；原 exit 1 已统一为 2）
     svc = types.SimpleNamespace(compile_query=lambda dsl: None)
     patch_ctx(_container(semantic_query_service=svc))
     result = runner.invoke(cli, ["query", "compile", "{not json"])
-    assert result.exit_code == 1
+    assert result.exit_code == 2
     assert _payload(result)["code"] == -1
 
 

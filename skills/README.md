@@ -9,4 +9,4 @@
 
 | skill | 功能 | 指南的 CLI |
 |---|---|---|
-| `dp-semantic-builder/` | 建设/运维语义层：建模→发布 cube/view、调试问数、治理 | `semctl`(本地引擎) / `cubic3-dp`(远程客户端) |
+| `dp-semantic-builder/` | 建设/运维语义层：建模→发布 cube、调试问数、维护本体 | `semctl`(本地引擎) / `cubic3-dp`(远程客户端) |
