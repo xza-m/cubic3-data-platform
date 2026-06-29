@@ -107,6 +107,19 @@ def test_query_compile_bad_json_exit2(mock_call):
     assert res.exit_code == 2  # BadParameter → usage
 
 
+def test_query_compile_missing_file_exit2():
+    # @缺失文件 → usage exit 2（与 semctl 对齐，不抛裸 traceback）
+    res = _invoke("query", "compile", "--dsl", "@/no/such/file.json")
+    assert res.exit_code == 2
+
+
+def test_intent_route_passes_runtime_mode(mock_call):
+    cap = mock_call(_env({"route_type": "cube", "business_intent": {}}))
+    res = _invoke("intent", "route", "各年级答题", "--runtime-mode", "official")
+    assert res.exit_code == 0
+    assert cap["json_body"] == {"question": "各年级答题", "runtime_mode": "official"}
+
+
 def test_query_compile_inline_json(mock_call):
     cap = mock_call(_env({"sql": "SELECT 1"}))
     res = _invoke("query", "compile", "--dsl", '{"measures":["m"]}')
@@ -126,9 +139,23 @@ def test_cube_list_normalizes_to_items(mock_call):
 
 
 def test_datasource_list_normalizes(mock_call):
-    mock_call(_env({"datasources": [{"id": 1}], "total": 1}))
+    # 真实后端键为 items（data-center 走平台 success() 约定）
+    mock_call(_env({"items": [{"id": 1}], "total": 1, "page": 1}))
     res = _invoke("datasource", "list")
     assert _out(res)["data"] == {"items": [{"id": 1}], "total": 1}
+
+
+def test_asset_list_normalizes_items_key(mock_call):
+    mock_call(_env({"items": [{"asset_key": "a"}], "total": 1}))
+    res = _invoke("asset", "list")
+    assert _out(res)["data"]["items"] == [{"asset_key": "a"}]
+
+
+def test_ontology_list_bare_list_normalizes(mock_call):
+    # ontology list 后端返回裸 list → 归一 {items,total}
+    mock_call(_env([{"name": "m1"}, {"name": "m2"}]))
+    res = _invoke("ontology", "metric", "list")
+    assert _out(res)["data"] == {"items": [{"name": "m1"}, {"name": "m2"}], "total": 2}
 
 
 def test_ontology_metric_list_path_and_normalize(mock_call):

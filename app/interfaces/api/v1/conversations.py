@@ -10,7 +10,7 @@ from app.application.conversation.queries.list_conversations import ListConversa
 from app.di.utils import get_app_container
 from app.shared.response import success, created
 from app.shared.utils.logger import get_logger
-from app.interfaces.api.middleware.auth import optional_auth, require_auth
+from app.interfaces.api.middleware.auth import optional_auth, require_admin, require_auth
 from app.interfaces.api.v1.principal_context import principal_context_from_bearer
 
 logger = get_logger(__name__)
@@ -18,9 +18,13 @@ bp = Blueprint('conversations', __name__, url_prefix='/api/v1/conversations')
 
 
 @bp.route('/datachat/observe', methods=['GET'])
-@require_auth
+@require_admin
 def datachat_observe():
-    """观察 DataChat 问数：结果分布 + 缺口维度 + 样例（纯读 AgentQueryLog；聚合逻辑共用 application 层）。"""
+    """观察 DataChat 问数：结果分布 + 缺口维度 + 样例（纯读 AgentQueryLog；聚合逻辑共用 application 层）。
+
+    样例含用户问题原文（user_message），属运维/治理视角，挂 @require_admin（与 semctl exec-only 信任级别对齐），
+    不对任意登录 token 暴露其他用户的问题原文。
+    """
     from app.application.conversation.datachat_observe import observe_datachat
     from app.extensions import db
 

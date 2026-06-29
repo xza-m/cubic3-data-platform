@@ -5,7 +5,7 @@ from typing import Annotated
 import typer
 
 from cubic3_dp_cli.client import encode_segment
-from cubic3_dp_cli.runtime import emit_result, runtime
+from cubic3_dp_cli.envelope import call_and_emit, call_list_emit
 
 
 app = typer.Typer(help="治理与审计命令", no_args_is_help=True)
@@ -25,21 +25,13 @@ def list_audit_traces(
     semantic_plan_id: Annotated[str | None, typer.Option("--semantic-plan-id", help="语义规划 ID")] = None,
     sql_hash: Annotated[str | None, typer.Option("--sql-hash", help="SQL 哈希")] = None,
 ) -> None:
-    emit_result(
-        ctx,
-        runtime(ctx).client.get(
-            "/api/v1/governance/audit-traces",
-            params={
-                "policy": policy,
-                "target_type": target_type,
-                "target_name": target_name,
-                "decision": decision,
-                "route_type": route_type,
-                "principal_id": principal_id,
-                "semantic_plan_id": semantic_plan_id,
-                "sql_hash": sql_hash,
-            },
-        ),
+    call_list_emit(
+        ctx, "GET", "/api/v1/governance/audit-traces",
+        params={
+            "policy": policy, "target_type": target_type, "target_name": target_name,
+            "decision": decision, "route_type": route_type, "principal_id": principal_id,
+            "semantic_plan_id": semantic_plan_id, "sql_hash": sql_hash,
+        },
     )
 
 
@@ -48,7 +40,4 @@ def get_audit_trace(
     ctx: typer.Context,
     trace_id: Annotated[str, typer.Argument(help="治理审计 Trace ID")],
 ) -> None:
-    emit_result(
-        ctx,
-        runtime(ctx).client.get(f"/api/v1/governance/audit-traces/{encode_segment(trace_id)}"),
-    )
+    call_and_emit(ctx, "GET", f"/api/v1/governance/audit-traces/{encode_segment(trace_id)}")

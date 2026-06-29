@@ -18,14 +18,17 @@ from cubic3_dp_cli.runtime import runtime
 
 
 def parse_json_arg(value: str) -> Any:
-    """解析 JSON 入参：'@file' 读文件 / '-' 读 stdin / 否则当内联 JSON（与 semctl load_json_arg 同口径）。"""
-    if value == "-":
-        text = sys.stdin.read()
-    elif value.startswith("@"):
-        text = Path(value[1:]).read_text(encoding="utf-8")
-    else:
-        text = value
+    """解析 JSON 入参：'@file' 读文件 / '-' 读 stdin / 否则当内联 JSON（与 semctl load_json_arg 同口径）。
+
+    读取与解析都在 try 内：@缺失文件/读 stdin 失败的 OSError 也转 BadParameter（usage exit 2）。
+    """
     try:
+        if value == "-":
+            text = sys.stdin.read()
+        elif value.startswith("@"):
+            text = Path(value[1:]).read_text(encoding="utf-8")
+        else:
+            text = value
         return json.loads(text)
     except (json.JSONDecodeError, OSError) as exc:
         raise typer.BadParameter(f"JSON 解析失败: {exc}")  # → usage exit 2

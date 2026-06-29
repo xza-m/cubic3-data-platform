@@ -22,7 +22,7 @@ def list_datasources(
 ) -> None:
     call_list_emit(ctx, "GET", "/api/v1/data-center/datasources", params={
         "source_type": source_type, "is_active": is_active, "search": search, "page": page, "page_size": page_size,
-    }, items_key="datasources")
+    }, items_key="items")  # data-center 蓝图走平台 success() 约定，键为 items
 
 
 @app.command("show", help="查看单个数据源（脱敏）")

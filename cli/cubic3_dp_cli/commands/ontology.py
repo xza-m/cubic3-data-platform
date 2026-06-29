@@ -32,7 +32,8 @@ def _make_kind(kind: str, plural: str, key_label: str) -> typer.Typer:
 
     @sub.command("list", help=f"列出 {kind}")
     def _list(ctx: typer.Context) -> None:
-        call_list_emit(ctx, "GET", f"/api/v1/ontology/{plural}", items_key=plural)
+        # 后端 ontology list 直接返回裸 list（success(data=[...])），_extract_list 短路归一，无需 items_key
+        call_list_emit(ctx, "GET", f"/api/v1/ontology/{plural}")
 
     @sub.command("show", help=f"查看单个 {kind}（主键：{key_label}）")
     def _show(ctx: typer.Context, key: Annotated[str, typer.Argument(help="主键 name（glossary 为 canonical_name）")]) -> None:

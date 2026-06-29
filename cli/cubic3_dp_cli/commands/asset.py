@@ -25,7 +25,7 @@ def list_assets(
     call_list_emit(ctx, "GET", "/api/v1/semantic/assets/tables", params={
         "keyword": keyword, "source_id": source_id, "database": database, "schema": schema,
         "page": page, "page_size": page_size,
-    }, items_key="tables")
+    }, items_key="items")  # semantic_assets 走平台 success() 约定，键为 items
 
 
 @app.command("show", help="查看资产表详情")

@@ -36,6 +36,7 @@ def _description(base_url: str) -> dict:
         _command("asset.evidence", "asset evidence <table_id>", "构建资产证据包", "GET /api/v1/semantic/assets/tables/{id}/evidence", True, False),
         _command("cube.list", "cube list", "列出 Cube 定义", "GET /api/v1/semantic/cubes", True, False),
         _command("cube.show", "cube show <name>", "查看 Cube（含 dims/measures）", "GET /api/v1/semantic/cubes/{name}", True, False),
+        _command("cube.describe", "cube describe <name>", "查看 Cube 详情（同 show，含 diagnostics）", "GET /api/v1/semantic/cubes/{name}", True, False),
         _command("view.list", "view list", "列出 View 定义", "GET /api/v1/semantic/views", True, False),
         _command("view.show", "view show <name>", "查看 View 详情", "GET /api/v1/semantic/views/{name}", True, False),
         _command("ontology.list", "ontology <kind> list", "列出本体（kind: object/property/metric/glossary/relation/action/policy）", "GET /api/v1/ontology/{plural}", True, False),
@@ -52,6 +53,7 @@ def _description(base_url: str) -> dict:
         _command("release.show", "release show <id>", "查看发布详情", "GET /api/v1/semantic/releases/{id}", True, False),
         _command("chat.observe", "chat observe", "观察 DataChat 问数：结果分布+缺口维度+样例", "GET /api/v1/conversations/datachat/observe", True, False),
         _command("governance.audit.list", "governance audit list", "列出治理审计 Trace", "GET /api/v1/governance/audit-traces", True, False),
+        _command("governance.audit.get", "governance audit get <trace_id>", "获取治理审计 Trace 详情", "GET /api/v1/governance/audit-traces/{trace_id}", True, False),
     ]
     return {
         "agent_first": {
