@@ -4,7 +4,7 @@
 application 服务，零新建领域逻辑、零新建端点。设计见
 [`docs/architecture/semantic-platform-cli-plan.md`](../../../docs/architecture/semantic-platform-cli-plan.md)。
 
-当前覆盖 **P0（骨架）+ P1（只读读域）+ P2（查询/意图/观测，preview-only）**。
+当前覆盖 **P0（骨架）+ P1（只读读域）+ P2（查询/意图/观测，preview-only）+ P3（建模/发布写域）**。
 
 ## 运行
 
@@ -36,6 +36,17 @@ python -m app.interfaces.cli <group> <verb> [args] [--output json|human] [--prin
 | `intent extract <question>` | L1 意图理解产物（grounded，取自 route，含 candidate_assets 白名单，与真实管线同源） |
 | `intent answerability <question>` | 四态可回答性门控（取自 route 的 business_intent.answerability） |
 | `chat observe [--limit] [--channel]` | 观察 DataChat 问数：结果分布 + 缺口维度 + 样例（读 AgentQueryLog） |
+| `cube draft --source-id/--table/--columns-from` | 从缓存列生成 cube 草稿 payload（**绕 MaxCompute**，只读供 review） |
+| `cube create <draft> / update <name> <patch>` | 落 YAML cube 定义（写，三件套） |
+| `proposal create/confirm-source/update-spec/draft/validate/gap/approve/apply/publish` | 7 步门控提案管线（`gap` 只读看门；`publish` 写 live manifest） |
+| `release list / show <id> / rollback <release_id>` | 语义发布（读 + 回滚 live manifest 安全网） |
+
+### 写域约定（P3）
+
+写命令一律 **`--dry-run`（预览不写）/ `--yes`（确认）/ 默认拒**。发布顺序门：
+`proposal create → update-spec（注入整份 spec，绕 draft 的 MaxCompute）→ validate → approve（须 validated）→ apply（→registry）→ publish（→live manifest）`。
+`proposal draft` 默认会打 MaxCompute（dev 易挂），需 `--allow-live` 显式放行——已 `update-spec` 时无需 draft。
+回滚：`release rollback <健康 release_id>`。
 
 ## 约定
 
@@ -48,5 +59,5 @@ python -m app.interfaces.cli <group> <verb> [args] [--output json|human] [--prin
 
 P2 延后（标注原因）：`query run/execute/status`（MaxCompute/gateway/RLS dev 阻断）、
 `query diagnose`（写 `semantic_diagnose_runs` + 需新建聚合）、`intent eval`（脚本移植 + 真实 LLM）。
-写域（cube draft / proposal 7 步 / release publish / ontology upsert）= P3；治理写 = P4；
+P3 延后：`ontology upsert/publish`（本体写，次要项）。治理写 = P4；
 远程 agent 走既有 HTTP（`cli/cubic3_dp_cli`），本 CLI 不做 MCP。

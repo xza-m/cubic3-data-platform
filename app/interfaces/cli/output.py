@@ -81,6 +81,33 @@ def not_found(message: str, output: str = "json") -> None:
     fail(message, exit_code=EXIT_NOT_FOUND, output=output)
 
 
+def to_jsonable(obj: Any) -> Any:
+    """把领域对象转 JSON 友好结构：优先 model_dump（pydantic）/ to_dict，否则原样（emit 用 default=str 兜底）。"""
+    if obj is None or isinstance(obj, (str, int, float, bool, list, dict)):
+        return obj
+    model_dump = getattr(obj, "model_dump", None)
+    if callable(model_dump):
+        try:
+            return model_dump(mode="json")
+        except TypeError:
+            return model_dump()
+    to_dict = getattr(obj, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+    return obj
+
+
+def write_run(obj, *, dry_run: bool, yes: bool, action: str, preview: Any, fn: Callable[[Any], Any]) -> None:
+    """写操作三件套：--dry-run 回显 preview（不进 app_context，不写）→ exit 0；
+    无 --yes → exit 2（用法错）；--yes → 在 app_context 内执行 fn（真写）。"""
+    if dry_run:
+        emit_success({"dry_run": True, "action": action, "preview": preview}, output=obj.output)
+        return
+    if not yes:
+        fail(f"{action} 是写操作，需加 --yes 确认（或 --dry-run 预览）", exit_code=EXIT_USAGE, output=obj.output)
+    run(obj, fn)
+
+
 def run(obj, fn: Callable[[Any], Any]) -> None:
     """在 app_context 内执行 fn(container) → data，统一包 envelope 与异常。
 

@@ -4,7 +4,18 @@ from __future__ import annotations
 import click
 
 from app.interfaces.cli import __version__
-from app.interfaces.cli.commands import asset, chat, cube, datasource, intent, manifest, ontology, query
+from app.interfaces.cli.commands import (
+    asset,
+    chat,
+    cube,
+    datasource,
+    intent,
+    manifest,
+    ontology,
+    proposal,
+    query,
+    release,
+)
 from app.interfaces.cli.output import emit_success, run
 
 
@@ -56,7 +67,9 @@ def describe(obj: CliCtx) -> None:
         "groups": {
             "datasource": ["list", "show <id>"],
             "asset": ["list", "show <table_id>", "fields <table_id>", "evidence <table_id>"],
-            "cube": ["list", "show <name>", "describe <name>"],
+            "cube": ["list", "show <name>", "describe <name>", "draft (--source-id/--table/--columns-from)", "create <draft>", "update <name> <patch>"],
+            "proposal": ["create", "confirm-source <id>", "update-spec <id>", "draft <id>", "validate <id>", "gap <id>", "approve <id>", "apply <id>", "publish <id>  (7步门控,写 live manifest)"],
+            "release": ["list", "show <id>", "rollback <release_id>  (回滚 live manifest)"],
             "ontology": ["<kind> list", "<kind> show <key>  (kind: object/property/metric/glossary/relation/action/policy)"],
             "manifest": ["show [--namespace] [--release]"],
             "query": ["compile <dsl>", "plan <question>", "explain <question>  (preview-only,不出数)"],
@@ -81,3 +94,5 @@ cli.add_command(manifest.manifest)
 cli.add_command(query.query)
 cli.add_command(intent.intent)
 cli.add_command(chat.chat)
+cli.add_command(proposal.proposal)
+cli.add_command(release.release)
