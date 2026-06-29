@@ -17,6 +17,18 @@ logger = get_logger(__name__)
 bp = Blueprint('conversations', __name__, url_prefix='/api/v1/conversations')
 
 
+@bp.route('/datachat/observe', methods=['GET'])
+@require_auth
+def datachat_observe():
+    """观察 DataChat 问数：结果分布 + 缺口维度 + 样例（纯读 AgentQueryLog；聚合逻辑共用 application 层）。"""
+    from app.application.conversation.datachat_observe import observe_datachat
+    from app.extensions import db
+
+    limit = request.args.get('limit', default=200, type=int)
+    channel = (request.args.get('channel') or 'datachat').strip() or 'datachat'
+    return success(data=observe_datachat(db.session, limit=limit, channel=channel))
+
+
 @bp.route('', methods=['POST'])
 @optional_auth
 def create_conversation():

@@ -9,6 +9,7 @@ from cubic3_dp_cli.client import ClientConfig, Cubic3DpClient
 from cubic3_dp_cli.commands import (
     asset,
     auth,
+    chat,
     cube,
     datasource,
     describe,
@@ -38,6 +39,7 @@ app.add_typer(cube.app, name="cube")
 app.add_typer(view.app, name="view")
 app.add_typer(query.app, name="query")
 app.add_typer(intent.app, name="intent")
+app.add_typer(chat.app, name="chat")
 app.add_typer(ontology.app, name="ontology")
 app.add_typer(manifest.app, name="manifest")
 app.add_typer(release.app, name="release")

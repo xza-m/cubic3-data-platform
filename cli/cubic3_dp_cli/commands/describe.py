@@ -50,6 +50,7 @@ def _description(base_url: str) -> dict:
         _command("manifest.show", "manifest show", "查看 active runtime manifest", "GET /api/v1/semantic/manifest", True, False),
         _command("release.list", "release list", "列出语义发布", "GET /api/v1/semantic/releases", True, False),
         _command("release.show", "release show <id>", "查看发布详情", "GET /api/v1/semantic/releases/{id}", True, False),
+        _command("chat.observe", "chat observe", "观察 DataChat 问数：结果分布+缺口维度+样例", "GET /api/v1/conversations/datachat/observe", True, False),
         _command("governance.audit.list", "governance audit list", "列出治理审计 Trace", "GET /api/v1/governance/audit-traces", True, False),
     ]
     return {

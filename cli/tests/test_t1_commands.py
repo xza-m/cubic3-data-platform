@@ -154,6 +154,15 @@ def test_ontology_glossary_show_uses_glossary_path(mock_call):
     assert cap["path"] == "/api/v1/ontology/glossary/x"
 
 
+def test_chat_observe_path_and_params(mock_call):
+    cap = mock_call(_env({"total": 5, "status_distribution": {}, "missing_dimensions": [], "samples": {}}))
+    res = _invoke("chat", "observe", "--limit", "50")
+    assert res.exit_code == 0
+    assert cap["path"] == "/api/v1/conversations/datachat/observe"
+    assert cap["params"]["limit"] == 50
+    assert _out(res)["data"]["total"] == 5
+
+
 def test_describe_is_enveloped_new_vocab():
     res = runner.invoke(app, ["describe"])
     assert res.exit_code == 0
