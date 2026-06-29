@@ -15,9 +15,9 @@ from cubic3_dp_cli.commands import (
     governance,
     intent,
     manifest,
+    ontology,
     query,
     release,
-    semantic,
     view,
 )
 from cubic3_dp_cli.config import CliConfigStore, DEFAULT_BASE_URL
@@ -38,9 +38,9 @@ app.add_typer(cube.app, name="cube")
 app.add_typer(view.app, name="view")
 app.add_typer(query.app, name="query")
 app.add_typer(intent.app, name="intent")
+app.add_typer(ontology.app, name="ontology")
 app.add_typer(manifest.app, name="manifest")
 app.add_typer(release.app, name="release")
-app.add_typer(semantic.app, name="semantic")  # 旧词汇（health/plan/execute/assets），过渡保留
 app.add_typer(governance.app, name="governance")
 app.command("describe", help="输出 Agent 可读的 CLI 自描述信息")(describe.describe)
 

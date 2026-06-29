@@ -6,7 +6,7 @@ from typing import Annotated
 import typer
 
 from cubic3_dp_cli.client import encode_segment
-from cubic3_dp_cli.envelope import call_and_emit
+from cubic3_dp_cli.envelope import call_and_emit, call_list_emit
 
 
 app = typer.Typer(help="数据资产物理表（只读）", no_args_is_help=True)
@@ -22,10 +22,10 @@ def list_assets(
     page: Annotated[int, typer.Option("--page")] = 1,
     page_size: Annotated[int, typer.Option("--page-size")] = 20,
 ) -> None:
-    call_and_emit(ctx, "GET", "/api/v1/semantic/assets/tables", params={
+    call_list_emit(ctx, "GET", "/api/v1/semantic/assets/tables", params={
         "keyword": keyword, "source_id": source_id, "database": database, "schema": schema,
         "page": page, "page_size": page_size,
-    })
+    }, items_key="tables")
 
 
 @app.command("show", help="查看资产表详情")

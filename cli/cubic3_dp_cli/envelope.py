@@ -67,6 +67,37 @@ def call_and_emit(
         raise typer.Exit(EXIT_ERROR)
 
 
+def _extract_list(data: Any, items_key: str | None) -> tuple[list, int]:
+    if isinstance(data, list):
+        return data, len(data)
+    if isinstance(data, dict):
+        if items_key and isinstance(data.get(items_key), list):
+            lst = data[items_key]
+        else:  # 自动取第一个 list 值字段（HTTP _build_list_payload 用 entity 名作 key）
+            lst = next((v for v in data.values() if isinstance(v, list)), [])
+        total = data.get("total")
+        return lst, (total if isinstance(total, int) else len(lst))
+    return [], 0
+
+
+def call_list_emit(ctx, method, path, *, params=None, items_key: str | None = None) -> None:
+    """列表命令：把后端 `{<entity>:[...],page,total}` 归一为 semctl 的 `{items,total}` 后输出。
+
+    不动后端端点（UI 仍用原 payload），仅在 CLI 侧归一，使两路 list 输出同形。
+    """
+    rt = runtime(ctx)
+    payload, status = rt.client.call(method, path, params=params)
+    code = payload.get("code") if isinstance(payload, dict) else None
+    if status >= 400 or code not in (0, None):
+        emit(payload, output=rt.output)
+        raise typer.Exit(EXIT_NOT_FOUND if status == 404 else EXIT_ERROR)
+    items, total = _extract_list(payload.get("data") if isinstance(payload, dict) else None, items_key)
+    emit(
+        {"code": 0, "message": "success", "data": {"items": items, "total": total}, "trace_id": (payload or {}).get("trace_id")},
+        output=rt.output,
+    )
+
+
 def call_project_emit(ctx, method, path, *, params=None, json_body=None, project) -> None:
     """调用成功后对 data 做投影、重包 envelope 输出（供 intent extract/answerability 投影 route 响应）。"""
     rt = runtime(ctx)

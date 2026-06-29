@@ -113,3 +113,51 @@ def test_query_compile_inline_json(mock_call):
     assert res.exit_code == 0
     assert cap["json_body"] == {"measures": ["m"]}
     assert cap["path"] == "/api/v1/semantic/compile"
+
+
+def test_cube_list_normalizes_to_items(mock_call):
+    # 后端 {cubes:[...],total} → CLI 归一 {items:[...],total}（与 semctl 同形）
+    mock_call(_env({"cubes": [{"name": "a"}, {"name": "b"}], "page": 1, "total": 2}))
+    res = _invoke("cube", "list")
+    assert res.exit_code == 0
+    data = _out(res)["data"]
+    assert set(data.keys()) == {"items", "total"}
+    assert len(data["items"]) == 2 and data["total"] == 2
+
+
+def test_datasource_list_normalizes(mock_call):
+    mock_call(_env({"datasources": [{"id": 1}], "total": 1}))
+    res = _invoke("datasource", "list")
+    assert _out(res)["data"] == {"items": [{"id": 1}], "total": 1}
+
+
+def test_ontology_metric_list_path_and_normalize(mock_call):
+    cap = mock_call(_env({"metrics": [{"name": "m1"}], "total": 1}))
+    res = _invoke("ontology", "metric", "list")
+    assert res.exit_code == 0
+    assert cap["path"] == "/api/v1/ontology/metrics"
+    assert _out(res)["data"]["items"] == [{"name": "m1"}]
+
+
+def test_ontology_status_projects(mock_call):
+    cap = mock_call(_env({"name": "comment_count", "status": "active"}))
+    res = _invoke("ontology", "metric", "status", "comment_count")
+    assert res.exit_code == 0
+    assert cap["path"] == "/api/v1/ontology/metrics/comment_count"
+    assert _out(res)["data"] == {"entity_type": "metric", "name": "comment_count", "status": "active"}
+
+
+def test_ontology_glossary_show_uses_glossary_path(mock_call):
+    cap = mock_call(_env({"canonical_name": "x"}))
+    res = _invoke("ontology", "glossary", "show", "x")
+    assert res.exit_code == 0
+    assert cap["path"] == "/api/v1/ontology/glossary/x"
+
+
+def test_describe_is_enveloped_new_vocab():
+    res = runner.invoke(app, ["describe"])
+    assert res.exit_code == 0
+    out = json.loads(res.stdout)
+    assert out["code"] == 0
+    ids = [c["id"] for c in out["data"]["commands"]]
+    assert "cube.list" in ids and not any(i.startswith("semantic.") for i in ids)
