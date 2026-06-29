@@ -45,6 +45,28 @@ class Cubic3DpClient:
     def post(self, path: str, *, json_body: dict[str, Any] | None = None) -> Any:
         return self.request("POST", path, json_body=json_body)
 
+    def call(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+    ) -> tuple[Any, int]:
+        """返回 (完整响应 payload, http_status)，不拆 envelope、不因 code!=0 抛错。
+
+        供需要原样透传 `{code,message,data,trace_id}` envelope 的命令使用（与 semctl 输出契约对齐）；
+        401 仍走刷新重试。网络错误抛 ApiError。
+        """
+        url = _join_url(self._config.base_url, path)
+        response = self._send(method, url, params=params, json_body=json_body)
+        if response.status_code == 401 and self._refresh_handler:
+            refreshed = self._refresh_handler()
+            if refreshed:
+                self._config = replace(self._config, access_token=refreshed)
+                response = self._send(method, url, params=params, json_body=json_body)
+        return _json_payload(response), response.status_code
+
     def request(
         self,
         method: str,

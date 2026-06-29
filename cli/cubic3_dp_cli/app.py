@@ -6,7 +6,20 @@ from typing import Annotated
 import typer
 
 from cubic3_dp_cli.client import ClientConfig, Cubic3DpClient
-from cubic3_dp_cli.commands import auth, datasource, describe, governance, semantic
+from cubic3_dp_cli.commands import (
+    asset,
+    auth,
+    cube,
+    datasource,
+    describe,
+    governance,
+    intent,
+    manifest,
+    query,
+    release,
+    semantic,
+    view,
+)
 from cubic3_dp_cli.config import CliConfigStore, DEFAULT_BASE_URL
 from cubic3_dp_cli.runtime import OutputFormat, RuntimeContext
 
@@ -20,7 +33,14 @@ app = typer.Typer(
 
 app.add_typer(auth.app, name="auth")
 app.add_typer(datasource.app, name="datasource")
-app.add_typer(semantic.app, name="semantic")
+app.add_typer(asset.app, name="asset")
+app.add_typer(cube.app, name="cube")
+app.add_typer(view.app, name="view")
+app.add_typer(query.app, name="query")
+app.add_typer(intent.app, name="intent")
+app.add_typer(manifest.app, name="manifest")
+app.add_typer(release.app, name="release")
+app.add_typer(semantic.app, name="semantic")  # 旧词汇（health/plan/execute/assets），过渡保留
 app.add_typer(governance.app, name="governance")
 app.command("describe", help="输出 Agent 可读的 CLI 自描述信息")(describe.describe)
 

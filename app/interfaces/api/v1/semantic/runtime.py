@@ -73,6 +73,28 @@ def register_runtime_routes(bp, ctx):
             }
         )
 
+    @bp.route('/manifest', methods=['GET'])
+    @require_auth
+    def semantic_manifest():
+        """查看 active runtime manifest（完整），或按 release_id 取历史 manifest。
+
+        转调 runtime_snapshot_service，返回完整 manifest（含 ok 标志）；未就绪时 data.ok=false，
+        由调用方（CLI manifest show）据此置 not_ready。与 semctl manifest show 同口径。
+        """
+        if runtime_snapshot_service is None:
+            return error("语义 Runtime 未配置", status=503, details={"error_code": "semantic_runtime_snapshot_service_not_configured"})
+        namespace = (request.args.get("namespace") or "default").strip() or "default"
+        release_id = (request.args.get("release") or "").strip()
+        try:
+            if release_id:
+                manifest = runtime_snapshot_service.get_manifest_for_release(release_id)
+            else:
+                manifest = runtime_snapshot_service.get_active_manifest(namespace)
+        except Exception as exc:
+            logger.exception("semantic_manifest_failed", error=str(exc))
+            return error("获取 manifest 失败", status=500, details={"reason": str(exc)})
+        return success(data=manifest)
+
     # ── DSL 编译预览 ──
 
     def _safe_definition_hash(cube_name):
