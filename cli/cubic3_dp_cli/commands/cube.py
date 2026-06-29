@@ -9,10 +9,25 @@ from typing import Annotated
 import typer
 
 from cubic3_dp_cli.client import encode_segment
-from cubic3_dp_cli.envelope import call_and_emit, call_list_emit
+from cubic3_dp_cli.envelope import call_and_emit, call_list_emit, emit_local_only
 
 
 app = typer.Typer(help="语义 Cube 定义（只读；建模写走 semctl）", no_args_is_help=True)
+
+
+@app.command("draft", help="[local-only] 从缓存列生成 cube 草稿（走 semctl）")
+def draft(ctx: typer.Context) -> None:
+    emit_local_only(ctx, "cube draft")
+
+
+@app.command("create", help="[local-only] 落 YAML cube 定义（走 semctl）")
+def create(ctx: typer.Context) -> None:
+    emit_local_only(ctx, "cube create")
+
+
+@app.command("update", help="[local-only] 更新 cube 定义（走 semctl）")
+def update(ctx: typer.Context) -> None:
+    emit_local_only(ctx, "cube update")
 
 
 @app.command("list", help="列出已定义 Cube")

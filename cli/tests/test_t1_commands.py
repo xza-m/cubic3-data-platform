@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from cubic3_dp_cli import client as client_mod
 from cubic3_dp_cli.app import app
+from cubic3_dp_cli.main import main as cli_main
 
 runner = CliRunner()
 
@@ -188,6 +189,35 @@ def test_chat_observe_path_and_params(mock_call):
     assert cap["path"] == "/api/v1/conversations/datachat/observe"
     assert cap["params"]["limit"] == 50
     assert _out(res)["data"]["total"] == 5
+
+
+def test_proposal_publish_is_local_only_exit2(mock_call):
+    # 写域 stub：不调 API，输出 local_only + exit 2
+    mock_call(_env({}))
+    res = _invoke("proposal", "publish")
+    assert res.exit_code == 2
+    data = _out(res)["data"]
+    assert data["local_only"] is True and data["engine"] == "semctl"
+
+
+def test_cube_create_local_only(mock_call):
+    mock_call(_env({}))
+    res = _invoke("cube", "create")
+    assert res.exit_code == 2
+    assert _out(res)["data"]["local_only"] is True
+
+
+def test_ontology_upsert_local_only(mock_call):
+    mock_call(_env({}))
+    res = _invoke("ontology", "metric", "upsert")
+    assert res.exit_code == 2
+    assert _out(res)["data"]["local_only"] is True
+
+
+def test_main_entrypoint_propagates_exit_code():
+    # 经真实 main()（非 CliRunner）：standalone_mode=False 下退出码必须接住，否则恒 0
+    assert cli_main(["proposal", "publish"]) == 2  # local_only → usage exit 2
+    assert cli_main(["describe"]) == 0  # 成功 → 0
 
 
 def test_describe_is_enveloped_new_vocab():

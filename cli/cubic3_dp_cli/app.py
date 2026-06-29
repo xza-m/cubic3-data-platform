@@ -17,6 +17,7 @@ from cubic3_dp_cli.commands import (
     intent,
     manifest,
     ontology,
+    proposal,
     query,
     release,
     view,
@@ -43,6 +44,7 @@ app.add_typer(chat.app, name="chat")
 app.add_typer(ontology.app, name="ontology")
 app.add_typer(manifest.app, name="manifest")
 app.add_typer(release.app, name="release")
+app.add_typer(proposal.app, name="proposal")  # local-only stubs（写域走 semctl）
 app.add_typer(governance.app, name="governance")
 app.command("describe", help="输出 Agent 可读的 CLI 自描述信息")(describe.describe)
 

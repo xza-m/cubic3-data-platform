@@ -17,6 +17,27 @@ from cubic3_dp_cli.output import emit
 from cubic3_dp_cli.runtime import runtime
 
 
+def emit_local_only(ctx, command: str) -> None:
+    """写域命令在 http-client 不提供：输出 local_only 指引 envelope + 退出码 2。
+
+    写共享语义资产/live manifest 的信任边界是『能 exec 进部署』，不对远程 token 开放；
+    这类命令只在本地引擎 semctl 提供。
+    """
+    emit(
+        {
+            "code": -1,
+            "message": (
+                f"'{command}' 是写域命令（写共享语义定义/live manifest），http-client(cubic3-dp) 不提供。"
+                f"请用本地引擎在部署环境内执行：python -m app.interfaces.cli {command} ...（需 exec 进后端容器）"
+            ),
+            "data": {"local_only": True, "command": command, "engine": "semctl"},
+            "trace_id": None,
+        },
+        output=runtime(ctx).output,
+    )
+    raise typer.Exit(EXIT_USAGE)
+
+
 def parse_json_arg(value: str) -> Any:
     """解析 JSON 入参：'@file' 读文件 / '-' 读 stdin / 否则当内联 JSON（与 semctl load_json_arg 同口径）。
 

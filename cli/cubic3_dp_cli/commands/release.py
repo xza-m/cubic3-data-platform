@@ -9,10 +9,15 @@ from typing import Annotated
 import typer
 
 from cubic3_dp_cli.client import encode_segment
-from cubic3_dp_cli.envelope import call_and_emit, call_list_emit
+from cubic3_dp_cli.envelope import call_and_emit, call_list_emit, emit_local_only
 
 
 app = typer.Typer(help="语义发布（只读；回滚走 semctl）", no_args_is_help=True)
+
+
+@app.command("rollback", help="[local-only] 回滚 active manifest（消费级写，走 semctl）")
+def rollback(ctx: typer.Context) -> None:
+    emit_local_only(ctx, "release rollback")
 
 
 @app.command("list", help="列出语义发布")

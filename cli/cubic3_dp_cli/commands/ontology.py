@@ -10,7 +10,7 @@ from typing import Annotated
 import typer
 
 from cubic3_dp_cli.client import encode_segment
-from cubic3_dp_cli.envelope import call_and_emit, call_list_emit, call_project_emit
+from cubic3_dp_cli.envelope import call_and_emit, call_list_emit, call_project_emit, emit_local_only
 
 
 app = typer.Typer(help="本体资产（只读；写走 semctl）", no_args_is_help=True)
@@ -45,6 +45,14 @@ def _make_kind(kind: str, plural: str, key_label: str) -> typer.Typer:
             ctx, "GET", f"/api/v1/ontology/{plural}/{encode_segment(key)}",
             project=lambda d: {"entity_type": kind, "name": key, "status": (d or {}).get("status")},
         )
+
+    @sub.command("upsert", help=f"[local-only] 写 {kind}（走 semctl）")
+    def _upsert(ctx: typer.Context) -> None:
+        emit_local_only(ctx, f"ontology {kind} upsert")
+
+    @sub.command("publish", help=f"[local-only] 发布 {kind} draft→active（走 semctl）")
+    def _publish(ctx: typer.Context) -> None:
+        emit_local_only(ctx, f"ontology {kind} publish")
 
     return sub
 
