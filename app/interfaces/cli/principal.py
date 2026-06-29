@@ -23,3 +23,8 @@ def resolve_principal(principal_id: str | None) -> Dict[str, Any]:
     resolver = RoleBindingResolver(SqlAccessRepository(db.session))
     context = resolver.resolve_principal_context(principal_id=principal_id)
     return context.to_dict()
+
+
+def principal_context_or_none(principal_id: str | None) -> Dict[str, Any] | None:
+    """供 route/plan 等用：有 --principal 则解析为 PrincipalContext dict，否则 None（匿名）。"""
+    return resolve_principal(principal_id) if principal_id else None

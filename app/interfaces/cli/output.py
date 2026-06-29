@@ -20,6 +20,22 @@ EXIT_NOT_FOUND = 4
 EXIT_NOT_READY = 5
 
 
+def load_json_arg(value: str) -> Any:
+    """解析 JSON 入参：`@file` 读文件、`-` 读 stdin、否则当内联 JSON。失败抛 ValueError。"""
+    if value == "-":
+        raw = sys.stdin.read()
+    elif value.startswith("@"):
+        from pathlib import Path
+
+        raw = Path(value[1:]).read_text(encoding="utf-8")
+    else:
+        raw = value
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"JSON 解析失败: {exc}")
+
+
 def parse_optional_bool(value: str | None) -> bool | None:
     """三态布尔：None 保持 None；'true/1/yes' → True；'false/0/no' → False。"""
     if value is None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import click
 
 from app.interfaces.cli import __version__
-from app.interfaces.cli.commands import asset, cube, datasource, manifest, ontology
+from app.interfaces.cli.commands import asset, chat, cube, datasource, intent, manifest, ontology, query
 from app.interfaces.cli.output import emit_success, run
 
 
@@ -59,7 +59,15 @@ def describe(obj: CliCtx) -> None:
             "cube": ["list", "show <name>", "describe <name>"],
             "ontology": ["<kind> list", "<kind> show <key>  (kind: object/property/metric/glossary/relation/action/policy)"],
             "manifest": ["show [--namespace] [--release]"],
+            "query": ["compile <dsl>", "plan <question>", "explain <question>  (preview-only,不出数)"],
+            "intent": ["route <question>", "extract <question>", "answerability <question>  (--runtime-mode official|preview)"],
+            "chat": ["observe [--limit] [--channel]"],
             "me": [],
+        },
+        "deferred": {
+            "query": ["run/execute/status (MaxCompute/gateway/RLS dev 阻断)", "diagnose (写库+需聚合)"],
+            "intent": ["eval (脚本移植+真实 LLM)"],
+            "note": "写域/建模发布见 P3；远程走既有 HTTP cubic3_dp_cli",
         },
     }
     emit_success(catalog, output=obj.output)
@@ -70,3 +78,6 @@ cli.add_command(asset.asset)
 cli.add_command(cube.cube)
 cli.add_command(ontology.ontology)
 cli.add_command(manifest.manifest)
+cli.add_command(query.query)
+cli.add_command(intent.intent)
+cli.add_command(chat.chat)
