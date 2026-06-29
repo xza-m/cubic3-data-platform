@@ -75,7 +75,10 @@ def _make_kind_group(kind: str, list_method: str, get_method: str, key_name: str
         key_value = kwargs[key_name]
 
         def body(container):
-            return to_jsonable(container.ontology_definition_service().publish_entity(entity_type, key_value))
+            svc = container.ontology_definition_service()
+            if getattr(svc, get_method)(key_value) is None:  # 存在性预检 → not_found(4)，与 status/show 一致
+                not_found(f"未找到 {kind}: {key_value}", obj.output)
+            return to_jsonable(svc.publish_entity(entity_type, key_value))
 
         write_run(
             obj, dry_run=dry_run, yes=yes, action=f"publish {kind} '{key_value}'",

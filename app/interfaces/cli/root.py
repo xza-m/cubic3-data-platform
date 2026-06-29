@@ -72,7 +72,7 @@ def describe(obj: CliCtx) -> None:
             "proposal": ["create", "confirm-source <id>", "update-spec <id>", "draft <id>", "validate <id>", "gap <id>", "approve <id>", "apply <id>", "publish <id>  (7步门控,写 live manifest)"],
             "release": ["list", "show <id>", "rollback <release_id>  (回滚 live manifest)"],
             "ontology": ["<kind> list/show/status", "<kind> upsert <payload>  (写,全量覆盖)", "<kind> publish <key>  (写,draft→active)  (kind: object/property/metric/glossary/relation/action/policy)"],
-            "view": ["list [--include-private]", "show <name>"],
+            "view": ["list [--include-private]", "show <name>  (零写)", "describe <name>  (会同步 registry)"],
             "manifest": ["show [--namespace] [--release]"],
             "query": ["compile <dsl>", "plan <question>", "explain <question>  (preview-only,不出数)"],
             "intent": ["route <question>", "extract <question>", "answerability <question>  (--runtime-mode official|preview)"],
