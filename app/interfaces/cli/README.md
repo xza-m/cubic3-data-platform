@@ -33,7 +33,7 @@ python -m app.interfaces.cli <group> <verb> [args] [--output json|human] [--prin
 | `query plan <question>` | NL → 语义路由规划（含 planning_steps，`--runtime-mode official\|preview`） |
 | `query explain <question>` | NL → 编译预览 SQL（compiled_targets，**preview-only 不出数**） |
 | `intent route <question>` | 语义路由（命中实体 / route_type / 可回答性；official 才走已发布 catalog） |
-| `intent extract <question>` | L1 结构化意图抽取（env 门 `SEMANTIC_ROUTER_LLM_INTENT_ENABLED` 关时 `available=false`） |
+| `intent extract <question>` | L1 意图理解产物（grounded，取自 route，含 candidate_assets 白名单，与真实管线同源） |
 | `intent answerability <question>` | 四态可回答性门控（取自 route 的 business_intent.answerability） |
 | `chat observe [--limit] [--channel]` | 观察 DataChat 问数：结果分布 + 缺口维度 + 样例（读 AgentQueryLog） |
 

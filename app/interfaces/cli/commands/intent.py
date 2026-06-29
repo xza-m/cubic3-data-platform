@@ -1,8 +1,9 @@
 """intent 命令：route / extract / answerability（L1 意图理解 + 路由 + 可回答性门控）。
 
 - route <question>：语义路由（`semantic_router_preview_service.route`，命中实体/route_type/答否快照）。
-- extract <question>：L1 结构化意图抽取（`semantic_intent_extraction_service.extract_intent`）。
-  受 env 门 SEMANTIC_ROUTER_LLM_INTENT_ENABLED：关闭时返回 available=False（非错误）。
+- extract <question>：L1 意图理解产物（confidence/grounded/candidates），**取自 route()**——与真实
+  问数管线同源（已注入 official active manifest 的候选词表做 grounding）。不裸调 extract_intent：
+  裸调会丢 candidate_assets 白名单 → LLM 被迫"从空集选" → 槽位系统性返空，误导调试。
 - answerability <question>：四态可回答性门控（answerable/need_clarify/out_of_coverage/out_of_scope），
   取自 route() 的 business_intent.answerability（L1 关时退化为未产出）。
 
@@ -41,27 +42,25 @@ def intent_route(obj, question, runtime_mode) -> None:
     run(obj, body)
 
 
-@intent.command("extract", help="L1 结构化意图抽取（env 门关时 available=False，非错误）")
+@intent.command("extract", help="L1 意图理解产物（grounded，取自 route，与真实管线同源）")
 @click.argument("question")
+@_RUNTIME_MODE
 @click.pass_obj
-def intent_extract(obj, question) -> None:
+def intent_extract(obj, question, runtime_mode) -> None:
     def body(container):
-        result = container.semantic_intent_extraction_service().extract_intent(
-            question, principal_id=obj.principal
+        from app.interfaces.cli.principal import principal_context_or_none
+
+        route_result = container.semantic_router_preview_service().route(
+            question=question,
+            principal_context=principal_context_or_none(obj.principal),
+            runtime_mode=runtime_mode,
         )
-        if result is None:
-            return {
-                "available": False,
-                "note": "L1 未启用（env SEMANTIC_ROUTER_LLM_INTENT_ENABLED 关）或未抽出可用意图",
-            }
+        business_intent = route_result.get("business_intent") or {}
         return {
-            "available": True,
-            "intent_type": getattr(result, "intent_type", None),
-            "target_asset": getattr(result, "target_asset", None),
-            "metrics": getattr(result, "metrics", None),
-            "dimensions": getattr(result, "dimensions", None),
-            "required_dimensions": getattr(result, "required_dimensions", None),
-            "confidence": getattr(result, "confidence", None),
+            "route_type": route_result.get("route_type"),
+            "intent_understanding": business_intent.get("intent_understanding"),
+            "matched_entities": business_intent.get("matched_entities"),
+            "answerability": business_intent.get("answerability"),
         }
 
     run(obj, body)

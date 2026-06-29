@@ -99,27 +99,39 @@ def test_intent_route_passthrough(runner, patch_ctx):
     assert _payload(result)["data"]["route_type"] == "cube"
 
 
-def test_intent_extract_available(runner, patch_ctx):
-    extraction = types.SimpleNamespace(
-        intent_type="analysis", target_asset="答题总数", metrics=["答题总数"],
-        dimensions=["年级"], required_dimensions=["学校"], confidence=0.9,
-    )
-    svc = types.SimpleNamespace(extract_intent=lambda q, principal_id=None: extraction)
-    patch_ctx(_container(semantic_intent_extraction_service=svc))
-    result = runner.invoke(cli, ["intent", "extract", "各年级答题"])
+def test_intent_extract_projects_grounded_from_route(runner, patch_ctx):
+    # extract 走 route()（带 candidate_assets grounding），投影 intent_understanding，非裸 extract_intent
+    captured = {}
+
+    def route(*, question, principal_context, runtime_mode):
+        captured["runtime_mode"] = runtime_mode
+        return {
+            "route_type": "cube",
+            "business_intent": {
+                "intent_understanding": {"confidence": 0.9, "grounded": ["答题总数"], "candidates": []},
+                "matched_entities": [{"name": "答题总数"}],
+                "answerability": {"state": "answerable"},
+            },
+        }
+
+    svc = types.SimpleNamespace(route=route)
+    patch_ctx(_container(semantic_router_preview_service=svc))
+    result = runner.invoke(cli, ["intent", "extract", "各年级答题", "--runtime-mode", "official"])
     assert result.exit_code == 0
     data = _payload(result)["data"]
-    assert data["available"] is True
-    assert data["target_asset"] == "答题总数"
-    assert data["required_dimensions"] == ["学校"]
+    assert data["intent_understanding"]["grounded"] == ["答题总数"]
+    assert data["route_type"] == "cube"
+    assert captured["runtime_mode"] == "official"
 
 
-def test_intent_extract_unavailable_when_none(runner, patch_ctx):
-    svc = types.SimpleNamespace(extract_intent=lambda q, principal_id=None: None)
-    patch_ctx(_container(semantic_intent_extraction_service=svc))
+def test_intent_extract_graceful_when_no_business_intent(runner, patch_ctx):
+    svc = types.SimpleNamespace(route=lambda *, question, principal_context, runtime_mode: {"route_type": "blocked"})
+    patch_ctx(_container(semantic_router_preview_service=svc))
     result = runner.invoke(cli, ["intent", "extract", "x"])
     assert result.exit_code == 0
-    assert _payload(result)["data"]["available"] is False
+    data = _payload(result)["data"]
+    assert data["intent_understanding"] is None
+    assert data["route_type"] == "blocked"
 
 
 def test_intent_answerability_projects_state(runner, patch_ctx):
