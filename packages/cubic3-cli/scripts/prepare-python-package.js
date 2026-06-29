@@ -21,6 +21,7 @@ cpSync(sourceCli, target, {
     return !relative.split(/[\\/]/).some((part) => (
       part === '__pycache__'
       || part === '.pytest_cache'
+      || part === 'tests'
       || part === 'build'
       || part.endsWith('.egg-info')
     ))
