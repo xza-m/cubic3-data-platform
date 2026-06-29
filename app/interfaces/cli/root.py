@@ -15,8 +15,9 @@ from app.interfaces.cli.commands import (
     proposal,
     query,
     release,
+    view,
 )
-from app.interfaces.cli.output import emit_success, run
+from app.interfaces.cli.output import emit_success, not_found, run
 
 
 class CliCtx:
@@ -70,11 +71,13 @@ def describe(obj: CliCtx) -> None:
             "cube": ["list", "show <name>", "describe <name>", "draft (--source-id/--table/--columns-from)", "create <draft>", "update <name> <patch>"],
             "proposal": ["create", "confirm-source <id>", "update-spec <id>", "draft <id>", "validate <id>", "gap <id>", "approve <id>", "apply <id>", "publish <id>  (7步门控,写 live manifest)"],
             "release": ["list", "show <id>", "rollback <release_id>  (回滚 live manifest)"],
-            "ontology": ["<kind> list", "<kind> show <key>  (kind: object/property/metric/glossary/relation/action/policy)"],
+            "ontology": ["<kind> list/show/status", "<kind> upsert <payload>  (写,全量覆盖)", "<kind> publish <key>  (写,draft→active)  (kind: object/property/metric/glossary/relation/action/policy)"],
+            "view": ["list [--include-private]", "show <name>"],
             "manifest": ["show [--namespace] [--release]"],
             "query": ["compile <dsl>", "plan <question>", "explain <question>  (preview-only,不出数)"],
             "intent": ["route <question>", "extract <question>", "answerability <question>  (--runtime-mode official|preview)"],
             "chat": ["observe [--limit] [--channel]"],
+            "schema": ["<group> [<cmd>]  (输出命令参数契约,不 boot app)"],
             "me": [],
         },
         "deferred": {
@@ -86,10 +89,48 @@ def describe(obj: CliCtx) -> None:
     emit_success(catalog, output=obj.output)
 
 
+def _param_schema(param: click.Parameter) -> dict:
+    info: dict = {"name": param.name, "required": bool(param.required), "type": getattr(param.type, "name", str(param.type))}
+    if isinstance(param, click.Option):
+        info["flags"] = list(param.opts)
+        info["is_flag"] = bool(getattr(param, "is_flag", False))
+        info["default"] = param.default
+        info["help"] = getattr(param, "help", None)
+    return info
+
+
+def _node_schema(node: click.Command) -> dict:
+    if isinstance(node, click.Group):
+        return {"command": node.name, "type": "group", "help": node.help, "subcommands": sorted(node.commands.keys())}
+    return {
+        "command": node.name,
+        "type": "command",
+        "help": node.help,
+        "arguments": [_param_schema(p) for p in node.params if isinstance(p, click.Argument)],
+        "options": [_param_schema(p) for p in node.params if isinstance(p, click.Option)],
+    }
+
+
+@cli.command("schema", help="输出某命令的参数契约（click 内省，不 boot app）")
+@click.argument("path", nargs=-1)
+@click.pass_obj
+def schema(obj: CliCtx, path) -> None:
+    node: click.Command = cli
+    for part in path:
+        if not isinstance(node, click.Group):
+            not_found(f"'{part}' 之前的 '{node.name}' 不是命令组", obj.output)
+        sub = node.commands.get(part)
+        if sub is None:
+            not_found(f"未找到命令: {' '.join(path)}", obj.output)
+        node = sub
+    emit_success(_node_schema(node), output=obj.output)
+
+
 cli.add_command(datasource.datasource)
 cli.add_command(asset.asset)
 cli.add_command(cube.cube)
 cli.add_command(ontology.ontology)
+cli.add_command(view.view)
 cli.add_command(manifest.manifest)
 cli.add_command(query.query)
 cli.add_command(intent.intent)

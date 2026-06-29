@@ -27,7 +27,10 @@ python -m app.interfaces.cli <group> <verb> [args] [--output json|human] [--prin
 | `datasource list / show <id>` | 数据源（连接配置脱敏） |
 | `asset list / show <table_id> / fields <table_id> / evidence <table_id>` | 数据资产物理表（读 PG 缓存，**不触 MaxCompute live**） |
 | `cube list / show <name> / describe <name>` | Cube 定义口径（YAML 全集含 draft）。`show`=零写摘要，`describe`=详情（会同步 registry） |
-| `ontology <kind> list / show <key>` | 本体（kind: object/property/metric/glossary/relation/action/policy；glossary 主键为 canonical_name） |
+| `ontology <kind> list / show <key> / status <key>` | 本体读（kind: object/property/metric/glossary/relation/action/policy；glossary 主键为 canonical_name） |
+| `ontology <kind> upsert <payload> / publish <key>` | 本体写（upsert **全量覆盖无 PATCH**，先 show 再改；publish draft→active；三件套） |
+| `view list / show <name>` | 语义 View 定义（只读） |
+| `schema <group> [<cmd>]` | 输出命令的参数契约（click 内省，**不 boot app**，agent 自描述） |
 | `manifest show [--namespace] [--release]` | 已发布运行态 manifest（active 口径） |
 | `query compile <dsl>` | 裸 QueryDSL → SQL（纯编译，dev 口径；draft/未绑定 cube 会忠实报错） |
 | `query plan <question>` | NL → 语义路由规划（含 planning_steps，`--runtime-mode official\|preview`） |
@@ -59,5 +62,5 @@ python -m app.interfaces.cli <group> <verb> [args] [--output json|human] [--prin
 
 P2 延后（标注原因）：`query run/execute/status`（MaxCompute/gateway/RLS dev 阻断）、
 `query diagnose`（写 `semantic_diagnose_runs` + 需新建聚合）、`intent eval`（脚本移植 + 真实 LLM）。
-P3 延后：`ontology upsert/publish`（本体写，次要项）。治理写 = P4；
+治理写（principal/grant/scope/policy）= P4；`view validate/publish`（写/需构造 ViewDefinition）后续。
 远程 agent 走既有 HTTP（`cli/cubic3_dp_cli`），本 CLI 不做 MCP。
