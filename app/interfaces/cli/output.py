@@ -36,6 +36,18 @@ def load_json_arg(value: str) -> Any:
         raise ValueError(f"JSON 解析失败: {exc}")
 
 
+def load_json_arg_or_fail(value: str, *, output: str = "json") -> Any:
+    """命令边界解析 JSON 入参：失败转 usage 级失败 envelope + EXIT_USAGE 结束。
+
+    用于 write_run 之前需先解析以构造 dry-run preview 的写命令——解析在 run()/write_run 的
+    兜底之外，必须在此显式转成统一 envelope（区分『入参坏(2)』与『服务失败(1)』）。
+    """
+    try:
+        return load_json_arg(value)
+    except (ValueError, OSError) as exc:  # OSError 覆盖 FileNotFoundError(@file 缺失)
+        fail(f"入参 JSON 解析失败: {exc}", exit_code=EXIT_USAGE, output=output)
+
+
 def parse_optional_bool(value: str | None) -> bool | None:
     """三态布尔：None 保持 None；'true/1/yes' → True；'false/0/no' → False。"""
     if value is None:

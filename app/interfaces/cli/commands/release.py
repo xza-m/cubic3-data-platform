@@ -6,6 +6,8 @@
 """
 from __future__ import annotations
 
+import uuid
+
 import click
 
 from app.interfaces.cli.output import not_found, run, to_jsonable, write_run
@@ -50,12 +52,14 @@ def release_show(obj, release_id) -> None:
 @click.argument("release_id")
 @click.option("--namespace", default="default", show_default=True)
 @click.option("--actor", default=None, help="操作者（默认 --principal）")
-@click.option("--idempotency-key", default=None, help="幂等键（默认 rollback:<release_id>）")
+@click.option("--idempotency-key", default=None, help="幂等键（默认每次生成唯一键；显式传同键可去重重试）")
 @click.option("--dry-run", is_flag=True)
 @click.option("--yes", is_flag=True)
 @click.pass_obj
 def release_rollback(obj, release_id, namespace, actor, idempotency_key, dry_run, yes) -> None:
-    key = idempotency_key or f"rollback:{release_id}"
+    # 默认键须每次唯一：静态 rollback:<id> 会让同一锚点二次回滚命中 publish_with_snapshot 的
+    # (namespace,key) 短路而静默 no-op（回滚安全网失效）。需去重重试时显式传 --idempotency-key。
+    key = idempotency_key or f"rollback:{release_id}:{uuid.uuid4().hex[:12]}"
     resolved_actor = actor or obj.principal
 
     def body(container):

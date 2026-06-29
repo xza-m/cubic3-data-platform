@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import click
 
-from app.interfaces.cli.output import load_json_arg, not_found, run, to_jsonable, write_run
+from app.interfaces.cli.output import load_json_arg_or_fail, not_found, run, to_jsonable, write_run
 
 
 @click.group("cube")
@@ -107,7 +107,7 @@ def cube_draft(obj, source_id, database, table, columns_from, schema, partitions
 @click.option("--yes", is_flag=True, help="确认写入")
 @click.pass_obj
 def cube_create(obj, draft, dry_run, yes) -> None:
-    payload = load_json_arg(draft)
+    payload = load_json_arg_or_fail(draft, output=obj.output)
 
     def body(container):
         return to_jsonable(container.cube_modeling_service().create_cube(payload))
@@ -122,7 +122,7 @@ def cube_create(obj, draft, dry_run, yes) -> None:
 @click.option("--yes", is_flag=True, help="确认写入")
 @click.pass_obj
 def cube_update(obj, name, patch, dry_run, yes) -> None:
-    payload = load_json_arg(patch)
+    payload = load_json_arg_or_fail(patch, output=obj.output)
 
     def body(container):
         return to_jsonable(container.cube_modeling_service().update_cube(name, payload))

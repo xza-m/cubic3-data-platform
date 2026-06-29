@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import click
 
-from app.interfaces.cli.output import load_json_arg, run, to_jsonable, write_run
+from app.interfaces.cli.output import load_json_arg_or_fail, run, to_jsonable, write_run
 
 
 @click.group("proposal")
@@ -27,7 +27,7 @@ def _svc(container):
 @click.option("--yes", is_flag=True)
 @click.pass_obj
 def proposal_create(obj, payload, dry_run, yes) -> None:
-    data = load_json_arg(payload)
+    data = load_json_arg_or_fail(payload, output=obj.output)
 
     def body(container):
         return to_jsonable(_svc(container).create_proposal(data))
@@ -42,7 +42,7 @@ def proposal_create(obj, payload, dry_run, yes) -> None:
 @click.option("--yes", is_flag=True)
 @click.pass_obj
 def proposal_confirm_source(obj, proposal_id, source, dry_run, yes) -> None:
-    data = load_json_arg(source)
+    data = load_json_arg_or_fail(source, output=obj.output)
 
     def body(container):
         return to_jsonable(_svc(container).confirm_source(proposal_id, data))
@@ -57,7 +57,7 @@ def proposal_confirm_source(obj, proposal_id, source, dry_run, yes) -> None:
 @click.option("--yes", is_flag=True)
 @click.pass_obj
 def proposal_update_spec(obj, proposal_id, spec, dry_run, yes) -> None:
-    spec_dict = load_json_arg(spec)
+    spec_dict = load_json_arg_or_fail(spec, output=obj.output)
 
     def body(container):
         return to_jsonable(_svc(container).update_spec(proposal_id, {"spec": spec_dict}))

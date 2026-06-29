@@ -145,5 +145,27 @@ def test_release_rollback_dry_run_shows_anchor(runner, patch_ctx):
     patch_ctx(_container(semantic_release_service=svc))
     result = runner.invoke(cli, ["release", "rollback", "rel_anchor", "--dry-run"])
     assert result.exit_code == 0
-    assert _payload(result)["data"]["preview"]["release_id"] == "rel_anchor"
-    assert _payload(result)["data"]["preview"]["idempotency_key"] == "rollback:rel_anchor"
+    preview = _payload(result)["data"]["preview"]
+    assert preview["release_id"] == "rel_anchor"
+    # 默认键须每次唯一（带后缀），否则同锚点二次回滚静默 no-op
+    assert preview["idempotency_key"].startswith("rollback:rel_anchor:")
+    assert preview["idempotency_key"] != "rollback:rel_anchor"
+
+
+def test_release_rollback_default_key_unique_per_call(runner, patch_ctx):
+    svc = types.SimpleNamespace(rollback_to=lambda **k: {})
+    patch_ctx(_container(semantic_release_service=svc))
+    keys = set()
+    for _ in range(3):
+        result = runner.invoke(cli, ["release", "rollback", "rel_anchor", "--dry-run"])
+        keys.add(_payload(result)["data"]["preview"]["idempotency_key"])
+    assert len(keys) == 3  # 每次调用键不同
+
+
+def test_write_command_bad_json_is_usage_exit2(runner, patch_ctx):
+    # 写命令在 body 外解析 JSON，坏 JSON 须转 usage envelope(exit 2)，非裸 traceback(exit 1)
+    svc = types.SimpleNamespace(create_proposal=lambda p: {})
+    patch_ctx(_container(semantic_modeling_proposal_service=svc))
+    result = runner.invoke(cli, ["proposal", "create", "--payload", "{bad json", "--dry-run"])
+    assert result.exit_code == 2
+    assert _payload(result)["code"] == -1
