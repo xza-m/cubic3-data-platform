@@ -1,9 +1,9 @@
 ---
-name: semantic-builder
+name: dp-semantic-builder
 description: 搭建/调试「问数·语义层」基础设施本身时用本 skill——对语义层做动作（建模、发布、调元数据、调试路由），而不是用问数查一个业务数值。关键：哪怕句子里有学校/年级/正确率/学情/知识点这类业务词，只要动词指向"建/发/改/调试语义层"，就用本 skill，不要因为有业务词就归给 dw-query。出现以下任一信号即触发：把表/宽表建成 cube 或 view 发布到语义层、发布成 virtual dataset、发布前看 diagnostics；改 cube/维度的 title 或元数据并重新发布、运维 active manifest；问数覆盖不了/答不出/缺某维度、某问题 ground/路由到哪个 cube、意图怎么 ground；盘点线上高频但没建模的维度、给建模排优先级；维护本体(object/metric/glossary/relation/policy)、做语义治理授权；浏览语义资产(datasource/asset/cube/manifest)。驱动 in-process 本地 CLI semctl（python -m app.interfaces.cli，后端容器内跑）。反向（→ 用 dw-query，不用本 skill）：只想要一个具体数字或一段明细数据（多少学生、正确率多少、拉某段数据），既没提建模/发布，也没问路由/覆盖/缺维度。
 ---
 
-# semantic-builder：建设和运维 CUBIC3 语义平台
+# dp-semantic-builder：建设和运维 CUBIC3 语义平台
 
 引导 agent 用语义平台的 CLI（本地引擎 `semctl` / 远程客户端 `cubic3-dp`）端到端**建设和运维语义层**：读资产 → 建模 → 发布 cube/view → 调试问数 → 治理。CLI 薄封装平台既有 application 服务。
 
@@ -11,9 +11,9 @@ description: 搭建/调试「问数·语义层」基础设施本身时用本 ski
 
 | 用户想要 | 用 |
 |---|---|
-| 建模、发布 cube/view、维护本体、把表发进 manifest | **semantic-builder** |
-| 调试问数：为什么这么路由、能不能答、缺什么维度、意图怎么 ground | **semantic-builder** |
-| 看语义资产/manifest、语义层治理授权 | **semantic-builder** |
+| 建模、发布 cube/view、维护本体、把表发进 manifest | **dp-semantic-builder** |
+| 调试问数：为什么这么路由、能不能答、缺什么维度、意图怎么 ground | **dp-semantic-builder** |
+| 看语义资产/manifest、语义层治理授权 | **dp-semantic-builder** |
 | **取业务数据**（"郑州基石中学有多少学生""5月答题正确率"等具体数值） | **dw-query** |
 
 一句话：**要"操作/建设平台"用本 skill；要"业务数据本身"用 dw-query。** 本 skill 调试问数是看语义层"怎么理解这个问题"（route/intent/answerability），**不取数**。
