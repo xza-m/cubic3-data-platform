@@ -20,3 +20,8 @@ def list_views(ctx: typer.Context) -> None:
 @app.command("show", help="查看 View 详情")
 def show(ctx: typer.Context, name: Annotated[str, typer.Argument()]) -> None:
     call_and_emit(ctx, "GET", f"/api/v1/semantic/views/{encode_segment(name)}")
+
+
+@app.command("describe", help="查看 View 详情（含 diagnostics；HTTP 侧与 show 同端点）")
+def describe(ctx: typer.Context, name: Annotated[str, typer.Argument()]) -> None:
+    call_and_emit(ctx, "GET", f"/api/v1/semantic/views/{encode_segment(name)}")

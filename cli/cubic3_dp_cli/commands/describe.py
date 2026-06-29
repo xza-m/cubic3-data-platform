@@ -39,6 +39,7 @@ def _description(base_url: str) -> dict:
         _command("cube.describe", "cube describe <name>", "查看 Cube 详情（同 show，含 diagnostics）", "GET /api/v1/semantic/cubes/{name}", True, False),
         _command("view.list", "view list", "列出 View 定义", "GET /api/v1/semantic/views", True, False),
         _command("view.show", "view show <name>", "查看 View 详情", "GET /api/v1/semantic/views/{name}", True, False),
+        _command("view.describe", "view describe <name>", "查看 View 详情（含 diagnostics）", "GET /api/v1/semantic/views/{name}", True, False),
         _command("ontology.list", "ontology <kind> list", "列出本体（kind: object/property/metric/glossary/relation/action/policy）", "GET /api/v1/ontology/{plural}", True, False),
         _command("ontology.show", "ontology <kind> show <key>", "查看单个本体", "GET /api/v1/ontology/{plural}/{key}", True, False),
         _command("ontology.status", "ontology <kind> status <key>", "查本体状态（投影 show.status）", "GET /api/v1/ontology/{plural}/{key}", True, False),
