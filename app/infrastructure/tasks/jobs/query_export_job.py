@@ -24,6 +24,8 @@ from flask import current_app, has_app_context
 from rq import get_current_job  # type: ignore
 
 from app.domain.entities.data_source import DataSource
+from app.domain.entities.dataset import Dataset
+from app.domain.entities.dataset_field import DatasetField
 from app.domain.entities.query_export import QueryExport
 from app.infrastructure.adapters.datasources.factory import AdapterFactory
 from app.infrastructure.adapters.file_delivery.file_delivery_service import (
@@ -36,6 +38,7 @@ from app.infrastructure.tasks.jobs.chunked_csv_writer import (
 )
 from app.shared.enums import DeliveryMethod, QueryExportStatus
 from app.shared.utils.logger import get_logger
+from app.shared.utils.sql_validator import extract_table_names
 
 
 logger = get_logger(__name__)
@@ -101,7 +104,17 @@ def execute_query_export_job(export_id: int) -> Dict[str, Any]:
                 if not columns:
                     # 空结果：走 success 但 row_count=0
                     columns = ['value']
-                writer = ChunkedCsvWriter(columns=columns, output_path=output_path)
+                mask_columns = _resolve_mask_columns(
+                    session,
+                    export,
+                    columns,
+                    export_id=export_id,
+                )
+                writer = ChunkedCsvWriter(
+                    columns=columns,
+                    output_path=output_path,
+                    mask_columns=mask_columns,
+                )
 
             writer.write_rows(rows)
 
@@ -124,7 +137,11 @@ def execute_query_export_job(export_id: int) -> Dict[str, Any]:
         # 无任何 batch 返回：创建空 writer 以便后续上传（CSV 只含表头）
         if writer is None:
             columns = ['value']
-            writer = ChunkedCsvWriter(columns=columns, output_path=output_path)
+            writer = ChunkedCsvWriter(
+                columns=columns,
+                output_path=output_path,
+                mask_columns={},
+            )
 
         writer.close()
         row_count = writer.row_count
@@ -244,6 +261,101 @@ def _stream_query(adapter, sql: str):
         'rows': rows,
         'batch_size': len(rows) if hasattr(rows, '__len__') else 0,
     }
+
+
+def _resolve_mask_columns(
+    session,
+    export: QueryExport,
+    result_columns: List[str],
+    *,
+    export_id: int,
+) -> Dict[str, str]:
+    """构造导出行级脱敏映射 {导出结果列名: mask_rule}。
+
+    映射桥：QueryExport 只持有 source_id(=DataSource) + 裸 SQL，敏感字段元数据
+    挂在 DatasetField 上。这里通过 source_id + SQL 引用的物理表名定位到对应的
+    Dataset，再取其敏感字段（is_sensitive 且带 mask_rule），按 physical_name
+    与导出结果列名做大小写不敏感对齐。
+
+    属于 MVP 已知边界：
+    - free-SQL / 表名解析失败 / 无匹配 Dataset → 返回空 dict（不脱敏、不报错）。
+    - 多表 join 时取所有匹配 Dataset 的敏感字段并集；列名冲突时后者覆盖前者。
+    mask-always 策略：只要列被识别为敏感即遮蔽，不做角色门控。
+    """
+    try:
+        source_id = getattr(export, 'source_id', None)
+        sql = getattr(export, 'sql_query', None)
+        if not source_id or not sql:
+            return {}
+
+        table_names = extract_table_names(sql)
+        if not table_names:
+            logger.info(
+                "Export masking skipped: no table names resolved from SQL",
+                export_id=export_id,
+            )
+            return {}
+
+        # 物理表名可能带 schema 前缀（db.table），取末段与 Dataset.physical_table 对齐
+        physical_tables = {name.split('.')[-1] for name in table_names if name}
+
+        datasets = (
+            session.query(Dataset)
+            .filter(
+                Dataset.source_id == source_id,
+                Dataset.physical_table.in_(physical_tables),
+                Dataset.is_deleted.is_(False),
+            )
+            .all()
+        )
+        if not datasets:
+            logger.info(
+                "Export masking skipped: no dataset matched source+tables",
+                export_id=export_id,
+                source_id=source_id,
+                tables=sorted(physical_tables),
+            )
+            return {}
+
+        dataset_ids = [ds.id for ds in datasets]
+        sensitive_fields = (
+            session.query(DatasetField)
+            .filter(DatasetField.dataset_id.in_(dataset_ids))
+            .all()
+        )
+
+        # 敏感字段 physical_name(lower) -> mask_rule
+        rule_by_lower_name: Dict[str, str] = {}
+        for field in sensitive_fields:
+            if field.is_sensitive() and field.mask_rule:
+                rule_by_lower_name[str(field.physical_name).lower()] = field.mask_rule
+
+        if not rule_by_lower_name:
+            return {}
+
+        # 与导出结果列名大小写不敏感对齐，key 用导出实际列名（writer 按列名查规则）
+        mask_columns: Dict[str, str] = {}
+        for col in result_columns:
+            rule = rule_by_lower_name.get(str(col).lower())
+            if rule:
+                mask_columns[col] = rule
+
+        if mask_columns:
+            logger.info(
+                "Export row-level masking enabled",
+                export_id=export_id,
+                source_id=source_id,
+                masked_columns=sorted(mask_columns.keys()),
+                rules={c: mask_columns[c] for c in sorted(mask_columns)},
+            )
+        return mask_columns
+    except Exception as exc:  # 脱敏解析失败不应阻断导出，降级为不脱敏
+        logger.warning(
+            "Export masking resolution failed, exporting without masking",
+            export_id=export_id,
+            error=str(exc),
+        )
+        return {}
 
 
 def _extract_column_names(columns: List[Any]) -> List[str]:
