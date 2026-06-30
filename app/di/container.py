@@ -296,6 +296,7 @@ from app.application.semantic.modeling_source_scanner import ModelingSourceScann
 from app.application.semantic.modeling_copilot_service import SemanticModelingCopilotService
 from app.application.semantic.modeling_copilot_tools import ModelingToolRegistry
 from app.application.semantic.modeling_proposal_service import ModelingProposalService
+from app.application.semantic.onboard_spec_builder import OnboardSpecBuilder
 from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
 from app.application.semantic.publish_gate_service import PublishGateService
 from app.application.semantic.release_validation_preview import (
@@ -1101,6 +1102,14 @@ class Container(containers.DeclarativeContainer):
         readiness_checker=semantic_modeling_copilot_readiness_checker,
         asset_registry_repository=semantic_asset_registry_repository,
         release_service=semantic_release_service,
+    )
+
+    # onboard（建表入模）spec 构造编排：喂列定义 → cube（含 ratio 拆分）→ 升度量为 BusinessMetric
+    # → 组装可发布 v1 spec。纯编排，复用 cube_modeling_service / draft_builder，零新建领域逻辑。
+    onboard_spec_builder = providers.Factory(
+        OnboardSpecBuilder,
+        cube_modeling_service=cube_modeling_service,
+        draft_builder=semantic_model_draft_builder,
     )
 
     semantic_release_gateway_sql_dry_run = providers.Callable(

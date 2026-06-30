@@ -1,4 +1,4 @@
-"""ColdstartSpecBuilder 纯函数单测：喂构造 columns → 断言 spec 结构/additivity/ratio/sensitive/lift。
+"""OnboardSpecBuilder 纯函数单测：喂构造 columns → 断言 spec 结构/additivity/ratio/sensitive/lift。
 
 纯编排，绕 MaxCompute（不触达 runtime/repo/adapter）：用真实 CubeModelingService（cube_repo /
 runtime 传 Mock，build_cube_draft_payload 不触达它们）+ 真实 SemanticModelDraftBuilder（ontology_service
@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.application.semantic.coldstart_spec_builder import ColdstartSpecBuilder
+from app.application.semantic.onboard_spec_builder import OnboardSpecBuilder
 from app.application.semantic.cube_modeling_service import CubeModelingService
 from app.application.semantic.modeling_draft_builder import SemanticModelDraftBuilder
 
@@ -31,7 +31,7 @@ _COLUMNS = [
 ]
 
 
-def _make_builder() -> ColdstartSpecBuilder:
+def _make_builder() -> OnboardSpecBuilder:
     cube_modeling_service = CubeModelingService(
         cube_repo=Mock(),
         runtime_binding_service=Mock(),
@@ -41,7 +41,7 @@ def _make_builder() -> ColdstartSpecBuilder:
         cube_modeling_service=cube_modeling_service,
         ontology_service=Mock(),
     )
-    return ColdstartSpecBuilder(
+    return OnboardSpecBuilder(
         cube_modeling_service=cube_modeling_service,
         draft_builder=draft_builder,
     )
@@ -56,7 +56,7 @@ def _build(**overrides):
         "partitions": ["ds"],
     }
     params.update(overrides)
-    return _make_builder().build_coldstart_spec(**params)
+    return _make_builder().build_onboard_spec(**params)
 
 
 def _metric_by_ref(ontology, ref: str):
@@ -162,8 +162,8 @@ def test_e_lift_subset_only_lifts_those_measures():
 
 
 def test_signature_is_keyword_only_with_defaults():
-    """build_coldstart_spec 默认 lift='all'/sensitivity='internal'，且最小入参可调用。"""
-    spec = _make_builder().build_coldstart_spec(
+    """build_onboard_spec 默认 lift='all'/sensitivity='internal'，且最小入参可调用。"""
+    spec = _make_builder().build_onboard_spec(
         source_id=1, database="df", table="dws_probe", columns=_COLUMNS,
     )
     assert spec["spec_version"] == "v1"

@@ -1,4 +1,4 @@
-"""冷启动 spec 构造服务。
+"""Onboard（建表入模）spec 构造服务。
 
 把 `dws_p2_batch.py` `publish_one` 里验证过的 spec 构造编排固化进应用层服务：
 喂列定义 → 建 cube（含已有 ratio 自动拆分）→ 升全部度量为 BusinessMetric → 组装可发布 v1 spec dict。
@@ -12,14 +12,14 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 
-class ColdstartSpecBuilder:
-    """从列定义编排出可发布的 v1 冷启动 spec（cube + ontology + governance）。"""
+class OnboardSpecBuilder:
+    """从列定义编排出可发布的 v1 onboard spec（cube + ontology + governance）。"""
 
     def __init__(self, *, cube_modeling_service: Any, draft_builder: Any) -> None:
         self._cube_modeling_service = cube_modeling_service
         self._draft_builder = draft_builder
 
-    def build_coldstart_spec(
+    def build_onboard_spec(
         self,
         *,
         source_id: int,
