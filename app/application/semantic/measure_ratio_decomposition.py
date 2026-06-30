@@ -131,12 +131,20 @@ def decompose_ratio_measures(
         if _is_non_recomputable(full_text):
             continue  # 分位/中位数/标准差/方差/环比/同比 等不可重算 → 保留 non_additive
 
-        c_is_rate = _has_token(c_text, _RATE_TOKENS)
-        weight = _select_weight(c_name, c_is_rate, count_columns)
-        if weight is None:
-            continue  # 推不出高置信权重列 → 保留 non_additive（不乱猜分母）
+        if _is_count_column(c_name, c_comment):
+            # 对计数列求均值（per-row 平均计数），正确权重是行数/未知总体，无法确定 → 保留 non_additive
+            continue
 
-        weighted = _has_token(c_text, _AVERAGE_TOKENS) or c_is_rate
+        if _has_token(c_text, _RATE_TOKENS):
+            # 比率列：其分母总体≠比率名所含名词，stem 匹配会误绑到分子计数（correct_rate→correct_cnt
+            # 而非 question_cnt），产出静默错数。分母无法确定性推断 → 保留 non_additive，交 UX 兜底。
+            continue
+
+        weight = _select_weight(c_name, count_columns)
+        if weight is None:
+            continue  # 推不出高置信权重列（唯一同 stem 计数列）→ 保留 non_additive（不乱猜分母）
+
+        weighted = _has_token(c_text, _AVERAGE_TOKENS)
         num_name, num_payload = _build_numerator(c_name, weight, weighted, payload)
         den_name, den_payload = _build_denominator(weight)
 
@@ -210,21 +218,25 @@ def _collect_count_columns(
 
 def _select_weight(
     c_name: str,
-    c_is_rate: bool,
     count_columns: List[Tuple[str, Set[str]]],
 ) -> Optional[str]:
+    """仅接受「唯一同 subject-stem 的计数列」作为权重，否则 None（安全拒答）。
+
+    仅用于均值/总量列（比率列已在调用前拒绝）。对均值，唯一同 stem 计数列即其平均基数
+    （avg_answer_duration ↔ answer_cnt），不存在比率那种「分子计数冒充分母」的系统性误绑。
+    多个 stem 命中 / 无命中 / 仅与自身同名 → 一律 None，绝不靠「全局唯一计数列」之类弱信号猜。
+    """
     if not count_columns:
         return None
+    c_lower = c_name.lower()
     c_subjects = _subject_tokens(c_name)
-    stem_matches = [name for name, subj in count_columns if c_subjects & subj]
-    if len(stem_matches) == 1:
-        return stem_matches[0]
-    if len(stem_matches) > 1:
-        return None  # 多个 stem 命中 → 歧义，不猜
-    # 无 stem 命中：仅当源列是比率类且全局恰好 1 个计数列时采用（比率以总体计数为分母）
-    if c_is_rate and len(count_columns) == 1:
-        return count_columns[0][0]
-    return None
+    if not c_subjects:
+        return None
+    stem_matches = [
+        name for name, subj in count_columns
+        if name.lower() != c_lower and (c_subjects & subj)
+    ]
+    return stem_matches[0] if len(stem_matches) == 1 else None
 
 
 # ── 度量构造 ──────────────────────────────────────────────

@@ -57,36 +57,50 @@ def test_pre_averaged_column_decomposes_to_weighted_sum():
     assert result.ratios[0].weighted is True
 
 
-def test_rate_column_with_single_count_uses_total_count_as_weight():
-    """比率列无 stem 命中，但全局恰好 1 个计数列 → 以该计数列为分母（加权）。"""
-    measures = {
-        "avg_accuracy_rate": _avg_measure("AVG(`accuracy_rate`)", title="正确率"),
-    }
+def test_rate_column_is_never_auto_decomposed():
+    """红线：比率列分母总体无法确定性推断 → 一律保留 non_additive(安全拒答)，即便只有 1 个计数列。
+
+    rate 的分母≠rate 名所含名词，stem 匹配会误绑到分子计数，故比率类不走自动拆分。
+    """
+    measures = {"avg_accuracy_rate": _avg_measure("AVG(`accuracy_rate`)", title="正确率")}
     columns = [
         {"name": "accuracy_rate", "type": "double", "comment": "正确率"},
         {"name": "answer_cnt", "type": "bigint", "comment": "答题次数"},
-    ]
-    result = decompose_ratio_measures(measures, columns=columns)
-    ratio = result.measures["avg_accuracy_rate"]
-    assert ratio["type"] == "ratio"
-    assert ratio["sql"] == "{wsum_accuracy_rate} / NULLIF({sum_answer_cnt}, 0)"
-    assert result.measures["wsum_accuracy_rate"]["sql"] == "SUM(`accuracy_rate` * `answer_cnt`)"
-
-
-def test_rate_column_with_multiple_counts_is_ambiguous_and_kept_non_additive():
-    """比率列 + 多个计数列且无 stem 命中 → 歧义，保留 non_additive（安全拒答）。"""
-    measures = {
-        "avg_accuracy_rate": _avg_measure("AVG(`accuracy_rate`)", title="正确率"),
-    }
-    columns = [
-        {"name": "accuracy_rate", "type": "double", "comment": "正确率"},
-        {"name": "answer_cnt", "type": "bigint", "comment": "答题次数"},
-        {"name": "correct_cnt", "type": "bigint", "comment": "答对次数"},
     ]
     result = decompose_ratio_measures(measures, columns=columns)
     kept = result.measures["avg_accuracy_rate"]
     assert kept["type"] == "avg"
     assert kept["non_additive"] is True
+    assert result.ratios == []
+
+
+def test_rate_stem_match_to_numerator_count_is_refused_not_silently_wrong():
+    """对抗回归：correct_rate 的 stem 会命中 correct_cnt(分子计数)而非 question_cnt(分母)，
+    若误绑会得 average-of-rates 错数(0.82 vs 真值 0.50)。必须拒答而非静默出错。"""
+    measures = {"avg_correct_rate": _avg_measure("AVG(`correct_rate`)", title="正确率")}
+    columns = [
+        {"name": "correct_rate", "type": "double", "comment": "正确率"},
+        {"name": "correct_cnt", "type": "bigint", "comment": "答对次数"},
+        {"name": "question_cnt", "type": "bigint", "comment": "题目数"},
+    ]
+    result = decompose_ratio_measures(measures, columns=columns)
+    kept = result.measures["avg_correct_rate"]
+    assert kept["type"] == "avg"
+    assert kept["non_additive"] is True
+    # 绝不能产出把 rate 误绑 correct_cnt 的 ratio
+    assert "wsum_correct_rate" not in result.measures
+    assert result.ratios == []
+
+
+def test_avg_of_count_column_is_kept_non_additive():
+    """对计数列求均值(per-row 平均计数)：正确权重是行数/未知总体 → 保留 non_additive，不自绑。"""
+    measures = {"avg_correct_cnt": _avg_measure("AVG(`avg_correct_cnt`)", title="平均答对数")}
+    columns = [
+        {"name": "avg_correct_cnt", "type": "double", "comment": "平均答对数"},
+        {"name": "correct_cnt", "type": "bigint", "comment": "答对次数"},
+    ]
+    result = decompose_ratio_measures(measures, columns=columns)
+    assert result.measures["avg_correct_cnt"]["type"] == "avg"
     assert result.ratios == []
 
 
