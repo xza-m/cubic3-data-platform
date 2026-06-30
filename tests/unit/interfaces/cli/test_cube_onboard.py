@@ -62,14 +62,21 @@ _SPEC = {
 }
 
 
-def _asset_svc():
-    return types.SimpleNamespace(
-        list_fields=lambda tid: {"items": [{"name": "answer_cnt", "type": "bigint"}], "total": 1}
-    )
+def _asset_svc(items=None):
+    """资产桩：默认仅 answer_cnt（无分区列）；可注入自定义 items 以测分区自动探测。"""
+    rows = items if items is not None else [{"name": "answer_cnt", "type": "bigint"}]
+    return types.SimpleNamespace(list_fields=lambda tid: {"items": rows, "total": len(rows)})
 
 
-def _onboard_builder():
-    return types.SimpleNamespace(build_onboard_spec=lambda **kw: _SPEC)
+def _onboard_builder(capture=None):
+    """onboard builder 桩：返回固定 _SPEC；capture(dict) 非空时记录 build_onboard_spec 入参。"""
+
+    def _build(**kw):
+        if capture is not None:
+            capture.update(kw)
+        return _SPEC
+
+    return types.SimpleNamespace(build_onboard_spec=_build)
 
 
 class _ProposalStub:
@@ -111,10 +118,10 @@ class _ProposalStub:
         return {"id": pid, "status": "published", "publish_result": {"release_id": "rel_onb"}}
 
 
-def _wire(prop):
+def _wire(prop, asset_svc=None, builder=None):
     return _container(
-        data_asset_service=_asset_svc(),
-        onboard_spec_builder=_onboard_builder(),
+        data_asset_service=asset_svc or _asset_svc(),
+        onboard_spec_builder=builder or _onboard_builder(),
         semantic_modeling_proposal_service=prop,
     )
 
@@ -199,3 +206,52 @@ def test_onboard_publish_with_yes_runs_full_chain(runner, patch_ctx):
     assert prop.calls == [
         "create_proposal", "update_spec", "validate", "approve", "apply", "publish",
     ]
+
+
+# --- 分区自动探测（turnkey 省心，堵忘传 --partitions 的 footgun）---------------------
+
+def test_onboard_auto_detects_ds_partition_when_not_given(runner, patch_ctx):
+    """列里有 ds + 不传 --partitions → 自动探到 ds，传给 build_onboard_spec 且回显 partitions_used。"""
+    prop = _ProposalStub(validate_status="validated")
+    capture = {}
+    asset = _asset_svc([
+        {"name": "answer_cnt", "type": "bigint"},
+        {"name": "ds", "type": "string"},
+    ])
+    patch_ctx(_wire(prop, asset_svc=asset, builder=_onboard_builder(capture)))
+    result = runner.invoke(cli, _BASE_ARGS)  # 不传 --partitions
+    assert result.exit_code == 0
+    # build_onboard_spec 实际收到 partitions=['ds']（自动探）
+    assert capture["partitions"] == ["ds"]
+    # 输出 partitions_used 让用户知情
+    assert _payload(result)["data"]["partitions_used"] == ["ds"]
+
+
+def test_onboard_no_partition_columns_yields_none(runner, patch_ctx):
+    """列里无 ds/dt/pt/date + 不传 --partitions → partitions=None，不报错（无分区表正常建）。"""
+    prop = _ProposalStub(validate_status="validated")
+    capture = {}
+    asset = _asset_svc([
+        {"name": "answer_cnt", "type": "bigint"},
+        {"name": "school_name", "type": "string"},
+    ])
+    patch_ctx(_wire(prop, asset_svc=asset, builder=_onboard_builder(capture)))
+    result = runner.invoke(cli, _BASE_ARGS)  # 不传 --partitions
+    assert result.exit_code == 0
+    assert capture["partitions"] is None
+    assert _payload(result)["data"]["partitions_used"] is None
+
+
+def test_onboard_explicit_partitions_wins_over_auto(runner, patch_ctx):
+    """显式 --partitions 即使列里有 ds 也以显式为准（不被自动探测覆盖）。"""
+    prop = _ProposalStub(validate_status="validated")
+    capture = {}
+    asset = _asset_svc([
+        {"name": "answer_cnt", "type": "bigint"},
+        {"name": "ds", "type": "string"},
+    ])
+    patch_ctx(_wire(prop, asset_svc=asset, builder=_onboard_builder(capture)))
+    result = runner.invoke(cli, _BASE_ARGS + ["--partitions", "dt"])
+    assert result.exit_code == 0
+    assert capture["partitions"] == ["dt"]  # 显式 dt 优先，不被 ds 覆盖
+    assert _payload(result)["data"]["partitions_used"] == ["dt"]

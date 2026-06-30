@@ -156,8 +156,25 @@ def _read_cached_columns(container, columns_from, output):
     ]
 
 
-def _onboard_overview(spec, validation):
-    """从 spec + validate 结果抽 onboard 概况（ratio/sensitive/lifted/门结果），命令如实呈现。"""
+# 常见分区列名（按优先级）：turnkey 命令忘传 --partitions 时自动探，避免建出无时间维 cube
+# → repair 注不进 time_dimension → metric_time_dimension_missing → validate 全挂的 footgun。
+_PARTITION_HINTS = ("ds", "dt", "pt", "date")
+
+
+def _auto_detect_partitions(columns):
+    """从列名按常见分区命名探测分区字段；命中返回 [字段名]，否则 None（不显式传时的兜底）。"""
+    names = {(c.get("name") or "").lower() for c in (columns or [])}
+    for hint in _PARTITION_HINTS:
+        if hint in names:
+            return [hint]
+    return None
+
+
+def _onboard_overview(spec, validation, partitions_used=None):
+    """从 spec + validate 结果抽 onboard 概况（ratio/sensitive/lifted/门结果），命令如实呈现。
+
+    partitions_used 回传实际使用的分区字段（显式或自动探测），让用户知情。
+    """
     cube = (spec or {}).get("cube") or {}
     measures = cube.get("measures") or {}
     ontology = (spec or {}).get("ontology") or {}
@@ -170,6 +187,7 @@ def _onboard_overview(spec, validation):
         "ratio_measures": [k for k, v in measures.items() if (v or {}).get("type") == "ratio"],
         "sensitive_fields": governance.get("sensitive_fields") or [],
         "lifted_metrics_count": len(ontology.get("metrics") or []),
+        "partitions_used": partitions_used,
     }
 
 
@@ -192,14 +210,19 @@ def cube_onboard(obj, source_id, database, table, columns_from, schema, partitio
     --publish 段经 write_run 二层护栏（缺 --yes 拒、--dry-run 预览）方写 live manifest。
     validate 未过 → 报 blockers + EXIT_NOT_READY，绝不 publish。
     """
-    parts = [p.strip() for p in (partitions or "").split(",") if p.strip()] or None
+    # 显式 --partitions 解析（命中则始终以显式为准）；未传则下面读列后自动探测，避免 footgun。
+    explicit_parts = [p.strip() for p in (partitions or "").split(",") if p.strip()] or None
 
     def _build_validated(container):
         """读列 → onboard spec → proposal 管线（固定 agent_led 防 human_led 死锁）→ validate。
 
-        返回 (proposal_service, proposal_id, spec, validation)。validate 不过在此 fail(NOT_READY)。
+        返回 (proposal_service, proposal_id, spec, validation, partitions_used)。
+        partitions：显式 --partitions 优先；未传则从列名自动探测分区字段（ds/dt/pt/date）。
+        validate 不过在此 fail(NOT_READY)。
         """
         columns = _read_cached_columns(container, columns_from, obj.output)
+        # turnkey 省心：未显式传 --partitions 时自动探，建出带时间维的 cube，避免 validate 全挂
+        parts = explicit_parts if explicit_parts is not None else _auto_detect_partitions(columns)
         spec = container.onboard_spec_builder().build_onboard_spec(
             source_id=source_id,
             database=database,
@@ -231,19 +254,23 @@ def cube_onboard(obj, source_id, database, table, columns_from, schema, partitio
                 details={"proposal_id": proposal_id, "blockers": matrix.get("blockers") or []},
                 output=obj.output,
             )
-        return prop, proposal_id, spec, validation
+        return prop, proposal_id, spec, validation, parts
 
     # 默认（无 --publish）：建模到 validated，输出概况 + 门结果，安全停（非消费级）
     if not publish:
-        run(obj, lambda container: _onboard_overview(*_build_validated(container)[2:]))
+        def _onboard_only(container):
+            _prop, _pid, spec, validation, parts = _build_validated(container)
+            return _onboard_overview(spec, validation, partitions_used=parts)
+
+        run(obj, _onboard_only)
         return
 
     # --publish 段：先建到 validated（在 app_context 内），再经写门控发布到 live manifest。
     # 不复用 write_run（其内置 run 会再开一层 app_context）；门控语义在此手写，保持单层 context：
     #   --dry-run → 预览不发；缺 --yes → EXIT_USAGE 拒；--yes → approve→apply→publish 真写。
     def _onboard_and_maybe_publish(container):
-        _prop, proposal_id, spec, validation = _build_validated(container)
-        overview = _onboard_overview(spec, validation)
+        _prop, proposal_id, spec, validation, parts = _build_validated(container)
+        overview = _onboard_overview(spec, validation, partitions_used=parts)
         action = f"publish cube '{table}' to live manifest"
         if dry_run:
             return {"dry_run": True, "action": action, "preview": {**overview, "will_publish": True}}
