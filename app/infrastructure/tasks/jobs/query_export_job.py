@@ -27,6 +27,7 @@ from app.domain.entities.data_source import DataSource
 from app.domain.entities.dataset import Dataset
 from app.domain.entities.dataset_field import DatasetField
 from app.domain.entities.query_export import QueryExport
+from app.domain.services.field_identifier import FieldIdentifier
 from app.infrastructure.adapters.datasources.factory import AdapterFactory
 from app.infrastructure.adapters.file_delivery.file_delivery_service import (
     FileDeliveryService,
@@ -263,6 +264,13 @@ def _stream_query(adapter, sql: str):
     }
 
 
+# 严守 MVP 边界：只对 PII / 机密 / 绝密 三类做行级脱敏，明确排除 internal。
+# 理由：DatasetField.is_sensitive() 现状仅含这三类；INTERNAL（金额类，mask_rule=amount）
+# 按死守约束「不碰 INTERNAL」不脱敏。注意 FieldIdentifier 的 is_sensitive 含 internal，
+# 不能直接照搬，必须按 sensitivity_level 白名单过滤。
+_MASKABLE_SENSITIVITY_LEVELS = frozenset({'pii', 'confidential', 'secret'})
+
+
 def _resolve_mask_columns(
     session,
     export: QueryExport,
@@ -272,81 +280,46 @@ def _resolve_mask_columns(
 ) -> Dict[str, str]:
     """构造导出行级脱敏映射 {导出结果列名: mask_rule}。
 
-    映射桥：QueryExport 只持有 source_id(=DataSource) + 裸 SQL，敏感字段元数据
-    挂在 DatasetField 上。这里通过 source_id + SQL 引用的物理表名定位到对应的
-    Dataset，再取其敏感字段（is_sensitive 且带 mask_rule），按 physical_name
-    与导出结果列名做大小写不敏感对齐。
+    现实约束：当前平台不走 dataset 工作流（datasets / dataset_fields 实际 0 行，
+    数据走 cube/语义层 + 裸 SQL），所以「SQL 表名→Dataset→DatasetField」这条桥
+    在生产上永远命中不到敏感字段。因此本函数采用双来源：
+
+    1. 主来源 —— FieldIdentifier 现场分类：对每个导出结果列名启发式判敏感度，
+       只接纳 sensitivity_level ∈ {pii, confidential, secret}（排除 internal），
+       取其 mask_rule。不依赖 dataset，0 datasets 下唯一有效。
+    2. 权威叠加 —— Dataset 桥：source_id + SQL 物理表名定位 Dataset 的敏感
+       DatasetField；同列两者都有时以 Dataset 的 mask_rule 为准（更权威）。
 
     属于 MVP 已知边界：
-    - free-SQL / 表名解析失败 / 无匹配 Dataset → 返回空 dict（不脱敏、不报错）。
-    - 多表 join 时取所有匹配 Dataset 的敏感字段并集；列名冲突时后者覆盖前者。
-    mask-always 策略：只要列被识别为敏感即遮蔽，不做角色门控。
+    - mask-always：只要列被识别为敏感即遮蔽，不做角色门控。
+    - 仅 PII/机密/绝密脱敏，INTERNAL（金额类）不动。
+    - 异常 / 无敏感列 → 返回空 dict（不脱敏、不报错）。
     """
     try:
-        source_id = getattr(export, 'source_id', None)
-        sql = getattr(export, 'sql_query', None)
-        if not source_id or not sql:
-            return {}
+        # 1) 主来源：FieldIdentifier 现场分类（按导出列名，纯内存、不依赖 DB）
+        mask_columns = _classify_columns_with_identifier(result_columns)
 
-        table_names = extract_table_names(sql)
-        if not table_names:
-            logger.info(
-                "Export masking skipped: no table names resolved from SQL",
+        # 2) 权威叠加：Dataset 桥（存在 dataset 时覆盖主来源）。
+        #    单独兜底：DB 查询失败不得拖垮主来源——主来源不依赖 DB，应照常生效。
+        dataset_rules: Dict[str, str] = {}
+        try:
+            dataset_rules = _resolve_dataset_mask_rules(session, export, result_columns)
+        except Exception as bridge_exc:  # Dataset 桥失败降级为不叠加
+            logger.warning(
+                "Export masking dataset bridge failed, falling back to identifier only",
                 export_id=export_id,
+                error=str(bridge_exc),
             )
-            return {}
-
-        # 物理表名可能带 schema 前缀（db.table），取末段与 Dataset.physical_table 对齐
-        physical_tables = {name.split('.')[-1] for name in table_names if name}
-
-        datasets = (
-            session.query(Dataset)
-            .filter(
-                Dataset.source_id == source_id,
-                Dataset.physical_table.in_(physical_tables),
-                Dataset.is_deleted.is_(False),
-            )
-            .all()
-        )
-        if not datasets:
-            logger.info(
-                "Export masking skipped: no dataset matched source+tables",
-                export_id=export_id,
-                source_id=source_id,
-                tables=sorted(physical_tables),
-            )
-            return {}
-
-        dataset_ids = [ds.id for ds in datasets]
-        sensitive_fields = (
-            session.query(DatasetField)
-            .filter(DatasetField.dataset_id.in_(dataset_ids))
-            .all()
-        )
-
-        # 敏感字段 physical_name(lower) -> mask_rule
-        rule_by_lower_name: Dict[str, str] = {}
-        for field in sensitive_fields:
-            if field.is_sensitive() and field.mask_rule:
-                rule_by_lower_name[str(field.physical_name).lower()] = field.mask_rule
-
-        if not rule_by_lower_name:
-            return {}
-
-        # 与导出结果列名大小写不敏感对齐，key 用导出实际列名（writer 按列名查规则）
-        mask_columns: Dict[str, str] = {}
-        for col in result_columns:
-            rule = rule_by_lower_name.get(str(col).lower())
-            if rule:
-                mask_columns[col] = rule
+        mask_columns.update(dataset_rules)
 
         if mask_columns:
             logger.info(
                 "Export row-level masking enabled",
                 export_id=export_id,
-                source_id=source_id,
+                source_id=getattr(export, 'source_id', None),
                 masked_columns=sorted(mask_columns.keys()),
                 rules={c: mask_columns[c] for c in sorted(mask_columns)},
+                dataset_authoritative=sorted(dataset_rules.keys()),
             )
         return mask_columns
     except Exception as exc:  # 脱敏解析失败不应阻断导出，降级为不脱敏
@@ -356,6 +329,87 @@ def _resolve_mask_columns(
             error=str(exc),
         )
         return {}
+
+
+def _classify_columns_with_identifier(
+    result_columns: List[str],
+) -> Dict[str, str]:
+    """主来源：用 FieldIdentifier 对导出列名现场分类。
+
+    只接纳 PII/机密/绝密（白名单），明确排除 internal，避免把金额类列遮成 ***。
+    key 用导出实际列名，value 为 mask_rule。
+    """
+    mask_columns: Dict[str, str] = {}
+    for col in result_columns:
+        try:
+            identified = FieldIdentifier.identify_field(
+                {'name': str(col), 'type': 'string', 'comment': ''}
+            )
+        except Exception:
+            continue
+        level = identified.get('sensitivity_level')
+        rule = identified.get('mask_rule')
+        if level in _MASKABLE_SENSITIVITY_LEVELS and rule:
+            mask_columns[col] = rule
+    return mask_columns
+
+
+def _resolve_dataset_mask_rules(
+    session,
+    export: QueryExport,
+    result_columns: List[str],
+) -> Dict[str, str]:
+    """权威叠加：source_id + SQL 物理表名 → Dataset → 敏感 DatasetField 的 mask_rule。
+
+    当前平台 datasets 多为 0 行，命中即权威；命中不到返回空 dict。
+    与导出结果列名做大小写不敏感对齐，key 用导出实际列名。
+    """
+    source_id = getattr(export, 'source_id', None)
+    sql = getattr(export, 'sql_query', None)
+    if not source_id or not sql:
+        return {}
+
+    table_names = extract_table_names(sql)
+    if not table_names:
+        return {}
+
+    # 物理表名可能带 schema 前缀（db.table），取末段与 Dataset.physical_table 对齐
+    physical_tables = {name.split('.')[-1] for name in table_names if name}
+
+    datasets = (
+        session.query(Dataset)
+        .filter(
+            Dataset.source_id == source_id,
+            Dataset.physical_table.in_(physical_tables),
+            Dataset.is_deleted.is_(False),
+        )
+        .all()
+    )
+    if not datasets:
+        return {}
+
+    dataset_ids = [ds.id for ds in datasets]
+    sensitive_fields = (
+        session.query(DatasetField)
+        .filter(DatasetField.dataset_id.in_(dataset_ids))
+        .all()
+    )
+
+    # 敏感字段 physical_name(lower) -> mask_rule（DatasetField.is_sensitive 仅 pii/机密/绝密）
+    rule_by_lower_name: Dict[str, str] = {}
+    for field in sensitive_fields:
+        if field.is_sensitive() and field.mask_rule:
+            rule_by_lower_name[str(field.physical_name).lower()] = field.mask_rule
+
+    if not rule_by_lower_name:
+        return {}
+
+    mask_columns: Dict[str, str] = {}
+    for col in result_columns:
+        rule = rule_by_lower_name.get(str(col).lower())
+        if rule:
+            mask_columns[col] = rule
+    return mask_columns
 
 
 def _extract_column_names(columns: List[Any]) -> List[str]:
