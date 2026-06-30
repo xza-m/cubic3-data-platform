@@ -13,6 +13,7 @@ from app.domain.ontology.entities import (
     normalize_cube_bindings,
     normalize_measure_refs,
 )
+from app.domain.services.field_identifier import FieldIdentifier
 
 
 class SemanticModelDraftBuilder:
@@ -31,23 +32,17 @@ class SemanticModelDraftBuilder:
         "订单": "order",
         "用户": "user",
     }
-    _SENSITIVE_KEYWORDS = (
+    # 内容型敏感兜底关键词：自由文本字段（评论/留言/原因）可能含 PII，与 FieldIdentifier 的
+    # 结构化 PII/机密/内部分类正交。结构型敏感（手机/邮箱/身份证/学生 PII）统一委托 FieldIdentifier。
+    _CONTENT_SENSITIVE_KEYWORDS = (
         "content",
         "comment",
         "text",
         "reason",
         "message",
-        "mobile",
-        "phone",
-        "email",
-        "id_card",
-        "identity",
         "评论内容",
         "留言",
         "原因",
-        "手机号",
-        "邮箱",
-        "身份证",
         "敏感",
     )
     _BLOCKING_FIELD_CANDIDATE_ISSUE_CODES = {
@@ -609,10 +604,34 @@ class SemanticModelDraftBuilder:
         return "total_count", {"title": "总数", "type": "count", "certified": True}
 
     def _detect_sensitive_fields(self, cube: Dict[str, Any]) -> List[str]:
+        """检出敏感维度字段，三路合一（信源对齐）：
+
+        1. 上游已标 sensitivity_level ∈ {pii,confidential,secret} → 直接判敏感（尊重上游分类器/DatasetField）。
+        2. 否则委托 FieldIdentifier（pii/confidential/internal 三级，覆盖手机/邮箱/身份证/学生 PII 等结构型敏感）。
+        3. 再走内容型兜底关键词（评论/留言/原因等自由文本，FieldIdentifier 不覆盖）。
+        """
         sensitive: List[str] = []
         for field, dimension in (cube.get("dimensions") or {}).items():
-            haystack = f"{field} {dimension.get('title') or ''} {dimension.get('description') or ''}".lower()
-            if any(keyword.lower() in haystack for keyword in self._SENSITIVE_KEYWORDS):
+            title = dimension.get("title") or ""
+            description = dimension.get("description") or ""
+
+            # 1. 上游已标敏感级别（C 透传消费，向前兼容；无标记时为 None 走兜底）
+            upstream_level = str(dimension.get("sensitivity_level") or "").lower()
+            if upstream_level in {"pii", "confidential", "secret"}:
+                sensitive.append(field)
+                continue
+
+            # 2. 委托 FieldIdentifier 做结构型分类（信源对齐，覆盖学生 PII）
+            identified = FieldIdentifier.identify_field(
+                {"name": field, "type": dimension.get("type") or "", "comment": f"{title} {description}".strip()}
+            )
+            if identified.get("is_sensitive"):
+                sensitive.append(field)
+                continue
+
+            # 3. 内容型兜底（评论/留言/原因等自由文本敏感）
+            haystack = f"{field} {title} {description}".lower()
+            if any(keyword.lower() in haystack for keyword in self._CONTENT_SENSITIVE_KEYWORDS):
                 sensitive.append(field)
         return sensitive
 

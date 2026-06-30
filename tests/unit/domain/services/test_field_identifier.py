@@ -89,6 +89,54 @@ class TestFieldIdentifier:
         assert result['is_sensitive'] is True
         assert result['mask_rule'] == 'email'
 
+    def test_identify_field_sensitive_pii_student_name(self):
+        """B5：K12 学生姓名应判 PII（mask=name）。"""
+        result = FieldIdentifier.identify_field({'name': 'student_name', 'type': 'varchar', 'comment': '学生姓名'})
+        assert result['is_sensitive'] is True
+        assert result['sensitivity_level'] == 'pii'
+        assert result['mask_rule'] == 'name'
+
+    def test_identify_field_sensitive_pii_student_id(self):
+        """B5：学号 student_id 应判 PII（学生唯一标识）。"""
+        result = FieldIdentifier.identify_field({'name': 'student_id', 'type': 'bigint', 'comment': '学号'})
+        assert result['is_sensitive'] is True
+        assert result['sensitivity_level'] == 'pii'
+
+    def test_identify_field_student_business_dims_not_pii(self):
+        """B5 收口：K12「学生*」业务维度（学生年级/学生人数/学生科目）非 PII，不得被裸「学生」误标。
+
+        真 PII 零损失——学生姓名走「姓名」、student_name 走 name 正则、学号/学籍有专用词。
+        """
+        # 业务维度——非 PII
+        for name, comment in [('stu_grade', '学生年级'), ('stu_cnt', '学生人数'), ('stu_subject', '学生科目')]:
+            result = FieldIdentifier.identify_field({'name': name, 'type': 'string', 'comment': comment})
+            assert result['is_sensitive'] is False, f'{comment} 不应被误标 PII'
+            assert result['sensitivity_level'] == 'public', comment
+        # 真 PII——仍命中
+        assert FieldIdentifier.identify_field({'name': 'sname', 'type': 'string', 'comment': '学生姓名'})['sensitivity_level'] == 'pii'
+        assert FieldIdentifier.identify_field({'name': 'xh', 'type': 'string', 'comment': '学号'})['sensitivity_level'] == 'pii'
+
+    def test_identify_field_sensitive_pii_xuehao_chinese(self):
+        """B5：中文学号字段应判 PII。"""
+        result = FieldIdentifier.identify_field({'name': 'xh', 'type': 'string', 'comment': '学号'})
+        assert result['is_sensitive'] is True
+        assert result['sensitivity_level'] == 'pii'
+
+    def test_identify_field_pii_name_word_boundary_real_and_user(self):
+        """B5：real_name / user_name 仍判 PII（mask=name）。"""
+        for name in ('real_name', 'user_name', 'full_name'):
+            result = FieldIdentifier.identify_field({'name': name, 'type': 'varchar', 'comment': ''})
+            assert result['is_sensitive'] is True, name
+            assert result['sensitivity_level'] == 'pii', name
+            assert result['mask_rule'] == 'name', name
+
+    def test_identify_field_name_word_boundary_excludes_non_person_entities(self):
+        """B5 守边界：school_name / class_name / product_name / file_name 不得误判为 PII。"""
+        for name in ('school_name', 'class_name', 'product_name', 'file_name', 'table_name'):
+            result = FieldIdentifier.identify_field({'name': name, 'type': 'varchar', 'comment': ''})
+            assert result['is_sensitive'] is False, name
+            assert result['sensitivity_level'] == 'public', name
+
     def test_identify_field_sensitive_confidential(self):
         """测试敏感字段 - 机密"""
         field_info = {'name': 'api_secret', 'type': 'string', 'comment': ''}

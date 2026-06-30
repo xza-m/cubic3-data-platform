@@ -17,15 +17,34 @@ class FieldIdentifier:
     ]
     
     # 敏感字段关键词
+    # 说明：name 类不放进裸子串列表（避免 school_name/class_name/product_name 误判为 PII），
+    # 改由 _PII_NAME_FIELD_PATTERN 做词边界/前缀式匹配；student_id/no/code、学号、学籍 等 K12 学生 PII 显式覆盖。
+    # 不放裸「学生」：K12 域绝大多数维度（学生年级/学生人数/学生科目）带「学生」但非 PII，裸子串会过度标记、
+    # 污染信号、可能影响发布门。真 PII 零损失——学生姓名走「姓名」、student_name 走 name 正则、学号/学籍有专用词。
     SENSITIVE_KEYWORDS = {
-        'pii': ['mobile', 'phone', 'id_card', 'email', 'address', 'real_name', 
+        'pii': ['mobile', 'phone', 'id_card', 'email', 'address',
                 'password', 'id_no', 'card_no', 'account',
-                '手机', '电话', '身份证', '邮箱', '地址', '姓名', '密码', '账号'],
+                'student_id', 'student_no', 'student_code',
+                '手机', '电话', '身份证', '邮箱', '地址', '密码', '账号',
+                '学号', '学籍'],
         'internal': ['salary', 'income', 'revenue', 'cost', 'profit',
                     '薪资', '工资', '收入', '成本', '利润'],
         'confidential': ['secret', 'token', 'key', 'credential',
                         '密钥', '凭证', '秘密']
     }
+
+    # 人名类 PII 的词边界匹配（只对字段名判，避免 comment 噪声）：
+    # 以 _name 结尾且前缀属于人名前缀白名单，或字段名本身就是 name。
+    # 避免 school_name / class_name / product_name / file_name 误判为 PII。
+    _PII_NAME_PREFIXES = (
+        'real', 'student', 'user', 'full', 'first', 'last', 'given',
+        'family', 'middle', 'nick', 'login', 'contact', 'customer', 'member',
+    )
+    _PII_NAME_FIELD_PATTERN = re.compile(
+        r'^(?:' + '|'.join(_PII_NAME_PREFIXES) + r')_name$'
+        r'|(?:^|_)(?:' + '|'.join(_PII_NAME_PREFIXES) + r')_name(?:$|_)'
+        r'|^name$'
+    )
     
     # 度量字段后缀
     MEASURE_SUFFIXES = [
@@ -182,29 +201,35 @@ class FieldIdentifier:
             'matched_rules': []
         }
         
+        field_name_lower = (field_name or '').lower()
         text_to_check = (field_name + ' ' + (comment or '')).lower()
-        
-        # 检查PII级别
-        for keyword in cls.SENSITIVE_KEYWORDS['pii']:
-            if keyword in text_to_check:
-                result['is_sensitive'] = True
-                result['level'] = 'pii'
-                result['confidence'] = 0.9
-                result['matched_rules'].append(f'PII关键词匹配: {keyword}')
-                
-                # 根据字段类型推荐脱敏规则
-                if any(k in text_to_check for k in ['mobile', 'phone', '手机', '电话']):
-                    result['mask_rule'] = 'mobile'
-                elif any(k in text_to_check for k in ['id_card', 'id_no', '身份证']):
-                    result['mask_rule'] = 'id_card'
-                elif any(k in text_to_check for k in ['email', '邮箱']):
-                    result['mask_rule'] = 'email'
-                elif any(k in text_to_check for k in ['name', '姓名']):
-                    result['mask_rule'] = 'name'
-                else:
-                    result['mask_rule'] = 'full_mask'
-                
-                return result
+
+        # PII 命中：子串关键词命中，或人名字段名词边界命中（real_name/student_name/user_name…），
+        # 或裸中文「姓名」命中。name 类用词边界避免 school_name / class_name / product_name 误判。
+        pii_keyword_hit = next((k for k in cls.SENSITIVE_KEYWORDS['pii'] if k in text_to_check), None)
+        pii_name_hit = bool(cls._PII_NAME_FIELD_PATTERN.search(field_name_lower)) or ('姓名' in text_to_check)
+
+        if pii_keyword_hit or pii_name_hit:
+            result['is_sensitive'] = True
+            result['level'] = 'pii'
+            result['confidence'] = 0.9
+            result['matched_rules'].append(
+                f'PII关键词匹配: {pii_keyword_hit}' if pii_keyword_hit else 'PII人名字段匹配'
+            )
+
+            # 根据字段类型推荐脱敏规则
+            if any(k in text_to_check for k in ['mobile', 'phone', '手机', '电话']):
+                result['mask_rule'] = 'mobile'
+            elif any(k in text_to_check for k in ['id_card', 'id_no', '身份证']):
+                result['mask_rule'] = 'id_card'
+            elif any(k in text_to_check for k in ['email', '邮箱']):
+                result['mask_rule'] = 'email'
+            elif pii_name_hit or '姓名' in text_to_check:
+                result['mask_rule'] = 'name'
+            else:
+                result['mask_rule'] = 'full_mask'
+
+            return result
         
         # 检查机密级别
         for keyword in cls.SENSITIVE_KEYWORDS['confidential']:

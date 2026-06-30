@@ -278,6 +278,8 @@ def test_spec_draft_generates_minimal_student_comment_modeling_agent_spec():
     assert spec["ontology"]["glossary"][0]["term"] == "学生评论"
     assert spec["ontology"]["policies"][0]["visibility"] == "restricted"
     assert "comment_content" in spec["governance"]["sensitive_fields"]
+    # B5：学生 PII（student_id）此前漏检，委托 FieldIdentifier 后被检出
+    assert "student_id" in spec["governance"]["sensitive_fields"]
     assert result["next_actions"]["default_publish_target"] == "cube_and_ontology"
 
 
@@ -588,3 +590,71 @@ def test_recommend_bindable_objects_skips_deprecated_and_handles_empty_repo():
 
     ontology_service.list_objects.side_effect = RuntimeError("repo unavailable")
     assert builder.recommend_bindable_objects(_cube_draft(), subject="学生评论") == []
+
+
+def test_detect_sensitive_fields_catches_student_pii_via_field_identifier():
+    """B5：建模层敏感检测委托 FieldIdentifier，学生 PII（student_name/student_id/学号）被检出。
+
+    收口守护：K12 域「学生*」业务维度（学生年级/学生人数/学生科目）只是带「学生」字样、并非 PII，
+    不得被裸「学生」子串误标敏感——污染信号、可能影响发布门。
+    """
+    builder = _builder()
+    cube = {
+        "dimensions": {
+            # 真 PII
+            "student_name": {"title": "学生姓名", "type": "string"},
+            "student_id": {"title": "学生ID", "type": "string"},
+            "xh": {"title": "学号", "type": "string"},
+            # K12「学生*」业务维度——非 PII，不得误标
+            "stu_grade": {"title": "学生年级", "type": "string"},
+            "stu_cnt": {"title": "学生人数", "type": "bigint"},
+            "stu_subject": {"title": "学生科目", "type": "string"},
+            # 非人名实体
+            "school_name": {"title": "学校名称", "type": "string"},
+            "class_name": {"title": "班级名称", "type": "string"},
+            "grade": {"title": "年级", "type": "string"},
+        }
+    }
+    sensitive = builder._detect_sensitive_fields(cube)
+    # 学生 PII 被检出
+    assert "student_name" in sensitive
+    assert "student_id" in sensitive
+    assert "xh" in sensitive  # 注释「学号」命中
+    # 收口：学生类业务维度不被裸「学生」误标
+    assert "stu_grade" not in sensitive
+    assert "stu_cnt" not in sensitive
+    assert "stu_subject" not in sensitive
+    # 非人名实体不误判
+    assert "school_name" not in sensitive
+    assert "class_name" not in sensitive
+    assert "grade" not in sensitive
+
+
+def test_detect_sensitive_fields_keeps_content_fallback():
+    """B5 守内容兜底：评论/留言等自由文本仍被检出（FieldIdentifier 不覆盖内容型）。"""
+    builder = _builder()
+    cube = {
+        "dimensions": {
+            "comment_content": {"title": "评论内容", "type": "string"},
+            "remark": {"title": "留言", "type": "string"},
+            "audit_status": {"title": "审核状态", "type": "string"},
+        }
+    }
+    sensitive = builder._detect_sensitive_fields(cube)
+    assert "comment_content" in sensitive
+    assert "remark" in sensitive  # 注释「留言」命中内容兜底
+    assert "audit_status" not in sensitive
+
+
+def test_detect_sensitive_fields_respects_upstream_sensitivity_level():
+    """B5：上游已标 sensitivity_level∈{pii,confidential,secret} 直接判敏感（信源对齐，C 透传消费）。"""
+    builder = _builder()
+    cube = {
+        "dimensions": {
+            "opaque_code": {"title": "脱敏编码", "type": "string", "sensitivity_level": "pii"},
+            "plain_dim": {"title": "普通维度", "type": "string", "sensitivity_level": "public"},
+        }
+    }
+    sensitive = builder._detect_sensitive_fields(cube)
+    assert "opaque_code" in sensitive  # 上游标记 pii → 直接敏感
+    assert "plain_dim" not in sensitive
