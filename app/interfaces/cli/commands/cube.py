@@ -191,6 +191,53 @@ def _onboard_overview(spec, validation, partitions_used=None):
     }
 
 
+def _build_validated_for_table(
+    container,
+    output,
+    *,
+    source_id,
+    database,
+    table,
+    columns_from,
+    schema,
+    explicit_parts,
+    lift,
+):
+    """读列 → onboard spec → proposal 管线（固定 agent_led 防 human_led 死锁）→ validate。
+
+    单表/批量共用的核心编排（复用 onboard_spec_builder + proposal 服务，零新建领域逻辑）。
+    partitions：显式优先；未传则从列名自动探测（ds/dt/pt/date），避免无时间维 footgun。
+    返回 (proposal_service, proposal_id, spec, validation, partitions_used)；validate 不过不在此中断，
+    由调用方决定（单表 fail NOT_READY；批量 mark+skip 继续整批）。
+    """
+    columns = _read_cached_columns(container, columns_from, output)
+    parts = explicit_parts if explicit_parts is not None else _auto_detect_partitions(columns)
+    spec = container.onboard_spec_builder().build_onboard_spec(
+        source_id=source_id,
+        database=database,
+        table=table,
+        columns=columns,
+        schema=schema,
+        partitions=parts,
+        lift=lift,
+    )
+    prop = container.semantic_modeling_proposal_service()
+    created = prop.create_proposal(
+        {
+            "business_subject": (spec.get("business") or {}).get("subject") or table,
+            "source_kind": "physical_table",
+            "source_id": source_id,
+            "database": database,
+            "table": table,
+            "source_mode": "agent_led",  # 固定，避免 human_led 缺机械字段死锁
+        }
+    )
+    proposal_id = created["id"]
+    prop.update_spec(proposal_id, {"spec": spec})
+    validation = prop.validate(proposal_id)
+    return prop, proposal_id, spec, validation, parts
+
+
 @cube.command("onboard", help="把物理表一步建成可发布 cube（建cube+升度量为业务指标+可选发布）")
 @click.option("--source-id", required=True, type=int, help="数据源 id（cube 的 source 绑定）")
 @click.option("--database", required=True, help="物理库名")
@@ -214,38 +261,18 @@ def cube_onboard(obj, source_id, database, table, columns_from, schema, partitio
     explicit_parts = [p.strip() for p in (partitions or "").split(",") if p.strip()] or None
 
     def _build_validated(container):
-        """读列 → onboard spec → proposal 管线（固定 agent_led 防 human_led 死锁）→ validate。
-
-        返回 (proposal_service, proposal_id, spec, validation, partitions_used)。
-        partitions：显式 --partitions 优先；未传则从列名自动探测分区字段（ds/dt/pt/date）。
-        validate 不过在此 fail(NOT_READY)。
-        """
-        columns = _read_cached_columns(container, columns_from, obj.output)
-        # turnkey 省心：未显式传 --partitions 时自动探，建出带时间维的 cube，避免 validate 全挂
-        parts = explicit_parts if explicit_parts is not None else _auto_detect_partitions(columns)
-        spec = container.onboard_spec_builder().build_onboard_spec(
+        """复用共享编排；单表语义：validate 不过 → fail(NOT_READY)、绝不 publish。"""
+        prop, proposal_id, spec, validation, parts = _build_validated_for_table(
+            container,
+            obj.output,
             source_id=source_id,
             database=database,
             table=table,
-            columns=columns,
+            columns_from=columns_from,
             schema=schema,
-            partitions=parts,
+            explicit_parts=explicit_parts,
             lift=lift,
         )
-        prop = container.semantic_modeling_proposal_service()
-        created = prop.create_proposal(
-            {
-                "business_subject": (spec.get("business") or {}).get("subject") or table,
-                "source_kind": "physical_table",
-                "source_id": source_id,
-                "database": database,
-                "table": table,
-                "source_mode": "agent_led",  # 固定，避免 human_led 缺机械字段死锁
-            }
-        )
-        proposal_id = created["id"]
-        prop.update_spec(proposal_id, {"spec": spec})
-        validation = prop.validate(proposal_id)
         if validation.get("status") != "validated":
             matrix = validation.get("validation_matrix") or {}
             fail(
@@ -290,3 +317,131 @@ def cube_onboard(obj, source_id, database, table, columns_from, schema, partitio
         }
 
     run(obj, _onboard_and_maybe_publish)
+
+
+# ---- P2 turnkey 批量：一次把多张物理表建成可发布 cube -----------------------------
+
+def _resolve_table_id(container, *, table, source_id, database, schema):
+    """按表名经 data_asset_service.list_tables(keyword=table) 匹配 qualified_name 结尾，取 table_id。
+
+    命中多张时取第一张（同库同表唯一）；找不到返回 None（批量按"未找到资产"标记跳过该表）。
+    """
+    page = container.data_asset_service().list_tables(
+        keyword=table,
+        source_id=str(source_id) if source_id is not None else None,
+        database=database,
+        schema=schema,
+        page_size=50,
+    )
+    for item in page.get("items") or []:
+        qn = (item.get("qualified_name") or "").lower()
+        if qn.endswith(str(table).lower()):
+            return item.get("id")
+    return None
+
+
+@cube.command("onboard-batch", help="批量把多张物理表建成可发布 cube（逐表 validate，单张失败只跳过）")
+@click.option("--source-id", required=True, type=int, help="数据源 id（cube 的 source 绑定）")
+@click.option("--database", required=True, help="物理库名")
+@click.option("--tables", required=True, help="表名，逗号分隔（如 t1,t2,t3）")
+@click.option("--schema", default=None, help="schema 名（可选）")
+@click.option("--lift", default="all", help="升哪些度量为业务指标：all 或逗号分隔子集（默认 all）")
+@click.option("--publish", is_flag=True, default=False, help="继续发布整批到 live manifest（默认否：只到 validated）")
+@click.option("--dry-run", is_flag=True, help="--publish 段预览整批，不发布")
+@click.option("--yes", is_flag=True, help="--publish 段确认写 live manifest")
+@click.pass_obj
+def cube_onboard_batch(obj, source_id, database, tables, schema, lift, publish, dry_run, yes) -> None:
+    """逐表复用单表编排（build_onboard_spec + proposal create/update-spec/validate）。
+
+    某张 validate 不过只标记跳过、不中断整批（per-table 门控）。
+    --publish 段：批前记一次回滚锚点（active manifest release_id），同款写门控（缺 --yes 拒、--dry-run 预览），
+    --yes 才对每张 validated 的逐张 approve→apply→publish。
+    """
+    table_names = [t.strip() for t in (tables or "").split(",") if t.strip()]
+    if not table_names:
+        fail("--tables 不能为空（逗号分隔表名）", exit_code=EXIT_USAGE, output=obj.output)
+
+    def _onboard_one(container, table):
+        """单表跑到 validate；返回 (per_table_report, proposal_or_none)。validate 不过不中断。"""
+        table_id = _resolve_table_id(
+            container, table=table, source_id=source_id, database=database, schema=schema
+        )
+        if table_id is None:
+            return {"table": table, "validate_status": "skipped", "reason": "asset_not_found"}, None
+        prop, proposal_id, spec, validation, parts = _build_validated_for_table(
+            container,
+            obj.output,
+            source_id=source_id,
+            database=database,
+            table=table,
+            columns_from=table_id,
+            schema=schema,
+            explicit_parts=None,  # 批量始终自动探分区（无逐表 --partitions）
+            lift=lift,
+        )
+        report = {"table": table, **_onboard_overview(spec, validation, partitions_used=parts)}
+        # validate 未过：标记跳过，不进发布；validated：附带 prop 供后续逐张发布
+        return report, (prop, proposal_id) if validation.get("status") == "validated" else None
+
+    # 默认（无 --publish）：逐表建到 validated，输出 per-table 概况，安全停（非消费级）
+    if not publish:
+        def _batch_validated(container):
+            items = [_onboard_one(container, t)[0] for t in table_names]
+            return {"items": items, "total": len(items)}
+
+        run(obj, _batch_validated)
+        return
+
+    # --publish 段：批前记一次回滚锚点 → 同款写门控（缺 --yes 拒 / --dry-run 预览全批不发 / --yes 逐张发）
+    def _batch_publish(container):
+        manifest = container.runtime_snapshot_service().get_active_manifest()
+        anchor_release_id = manifest.get("release_id") if isinstance(manifest, dict) else None
+
+        results = [_onboard_one(container, t) for t in table_names]
+        reports = [r for r, _ in results]
+        publishable = [(r, p) for r, p in results if p is not None]
+        action = f"publish {len(publishable)} cube(s) to live manifest"
+
+        if dry_run:
+            return {
+                "dry_run": True,
+                "action": action,
+                "anchor_release_id": anchor_release_id,
+                "preview": {"items": reports, "total": len(reports),
+                            "will_publish_count": len(publishable), "will_publish": True},
+            }
+        if not yes:
+            fail(
+                f"{action} 是写操作，需加 --yes 确认（或 --dry-run 预览）",
+                exit_code=EXIT_USAGE,
+                output=obj.output,
+            )
+
+        published_by_table = {}
+        new_release_id = anchor_release_id
+        for _report, (prop, proposal_id) in publishable:
+            prop.approve(proposal_id)
+            prop.apply(proposal_id)
+            published = prop.publish(proposal_id)
+            release_id = (published.get("publish_result") or {}).get("release_id")
+            published_by_table[proposal_id] = {
+                "publish_status": published.get("status"),
+                "release_id": release_id,
+            }
+            new_release_id = release_id or new_release_id
+
+        # 把发布结果回填进对应 per-table 报告
+        for report in reports:
+            pub = published_by_table.get(report.get("proposal_id"))
+            if pub is not None:
+                report.update(pub)
+
+        return {
+            "items": reports,
+            "total": len(reports),
+            "anchor_release_id": anchor_release_id,
+            "new_release_id": new_release_id,
+            "published_count": len(published_by_table),
+        }
+
+    run(obj, _batch_publish)

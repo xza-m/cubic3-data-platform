@@ -68,7 +68,7 @@ def describe(obj: CliCtx) -> None:
         "groups": {
             "datasource": ["list", "show <id>"],
             "asset": ["list", "show <table_id>", "fields <table_id>", "evidence <table_id>"],
-            "cube": ["list", "show <name>", "describe <name>", "draft (--source-id/--table/--columns-from)", "create <draft>", "update <name> <patch>", "onboard (--source-id/--database/--table/--columns-from [--lift] [--publish])  (turnkey:一步建可发布cube)"],
+            "cube": ["list", "show <name>", "describe <name>", "draft (--source-id/--table/--columns-from)", "create <draft>", "update <name> <patch>", "onboard (--source-id/--database/--table/--columns-from [--lift] [--publish])  (turnkey:一步建可发布cube)", "onboard-batch (--source-id/--database/--tables t1,t2 [--lift] [--publish])  (turnkey批量:逐表建,单张失败只跳过)"],
             "proposal": ["create", "confirm-source <id>", "update-spec <id>", "draft <id>", "validate <id>", "gap <id>", "approve <id>", "apply <id>", "publish <id>  (7步门控,写 live manifest)"],
             "release": ["list", "show <id>", "rollback <release_id>  (回滚 live manifest)"],
             "ontology": ["<kind> list/show/status", "<kind> upsert <payload>  (写,全量覆盖)", "<kind> publish <key>  (写,draft→active)  (kind: object/property/metric/glossary/relation/action/policy)"],
