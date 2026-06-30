@@ -5,6 +5,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.application.semantic.field_candidates import FieldCandidateService, FieldCandidateSet
+from app.application.semantic.measure_ratio_decomposition import decompose_ratio_measures
 from app.application.semantic.semantic_runtime_binding_service import SemanticRuntimeBindingService
 from app.domain.ontology.entities import measure_ref_strings
 from app.domain.semantic.entities import CubeDefinition, MeasureDef
@@ -434,7 +435,16 @@ class CubeModelingService:
                 non_additive=is_ratio or additivity == "non_additive" or raw_agg == "percentile",
                 tags=list(candidate.issue_codes or []),
             )
-        return measures
+        columns_meta = [
+            {
+                "name": candidate.field,
+                "comment": str((candidate.source or {}).get("comment") or (candidate.source or {}).get("description") or ""),
+                "type": candidate.physical_type.raw_type or candidate.physical_type.normalized_type,
+            }
+            for candidate in candidate_set.fields
+            if str(candidate.field or "").strip()
+        ]
+        return self._decompose_ratio_measures(measures, columns_meta)
 
     @staticmethod
     def _candidate_dimension_type(semantic_type: str) -> str:
@@ -563,7 +573,19 @@ class CubeModelingService:
                 source_data_type=column_type,
                 non_additive=agg_type == "avg",
             )
-        return measures
+        return self._decompose_ratio_measures(measures, columns)
+
+    @staticmethod
+    def _decompose_ratio_measures(
+        measures: Dict[str, MeasureDef],
+        columns: Optional[List[Dict[str, Any]]],
+    ) -> Dict[str, MeasureDef]:
+        """把非可加均值/比率度量拆成可加 分子/分母 SUM + ratio（确定性、推不出则原样保留）。"""
+        payloads = {name: measure.model_dump(exclude_none=True) for name, measure in measures.items()}
+        result = decompose_ratio_measures(payloads, columns=columns)
+        if not result.changed:
+            return measures
+        return {name: MeasureDef(**payload) for name, payload in result.measures.items()}
 
     @staticmethod
     def _is_likely_measure(lower_name: str, comment: str) -> bool:

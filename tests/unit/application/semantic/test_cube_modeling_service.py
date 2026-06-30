@@ -722,3 +722,38 @@ def test_create_cube_revision_and_activation_cover_remaining_helper_branches(mon
     )
     activated_without_certified = metric_guarded_service.activate_cube("orders")
     assert activated_without_certified.status == "active"
+
+
+def test_build_measures_decomposes_avg_into_ratio_with_weight_column():
+    """冷启动正解：avg 度量 + 同 stem 计数列 → 同名 ratio + 可加分子/分母 SUM。"""
+    service = CubeModelingService(
+        cube_repo=_InMemoryCubeRepo(),
+        runtime_binding_service=_FakeRuntime(),
+    )
+    measures = service._build_measures(
+        [
+            {"name": "avg_answer_duration", "type": "double", "comment": "平均答题时长"},
+            {"name": "answer_cnt", "type": "bigint", "comment": "答题次数"},
+        ],
+        {"stat_id": {"primary_key": True}},
+    )
+    ratio = measures["avg_answer_duration"]
+    assert ratio.type == "ratio"
+    assert ratio.non_additive is False
+    assert ratio.sql == "{wsum_answer_duration} / NULLIF({sum_answer_cnt}, 0)"
+    assert measures["sum_answer_cnt"].type == "sum"
+    assert measures["wsum_answer_duration"].sql == "SUM(`avg_answer_duration` * `answer_cnt`)"
+
+
+def test_build_measures_keeps_non_additive_when_weight_unknown():
+    """红线：无计数列推不出权重 → 保留 non_additive 的 avg（安全拒答），不乱拆。"""
+    service = CubeModelingService(
+        cube_repo=_InMemoryCubeRepo(),
+        runtime_binding_service=_FakeRuntime(),
+    )
+    measures = service._build_measures(
+        [{"name": "avg_difficulty", "type": "double", "comment": "平均难度"}],
+        {"stat_id": {"primary_key": True}},
+    )
+    assert measures["avg_difficulty"].type == "avg"
+    assert measures["avg_difficulty"].non_additive is True

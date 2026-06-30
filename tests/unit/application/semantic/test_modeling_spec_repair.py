@@ -290,3 +290,81 @@ def test_repair_keeps_comment_canonical_path_orthogonal_to_partition():
     assert metric["time_dimension"] == "comment_published_at"
     assert metric["time_dimension"] != "ds"
     assert metric["time_dimension"] in cube["dimensions"]
+
+
+def _answer_stats_spec():
+    """带 avg 度量 + 同 stem 计数 SUM 度量的最小 spec，专测 repair 端到端拆 ratio。"""
+    return {
+        "spec_version": "v1",
+        "source": {"table": "dws_answer_stats"},
+        "business": {"subject": "答题"},
+        "cube": {
+            "name": "dws_answer_stats",
+            "title": "答题统计",
+            "table": "dws_answer_stats",
+            "dimensions": {
+                "school_name": {"title": "学校", "type": "string", "sql": "`school_name`"},
+                "ds": {"title": "日期", "type": "time", "sql": "`ds`"},
+                "stat_id": {"title": "ID", "type": "string", "sql": "`stat_id`", "primary_key": True},
+            },
+            "measures": {
+                "total_count": {"title": "总数", "type": "count", "sql": "COUNT(`stat_id`)", "certified": True, "non_additive": False},
+                "avg_answer_duration": {"title": "平均答题时长", "type": "avg", "sql": "AVG(`answer_duration`)", "non_additive": True},
+                "sum_answer_cnt": {"title": "答题次数合计", "type": "sum", "sql": "SUM(`answer_cnt`)", "non_additive": False},
+            },
+        },
+        "ontology": {
+            "object": {"name": "answer_stat"},
+            "metrics": [
+                {
+                    "name": "answer_avg_duration",
+                    "title": "平均答题时长",
+                    "object_name": "answer_stat",
+                    "measure_refs": [{"ref": "dws_answer_stats.avg_answer_duration", "role": "primary"}],
+                }
+            ],
+        },
+    }
+
+
+def test_repair_decomposes_avg_measure_and_sets_ratio_metric_metadata():
+    repaired = repair_modeling_spec(_answer_stats_spec(), user_goal="各学校平均答题时长")
+    measures = repaired["cube"]["measures"]
+
+    assert measures["avg_answer_duration"]["type"] == "ratio"
+    assert measures["avg_answer_duration"]["non_additive"] is False
+    assert measures["avg_answer_duration"]["sql"] == "{sum_answer_duration} / NULLIF({sum_answer_cnt}, 0)"
+    assert measures["sum_answer_duration"]["sql"] == "SUM(`answer_duration`)"
+
+    metric = repaired["ontology"]["metrics"][0]
+    assert metric["additivity"] == "non_additive"
+    assert metric["semantic_formula"] == "SUM(`answer_duration`) / SUM(`answer_cnt`)"
+
+
+def test_repair_ratio_spec_passes_validation_matrix_without_blockers():
+    repaired = repair_modeling_spec(_answer_stats_spec(), user_goal="各学校平均答题时长")
+    matrix = ValidationMatrixBuilder().build(repaired, {"issues": []})
+    codes = {b["code"] for b in matrix["blockers"]}
+    assert "metric_additivity_mismatch" not in codes
+    assert "metric_measure_ref_unknown" not in codes
+    assert "metric_additivity_missing" not in codes
+
+
+def test_repaired_ratio_cube_compiles_to_sum_over_sum_with_grouping():
+    """端到端：repair 产出的 ratio cube 经 QueryCompiler 编出 SUM/SUM + GROUP BY。"""
+    from app.domain.semantic.compiler import QueryCompiler
+    from app.domain.semantic.entities import CubeDefinition, QueryDSL
+    from app.domain.semantic.join_graph import JoinGraph
+
+    repaired = repair_modeling_spec(_answer_stats_spec(), user_goal="各学校平均答题时长")
+    cube = CubeDefinition(**repaired["cube"])
+    result = QueryCompiler(JoinGraph([cube])).compile(
+        QueryDSL(
+            measures=["dws_answer_stats.avg_answer_duration"],
+            dimensions=["dws_answer_stats.school_name"],
+        )
+    )
+    flat = result.sql.replace(" ", "")
+    assert "SUM(`answer_duration`)/NULLIF(SUM(`answer_cnt`),0)" in flat
+    assert "GROUP BY" in result.sql
+    assert "{" not in result.sql

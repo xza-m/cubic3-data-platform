@@ -5,6 +5,10 @@ from copy import deepcopy
 import re
 from typing import Any, Dict, Iterable, Optional
 
+from app.application.semantic.measure_ratio_decomposition import (
+    RatioMetricInfo,
+    decompose_ratio_measures,
+)
 from app.application.semantic.source_candidate_scoring import (
     SourceCandidateScoringConfig,
     SourceCandidateScoringRule,
@@ -53,6 +57,7 @@ def repair_modeling_spec(
     _ensure_cube_partition_from_evidence(repaired, cube)
     _ensure_partition_time_dimension(cube, dimensions)
     measure_name = _ensure_measure(cube, dimensions, user_goal)
+    ratio_by_measure = _decompose_cube_ratio_measures(repaired, cube)
 
     ontology = repaired.setdefault("ontology", {})
     if not isinstance(ontology, dict):
@@ -93,7 +98,14 @@ def repair_modeling_spec(
         metric["grain"] = metric.get("grain") or grain
         if time_dimension:
             metric["time_dimension"] = metric.get("time_dimension") or time_dimension
-        metric["additivity"] = metric.get("additivity") or "additive"
+        ratio_info = _primary_ratio_info(metric, cube_name, ratio_by_measure)
+        if ratio_info is not None:
+            # 指向 ratio 度量：比率不可相加 → additivity=non_additive；底层度量 non_additive=False
+            # 故不触发 metric_additivity_mismatch（该规则只拦 non_additive 度量+additive 指标）。
+            metric["additivity"] = "non_additive"
+            metric["semantic_formula"] = metric.get("semantic_formula") or ratio_info.semantic_formula
+        else:
+            metric["additivity"] = metric.get("additivity") or "additive"
         metric.setdefault("status", "draft")
     ontology["metrics"] = metrics
 
@@ -132,6 +144,50 @@ def repair_modeling_spec(
         items = []
     evidence_pack["items"] = _merge_evidence_items(items, cube_name, measure_name, user_goal, source_mode)
     return repaired
+
+
+def _decompose_cube_ratio_measures(
+    spec: Dict[str, Any],
+    cube: Dict[str, Any],
+) -> Dict[str, RatioMetricInfo]:
+    """把 cube.measures 里非可加均值/比率度量拆成可加 分子/分母 SUM + ratio。
+
+    确定性、推不出权重列则原样保留（安全拒答）。返回 ratio 度量名 → 元信息映射，供
+    ontology metric 回写 additivity / semantic_formula。
+    """
+    measures = cube.get("measures")
+    if not isinstance(measures, dict) or not measures:
+        return {}
+    columns = _columns_for_decomposition(spec, cube)
+    result = decompose_ratio_measures(measures, columns=columns)
+    if not result.changed:
+        return {}
+    cube["measures"] = result.measures
+    return {info.measure_name: info for info in result.ratios}
+
+
+def _columns_for_decomposition(spec: Dict[str, Any], cube: Dict[str, Any]) -> list[Dict[str, Any]]:
+    snapshot = _schema_snapshot_from_spec(spec, cube)
+    columns = snapshot.get("columns") if isinstance(snapshot, dict) else None
+    if not isinstance(columns, list):
+        return []
+    return [col for col in columns if isinstance(col, dict) and col.get("name")]
+
+
+def _primary_ratio_info(
+    metric: Dict[str, Any],
+    cube_name: str,
+    ratio_by_measure: Dict[str, RatioMetricInfo],
+) -> Optional[RatioMetricInfo]:
+    if not ratio_by_measure:
+        return None
+    for ref in measure_ref_strings(metric.get("measure_refs")):
+        if "." not in ref:
+            continue
+        ref_cube, ref_measure = ref.split(".", 1)
+        if ref_cube == cube_name and ref_measure in ratio_by_measure:
+            return ratio_by_measure[ref_measure]
+    return None
 
 
 def _ensure_dimensions(cube: Dict[str, Any], user_goal: str) -> Dict[str, Dict[str, Any]]:
