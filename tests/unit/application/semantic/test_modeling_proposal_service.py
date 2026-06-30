@@ -643,6 +643,101 @@ def test_validate_blocks_typo_measure_ref_end_to_end(source_mode):
         service.approve(created["id"])
 
 
+def _service_at_applied():
+    """把一个 proposal 推到 applied 态，返回 (service, proposal_id)。"""
+    service = _service()
+    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+    service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+    applied = service.apply(proposal["id"])
+    assert applied["status"] == "applied"
+    return service, proposal["id"]
+
+
+def _service_at_published():
+    """把一个 proposal 推到 published 态，返回 (service, proposal_id)。"""
+    service, proposal_id = _service_at_applied()
+    published = service.publish(proposal_id, publish_targets={"cube": True, "ontology": False})
+    assert published["status"] == "published"
+    return service, proposal_id
+
+
+def test_update_spec_rejects_applied_proposal_without_force():
+    """B2 守卫：applied 态 update_spec 无 force → raise，状态/applied_spec_hash 不被回退。"""
+    service, proposal_id = _service_at_applied()
+    before = service.get_proposal(proposal_id)
+
+    with pytest.raises(ValueError, match="applied"):
+        service.update_spec(proposal_id, {"actor": "semantic_owner", "cube": {"name": "student_comments_v2"}})
+
+    after = service.get_proposal(proposal_id)
+    assert after["status"] == "applied"
+    assert after["applied_spec_hash"] == before["applied_spec_hash"]
+    assert after["proposal_revision_no"] == before["proposal_revision_no"]
+
+
+def test_update_spec_rejects_published_proposal_without_force():
+    """B2 守卫：published 态 update_spec 无 force → raise，状态不被原地回退。"""
+    service, proposal_id = _service_at_published()
+    before = service.get_proposal(proposal_id)
+
+    with pytest.raises(ValueError, match="published"):
+        service.update_spec(proposal_id, {"actor": "semantic_owner", "cube": {"name": "student_comments_v2"}})
+
+    after = service.get_proposal(proposal_id)
+    assert after["status"] == "published"
+    assert after["proposal_revision_no"] == before["proposal_revision_no"]
+
+
+def test_update_spec_force_on_published_archives_superseded_publish():
+    """B2 force 逃生阀：published + force → 回 drafted，但 superseded_publishes 已归档原 hash，revision +1。"""
+    service, proposal_id = _service_at_published()
+    before = service.get_proposal(proposal_id)
+    original_applied_hash = before["applied_spec_hash"]
+    original_scope_hash = before["audit_snapshot"].get("publish_scope_hash")
+
+    updated = service.update_spec(
+        proposal_id,
+        {"actor": "owner_b", "force": True, "cube": {"name": "student_comments_v2"}},
+    )
+
+    assert updated["status"] == "drafted"
+    assert updated["proposal_revision_no"] == before["proposal_revision_no"] + 1
+    # _bump_revision 已清现役 hash
+    assert updated.get("approved_spec_hash") is None
+    assert updated.get("applied_spec_hash") is None
+    # 但审计已归档原已发布物
+    superseded = updated["audit_snapshot"]["superseded_publishes"]
+    assert len(superseded) == 1
+    entry = superseded[0]
+    assert entry["status"] == "published"
+    assert entry["applied_spec_hash"] == original_applied_hash
+    assert entry["publish_scope_hash"] == original_scope_hash
+    assert entry["superseded_by"] == "owner_b"
+    assert entry["superseded_at"]
+
+
+def test_update_spec_not_guarded_for_drafted_and_validated():
+    """B2 守卫不误伤：drafted/validated 态 update_spec 正常更新（不 raise）。"""
+    # drafted 态
+    service = _service()
+    p1 = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service.draft(p1["id"])
+    updated1 = service.update_spec(p1["id"], {"actor": "semantic_owner", "cube": {"name": "renamed_drafted"}})
+    assert updated1["status"] == "drafted"
+    assert updated1["spec"]["cube"]["name"] == "renamed_drafted"
+
+    # validated 态
+    service2 = _service()
+    p2 = service2.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
+    service2.draft(p2["id"])
+    service2.validate(p2["id"])
+    updated2 = service2.update_spec(p2["id"], {"actor": "semantic_owner", "cube": {"name": "renamed_validated"}})
+    assert updated2["status"] == "drafted"
+    assert updated2["spec"]["cube"]["name"] == "renamed_validated"
+
+
 def test_gap_view_projects_proposal_into_business_first_view_model():
     service = _service()
 

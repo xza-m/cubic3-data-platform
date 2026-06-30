@@ -117,6 +117,14 @@ class ModelingProposalService:
 
     def update_spec(self, proposal_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         proposal = self._require(proposal_id)
+        # B2 守卫：已落地物（applied/published）已写 registry/live manifest，原地 update_spec 会静默
+        # 回退已发布物并抹审批审计。L2 二次加指标的正确姿势是新建 proposal；force 为显式逃生阀（保全审计）。
+        force = bool(payload.get("force"))
+        if proposal.status in {"applied", "published"} and not force:
+            raise ValueError(
+                "applied/published proposal must not be edited in place; "
+                "create a new proposal for a new change set"
+            )
         next_spec = self._next_spec(proposal, payload)
         spec_hash = self._stable_hash(next_spec)
         current_hash = self._stable_hash(proposal.spec or {})
@@ -126,6 +134,9 @@ class ModelingProposalService:
         if proposal.has_action("update_spec", idempotency_key):
             return self._dump(proposal)
 
+        actor = str(payload.get("actor") or payload.get("updated_by") or "semantic_owner")
+        if force and proposal.status in {"applied", "published"}:
+            self._archive_superseded_publish(proposal, actor)
         proposal.spec = next_spec
         proposal.coverage_result = self._coverage_from_spec(next_spec)
         proposal.validation_matrix = {"blockers": [], "warnings": [], "infos": []}
@@ -133,7 +144,6 @@ class ModelingProposalService:
         proposal.publish_result = {}
         proposal.status = "drafted"
         self._bump_revision(proposal)
-        actor = str(payload.get("actor") or payload.get("updated_by") or "semantic_owner")
         self._mark_transition(proposal, actor=actor)
         proposal.record_action(
             "update_spec",
@@ -1013,6 +1023,25 @@ class ModelingProposalService:
             )
             if key in payload
         ]
+
+    def _archive_superseded_publish(self, proposal: ModelingProposal, actor: str) -> None:
+        """force 改已落地物前，把当前 approved/applied/publish 状态归档进审计，保全可追溯性。
+
+        在 _bump_revision 清 hash/弹快照之前调用，确保归档拿到原值。_bump_revision 内部语义不变。
+        """
+        snapshot = proposal.audit_snapshot.setdefault("superseded_publishes", [])
+        snapshot.append(
+            {
+                "status": proposal.status,
+                "proposal_revision_no": proposal.proposal_revision_no,
+                "approved_spec_hash": proposal.approved_spec_hash,
+                "applied_spec_hash": proposal.applied_spec_hash,
+                "publish_scope_hash": proposal.audit_snapshot.get("publish_scope_hash"),
+                "publish_result": deepcopy(proposal.publish_result) if proposal.publish_result else {},
+                "superseded_by": actor,
+                "superseded_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            }
+        )
 
     def _bump_revision(self, proposal: ModelingProposal) -> None:
         proposal.proposal_revision_no += 1
