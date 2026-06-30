@@ -57,10 +57,13 @@
 |---|-------------|------|--------|-----------|
 | 260625-ros | 修复冷启动发布缺口:schema 快照透传分区标记(is_partition + partitions)以绑定 metric 时间维度 | 2026-06-25 | cc8bd5a | [260625-ros-schema-metric](./quick/260625-ros-schema-metric/) |
 | 260630-lhu | 冷启动+repair 管线自动把 AVG 均值/总量度量拆成可加分子/分母 SUM + ratio 度量(均值/比率类按维分组可答且口径正确) | 2026-06-30 | f47a77f | [260630-lhu-avg-sum-ratio-repair](./quick/260630-lhu-avg-sum-ratio-repair/) |
+| 260630-oro | 抽出应用层 `ColdstartSpecBuilder.build_coldstart_spec`:喂 columns→建 cube(含已有 ratio 拆分)→升全部度量为 BusinessMetric→组装可发布 v1 spec(cube/ontology/governance);纯编排零新建领域逻辑、绕 MaxCompute | 2026-06-30 | 80e94dd | [260630-oro-build-coldstart-spec-cube-spec](./quick/260630-oro-build-coldstart-spec-cube-spec/) |
 
 > 上线缺口根因:`_schema_snapshot_payload` 丢弃列级 `is_partition`/不生成顶层 `partitions`,使 `modeling_spec_repair` 派生链读不到分区 → ds 进不了 cube.dimensions → metric.time_dimension 为空 → 撞 `modeling_validation_matrix` 的 `metric_time_dimension_missing` 发布门禁。冷启动确定性建模对真实分区表无法发布(仅评论 canonical 路径可发)。修复为单点增量透传,3 个确定性单测全绿。**存量回填前提**:`build_table_evidence` 优先读旧持久化快照,修复只对新写入生效;已落地旧表(如 `dws_study_student_answer_kb_stat_di`)需部署后重新同步才带上 partitions。
 
 > 260630-lhu 正解(配 `183e9bc` UX 兜底):非可加均值在按维度分组时被 compiler `non_additive` 守卫正确拒答(防 average-of-averages),原本 official 路由 route=blocked 答不出。本任务在度量层把均值拆成可加 `SUM(分子)/NULLIF(SUM(分母),0)` ratio(跨维严格加权重算),让其真可答而非删守卫。**确定性、不乱猜分母**:比率类(rate/ratio/率/比例)一律拒答(分母总体不可推断,经 adversarial review 抓出 stem 会误绑分子计数 correct_cnt 而非 question_cnt 的静默错数,已堵)、percentile/median/stddev/wow 等跳过、权重列推不出则保留 non_additive 交 UX 兜底。守卫与 non_additive 语义零改动。6 commit(`d35d497`→`f47a77f`),tests/unit 全量 **2358 passed**。**待联调**:线上重建模已发布 cube `dws_study_lesson_answer_stats_wide_df` 并实测 route("各学校的平均答题时长") answerable+route=cube(需后端/DB,留运维侧)。
+
+> 260630-oro(turnkey 冷启动 P0 智能落点):缺口是 CLI 有原子命令但无 turnkey、L2 spec 构造无服务方法→agent 退回脚本。本任务把 `dws_p2_batch.publish_one` 行 38-68 验证过的 spec 构造编排固化进 `ColdstartSpecBuilder`(application 层纯编排):构造注入 `CubeModelingService`+`SemanticModelDraftBuilder`,`build_coldstart_spec(*,source_id,database,table,columns,schema,partitions,lift,sensitivity)->dict` 复用 `build_cube_draft_payload`(含 260630-lhu ratio 拆分)+`_build_ontology_from_cube`/`_detect_sensitive_fields`,升全部度量为 BusinessMetric(additivity 直读 cube 度量 non_additive:sum/ratio→additive、无唯一分母 avg→non_additive),lift 控子集,组装 v1 spec(cube/ontology/governance)。**零新建领域逻辑、绕 MaxCompute、不碰 CLI/不碰发布**。TDD(RED `d2d0a9e`→GREEN `80e94dd`),Test A-E **6 passed**;三既有服务文件 git diff **全空**(零行为漂移);合跑 coldstart+cube_modeling+ratio+draft_builder **61 passed**。DI 已装配(`cube_modeling_service`/`semantic_model_draft_builder`),后续接 CLI turnkey 直接注入即可。
 
 ## Next Actions
 
