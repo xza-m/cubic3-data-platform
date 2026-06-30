@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import click
 
+from app.domain.services.field_identifier import FieldIdentifier
 from app.interfaces.cli.output import (
     EXIT_NOT_READY,
     EXIT_USAGE,
@@ -142,31 +143,59 @@ def cube_update(obj, name, patch, dry_run, yes) -> None:
 # ---- P1 turnkey：一步把物理表建成可发布 cube -------------------------------------
 
 def _read_cached_columns(container, columns_from, output):
-    """读资产缓存列（绕 MaxCompute），归一为 [{name,type,comment}]；资产缺失 → not_found(4)。"""
+    """读资产缓存列（绕 MaxCompute），归一为 [{name,type,comment,sensitivity_level?}]；资产缺失 → not_found(4)。
+
+    透传上游已分类的 sensitivity_level（AssetField.sensitivity_level，list_fields 经 model_dump 全量返回），
+    为 onboard 路 _detect_sensitive_fields 第①路（dimension.sensitivity_level）保留信源；仅在上游确有标记时附带，
+    无标记不造（保持向前兼容）。AssetField 不含 mask_rule，故不透 mask_rule。
+    """
     fields = container.data_asset_service().list_fields(columns_from)
     if fields is None:
         not_found(f"未找到资产表: {columns_from}", output)
-    return [
-        {
+    columns = []
+    for f in (fields.get("items") or []):
+        col = {
             "name": f.get("name") or f.get("column_name"),
             "type": f.get("type") or f.get("data_type"),
             "comment": f.get("comment") or f.get("description"),
         }
-        for f in (fields.get("items") or [])
-    ]
+        sensitivity = f.get("sensitivity_level")
+        if sensitivity:
+            col["sensitivity_level"] = sensitivity
+        columns.append(col)
+    return columns
 
 
-# 常见分区列名（按优先级）：turnkey 命令忘传 --partitions 时自动探，避免建出无时间维 cube
-# → repair 注不进 time_dimension → metric_time_dimension_missing → validate 全挂的 footgun。
-_PARTITION_HINTS = ("ds", "dt", "pt", "date")
+# MaxCompute 惯例分区名（pt）：PARTITION_KEYWORDS 未含，旧硬编码集合有，补回避免弱化旧能力。
+_EXTRA_PARTITION_TOKENS = ("pt",)
 
 
 def _auto_detect_partitions(columns):
-    """从列名按常见分区命名探测分区字段；命中返回 [字段名]，否则 None（不显式传时的兜底）。"""
-    names = {(c.get("name") or "").lower() for c in (columns or [])}
-    for hint in _PARTITION_HINTS:
-        if hint in names:
-            return [hint]
+    """从列名按分区命名探测分区字段；命中返回 [首个匹配字段名]，否则 None（不显式传时的兜底）。
+
+    复用 FieldIdentifier.PARTITION_KEYWORDS（ds/dt/date/day/year/month/week/hour/partition/分区/日期）+ 补 pt，
+    替代旧硬编码 {ds,dt,pt,date} 精确集合——后者漏 event_date/stat_date/日期/xxx_month 等常见分区列，
+    导致建出无时间维 cube → repair 注不进 time_dimension → metric_time_dimension_missing → validate 全挂的 footgun。
+
+    匹配用「下划线分段 token 词边界」而非裸子串：event_date→tokens[event,date] 命中 date；
+    stat_month→命中 month；日期/分区 整名命中。同时避免裸子串把 grades/fields/feeds（含 ds 子串）、
+    receipt/department（含 pt 子串）误判为分区——这是旧精确集合本不会有的误命，token 匹配堵住。
+    中文关键词（分区/日期）无下划线分段语义，对其用子串包含兜底。
+    按列序返回首个命中（保持稳定，与显式 --partitions 优先语义不冲突）。
+    """
+    ascii_keys = {k.lower() for k in FieldIdentifier.PARTITION_KEYWORDS if k.isascii()}
+    ascii_keys.update(_EXTRA_PARTITION_TOKENS)
+    cjk_keys = [k for k in FieldIdentifier.PARTITION_KEYWORDS if not k.isascii()]
+    for c in (columns or []):
+        raw = c.get("name") or ""
+        name = raw.lower()
+        if not name:
+            continue
+        tokens = set(name.split("_"))
+        if tokens & ascii_keys:
+            return [raw]
+        if any(k in raw for k in cjk_keys):
+            return [raw]
     return None
 
 
@@ -238,6 +267,20 @@ def _build_validated_for_table(
     return prop, proposal_id, spec, validation, parts
 
 
+def _discard_staged_proposal(prop, proposal_id):
+    """dry-run 预览后清理掉刚 staged 的提案，避免攒 drafted/validated 孤儿。
+
+    --publish --dry-run 只为预览"将发布什么"，但建到 validated 必经 create/update/validate 落库；
+    若不清理，每次 dry-run 都留一个孤儿提案污染建模列表。复用 proposal 服务现成 close(reason=abandoned)
+    把它收口为 closed（不新增删除能力）。清理本身失败不应让 preview 崩——吞掉异常，回传是否成功供输出标注。
+    """
+    try:
+        prop.close(proposal_id, {"close_reason": "abandoned", "comment": "dry-run preview cleanup"})
+        return True
+    except Exception:  # noqa: BLE001 — 清理失败降级：preview 仍返回，孤儿留存由 discarded=False 暴露
+        return False
+
+
 @cube.command("onboard", help="把物理表一步建成可发布 cube（建cube+升度量为业务指标+可选发布）")
 @click.option("--source-id", required=True, type=int, help="数据源 id（cube 的 source 绑定）")
 @click.option("--database", required=True, help="物理库名")
@@ -300,7 +343,14 @@ def cube_onboard(obj, source_id, database, table, columns_from, schema, partitio
         overview = _onboard_overview(spec, validation, partitions_used=parts)
         action = f"publish cube '{table}' to live manifest"
         if dry_run:
-            return {"dry_run": True, "action": action, "preview": {**overview, "will_publish": True}}
+            # dry-run 只预览：清理刚 staged 的提案，不留孤儿（discarded 暴露清理是否成功）
+            discarded = _discard_staged_proposal(_prop, proposal_id)
+            return {
+                "dry_run": True,
+                "action": action,
+                "preview": {**overview, "will_publish": True},
+                "discarded": discarded,
+            }
         if not yes:
             fail(
                 f"{action} 是写操作，需加 --yes 确认（或 --dry-run 预览）",
@@ -322,9 +372,16 @@ def cube_onboard(obj, source_id, database, table, columns_from, schema, partitio
 # ---- P2 turnkey 批量：一次把多张物理表建成可发布 cube -----------------------------
 
 def _resolve_table_id(container, *, table, source_id, database, schema):
-    """按表名经 data_asset_service.list_tables(keyword=table) 匹配 qualified_name 结尾，取 table_id。
+    """按表名经 data_asset_service.list_tables(keyword=table) 子串搜索候选，再精确匹配表名段取 table_id。
 
-    命中多张时取第一张（同库同表唯一）；找不到返回 None（批量按"未找到资产"标记跳过该表）。
+    list_tables(keyword) 是 ILIKE 子串搜索（orders 会带回 back_orders/orders_archive 等噪声候选），故不能用
+    qualified_name.endswith(table)——endswith('orders') 会命中 back_orders 建错物理表。改为精确匹配：
+    qualified_name 的表名段（split('.')[-1]）== table（大小写不敏感）。
+
+    返回：
+      - 唯一精确命中 → table_id
+      - 无精确命中 → (None, "asset_not_found")（批量按"未找到资产"标记跳过）
+      - 多个精确命中（同名表跨 schema/源歧义）→ (None, "ambiguous_table")（报错而非默默取首个）
     """
     page = container.data_asset_service().list_tables(
         keyword=table,
@@ -333,11 +390,17 @@ def _resolve_table_id(container, *, table, source_id, database, schema):
         schema=schema,
         page_size=50,
     )
-    for item in page.get("items") or []:
-        qn = (item.get("qualified_name") or "").lower()
-        if qn.endswith(str(table).lower()):
-            return item.get("id")
-    return None
+    target = str(table).lower()
+    matches = [
+        item.get("id")
+        for item in (page.get("items") or [])
+        if (item.get("qualified_name") or "").lower().split(".")[-1] == target
+    ]
+    if not matches:
+        return None, "asset_not_found"
+    if len(matches) > 1:
+        return None, "ambiguous_table"
+    return matches[0], None
 
 
 @cube.command("onboard-batch", help="批量把多张物理表建成可发布 cube（逐表 validate，单张失败只跳过）")
@@ -363,11 +426,12 @@ def cube_onboard_batch(obj, source_id, database, tables, schema, lift, publish, 
 
     def _onboard_one(container, table):
         """单表跑到 validate；返回 (per_table_report, proposal_or_none)。validate 不过不中断。"""
-        table_id = _resolve_table_id(
+        table_id, resolve_reason = _resolve_table_id(
             container, table=table, source_id=source_id, database=database, schema=schema
         )
         if table_id is None:
-            return {"table": table, "validate_status": "skipped", "reason": "asset_not_found"}, None
+            # asset_not_found（无精确命中）/ ambiguous_table（多个同名候选）→ 标记跳过、不建错表、不中断整批
+            return {"table": table, "validate_status": "skipped", "reason": resolve_reason}, None
         prop, proposal_id, spec, validation, parts = _build_validated_for_table(
             container,
             obj.output,
@@ -403,10 +467,16 @@ def cube_onboard_batch(obj, source_id, database, tables, schema, lift, publish, 
         action = f"publish {len(publishable)} cube(s) to live manifest"
 
         if dry_run:
+            # dry-run 只预览：逐张清理刚 staged 的提案，不留孤儿（discarded_count 暴露清理结果）
+            discarded_count = sum(
+                1 for _r, (prop, proposal_id) in publishable
+                if _discard_staged_proposal(prop, proposal_id)
+            )
             return {
                 "dry_run": True,
                 "action": action,
                 "anchor_release_id": anchor_release_id,
+                "discarded_count": discarded_count,
                 "preview": {"items": reports, "total": len(reports),
                             "will_publish_count": len(publishable), "will_publish": True},
             }
@@ -417,18 +487,32 @@ def cube_onboard_batch(obj, source_id, database, tables, schema, lift, publish, 
                 output=obj.output,
             )
 
+        # 逐张 approve→apply→publish；单张失败只标记该张 published=False+error、继续下一张
+        # （契约："单张失败只跳过"）。不做自动回滚，但保留 anchor_release_id 让半批失败可见可手动回滚。
         published_by_table = {}
         new_release_id = anchor_release_id
+        published_count = 0
+        failed_count = 0
         for _report, (prop, proposal_id) in publishable:
-            prop.approve(proposal_id)
-            prop.apply(proposal_id)
-            published = prop.publish(proposal_id)
-            release_id = (published.get("publish_result") or {}).get("release_id")
-            published_by_table[proposal_id] = {
-                "publish_status": published.get("status"),
-                "release_id": release_id,
-            }
-            new_release_id = release_id or new_release_id
+            try:
+                prop.approve(proposal_id)
+                prop.apply(proposal_id)
+                published = prop.publish(proposal_id)
+                release_id = (published.get("publish_result") or {}).get("release_id")
+                published_by_table[proposal_id] = {
+                    "published": True,
+                    "publish_status": published.get("status"),
+                    "release_id": release_id,
+                }
+                new_release_id = release_id or new_release_id
+                published_count += 1
+            except Exception as exc:  # noqa: BLE001 — 单张发布失败不让整批崩，记录后继续
+                published_by_table[proposal_id] = {
+                    "published": False,
+                    "publish_status": "failed",
+                    "error": str(exc),
+                }
+                failed_count += 1
 
         # 把发布结果回填进对应 per-table 报告
         for report in reports:
@@ -439,9 +523,11 @@ def cube_onboard_batch(obj, source_id, database, tables, schema, lift, publish, 
         return {
             "items": reports,
             "total": len(reports),
+            # anchor_release_id 始终回传：半批失败时用户据此手动回滚到批前 live manifest
             "anchor_release_id": anchor_release_id,
             "new_release_id": new_release_id,
-            "published_count": len(published_by_table),
+            "published_count": published_count,
+            "failed_count": failed_count,
         }
 
     run(obj, _batch_publish)
