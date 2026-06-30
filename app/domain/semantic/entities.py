@@ -39,7 +39,7 @@ class DimensionDef(BaseModel):
 
 class MeasureDef(BaseModel):
     title: str
-    type: Literal["count", "count_distinct", "sum", "avg", "min", "max", "number"]
+    type: Literal["count", "count_distinct", "sum", "avg", "min", "max", "number", "ratio"]
     sql: str
     description: Optional[str] = None
     source_data_type: Optional[str] = None

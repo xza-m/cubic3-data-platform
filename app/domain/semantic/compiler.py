@@ -609,6 +609,11 @@ class QueryCompiler:
             return f"MAX({raw})"
         elif measure.type == "number":
             return raw
+        elif measure.type == "ratio":
+            # ratio 度量的 sql 已是完整比率表达式（如 "{num}/NULLIF({den},0)"），经
+            # _resolve_measure_refs 展开成 SUM(分子)/NULLIF(SUM(分母),0)。底层是可加 SUM 对，
+            # 跨任意维度 GROUP BY 都按组重算（严格加权），故 non_additive=False、不再叠加聚合。
+            return raw
         else:
             raise CompilationError(f"Unsupported measure type: '{measure.type}'")
 
@@ -651,4 +656,5 @@ class QueryCompiler:
             return f"MIN({expr})"
         elif mtype == "max":
             return f"MAX({expr})"
+        # ratio / number：表达式自带完整聚合口径，作为子引用展开时按原样回填，不再外包聚合。
         return expr

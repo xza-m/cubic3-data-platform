@@ -932,3 +932,53 @@ class TestMaxComputeDialect:
     def test_default_limit(self):
         d = MaxComputeDialect()
         assert d.default_limit() == 50000
+
+
+class TestRatioMeasure:
+    """ratio 度量编译：SUM(分子)/NULLIF(SUM(分母),0)，按维度分组可答（守卫保留）。"""
+
+    def _ratio_cube(self):
+        return _make_cube(
+            "answer_stats", "dws_answer_stats",
+            dims={
+                "school_name": DimensionDef(title="学校", type="string", sql="{CUBE}.school_name"),
+                "stat_id": DimensionDef(title="ID", type="string", sql="{CUBE}.stat_id", primary_key=True),
+            },
+            measures={
+                "sum_answer_duration": MeasureDef(title="答题总时长合计", type="sum", sql="SUM(`answer_duration`)"),
+                "sum_answer_cnt": MeasureDef(title="答题次数合计", type="sum", sql="SUM(`answer_cnt`)"),
+                "avg_answer_duration": MeasureDef(
+                    title="平均答题时长",
+                    type="ratio",
+                    sql="{sum_answer_duration} / NULLIF({sum_answer_cnt}, 0)",
+                    non_additive=False,
+                ),
+                "avg_legacy": MeasureDef(title="旧均值", type="avg", sql="AVG(`answer_duration`)", non_additive=True),
+            },
+        )
+
+    def test_ratio_compiles_to_sum_over_sum_with_grouping(self):
+        compiler = QueryCompiler(JoinGraph([self._ratio_cube()]))
+        result = compiler.compile(
+            QueryDSL(
+                measures=["answer_stats.avg_answer_duration"],
+                dimensions=["answer_stats.school_name"],
+            )
+        )
+        flat = result.sql.replace(" ", "")
+        assert "SUM(`answer_duration`)/NULLIF(SUM(`answer_cnt`),0)" in flat
+        assert "GROUP BY" in result.sql
+        # 不得叠加聚合 / 不得保留未展开占位符
+        assert "{" not in result.sql
+        assert "AVG(AVG(" not in flat.upper()
+
+    def test_non_additive_avg_guard_still_blocks_grouped_query(self):
+        """红线：non_additive 守卫保留——非可加 avg 度量带分组维度仍拒编译。"""
+        compiler = QueryCompiler(JoinGraph([self._ratio_cube()]))
+        with pytest.raises(CompilationError, match="non_additive"):
+            compiler.compile(
+                QueryDSL(
+                    measures=["answer_stats.avg_legacy"],
+                    dimensions=["answer_stats.school_name"],
+                )
+            )
