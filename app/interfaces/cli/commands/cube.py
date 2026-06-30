@@ -10,7 +10,16 @@ from __future__ import annotations
 
 import click
 
-from app.interfaces.cli.output import load_json_arg_or_fail, not_found, run, to_jsonable, write_run
+from app.interfaces.cli.output import (
+    EXIT_NOT_READY,
+    EXIT_USAGE,
+    fail,
+    load_json_arg_or_fail,
+    not_found,
+    run,
+    to_jsonable,
+    write_run,
+)
 
 
 @click.group("cube")
@@ -128,3 +137,129 @@ def cube_update(obj, name, patch, dry_run, yes) -> None:
         return to_jsonable(container.cube_modeling_service().update_cube(name, payload))
 
     write_run(obj, dry_run=dry_run, yes=yes, action=f"update cube '{name}'", preview=payload, fn=body)
+
+
+# ---- P1 turnkey：一步把物理表建成可发布 cube -------------------------------------
+
+def _read_cached_columns(container, columns_from, output):
+    """读资产缓存列（绕 MaxCompute），归一为 [{name,type,comment}]；资产缺失 → not_found(4)。"""
+    fields = container.data_asset_service().list_fields(columns_from)
+    if fields is None:
+        not_found(f"未找到资产表: {columns_from}", output)
+    return [
+        {
+            "name": f.get("name") or f.get("column_name"),
+            "type": f.get("type") or f.get("data_type"),
+            "comment": f.get("comment") or f.get("description"),
+        }
+        for f in (fields.get("items") or [])
+    ]
+
+
+def _onboard_overview(spec, validation):
+    """从 spec + validate 结果抽 onboard 概况（ratio/sensitive/lifted/门结果），命令如实呈现。"""
+    cube = (spec or {}).get("cube") or {}
+    measures = cube.get("measures") or {}
+    ontology = (spec or {}).get("ontology") or {}
+    governance = (spec or {}).get("governance") or {}
+    matrix = (validation or {}).get("validation_matrix") or {}
+    return {
+        "proposal_id": validation.get("id"),
+        "validate_status": validation.get("status"),
+        "blockers": matrix.get("blockers") or [],
+        "ratio_measures": [k for k, v in measures.items() if (v or {}).get("type") == "ratio"],
+        "sensitive_fields": governance.get("sensitive_fields") or [],
+        "lifted_metrics_count": len(ontology.get("metrics") or []),
+    }
+
+
+@cube.command("onboard", help="把物理表一步建成可发布 cube（建cube+升度量为业务指标+可选发布）")
+@click.option("--source-id", required=True, type=int, help="数据源 id（cube 的 source 绑定）")
+@click.option("--database", required=True, help="物理库名")
+@click.option("--table", required=True, help="物理表名")
+@click.option("--columns-from", required=True, help="读取缓存列的资产 table_id（data_asset_fields）")
+@click.option("--schema", default=None, help="schema 名（可选）")
+@click.option("--partitions", default=None, help="分区字段，逗号分隔（如 ds）")
+@click.option("--lift", default="all", help="升哪些度量为业务指标：all 或逗号分隔子集（默认 all）")
+@click.option("--publish", is_flag=True, default=False, help="继续发布到 live manifest（默认否：只到 validated）")
+@click.option("--dry-run", is_flag=True, help="--publish 段预览，不发布")
+@click.option("--yes", is_flag=True, help="--publish 段确认写 live manifest")
+@click.pass_obj
+def cube_onboard(obj, source_id, database, table, columns_from, schema, partitions, lift, publish, dry_run, yes) -> None:
+    """薄封装：读列 → build_onboard_spec → proposal create/update-spec/validate → 可选 publish。
+
+    两级写门控：默认（无 --publish）只写 proposal 草稿、停在 validated（非消费级）；
+    --publish 段经 write_run 二层护栏（缺 --yes 拒、--dry-run 预览）方写 live manifest。
+    validate 未过 → 报 blockers + EXIT_NOT_READY，绝不 publish。
+    """
+    parts = [p.strip() for p in (partitions or "").split(",") if p.strip()] or None
+
+    def _build_validated(container):
+        """读列 → onboard spec → proposal 管线（固定 agent_led 防 human_led 死锁）→ validate。
+
+        返回 (proposal_service, proposal_id, spec, validation)。validate 不过在此 fail(NOT_READY)。
+        """
+        columns = _read_cached_columns(container, columns_from, obj.output)
+        spec = container.onboard_spec_builder().build_onboard_spec(
+            source_id=source_id,
+            database=database,
+            table=table,
+            columns=columns,
+            schema=schema,
+            partitions=parts,
+            lift=lift,
+        )
+        prop = container.semantic_modeling_proposal_service()
+        created = prop.create_proposal(
+            {
+                "business_subject": (spec.get("business") or {}).get("subject") or table,
+                "source_kind": "physical_table",
+                "source_id": source_id,
+                "database": database,
+                "table": table,
+                "source_mode": "agent_led",  # 固定，避免 human_led 缺机械字段死锁
+            }
+        )
+        proposal_id = created["id"]
+        prop.update_spec(proposal_id, {"spec": spec})
+        validation = prop.validate(proposal_id)
+        if validation.get("status") != "validated":
+            matrix = validation.get("validation_matrix") or {}
+            fail(
+                f"cube '{table}' 校验未通过，停在 validate（未发布）",
+                exit_code=EXIT_NOT_READY,
+                details={"proposal_id": proposal_id, "blockers": matrix.get("blockers") or []},
+                output=obj.output,
+            )
+        return prop, proposal_id, spec, validation
+
+    # 默认（无 --publish）：建模到 validated，输出概况 + 门结果，安全停（非消费级）
+    if not publish:
+        run(obj, lambda container: _onboard_overview(*_build_validated(container)[2:]))
+        return
+
+    # --publish 段：先建到 validated（在 app_context 内），再经写门控发布到 live manifest。
+    # 不复用 write_run（其内置 run 会再开一层 app_context）；门控语义在此手写，保持单层 context：
+    #   --dry-run → 预览不发；缺 --yes → EXIT_USAGE 拒；--yes → approve→apply→publish 真写。
+    def _onboard_and_maybe_publish(container):
+        _prop, proposal_id, spec, validation = _build_validated(container)
+        overview = _onboard_overview(spec, validation)
+        action = f"publish cube '{table}' to live manifest"
+        if dry_run:
+            return {"dry_run": True, "action": action, "preview": {**overview, "will_publish": True}}
+        if not yes:
+            fail(
+                f"{action} 是写操作，需加 --yes 确认（或 --dry-run 预览）",
+                exit_code=EXIT_USAGE,
+                output=obj.output,
+            )
+        _prop.approve(proposal_id)
+        _prop.apply(proposal_id)
+        published = _prop.publish(proposal_id)
+        return {
+            **overview,
+            "publish_status": published.get("status"),
+            "release_id": (published.get("publish_result") or {}).get("release_id"),
+        }
+
+    run(obj, _onboard_and_maybe_publish)
