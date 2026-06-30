@@ -63,7 +63,8 @@ semctl 随后端镜像走、无需自举。远程入口用前按序自检：
 🌐 datasource list/show                  # 数据源
 🌐 asset     list/show/fields/evidence   # 物理表资产（读缓存，绕 MaxCompute）
 🌐 cube      list/show/describe          # cube 定义（read）
-🔒          draft/create/update          # cube 建模（write）
+🔒          draft/create/update          # cube 建模（write，底层零件）
+🔒          onboard / onboard-batch      # turnkey：一步/批量把物理表建成可发布 cube（默认停 validated；--publish 写 live manifest）
 🌐 view      list/show/describe          # 语义 view 只读（semctl: show 零写 / describe 同步 registry；远程两者同端点）
 🌐 ontology  <kind> list/show/status     # 本体读（kind=object/property/metric/glossary/relation/action/policy）
 🔒          <kind> upsert/publish        # 本体写（upsert 全量覆盖无 PATCH，先 show 再改）
@@ -92,15 +93,22 @@ semctl 随后端镜像走、无需自举。远程入口用前按序自检：
 **注意**：official 模式依赖 active manifest 已发布；问"为什么 X 答不出"多半是**建模覆盖缺口**（维度没建），不是 L1 不行——这时去建模补全（工作流 C）。
 
 ### C. 把物理表建模并发布成 cube（闭合覆盖缺口的核心流程）
-这是写 live manifest 的消费级操作，**严格按门控管线走，并在 publish 前拿用户授权**。详细的 spec 模板与发布门要求见 **[references/publish-cube.md](references/publish-cube.md)**，必须先读它再动手。概要：
-1. `asset fields <table_id>` 读真实缓存列 →（可选）`cube draft --source-id N --database D --table T --columns-from <table_id>` 生成 cube 草稿。
-2. 构造 v1 spec（cube + 最小 ontology + governance），关键是过三道发布门（policies 非空 / object+metric 绑定可解析 / sensitivity=internal）。
-3. `proposal create --payload <json> --yes` → `proposal update-spec <id> --spec @spec.json --yes`（注入整份 spec，绕 draft 的 MaxCompute）→ `proposal validate <id> --yes` → `proposal gap <id>`（只读看门，无 --yes；blockers 应为空、primary_action=approve）。
-4. **把门结果摊给用户、拿到授权** → `proposal approve <id> --yes` → `proposal apply <id> --yes`（写 registry）→ `proposal publish <id> --yes`（写 live manifest）。
+这是写 live manifest 的消费级操作。**日常优先用 turnkey `cube onboard`**——它把"建 cube + 升度量为业务指标 + ratio 拆分 + additivity 标注 + sensitive 检出 + proposal 管线"一条命令搞定（内部就是逐步走 `build_onboard_spec` → proposal create(agent_led)/update-spec/validate，无需手搓 v1 spec）。安全纪律不变：消费级写 live manifest 要先拿用户授权、先记回滚锚点、validate 不过不发。
 
-> 写步漏 `--yes` 会被拒（exit 2）——这是护栏；先 `--dry-run` 预览再 `--yes`。
-5. 验证：`manifest show`（cube 数 +1）+ `intent answerability "<相关问题>"`（应从 out_of_coverage 变 answerable）。
-6. 出问题回滚：`release rollback <发布前的 release_id>`。
+**单表（推荐默认路径）：**
+1. `cube onboard --source-id N --database D --table T --columns-from <table_id>`：建到 validated 就**停**，输出门结果（proposal_id / validate_status / blockers / ratio_measures / sensitive_fields / partitions_used）。**默认不发布**，这是非消费级的安全态。
+   - 忘传 `--partitions` 会自动从列名探分区字段（ds/dt/pt/date），避免建出无时间维 cube 导致 validate 全挂；要指定可显式传 `--partitions ds`（显式优先）。
+2. validate 未过（exit 5）→ 看 blockers 补建模，**不发布**。
+3. validated → **把门结果摊给用户、拿到授权** → 先记回滚锚点（`manifest show` 的 release_id）→ `cube onboard --source-id N --database D --table T --columns-from <table_id> --publish --yes`（消费级写 live manifest）。
+   > `--publish` 缺 `--yes` 会被拒（exit 2）；先 `--publish --dry-run` 预览再 `--yes`。
+
+**批量：**
+`cube onboard-batch --source-id N --database D --tables t1,t2,t3 [--publish --yes]`——逐表跑同款编排，某张 validate 不过只跳过、不中断整批；`--publish --yes` 一次授权整批，批前自动记一次回滚锚点（输出 anchor_release_id / new_release_id / published_count + per-table release_id）。同样先 `--dry-run` 预览整批、拿授权再 `--yes`。
+
+4. 验证：`manifest show`（cube 数 +1）+ `intent answerability "<相关问题>"`（应从 out_of_coverage 变 answerable）。
+5. 出问题回滚：`release rollback <发布前的 release_id>`。
+
+> **底层手搓路径**（特殊定制、turnkey 覆盖不了时）：手动走 `cube draft` → 构造 v1 spec → `proposal create/update-spec/validate/gap/approve/apply/publish` 7 步管线，详见 **[references/publish-cube.md](references/publish-cube.md)**。turnkey 内部就是这条管线的固化，行为一致。
 
 ### D. 维护本体
 `ontology <kind> show <name>` 读现有 → 改 → `ontology <kind> upsert <payload> --yes`（全量覆盖，必须先 show 取全字段再改，否则丢字段）→ `ontology <kind> publish <name> --yes`（draft→active）。

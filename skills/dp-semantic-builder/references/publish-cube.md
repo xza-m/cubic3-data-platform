@@ -1,5 +1,7 @@
 # 发布 cube 到 live manifest：v1 spec 模板 + 发布门
 
+> **日常建模优先用 turnkey `cube onboard` / `cube onboard-batch`**（自动建 cube + 升度量为业务指标 + ratio 拆分 + additivity 标注 + sensitive 检出 + 走 proposal 管线，无需手搓 spec；用法见 SKILL.md 工作流 C）。turnkey 内部就是本文档这条 7 步管线的固化，行为一致。**本文档的 v1 spec 模板与发布门说明仅作底层参考、或 turnkey 覆盖不了的特殊定制时用。**
+
 把一张物理表建模并发布进 active runtime manifest 的权威参考。**这是改 DataChat 正在消费的共享生产 manifest 的操作——publish 前必须把门结果摊给用户并拿到明确授权。**
 
 ## 持久化双轨（关键背景）
