@@ -6,6 +6,7 @@ from app.application.execution_compiler.preview_service import ExecutionCompiler
 from app.application.execution_compiler.runtime_service import ExecutionCompilerRuntimeService
 from app.application.ontology.policy_guard_service import PolicyGuardService
 from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
+from app.application.semantic_router.intent_understanding import IntentExtraction
 from app.application.semantic_router.preview_service import SemanticRouterPreviewService
 from app.infrastructure.ontology.yaml_action_repository import YamlBusinessActionRepository
 from app.infrastructure.ontology.yaml_glossary_repository import YamlGlossaryRepository
@@ -1320,4 +1321,189 @@ def test_router_non_additive_metric_grouping_gives_honest_unsupported_aggregatio
     assert route["reason"]
     assert "非可加" in route["reason"]
     assert "QueryDSL 编译失败" not in route["reason"]
+    assert "non_additive" not in route["reason"]
+
+
+class _StructuredIntentStub:
+    """开 L1（available=True）的结构化抽取桩：固定回一份 IntentExtraction。"""
+
+    def __init__(self, intent):
+        self._intent = intent
+        self.available = True
+
+    def extract_intent(self, question, **kwargs):  # noqa: ARG002
+        return self._intent
+
+
+def test_router_non_additive_metric_with_unbuilt_dimension_keeps_coverage_reason(tmp_path):
+    """既命中非可加指标、又请求未建维度：out_of_coverage 优先级更高，reason 不被非可加文案覆盖。
+
+    回归 #10：`reason = verdict.message` 原在守卫块外无条件执行 → 即使 answerability 正确保留为
+    out_of_coverage（缺维度），顶层 reason 仍被改成"指标非可加"，同一返回自相矛盾。修复后：
+    answerability 保留 out_of_coverage（说"缺 X 维度"），reason 不再被非可加文案覆盖（两者一致指向缺维度）。
+    """
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    # 非可加 measure（平均类）+ 请求按"年级"分组，但 cube 只建了"学校"维度（年级未建）。
+    cube_repo.save(
+        CubeDefinition(
+            name="lessons",
+            title="课程答题",
+            table="dws.lesson_answer_stats",
+            source_id=1,
+            source_database="dw",
+            dimensions={
+                "school": DimensionDef(title="学校", type="string", sql="{CUBE}.school"),
+            },
+            measures={
+                "avg_duration": MeasureDef(
+                    title="平均答题时长", type="avg", sql="{CUBE}.duration", non_additive=True
+                ),
+            },
+        )
+    )
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+
+    object_repo.save(BusinessObject(name="lesson", title="课程答题"))
+    metric_repo.save(
+        BusinessMetric(
+            name="avg_answer_duration",
+            title="平均答题时长",
+            object_name="lesson",
+            semantic_formula="平均答题时长",
+            measure_refs=["lessons.avg_duration"],
+        )
+    )
+
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    # 关键解耦：compiler 用从 question 正则抽出的分组维度（"学校"=已建）→ 触发非可加守卫 blocked
+    # 并设 non_additive_block_label；而 answerability 的 out_of_coverage 来自 L1 intent 的
+    # required_dimensions（"年级"=未建）。两条路径同时触发，正中 #10 修复点（reason 覆盖矛盾）。
+    intent = IntentExtraction(
+        intent_type="analysis",
+        target_asset="平均答题时长",
+        metrics=["平均答题时长"],
+        required_dimensions=["年级"],
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+        intent_extraction_service=_StructuredIntentStub(intent),
+    )
+
+    # question 含"各学校" → analysis_intent.dimension_terms=["学校"]（已建维度）→ compiler 分组成功
+    # → 触发非可加守卫（而非维度绑定失败）。
+    route = service.route(question="各学校的平均答题时长")
+
+    # 聚合护栏仍在：非可加 measure 被 compiler 守卫挡下（blocked），守卫未被放开。
+    assert route["execution_preview"]["status"] == "blocked"
+    assert "non_additive" in route["execution_preview"]["reason"]
+    # answerability 保留更高优先级的 out_of_coverage（缺"年级"维度），未被降级为 unsupported_aggregation。
+    answerability = route["business_intent"]["answerability"]
+    assert answerability is not None
+    assert answerability["state"] == "out_of_coverage"
+    assert "年级" in answerability["message"]
+    # #10 修复核心：顶层 reason 不再被非可加文案覆盖（两者一致指向缺维度，不再自相矛盾）。
+    assert "非可加" not in (route["reason"] or "")
+    assert "average-of-averages" not in (route["reason"] or "")
+
+
+def test_router_pure_non_additive_still_downgrades_and_sets_reason(tmp_path):
+    """纯非可加（维度齐、无未建维度缺口）：仍降级 unsupported_aggregation，reason 为非可加文案。
+
+    与上一个测试互补，守住 #10 修复后非可加友好化路径未被误伤：当 answerability 本是 answerable
+    （或 L1 关时 None）时，守卫块内仍正确降级并把 reason 改成中文 actionable 非可加文案。
+    """
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    cube_repo.save(
+        CubeDefinition(
+            name="lessons",
+            title="课程答题",
+            table="dws.lesson_answer_stats",
+            source_id=1,
+            source_database="dw",
+            dimensions={
+                "school": DimensionDef(title="学校", type="string", sql="{CUBE}.school"),
+            },
+            measures={
+                "avg_duration": MeasureDef(
+                    title="平均答题时长", type="avg", sql="{CUBE}.duration", non_additive=True
+                ),
+            },
+        )
+    )
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+
+    object_repo.save(BusinessObject(name="lesson", title="课程答题"))
+    metric_repo.save(
+        BusinessMetric(
+            name="avg_answer_duration",
+            title="平均答题时长",
+            object_name="lesson",
+            semantic_formula="平均答题时长",
+            measure_refs=["lessons.avg_duration"],
+        )
+    )
+
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    # 开 L1：命中非可加指标，不请求任何额外维度（required_dimensions 空 → 无覆盖缺口）
+    # → answerability 本是 answerable，进而被守卫块降级为 unsupported_aggregation。
+    intent = IntentExtraction(
+        intent_type="analysis",
+        target_asset="平均答题时长",
+        metrics=["平均答题时长"],
+        required_dimensions=[],
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+        intent_extraction_service=_StructuredIntentStub(intent),
+    )
+
+    route = service.route(question="各学校的平均答题时长")
+
+    assert route["execution_preview"]["status"] == "blocked"
+    # 维度齐 → answerability 降级为 unsupported_aggregation，reason 为非可加文案。
+    answerability = route["business_intent"]["answerability"]
+    assert answerability is not None
+    assert answerability["state"] == "unsupported_aggregation"
+    assert route["reason"]
+    assert "非可加" in route["reason"]
     assert "non_additive" not in route["reason"]

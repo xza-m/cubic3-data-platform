@@ -77,7 +77,7 @@ class OnboardSpecBuilder:
                     "object_name": obj,
                     "semantic_formula": f"按 {cube_name}.{mk}",
                     "measure_refs": [{"ref": f"{cube_name}.{mk}", "role": "primary"}],
-                    "additivity": "non_additive" if mv.get("non_additive") else "additive",
+                    "additivity": self._metric_additivity(mv),
                     "grain": primary_dim,
                     "status": "draft",
                 }
@@ -113,6 +113,21 @@ class OnboardSpecBuilder:
                 "approval_granted": False,
             },
         }
+
+    @staticmethod
+    def _metric_additivity(measure: Dict[str, Any]) -> str:
+        """升指标时的可加性默认：ratio（SUM分子/SUM分母）语义上非可加 → non_additive。
+
+        与 repair 路径（modeling_spec_repair._primary_ratio_info）保持一致，消除同一 ratio 度量
+        在 onboard / repair 两条生产路径上的可加性标注矛盾。ratio 度量 non_additive=False（其
+        sql 自带完整比率表达式、compiler 按 type=ratio 走 SUM/SUM 重算），故标 non_additive 既不
+        触发 ValidationMatrix metric_additivity_mismatch（该规则只拦 non_additive 度量+additive 指标），
+        也不让 compiler 拦 ratio——端到端仍 validated，零行为后果，仅修正语义标注。
+        其余度量：non_additive 度量 → non_additive；可加度量 → additive。
+        """
+        if str(measure.get("type") or "") == "ratio":
+            return "non_additive"
+        return "non_additive" if measure.get("non_additive") else "additive"
 
     @staticmethod
     def _resolve_lift_keys(lift: str, measures: Dict[str, Any]) -> List[str]:

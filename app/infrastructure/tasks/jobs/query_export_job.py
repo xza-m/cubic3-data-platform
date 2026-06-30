@@ -268,6 +268,10 @@ def _stream_query(adapter, sql: str):
 # 理由：DatasetField.is_sensitive() 现状仅含这三类；INTERNAL（金额类，mask_rule=amount）
 # 按死守约束「不碰 INTERNAL」不脱敏。注意 FieldIdentifier 的 is_sensitive 含 internal，
 # 不能直接照搬，必须按 sensitivity_level 白名单过滤。
+# 关于 'secret'：FieldIdentifier 主来源（_classify_columns_with_identifier）当前只产
+# public/internal/pii/confidential 四级、不产 secret，故经主来源时这条分支恒不命中（死分支）。
+# 仍保留 'secret'：一是 Dataset 桥（_resolve_dataset_mask_rules）不经此白名单、走 DatasetField.is_sensitive()，
+# 其判定口径独立；二是为未来若 FieldIdentifier 扩出 SECRET 级别留前向兼容入口——保留零风险、删除需回补。
 _MASKABLE_SENSITIVITY_LEVELS = frozenset({'pii', 'confidential', 'secret'})
 
 

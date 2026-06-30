@@ -15,7 +15,7 @@ from app.application.semantic.modeling_draft_builder import SemanticModelDraftBu
 
 # 一份覆盖全部 case 的构造 columns（与参考脚本 cols 同形：list[{name,type,comment}]）：
 #  - answer_cnt（bigint）        → sum 度量（additive）
-#  - answer_duration（double）   + 唯一同 stem 计数列 answer_cnt → decompose 出 ratio（additive）
+#  - answer_duration（double）   + 唯一同 stem 计数列 answer_cnt → decompose 出 ratio（non_additive）
 #  - avg_score（double）         → 无唯一同 stem 计数列 → 保留 avg / non_additive
 #  - accuracy_rate（double）     → 比率列红线，永不自动拆 → 保留 avg / non_additive
 #  - student_id（string dim）    → PII 敏感列
@@ -92,20 +92,22 @@ def test_b_every_measure_has_a_business_metric():
 
 
 def test_c_additivity_is_correct():
-    """Test C: sum→additive / 无唯一分母 avg→non_additive / 可拆 ratio→additive，且 ratio 度量存在。"""
+    """Test C: sum→additive / 无唯一分母 avg→non_additive / 可拆 ratio→non_additive，且 ratio 度量存在。"""
     spec = _build()
     cube = spec["cube"]
     ontology = spec["ontology"]
     cube_name = cube["name"]
     measures = cube["measures"]
 
-    # 可拆 ratio：cube 里存在 type=="ratio" 的度量，且其 metric additivity=="additive"
+    # 可拆 ratio：cube 里存在 type=="ratio" 的度量，且其 metric additivity=="non_additive"。
+    # ratio（SUM分子/SUM分母）语义上比率不可跨维相加；与 repair 路径标注一致（消除两路矛盾）。
+    # ratio 度量 non_additive=False，故标 non_additive 不触发 ValidationMatrix mismatch、compiler 仍 SUM/SUM。
     ratio_keys = [k for k, v in measures.items() if (v or {}).get("type") == "ratio"]
     assert ratio_keys, "应至少有一个被拆出的 ratio 度量"
     for mk in ratio_keys:
         metric = _metric_by_ref(ontology, f"{cube_name}.{mk}")
         assert metric is not None
-        assert metric["additivity"] == "additive"
+        assert metric["additivity"] == "non_additive"
 
     # sum 列 → additive
     sum_keys = [k for k, v in measures.items() if (v or {}).get("type") == "sum"]

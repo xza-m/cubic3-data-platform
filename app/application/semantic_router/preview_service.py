@@ -523,7 +523,11 @@ class SemanticRouterPreviewService:
                     "missing_dimensions": [],
                     "available_alternatives": [],
                 }
-            reason = verdict.message
+                # reason 友好化只在「确把 answerability 降级为 unsupported_aggregation」时做：
+                # 若 answerability 被保留为 out_of_coverage 等更高优先级状态（如又请求未建维度），
+                # 顶层 reason 不应被非可加文案覆盖——否则 answerability.message 说"缺 X 维度"、
+                # reason 说"指标非可加"，同一返回自相矛盾。把赋值移进守卫内消除这一冲突。
+                reason = verdict.message
         business_intent = {
             "route_type": route_type,
             "targets": targets,
