@@ -21,29 +21,65 @@ class FieldIdentifier:
     # 改由 _PII_NAME_FIELD_PATTERN 做词边界/前缀式匹配；student_id/no/code、学号、学籍 等 K12 学生 PII 显式覆盖。
     # 不放裸「学生」：K12 域绝大多数维度（学生年级/学生人数/学生科目）带「学生」但非 PII，裸子串会过度标记、
     # 污染信号、可能影响发布门。真 PII 零损失——学生姓名走「姓名」、student_name 走 name 正则、学号/学籍有专用词。
+    #
+    # 收紧约束（E1 修复）：裸子串既过宽又过窄。
+    #   - 不再放裸 'account'/'address'（误命 account_period/account_type/含 address 子串的列）：
+    #     account_no/account_number/bank_account、home_address/mailing_address 等改由 _PII_FIELD_PATTERN 词边界匹配。
+    #   - 不再放裸 'key'/'token'（误命 product_key/business_key/grade_key/token_count）：
+    #     api_key/secret_key/access_token/refresh_token 等具体配置密钥改由 _CONFIDENTIAL_FIELD_PATTERN 词边界匹配。
+    # 仍保留的裸子串均为足够具体、几乎不会撞业务列的形式（id_card/card_no/id_no/手机/身份证 等）。
     SENSITIVE_KEYWORDS = {
-        'pii': ['mobile', 'phone', 'id_card', 'email', 'address',
-                'password', 'id_no', 'card_no', 'account',
+        'pii': ['mobile', 'phone', 'id_card', 'email',
+                'password', 'id_no', 'card_no',
                 'student_id', 'student_no', 'student_code',
-                '手机', '电话', '身份证', '邮箱', '地址', '密码', '账号',
+                '手机', '电话', '身份证', '邮箱', '密码', '账号', '家庭住址',
                 '学号', '学籍'],
         'internal': ['salary', 'income', 'revenue', 'cost', 'profit',
                     '薪资', '工资', '收入', '成本', '利润'],
-        'confidential': ['secret', 'token', 'key', 'credential',
+        'confidential': ['secret', 'credential',
                         '密钥', '凭证', '秘密']
     }
 
     # 人名类 PII 的词边界匹配（只对字段名判，避免 comment 噪声）：
     # 以 _name 结尾且前缀属于人名前缀白名单，或字段名本身就是 name。
     # 避免 school_name / class_name / product_name / file_name 误判为 PII。
+    # 补 K12 核心 PII 前缀：teacher / parent / guardian / applicant / employee。
     _PII_NAME_PREFIXES = (
         'real', 'student', 'user', 'full', 'first', 'last', 'given',
         'family', 'middle', 'nick', 'login', 'contact', 'customer', 'member',
+        'teacher', 'parent', 'guardian', 'applicant', 'employee',
     )
     _PII_NAME_FIELD_PATTERN = re.compile(
         r'^(?:' + '|'.join(_PII_NAME_PREFIXES) + r')_name$'
         r'|(?:^|_)(?:' + '|'.join(_PII_NAME_PREFIXES) + r')_name(?:$|_)'
         r'|^name$'
+    )
+
+    # 网络/技术地址前缀：这些 *_address 是技术地址而非家庭住址，排除（非 PII）。
+    _NON_PII_ADDRESS_PREFIXES = ('ip', 'mac', 'email', 'mail_server', 'url', 'web', 'network', 'net', 'host', 'server')
+
+    # PII 账号/地址类的具体形式（词边界式，对字段名判）：
+    #   - 账号：account_no/account_number/account_id、bank_account（避免 account_period/account_type 误标）。
+    #   - 地址：精确字段名 address，或 home/mailing/billing/residential/family/contact/delivery/shipping_address，
+    #     或泛 *_address（家庭住址语义）；但排除 ip_address/mac_address 等技术地址（见 _NON_PII_ADDRESS_PREFIXES）。
+    # 避免"含 address 子串的非地址列"误标的关键是用词边界 + 技术地址前缀排除，而非裸子串。
+    _PII_FIELD_PATTERN = re.compile(
+        r'(?:^|_)account(?:_no|_number|_id)(?:$|_)'   # account_no / account_number / account_id
+        r'|(?:^|_)bank_account(?:$|_)'                # bank_account
+        r'|^address$'                                 # 精确字段名 address（如学生家庭住址列）
+        r'|(?:^|_)(?:home|mailing|billing|residential|family|contact|delivery|shipping)_address(?:$|_)'
+    )
+    # 泛 *_address 兜底（前缀非技术地址时判 PII）：例如 reg_address/perm_address。
+    _GENERIC_ADDRESS_PATTERN = re.compile(r'(?:^|_)([a-z0-9]+)_address(?:$|_)')
+
+    # 机密配置密钥的具体形式（词边界式，对字段名判）：
+    # api_key/secret_key/access_key/private_key/encryption_key、access_token/api_token/auth_token/refresh_token 等。
+    # 避免 product_key/business_key/grade_key（业务主键）与 token_count（计数）被误标机密。
+    _CONFIDENTIAL_FIELD_PATTERN = re.compile(
+        r'(?:^|_)(?:api|secret|access|private|public|encryption|signing|session)_key(?:$|_)'
+        r'|(?:^|_)(?:access|api|auth|refresh|bearer|id)_token(?:$|_)'
+        r'|(?:^|_)api_secret(?:$|_)'
+        r'|^(?:secret_key|access_token|refresh_token)$'
     )
     
     # 度量字段后缀
@@ -204,18 +240,37 @@ class FieldIdentifier:
         field_name_lower = (field_name or '').lower()
         text_to_check = (field_name + ' ' + (comment or '')).lower()
 
-        # PII 命中：子串关键词命中，或人名字段名词边界命中（real_name/student_name/user_name…），
-        # 或裸中文「姓名」命中。name 类用词边界避免 school_name / class_name / product_name 误判。
+        # PII 命中（三路并集）：
+        #   1. 子串关键词命中（mobile/phone/id_card/学号/账号… 均为足够具体的形式）；
+        #   2. 人名字段名词边界命中（real_name/student_name/teacher_name…），或 comment 含 real_name/姓名；
+        #      name 类用词边界避免 school_name / class_name / product_name 误判。
+        #   3. 账号/地址类具体形式词边界命中（account_no/bank_account/home_address…），
+        #      避免 account_period/account_type 与含 address 子串的非地址列误判。
         pii_keyword_hit = next((k for k in cls.SENSITIVE_KEYWORDS['pii'] if k in text_to_check), None)
-        pii_name_hit = bool(cls._PII_NAME_FIELD_PATTERN.search(field_name_lower)) or ('姓名' in text_to_check)
+        # 人名识别：字段名词边界 OR comment 含 real_name OR 文本含「姓名」（comment 兜底，
+        # 修复"新正则只扫 field_name 丢了 comment 里 real_name"的回归）。
+        pii_name_hit = (
+            bool(cls._PII_NAME_FIELD_PATTERN.search(field_name_lower))
+            or ('real_name' in text_to_check)
+            or ('姓名' in text_to_check)
+        )
+        pii_field_hit = bool(cls._PII_FIELD_PATTERN.search(field_name_lower))
+        # 泛 *_address 兜底：前缀非技术地址（ip/mac/email/url/host…）时判 PII，覆盖 reg_address/perm_address 等。
+        if not pii_field_hit:
+            generic_addr = cls._GENERIC_ADDRESS_PATTERN.search(field_name_lower)
+            if generic_addr and generic_addr.group(1) not in cls._NON_PII_ADDRESS_PREFIXES:
+                pii_field_hit = True
 
-        if pii_keyword_hit or pii_name_hit:
+        if pii_keyword_hit or pii_name_hit or pii_field_hit:
             result['is_sensitive'] = True
             result['level'] = 'pii'
             result['confidence'] = 0.9
-            result['matched_rules'].append(
-                f'PII关键词匹配: {pii_keyword_hit}' if pii_keyword_hit else 'PII人名字段匹配'
-            )
+            if pii_keyword_hit:
+                result['matched_rules'].append(f'PII关键词匹配: {pii_keyword_hit}')
+            elif pii_name_hit:
+                result['matched_rules'].append('PII人名字段匹配')
+            else:
+                result['matched_rules'].append('PII账号/地址字段匹配')
 
             # 根据字段类型推荐脱敏规则
             if any(k in text_to_check for k in ['mobile', 'phone', '手机', '电话']):
@@ -230,16 +285,23 @@ class FieldIdentifier:
                 result['mask_rule'] = 'full_mask'
 
             return result
-        
-        # 检查机密级别
-        for keyword in cls.SENSITIVE_KEYWORDS['confidential']:
-            if keyword in text_to_check:
-                result['is_sensitive'] = True
-                result['level'] = 'confidential'
-                result['mask_rule'] = 'full_mask'
-                result['confidence'] = 0.95
-                result['matched_rules'].append(f'机密关键词匹配: {keyword}')
-                return result
+
+        # 检查机密级别：裸子串（secret/credential/密钥/凭证/秘密）或具体配置密钥词边界
+        # （api_key/access_token/refresh_token…），避免 product_key/business_key/token_count 误判。
+        confidential_keyword_hit = next(
+            (k for k in cls.SENSITIVE_KEYWORDS['confidential'] if k in text_to_check), None
+        )
+        confidential_field_hit = bool(cls._CONFIDENTIAL_FIELD_PATTERN.search(field_name_lower))
+        if confidential_keyword_hit or confidential_field_hit:
+            result['is_sensitive'] = True
+            result['level'] = 'confidential'
+            result['mask_rule'] = 'full_mask'
+            result['confidence'] = 0.95
+            result['matched_rules'].append(
+                f'机密关键词匹配: {confidential_keyword_hit}' if confidential_keyword_hit
+                else '机密配置密钥字段匹配'
+            )
+            return result
         
         # 检查内部级别
         for keyword in cls.SENSITIVE_KEYWORDS['internal']:

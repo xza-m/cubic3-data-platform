@@ -212,3 +212,111 @@ class TestFieldIdentifier:
         assert result['sensitive_fields'] == 1
         assert result['sensitivity_breakdown'] == {'pii': 1}
         assert result['avg_confidence'] == pytest.approx(0.875)
+
+    # ---- E1 防回归矩阵：子串匹配既过宽又过窄的收紧/扩展 ----
+
+    @pytest.mark.parametrize('name', [
+        'token_count',      # 过宽 #5：token 子串不应判机密
+        'product_key',      # 过宽 #6：业务主键不应判机密
+        'business_key',     # 过宽 #6：业务主键不应判机密
+        'grade_key',        # 过宽 #6：业务主键不应判机密
+        'account_period',   # 过宽 #9：账期不应判 PII
+        'account_type',     # 过宽 #9：账户类型不应判 PII
+        'cost_center',      # internal 关键词 cost 现状判 internal，但不应升级为 mask 白名单级别（见下方边界用例）
+        'revenue_category', # 同上：revenue 判 internal
+    ])
+    def test_e1_overbroad_not_pii_or_confidential(self, name):
+        """过宽收紧：业务列不得被误标为 pii/confidential（mask 白名单级别）。
+
+        cost_center/revenue_category 由 internal 关键词命中（仍 internal，非 mask 白名单），
+        其余应彻底不敏感。本用例只断言"不进 mask 白名单（pii/confidential/secret）"。
+        """
+        result = FieldIdentifier.identify_field({'name': name, 'type': 'string', 'comment': ''})
+        assert result['sensitivity_level'] not in ('pii', 'confidential', 'secret'), \
+            f'{name} 不应被误标为 mask 白名单级别，实际={result["sensitivity_level"]}'
+
+    @pytest.mark.parametrize('name', [
+        'token_count', 'product_key', 'business_key', 'grade_key',
+        'account_period', 'account_type',
+    ])
+    def test_e1_overbroad_pure_business_not_sensitive(self, name):
+        """过宽收紧（纯业务列）：token_count/*_key/account_period/account_type 应完全非敏感。"""
+        result = FieldIdentifier.identify_field({'name': name, 'type': 'string', 'comment': ''})
+        assert result['is_sensitive'] is False, f'{name} 不应敏感，实际 level={result["sensitivity_level"]}'
+        assert result['sensitivity_level'] == 'public', name
+
+    @pytest.mark.parametrize('name,comment', [
+        ('student_name', '学生姓名'),
+        ('teacher_name', '教师姓名'),    # 过窄 #7：K12 核心 PII 新增
+        ('parent_name', '家长姓名'),     # 过窄 #7：K12 核心 PII 新增
+        ('guardian_name', '监护人姓名'),  # 过窄 #7：K12 核心 PII 新增
+        ('mobile', ''),
+        ('contact_email', ''),
+        ('id_card', ''),
+        ('student_id', '学号'),
+        ('xm', '姓名'),                  # 中文姓名兜底
+    ])
+    def test_e1_pii_must_hit(self, name, comment):
+        """过窄扩展：保留+新增的 PII 字段必须命中 pii。"""
+        result = FieldIdentifier.identify_field({'name': name, 'type': 'string', 'comment': comment})
+        assert result['is_sensitive'] is True, name
+        assert result['sensitivity_level'] == 'pii', name
+
+    def test_e1_real_name_in_comment_still_hits(self):
+        """过窄 #8：real_name 出现在 comment（而非字段名）也应命中 PII。
+
+        修复"新正则只扫 field_name_lower 丢了 comment 里 real_name"的回归。
+        """
+        # 字段名本身不触发 name 词边界（rn 非人名前缀），靠 comment 的 real_name 兜底
+        result = FieldIdentifier.identify_field({'name': 'rn', 'type': 'varchar', 'comment': 'user real_name'})
+        assert result['is_sensitive'] is True
+        assert result['sensitivity_level'] == 'pii'
+        assert result['mask_rule'] == 'name'
+
+    @pytest.mark.parametrize('name', [
+        'api_key', 'secret_key', 'access_key', 'private_key',
+        'access_token', 'api_token', 'auth_token', 'refresh_token',
+    ])
+    def test_e1_confidential_config_keys_hit(self, name):
+        """过宽收紧的另一面：真正的配置密钥仍判 confidential（full_mask）。"""
+        result = FieldIdentifier.identify_field({'name': name, 'type': 'string', 'comment': ''})
+        assert result['is_sensitive'] is True, name
+        assert result['sensitivity_level'] == 'confidential', name
+        assert result['mask_rule'] == 'full_mask', name
+
+    @pytest.mark.parametrize('name', [
+        'account_no', 'account_number', 'bank_account',
+        'home_address', 'mailing_address',
+        'address',         # 精确字段名 address（学生家庭住址列）仍判 PII（不回归）
+        'reg_address',     # 泛 *_address 兜底
+    ])
+    def test_e1_pii_account_address_specific_forms_hit(self, name):
+        """过窄扩展：account_no/bank_account/home_address/精确 address 等仍判 PII。"""
+        result = FieldIdentifier.identify_field({'name': name, 'type': 'string', 'comment': ''})
+        assert result['is_sensitive'] is True, name
+        assert result['sensitivity_level'] == 'pii', name
+
+    @pytest.mark.parametrize('name', [
+        'ip_address',      # 技术地址，非家庭住址，不应判 PII
+        'mac_address',     # 同上
+        'host_address',    # 同上
+    ])
+    def test_e1_technical_address_not_pii(self, name):
+        """守边界：ip_address/mac_address 等技术地址不得误判为 PII。"""
+        result = FieldIdentifier.identify_field({'name': name, 'type': 'string', 'comment': ''})
+        assert result['sensitivity_level'] != 'pii', name
+
+    @pytest.mark.parametrize('name,comment', [
+        ('salary_amount', ''),
+        ('total_revenue', ''),
+        ('unit_cost', ''),
+        ('成本中心', '成本'),
+    ])
+    def test_e1_internal_boundary_not_in_mask_whitelist(self, name, comment):
+        """守 INTERNAL 边界：薪资/营收/成本仍 is_sensitive=True 且 level=internal，
+        但不在 mask 白名单 {pii,confidential,secret}，由下游 query_export 白名单挡。本任务不改 internal 归类。
+        """
+        result = FieldIdentifier.identify_field({'name': name, 'type': 'decimal', 'comment': comment})
+        assert result['is_sensitive'] is True, name
+        assert result['sensitivity_level'] == 'internal', name
+        assert result['sensitivity_level'] not in ('pii', 'confidential', 'secret'), name
