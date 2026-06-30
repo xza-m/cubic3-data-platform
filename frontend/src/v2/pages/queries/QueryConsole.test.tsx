@@ -168,4 +168,34 @@ describe('QueryConsole principal handoff', () => {
       }),
     )
   })
+
+  it('数据表列表不常驻填入提示，hover 时展示表描述', async () => {
+    mockUseTables.mockReturnValue({
+      data: {
+        datasource_id: 7,
+        database: 'public',
+        tables: [
+          {
+            table_name: 'ads_bi_class_study_stats_wide_df',
+            comment: '班级学习统计宽表，用于课堂看板分析。',
+            row_count: 1280,
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    })
+    mockUseExecute.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    mockUseCreate.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+
+    renderConsole()
+
+    expect(screen.getByText('ads_bi_class_study_stats_wide_df')).toBeInTheDocument()
+    expect(screen.queryByText('点击填入查询')).not.toBeInTheDocument()
+
+    fireEvent.mouseEnter(screen.getByTestId('query-resource-table-ads_bi_class_study_stats_wide_df'))
+
+    expect(screen.getByRole('tooltip')).toHaveTextContent('班级学习统计宽表，用于课堂看板分析。')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('1,280 行')
+  })
 })

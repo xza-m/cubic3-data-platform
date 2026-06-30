@@ -39,6 +39,52 @@ function assetSourceName(asset: Dataset, sourceNameById: Map<number, string>): s
   return asset.datasource_name ?? '-'
 }
 
+interface ImpactSummary {
+  readyAssets: Dataset[]
+  blockedAssets: Dataset[]
+  coveredSources: Datasource[]
+  pendingSources: Datasource[]
+  assetCountBySource: Map<number, number>
+}
+
+function buildImpactSummary(sources: Datasource[], assets: Dataset[]): ImpactSummary {
+  const readyAssets = assets.filter((asset) => asset.sync_status === 'synced')
+  const blockedAssets = assets.filter((asset) => asset.sync_status !== 'synced')
+  const assetCountBySource = new Map<number, number>()
+  for (const asset of assets) {
+    const sourceId = assetSourceId(asset)
+    if (sourceId == null) continue
+    assetCountBySource.set(sourceId, (assetCountBySource.get(sourceId) ?? 0) + 1)
+  }
+  const coveredSources = sources.filter((source) => (assetCountBySource.get(source.id) ?? 0) > 0)
+  const pendingSources = coveredSources.filter((source) => !isConnectedDatasourceStatus(source.connection_status))
+
+  return {
+    readyAssets,
+    blockedAssets,
+    coveredSources,
+    pendingSources,
+    assetCountBySource,
+  }
+}
+
+function buildImpactActionItems(assetCount: number, impactSummary: ImpactSummary) {
+  if (assetCount === 0) {
+    return [t('dataCenter.impact.action.noAssets', '暂无可分析资产，先完成连接和资产同步。')]
+  }
+  const items: string[] = []
+  if (impactSummary.blockedAssets.length > 0) {
+    items.push(t('dataCenter.impact.action.blockedAssets', '{n} 个资产未完成同步，暂不进入语义建设。', { n: impactSummary.blockedAssets.length }))
+  }
+  if (impactSummary.pendingSources.length > 0) {
+    items.push(t('dataCenter.impact.action.pendingSources', '{n} 个来源连接未连通，可能阻断资产刷新。', { n: impactSummary.pendingSources.length }))
+  }
+  if (items.length === 0) {
+    items.push(t('dataCenter.impact.action.allClear', '暂无阻断项，已同步资产可继续进入语义建设。'))
+  }
+  return items
+}
+
 export default function DataCenter() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -119,6 +165,16 @@ export default function DataCenter() {
     }
   }, [assetRows, sourceRows])
 
+  const impactSummary = useMemo(
+    () => buildImpactSummary(sourceRows, assetRows),
+    [assetRows, sourceRows],
+  )
+
+  const impactActionItems = useMemo(
+    () => buildImpactActionItems(assetRows.length, impactSummary),
+    [assetRows.length, impactSummary],
+  )
+
   const handleRefreshAll = useCallback(async () => {
     const [sourceResult, assetResult] = await Promise.all([datasources.refetch(), datasets.refetch()])
     const ok = sourceResult.status === 'success' && assetResult.status === 'success'
@@ -187,6 +243,21 @@ export default function DataCenter() {
   }, [activeTab, datasources.isFetching, datasets.isFetching, handleRefreshAll, navigate, setTopBarActions])
 
   useEffect(() => {
+    if (activeTab === 'impact') {
+      setContextPanel({
+        title: t('dataCenter.impact.summary.title', '准备度摘要'),
+        subtitle: t('dataCenter.impact.summary.subtitle', '从资产可用性、阻断项和来源覆盖判断建设风险。'),
+        body: (
+          <ImpactSummaryContent
+            impactSummary={impactSummary}
+            actionItems={impactActionItems}
+          />
+        ),
+        defaultExpanded: true,
+      })
+      return () => setContextPanel(null)
+    }
+
     const items = [
       summary.failedConnections > 0
         ? t('dataCenter.ctx.failedConnections', '{n} 个连接异常，优先检查连接健康。', { n: summary.failedConnections })
@@ -232,7 +303,7 @@ export default function DataCenter() {
       ),
     })
     return () => setContextPanel(null)
-  }, [setContextPanel, summary])
+  }, [activeTab, impactActionItems, impactSummary, setContextPanel, summary])
 
   const loading = datasources.isLoading || datasets.isLoading
   const error = datasources.error ?? datasets.error
@@ -282,7 +353,7 @@ export default function DataCenter() {
               <SyncPanel sources={sourceRows} assets={assetRows} sourceNameById={sourceNameById} />
             ) : null}
             {activeTab === 'impact' ? (
-              <ImpactPanel sources={sourceRows} assets={assetRows} sourceNameById={sourceNameById} />
+              <ImpactPanel assets={assetRows} sourceNameById={sourceNameById} />
             ) : null}
           </>
         )}
@@ -423,7 +494,7 @@ function ConnectionsPanel({
       {
         key: 'actions',
         title: t('dataCenter.common.actions', '操作'),
-        width: 190,
+        width: 120,
         render: (row) => (
           <div className="flex items-center gap-1.5">
             <Button
@@ -438,21 +509,11 @@ function ConnectionsPanel({
             >
               {t('dataCenter.connection.test', '测试连接')}
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={(event) => {
-                event.stopPropagation()
-                onOpenDetail(row)
-              }}
-            >
-              {t('dataCenter.common.detail', '详情')}
-            </Button>
           </div>
         ),
       },
     ],
-    [assetCountBySource, onOpenDetail, onTestConnection, testingId],
+    [assetCountBySource, onTestConnection, testingId],
   )
 
   return (
@@ -656,11 +717,9 @@ function SyncPanel({
 }
 
 function ImpactPanel({
-  sources,
   assets,
   sourceNameById,
 }: {
-  sources: Datasource[]
   assets: Dataset[]
   sourceNameById: Map<number, string>
 }) {
@@ -687,85 +746,54 @@ function ImpactPanel({
     [],
   )
 
-  const impactSummary = useMemo(() => {
-    const readyAssets = assets.filter((asset) => asset.sync_status === 'synced')
-    const blockedAssets = assets.filter((asset) => asset.sync_status !== 'synced')
-    const assetCountBySource = new Map<number, number>()
-    for (const asset of assets) {
-      const sourceId = assetSourceId(asset)
-      if (sourceId == null) continue
-      assetCountBySource.set(sourceId, (assetCountBySource.get(sourceId) ?? 0) + 1)
-    }
-    const coveredSources = sources.filter((source) => (assetCountBySource.get(source.id) ?? 0) > 0)
-    const pendingSources = coveredSources.filter((source) => !isConnectedDatasourceStatus(source.connection_status))
-
-    return {
-      readyAssets,
-      blockedAssets,
-      coveredSources,
-      pendingSources,
-      assetCountBySource,
-    }
-  }, [assets, sources])
-
-  const actionItems = useMemo(() => {
-    if (assets.length === 0) {
-      return [t('dataCenter.impact.action.noAssets', '暂无可分析资产，先完成连接和资产同步。')]
-    }
-    const items: string[] = []
-    if (impactSummary.blockedAssets.length > 0) {
-      items.push(t('dataCenter.impact.action.blockedAssets', '{n} 个资产未完成同步，暂不进入语义建设。', { n: impactSummary.blockedAssets.length }))
-    }
-    if (impactSummary.pendingSources.length > 0) {
-      items.push(t('dataCenter.impact.action.pendingSources', '{n} 个来源连接未连通，可能阻断资产刷新。', { n: impactSummary.pendingSources.length }))
-    }
-    if (items.length === 0) {
-      items.push(t('dataCenter.impact.action.allClear', '暂无阻断项，已同步资产可继续进入语义建设。'))
-    }
-    return items
-  }, [assets.length, impactSummary.blockedAssets.length, impactSummary.pendingSources.length])
-
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[1fr_300px] gap-4">
-      <Panel title={t('dataCenter.impact.title', '影响准备度')} subtitle={t('dataCenter.impact.subtitle', '基于资产同步状态和来源连接判断资产是否可进入语义建设。')} fullHeight>
-        <Table columns={columns} rows={rows} rowKey={(row) => row.id} emptyText={t('dataCenter.impact.empty', '暂无资产影响准备度')} />
-      </Panel>
-      <Panel title={t('dataCenter.impact.summary.title', '准备度摘要')} subtitle={t('dataCenter.impact.summary.subtitle', '从资产可用性、阻断项和来源覆盖判断建设风险。')}>
-        <div className="grid grid-cols-2 gap-2">
-          <ImpactStat label={t('dataCenter.impact.summary.readyAssets', '可建模资产')} value={impactSummary.readyAssets.length} helper={t('dataCenter.impact.summary.readyAssetsDesc', '已同步，可进入语义建设')} />
-          <ImpactStat label={t('dataCenter.impact.summary.blockedAssets', '待补齐资产')} value={impactSummary.blockedAssets.length} helper={t('dataCenter.impact.summary.blockedAssetsDesc', '未同步或失败，暂不进入建设')} tone={impactSummary.blockedAssets.length > 0 ? 'warning' : 'neutral'} />
-          <ImpactStat label={t('dataCenter.impact.summary.coveredSources', '涉及连接')} value={impactSummary.coveredSources.length} helper={t('dataCenter.impact.summary.coveredSourcesDesc', '当前资产覆盖的来源连接')} />
-          <ImpactStat label={t('dataCenter.impact.summary.pendingSources', '待检查连接')} value={impactSummary.pendingSources.length} helper={t('dataCenter.impact.summary.pendingSourcesDesc', '可能影响资产刷新')} tone={impactSummary.pendingSources.length > 0 ? 'warning' : 'neutral'} />
-        </div>
+    <Panel title={t('dataCenter.impact.title', '影响准备度')} subtitle={t('dataCenter.impact.subtitle', '基于资产同步状态和来源连接判断资产是否可进入语义建设。')} fullHeight>
+      <Table columns={columns} rows={rows} rowKey={(row) => row.id} emptyText={t('dataCenter.impact.empty', '暂无资产影响准备度')} />
+    </Panel>
+  )
+}
 
-        <div className="mt-4">
-          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-3">{t('dataCenter.impact.summary.actions', '待处理影响')}</div>
-          <div className="space-y-2">
-            {actionItems.map((item) => (
-              <ImpactActionItem key={item} label={item} />
-            ))}
-          </div>
-        </div>
+function ImpactSummaryContent({
+  impactSummary,
+  actionItems,
+}: {
+  impactSummary: ImpactSummary
+  actionItems: string[]
+}) {
+  return (
+    <div className="space-y-4 px-4 py-4 text-xs">
+      <div className="grid grid-cols-2 gap-2">
+        <ImpactStat label={t('dataCenter.impact.summary.readyAssets', '可建模资产')} value={impactSummary.readyAssets.length} helper={t('dataCenter.impact.summary.readyAssetsDesc', '已同步，可进入语义建设')} />
+        <ImpactStat label={t('dataCenter.impact.summary.blockedAssets', '待补齐资产')} value={impactSummary.blockedAssets.length} helper={t('dataCenter.impact.summary.blockedAssetsDesc', '未同步或失败，暂不进入建设')} tone={impactSummary.blockedAssets.length > 0 ? 'warning' : 'neutral'} />
+        <ImpactStat label={t('dataCenter.impact.summary.coveredSources', '涉及连接')} value={impactSummary.coveredSources.length} helper={t('dataCenter.impact.summary.coveredSourcesDesc', '当前资产覆盖的来源连接')} />
+        <ImpactStat label={t('dataCenter.impact.summary.pendingSources', '待检查连接')} value={impactSummary.pendingSources.length} helper={t('dataCenter.impact.summary.pendingSourcesDesc', '可能影响资产刷新')} tone={impactSummary.pendingSources.length > 0 ? 'warning' : 'neutral'} />
+      </div>
 
-        <div className="mt-4">
-          <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-3">{t('dataCenter.impact.summary.sources', '来源覆盖')}</div>
-          <div className="space-y-2">
-            {impactSummary.coveredSources.length > 0 ? (
-              impactSummary.coveredSources.slice(0, 4).map((source) => (
-                <ImpactSourceRow
-                  key={source.id}
-                  source={source}
-                  assetCount={impactSummary.assetCountBySource.get(source.id) ?? 0}
-                />
-              ))
-            ) : (
-              <div className="rounded-md border px-3 py-2 text-[12px] text-3" style={{ borderColor: 'var(--border)' }}>
-                {t('dataCenter.impact.summary.noSources', '暂无资产来源覆盖')}
-              </div>
-            )}
-          </div>
+      <ContextSection title={t('dataCenter.impact.summary.actions', '待处理影响')}>
+        <div className="space-y-2">
+          {actionItems.map((item) => (
+            <ImpactActionItem key={item} label={item} />
+          ))}
         </div>
-      </Panel>
+      </ContextSection>
+
+      <ContextSection title={t('dataCenter.impact.summary.sources', '来源覆盖')}>
+        <div className="space-y-2">
+          {impactSummary.coveredSources.length > 0 ? (
+            impactSummary.coveredSources.slice(0, 4).map((source) => (
+              <ImpactSourceRow
+                key={source.id}
+                source={source}
+                assetCount={impactSummary.assetCountBySource.get(source.id) ?? 0}
+              />
+            ))
+          ) : (
+            <div className="rounded-md border px-3 py-2 text-[12px] text-3" style={{ borderColor: 'var(--border)' }}>
+              {t('dataCenter.impact.summary.noSources', '暂无资产来源覆盖')}
+            </div>
+          )}
+        </div>
+      </ContextSection>
     </div>
   )
 }

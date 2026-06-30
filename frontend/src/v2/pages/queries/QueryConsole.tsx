@@ -49,6 +49,15 @@ interface SelectedTable {
   rowCount: number | null
 }
 
+interface TableHoverCard {
+  id: string
+  tableName: string
+  description: string
+  rowCount: number | null
+  left: number
+  top: number
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Constants
 // ──────────────────────────────────────────────────────────────────────────
@@ -56,10 +65,15 @@ interface SelectedTable {
 const DEFAULT_SQL = 'SELECT 1 AS hello'
 const TABLE_PAGE_SIZE = 20
 const RESULT_PAGE_SIZE = 20
+const TABLE_HOVER_CARD_WIDTH = 288
 
 function sqlIdentifier(value: string): string {
   if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) return value
   return `"${value.replace(/"/g, '""')}"`
+}
+
+function domIdPart(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]+/g, '_')
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -90,6 +104,7 @@ export default function QueryConsole() {
   const [tableSearch, setTableSearch] = useState('')
   const [tablePage, setTablePage] = useState(1)
   const [selectedTable, setSelectedTable] = useState<SelectedTable | null>(null)
+  const [hoveredTable, setHoveredTable] = useState<TableHoverCard | null>(null)
 
   const sources = useDatasourcesForConsole()
   const sourceList = useMemo(
@@ -163,6 +178,10 @@ export default function QueryConsole() {
     setTablePage(1)
   }, [tableSearch, tableList.length])
 
+  useEffect(() => {
+    setHoveredTable(null)
+  }, [sourceId, database, tableSearch, tablePage])
+
   // track theme changes
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -195,6 +214,30 @@ export default function QueryConsole() {
     },
     [activeSource?.name, database, sourceId],
   )
+
+  const showTableHoverCard = useCallback((table: DatasourceTableSummary, anchor: HTMLElement) => {
+    const rect = anchor.getBoundingClientRect()
+    const gap = 8
+    const viewportPadding = 12
+    const left = Math.min(
+      rect.right + gap,
+      window.innerWidth - TABLE_HOVER_CARD_WIDTH - viewportPadding,
+    )
+    const top = Math.min(Math.max(viewportPadding, rect.top - 8), window.innerHeight - 150)
+
+    setHoveredTable({
+      id: `query-table-desc-${domIdPart(table.table_name)}`,
+      tableName: table.table_name,
+      description: table.comment?.trim() || t('queryConsole.tableDetail.descriptionEmpty', '暂无表描述'),
+      rowCount: table.row_count,
+      left,
+      top,
+    })
+  }, [])
+
+  const hideTableHoverCard = useCallback(() => {
+    setHoveredTable(null)
+  }, [])
 
   const handleRun = useCallback(async () => {
     if (sourceId == null) {
@@ -413,34 +456,29 @@ export default function QueryConsole() {
                                                   selectedTable?.sourceId === sourceId &&
                                                   selectedTable.database === database &&
                                                   selectedTable.tableName === table.table_name
-                                                const tableHint = table.comment
-                                                  ? `${table.table_name}\n${table.comment}`
-                                                  : `${table.table_name}\n${t('queryConsole.tableDetail.descriptionEmpty', '暂无表描述')}`
+                                                const tooltipId = `query-table-desc-${domIdPart(table.table_name)}`
                                                 return (
                                                   <button
                                                     key={table.table_name}
                                                     type="button"
                                                     onClick={() => fillTableQuery(table, database)}
-                                                    title={tableHint}
-                                                    className="flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[color:var(--bg-hover)]"
+                                                    onMouseEnter={(event) => showTableHoverCard(table, event.currentTarget)}
+                                                    onMouseLeave={hideTableHoverCard}
+                                                    onFocus={(event) => showTableHoverCard(table, event.currentTarget)}
+                                                    onBlur={hideTableHoverCard}
+                                                    aria-label={t('queryConsole.sidebar.tableActionAria', '填入表 {name} 查询', {
+                                                      name: table.table_name,
+                                                    })}
+                                                    aria-describedby={tooltipId}
+                                                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[color:var(--bg-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
                                                     style={{
                                                       background: tableActive ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : undefined,
                                                     }}
                                                     data-testid={`query-resource-table-${table.table_name}`}
                                                   >
-                                                    <Table2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" style={{ color: tableActive ? 'var(--accent)' : 'var(--text-3)' }} />
-                                                    <span className="min-w-0 flex-1">
-                                                      <span className="block truncate font-mono text-xs" style={{ color: tableActive ? 'var(--accent)' : 'var(--text-1)' }}>
-                                                        {table.table_name}
-                                                      </span>
-                                                      <span className="block truncate text-xs" style={{ color: 'var(--text-3)' }}>
-                                                        {table.comment ||
-                                                          (table.row_count != null
-                                                            ? t('queryConsole.sidebar.tableRows', '{n} 行', {
-                                                                n: fmtNum(table.row_count),
-                                                              })
-                                                            : t('queryConsole.sidebar.fillSql', '点击填入查询'))}
-                                                      </span>
+                                                    <Table2 className="h-3.5 w-3.5 flex-shrink-0" style={{ color: tableActive ? 'var(--accent)' : 'var(--text-3)' }} />
+                                                    <span className="min-w-0 flex-1 truncate font-mono text-xs" style={{ color: tableActive ? 'var(--accent)' : 'var(--text-1)' }}>
+                                                      {table.table_name}
                                                     </span>
                                                   </button>
                                                 )
@@ -489,6 +527,35 @@ export default function QueryConsole() {
           )}
         </div>
       </aside>
+
+      {hoveredTable ? (
+        <div
+          id={hoveredTable.id}
+          role="tooltip"
+          className="pointer-events-none fixed z-[120] rounded-md border px-3 py-2 text-left text-[11px] shadow-lg"
+          style={{
+            width: TABLE_HOVER_CARD_WIDTH,
+            left: hoveredTable.left,
+            top: hoveredTable.top,
+            background: 'var(--bg-surface)',
+            borderColor: 'var(--border)',
+            color: 'var(--text-2)',
+          }}
+        >
+          <div className="truncate font-mono text-xs font-semibold" style={{ color: 'var(--text-1)' }}>
+            {hoveredTable.tableName}
+          </div>
+          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
+            {t('queryConsole.sidebar.tableDescriptionLabel', '表描述')}
+          </div>
+          <div className="mt-1 line-clamp-4 leading-5">{hoveredTable.description}</div>
+          {hoveredTable.rowCount != null ? (
+            <div className="mt-2" style={{ color: 'var(--text-3)' }}>
+              {t('queryConsole.sidebar.tableRows', '{n} 行', { n: fmtNum(hoveredTable.rowCount) })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {selectedTable ? (
         <aside

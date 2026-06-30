@@ -4,7 +4,7 @@
 // 用于 DatasourceDetail "结构" Tab。
 // 数据源：useDatasourceSchema / useDatasourceSchemaTables / useDatasourceSchemaTableColumns。
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -27,6 +27,20 @@ interface Props {
 }
 
 const TABLE_PAGE_SIZE = 20
+const TYPE_COLUMN_WIDTH = 260
+const TYPE_TOOLTIP_WIDTH = 360
+
+interface ColumnTypeTooltip {
+  id: string
+  columnName: string
+  type: string
+  left: number
+  top: number
+}
+
+function domIdPart(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, '-')
+}
 
 export function DatasourceSchemaBrowser({ datasourceId }: Props) {
   const [activeDb, setActiveDb] = useState<string | null>(null)
@@ -270,6 +284,45 @@ function ColumnPanel(props: {
   isRefreshing: boolean
   fetchedAt?: string
 }) {
+  const [typeTooltip, setTypeTooltip] = useState<ColumnTypeTooltip | null>(null)
+
+  useEffect(() => {
+    setTypeTooltip(null)
+  }, [props.table])
+
+  const hideTypeTooltip = useCallback(() => {
+    setTypeTooltip(null)
+  }, [])
+
+  const showTypeTooltip = useCallback((columnName: string, type: string, anchor: HTMLElement) => {
+    const value = type.trim()
+    if (!value || anchor.scrollWidth <= anchor.clientWidth) {
+      setTypeTooltip(null)
+      return
+    }
+
+    const rect = anchor.getBoundingClientRect()
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+    const margin = 12
+    const left = Math.max(
+      margin,
+      Math.min(rect.left, viewportWidth - TYPE_TOOLTIP_WIDTH - margin),
+    )
+    const preferredTop = rect.bottom + 8
+    const top = preferredTop > viewportHeight - 120
+      ? Math.max(margin, rect.top - 104)
+      : preferredTop
+
+    setTypeTooltip({
+      id: `schema-type-tooltip-${domIdPart(columnName)}`,
+      columnName,
+      type: value,
+      left,
+      top,
+    })
+  }, [])
+
   return (
     <ColumnShell
       title={
@@ -297,7 +350,13 @@ function ColumnPanel(props: {
             : !props.items.length && t('schemaBrowser.empty.column', '无字段')
         }
       >
-        <table className="w-full text-xs">
+        <table className="w-full table-fixed text-xs">
+          <colgroup>
+            <col style={{ width: '32%' }} />
+            <col style={{ width: TYPE_COLUMN_WIDTH }} />
+            <col style={{ width: 72 }} />
+            <col />
+          </colgroup>
           <thead>
             <tr style={{ color: 'var(--text-3)' }}>
               <th className="px-3 py-1.5 text-left font-medium">{t('schemaBrowser.col.name', '字段名')}</th>
@@ -316,8 +375,18 @@ function ColumnPanel(props: {
                 <td className="px-3 py-1.5 font-mono" style={{ color: 'var(--text-1)' }}>
                   {c.name}
                 </td>
-                <td className="px-3 py-1.5" style={{ color: 'var(--text-2)' }}>
-                  {c.type}
+                <td className="px-3 py-1.5 align-top" style={{ color: 'var(--text-2)' }}>
+                  <span
+                    className="block max-w-full truncate font-mono"
+                    tabIndex={c.type.length > 24 ? 0 : undefined}
+                    aria-describedby={typeTooltip?.columnName === c.name ? typeTooltip.id : undefined}
+                    onMouseEnter={(event) => showTypeTooltip(c.name, c.type, event.currentTarget)}
+                    onMouseLeave={hideTypeTooltip}
+                    onFocus={(event) => showTypeTooltip(c.name, c.type, event.currentTarget)}
+                    onBlur={hideTypeTooltip}
+                  >
+                    {c.type || '-'}
+                  </span>
                 </td>
                 <td className="px-3 py-1.5" style={{ color: 'var(--text-3)' }}>
                   {c.nullable ? 'YES' : 'NO'}
@@ -329,6 +398,27 @@ function ColumnPanel(props: {
             ))}
           </tbody>
         </table>
+        {typeTooltip ? (
+          <div
+            id={typeTooltip.id}
+            role="tooltip"
+            className="fixed z-50 max-h-56 overflow-auto rounded-md border px-3 py-2 text-xs shadow-lg"
+            style={{
+              left: typeTooltip.left,
+              top: typeTooltip.top,
+              width: TYPE_TOOLTIP_WIDTH,
+              maxWidth: 'calc(100vw - 24px)',
+              background: 'var(--bg-surface)',
+              borderColor: 'var(--border)',
+              color: 'var(--text-2)',
+            }}
+          >
+            <div className="mb-1 text-[10px] font-medium uppercase" style={{ color: 'var(--text-3)' }}>
+              {t('schemaBrowser.typeTooltip.label', '类型')}
+            </div>
+            <code className="block whitespace-normal break-all leading-5">{typeTooltip.type}</code>
+          </div>
+        ) : null}
       </ColumnBody>
     </ColumnShell>
   )

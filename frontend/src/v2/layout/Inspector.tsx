@@ -56,7 +56,7 @@ export function Inspector({
         style={{ borderColor: 'var(--border)' }}
       >
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium text-1">{title ?? t('inspector.titleShort', '上下文')}</div>
+          <h2 className="truncate text-[13px] font-medium text-1">{title ?? t('inspector.titleShort', '上下文')}</h2>
           {subtitle ? (
             <div className="mt-0.5 truncate text-[11px] text-3">{subtitle}</div>
           ) : null}

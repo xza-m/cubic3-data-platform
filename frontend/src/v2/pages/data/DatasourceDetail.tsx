@@ -4,13 +4,14 @@
 // B-back-4: POST /datasources/:id/test 增强字段 — 测试结果只展示后端实际返回字段
 // B-back-5: GET /datasources/:id/schema — "结构" Tab 留占位
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil, ServerCog, ExternalLink, Play } from 'lucide-react'
 import { useDatasource, useDatasources, useTestConnection } from '@v2/hooks/datasources'
 import type { Datasource, TestConnectionResult } from '@v2/api/datasources'
 import { RefreshButton } from '@v2/components/CommonControls'
 import { RetryState } from '@v2/components/LoadState'
+import { Button } from '@v2/components/ui'
 import { Tab, Tabs } from '@v2/components/ui/Tabs'
 import {
   connectionStatusChip,
@@ -52,6 +53,22 @@ export default function DatasourceDetail() {
 
   const testConn = useTestConnection()
 
+  const handleTestConnection = useCallback(async () => {
+    if (!data || testConn.isPending) return
+
+    setTestResult(null)
+    setTestError(null)
+    try {
+      const result = await testConn.mutateAsync(data.id)
+      setTestResult(result)
+      if (!result.ok) {
+        setTestError(result.error_message || result.message)
+      }
+    } catch (e) {
+      setTestError(e instanceof Error ? e.message : t('datasourceDetail.test.failed', '测试失败'))
+    }
+  }, [data, testConn])
+
   // 面包屑
   useEffect(() => {
     if (!data) return
@@ -81,14 +98,13 @@ export default function DatasourceDetail() {
   useEffect(() => {
     setTopBarActions(
       <div className="flex items-center gap-2">
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => navigate('/data-center/connections')}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs"
-          style={{ color: 'var(--text-2)' }}
         >
           <ArrowLeft size={12} /> {t('datasourceDetail.action.back', '返回列表')}
-        </button>
+        </Button>
         <RefreshButton
           onClick={() => refetch()}
           loading={isFetching}
@@ -96,44 +112,10 @@ export default function DatasourceDetail() {
           loadingLabel={t('datasourceDetail.action.reloading', '重新加载中…')}
           ariaLabel={t('datasourceDetail.action.reload', '重新加载')}
         />
-        {data ? (
-          <button
-            type="button"
-            onClick={async () => {
-              setTestResult(null)
-              setTestError(null)
-              try {
-                const result = await testConn.mutateAsync(data.id)
-                setTestResult(result)
-                if (!result.ok) {
-                  setTestError(result.error_message || result.message)
-                }
-              } catch (e) {
-                setTestError(e instanceof Error ? e.message : t('datasourceDetail.test.failed', '测试失败'))
-              }
-            }}
-            disabled={testConn.isPending}
-            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
-            style={{ borderColor: 'var(--border)', color: 'var(--text-2)' }}
-          >
-            <Play size={12} />
-            {testConn.isPending
-              ? t('datasourceDetail.test.running', '测试中…')
-              : t('datasourceDetail.test.run', '测试连接')}
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => navigate(`/data-center/connections/${numericId}/edit`)}
-          className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium"
-          style={{ background: 'var(--accent)', color: 'var(--on-accent)' }}
-        >
-          <Pencil size={12} /> {t('datasourceDetail.action.edit', '编辑')}
-        </button>
       </div>,
     )
     return () => setTopBarActions(null)
-  }, [setTopBarActions, refetch, isFetching, navigate, data, testConn, numericId])
+  }, [setTopBarActions, refetch, isFetching, navigate])
 
   // 邻接导航
   const neighbors = useMemo(() => {
@@ -205,14 +187,14 @@ export default function DatasourceDetail() {
             <p className="mt-2 text-[11px] leading-5" style={{ color: 'var(--text-3)' }}>
               {t('datasourceDetail.downstream.hint', '查看基于该连接登记的数据资产、同步状态和后续语义建设入口。')}
             </p>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => navigate(`/data-center/assets?source_id=${data.id}`)}
-              className="mt-2 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
-              style={{ color: 'var(--text-2)' }}
+              className="mt-2"
             >
-              <ExternalLink size={11} /> {t('datasourceDetail.downstream.view', '查看关联资产')}
-            </button>
+              <ExternalLink size={12} /> {t('datasourceDetail.downstream.view', '查看关联资产')}
+            </Button>
           </section>
         </div>
       ),
@@ -256,7 +238,7 @@ export default function DatasourceDetail() {
         className="border-b px-4 py-3"
         style={{ background: 'var(--bg-surface)', borderColor: 'var(--border)' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           <DatasourceTypeIcon type={data.source_type} size="md" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
@@ -277,6 +259,25 @@ export default function DatasourceDetail() {
             <div className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
               {datasourceTypeLabel(data.source_type)} · #{data.id} · {t('datasourceDetail.subtitle', '连接配置与同步状态')}
             </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => void handleTestConnection()}
+              loading={testConn.isPending}
+            >
+              {testConn.isPending ? null : <Play size={12} />}
+              {testConn.isPending
+                ? t('datasourceDetail.test.running', '测试中…')
+                : t('datasourceDetail.test.run', '测试连接')}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate(`/data-center/connections/${numericId}/edit`)}
+            >
+              <Pencil size={12} /> {t('datasourceDetail.action.edit', '编辑')}
+            </Button>
           </div>
         </div>
 

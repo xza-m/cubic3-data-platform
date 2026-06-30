@@ -46,6 +46,7 @@ const VIEW_META: Array<{
 
 const TABLE_PAGE_SIZE = 20
 const SYNC_RUN_PAGE_SIZE = 10
+const DRIFT_ISSUE_PAGE_SIZE = 5
 
 const EMPTY_RADAR: DataAssetRadarResponse = {
   summary: {
@@ -427,6 +428,18 @@ function RadarSection({ radar, syncRate }: { radar: DataAssetRadarResponse; sync
 }
 
 function DriftSummary({ issues }: { issues: SemanticGovernanceIssue[] }) {
+  const [issuePage, setIssuePage] = useState(1)
+  const issuePageCount = Math.max(1, Math.ceil(issues.length / DRIFT_ISSUE_PAGE_SIZE))
+  const safeIssuePage = Math.min(Math.max(issuePage, 1), issuePageCount)
+  const visibleIssues = issues.slice(
+    (safeIssuePage - 1) * DRIFT_ISSUE_PAGE_SIZE,
+    safeIssuePage * DRIFT_ISSUE_PAGE_SIZE,
+  )
+
+  useEffect(() => {
+    setIssuePage((current) => Math.min(Math.max(current, 1), issuePageCount))
+  }, [issuePageCount])
+
   if (issues.length === 0) return null
 
   return (
@@ -437,7 +450,7 @@ function DriftSummary({ issues }: { issues: SemanticGovernanceIssue[] }) {
       />
       <CardBody>
         <div className="space-y-2">
-          {issues.map((issue) => {
+          {visibleIssues.map((issue) => {
             const title = issue.object_name || issue.title || issue.code
             const message = issue.message || issue.code
             return (
@@ -454,6 +467,12 @@ function DriftSummary({ issues }: { issues: SemanticGovernanceIssue[] }) {
             )
           })}
         </div>
+        <ListPagination
+          page={safeIssuePage}
+          pageSize={DRIFT_ISSUE_PAGE_SIZE}
+          total={issues.length}
+          onPageChange={setIssuePage}
+        />
       </CardBody>
     </Card>
   )

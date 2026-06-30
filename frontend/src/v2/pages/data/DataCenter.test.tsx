@@ -120,12 +120,21 @@ describe('DataCenter', () => {
 
     expect(await screen.findByText('pg_main')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '测试连接' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '详情' })).not.toBeInTheDocument()
   })
 
   it('影响分析展示基于资产和连接状态计算的摘要', () => {
     renderDataCenter('/data-center/impact')
 
-    expect(screen.getByRole('heading', { name: '准备度摘要' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '影响准备度' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '准备度摘要' })).not.toBeInTheDocument()
+
+    const calls = appShellMocks.setContextPanel.mock.calls
+    const payload = calls[calls.length - 1]?.[0]
+    expect(payload).toBeTruthy()
+    expect(payload.title).toBe('准备度摘要')
+    render(<>{payload.body}</>)
+
     expect(screen.getByText('可建模资产')).toBeInTheDocument()
     expect(screen.getByText('暂无阻断项，已同步资产可继续进入语义建设。')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '职责边界' })).not.toBeInTheDocument()

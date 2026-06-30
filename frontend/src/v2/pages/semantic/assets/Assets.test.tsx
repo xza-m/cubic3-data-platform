@@ -277,6 +277,44 @@ describe('数据资产底座工作区', () => {
     })
   })
 
+  it('资产雷达 Schema 漂移摘要支持卡内分页', async () => {
+    const user = userEvent.setup()
+    mockApiClientGet.mockResolvedValueOnce({
+      data: {
+        data: {
+          items: Array.from({ length: 6 }, (_, index) => ({
+            id: `schema-drift-${index + 1}`,
+            code: 'schema_drift_type_changed',
+            severity: 'warn',
+            object_type: 'physical_table',
+            object_name: `student_comment_cube_${index + 1}`,
+            message: `漂移风险 ${index + 1}`,
+          })),
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter>
+        <AssetWorkspace view="radar" />
+      </MemoryRouter>,
+    )
+
+    const driftSummary = (await screen.findByText('Schema 漂移风险')).closest('.card')
+    expect(driftSummary).not.toBeNull()
+    const summary = within(driftSummary as HTMLElement)
+    expect(summary.getByText('student_comment_cube_1')).toBeInTheDocument()
+    expect(summary.getByText('student_comment_cube_5')).toBeInTheDocument()
+    expect(summary.queryByText('student_comment_cube_6')).not.toBeInTheDocument()
+    expect(summary.getByText('1-5 / 6 条')).toBeInTheDocument()
+
+    await user.click(summary.getByRole('button', { name: '下一页' }))
+
+    expect(summary.getByText('student_comment_cube_6')).toBeInTheDocument()
+    expect(summary.queryByText('student_comment_cube_1')).not.toBeInTheDocument()
+    expect(summary.getByText('6-6 / 6 条')).toBeInTheDocument()
+  })
+
   it('资产雷达兼容语义治理 issues 响应并展示 Schema 漂移摘要', async () => {
     mockApiClientGet.mockResolvedValueOnce({
       data: {

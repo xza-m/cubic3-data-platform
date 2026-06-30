@@ -54,7 +54,11 @@ test('P28 查询控制台首屏能打开并渲染核心区域 @p28', async ({ pa
   await expect(page.getByText('数据目录').first()).toBeVisible()
   await expect(page.getByTestId('query-resource-source-1').getByText('教学 PostgreSQL')).toBeVisible()
   await expect(page.getByText('lesson_progress').first()).toBeVisible()
-  await expect(page.getByText('课程进度').first()).toBeVisible()
+  await expect(page.getByText('点击填入查询')).toHaveCount(0)
+  await expect(page.getByText('课程进度')).toHaveCount(0)
+
+  await page.getByTestId('query-resource-table-lesson_progress').hover()
+  await expect(page.getByRole('tooltip')).toContainText('课程进度')
 
   // 数据源选择收敛到左侧资源栏，避免工具栏重复筛选和右侧上下文挤压编辑器。
   await expect(page.getByTestId('query-resource-source-select')).toBeVisible()

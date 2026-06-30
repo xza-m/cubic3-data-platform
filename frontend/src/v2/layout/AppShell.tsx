@@ -25,6 +25,7 @@ interface ContextPanelPayload {
   title?: ReactNode
   subtitle?: ReactNode
   body?: ReactNode
+  defaultExpanded?: boolean
 }
 
 export interface LegacyInspectorPayload {
@@ -37,6 +38,14 @@ export interface LegacyInspectorPayload {
 export interface ManagedTab extends TabItem {
   to?: string
   onClose?: () => boolean | void
+}
+
+export function resolveActiveManagedTabId(tabs: ManagedTab[], pathname: string): string | null {
+  return tabs.find((tab) => tab.to === pathname)?.id ?? null
+}
+
+export function resolveVisibleManagedTabs(tabs: ManagedTab[], pathname: string): ManagedTab[] {
+  return resolveActiveManagedTabId(tabs, pathname) == null ? [] : tabs
 }
 
 interface AppShellContextValue {
@@ -93,7 +102,7 @@ export function AppShell() {
   const [topBarActions, setTopBarActions] = useState<ReactNode>(null)
   const [tabs, setTabs] = useState<ManagedTab[]>([])
   const [activeTab, setActiveTab] = useState<string | null>(null)
-  const [contextPanel, setContextPanel] = useState<ContextPanelPayload | null>(null)
+  const [contextPanel, setContextPanelState] = useState<ContextPanelPayload | null>(null)
   const [legacyEmptyState, setLegacyEmptyState] = useState<ReactNode | null>(null)
   const [peekActive, setPeekActive] = useState(false)
   const [inspectorCollapsed, setInspectorCollapsed] = useState<boolean>(() => {
@@ -111,6 +120,12 @@ export function AppShell() {
       }
       return next
     })
+  }, [])
+  const setContextPanel = useCallback((payload: ContextPanelPayload | null) => {
+    if (payload?.defaultExpanded) {
+      setInspectorCollapsed(false)
+    }
+    setContextPanelState(payload)
   }, [])
   const [sidebarSections, setSidebarSections] = useState<
     Array<{
@@ -136,7 +151,7 @@ export function AppShell() {
     setLegacyEmptyState(null)
     setSidebarSections(null)
     setPeekActive(false)
-  }, [module.id, module.label])
+  }, [module.id, module.label, setContextPanel])
 
   useEffect(() => {
     setTabs([])
@@ -195,7 +210,7 @@ export function AppShell() {
       return
     }
     setContextPanel({ title: payload.title, subtitle: payload.subtitle, body: payload.body })
-  }, [])
+  }, [setContextPanel])
 
   const setInspectorEmptyStateLegacy = useCallback((node: ReactNode | null) => {
     setLegacyEmptyState(node)
@@ -216,7 +231,7 @@ export function AppShell() {
       openCommandPalette: openPalette,
       setPeekActive,
     }),
-    [openPalette, openTab, closeTab, setInspectorLegacy, setInspectorEmptyStateLegacy],
+    [openPalette, openTab, closeTab, setContextPanel, setInspectorLegacy, setInspectorEmptyStateLegacy],
   )
 
   const effectiveContextPanel: ContextPanelPayload | null =
@@ -230,9 +245,26 @@ export function AppShell() {
   const hideBreadcrumbs = resolvedLayout.hideBreadcrumbs
   const hasInspectorContent = effectiveContextPanel?.body != null
 
+  const routeActiveTabId = useMemo(
+    () => resolveActiveManagedTabId(tabs, location.pathname),
+    [tabs, location.pathname],
+  )
+  const visibleTabs = useMemo(
+    () => resolveVisibleManagedTabs(tabs, location.pathname),
+    [tabs, location.pathname],
+  )
+
+  useEffect(() => {
+    setActiveTab(routeActiveTabId)
+  }, [routeActiveTabId])
+
   const tabsWithActive = useMemo(
-    () => tabs.map((t) => ({ ...t, active: activeTab ? t.id === activeTab : t.active })),
-    [tabs, activeTab],
+    () =>
+      visibleTabs.map((t) => ({
+        ...t,
+        active: routeActiveTabId ? t.id === routeActiveTabId : activeTab ? t.id === activeTab : t.active,
+      })),
+    [visibleTabs, routeActiveTabId, activeTab],
   )
 
   const onSelectTab = useCallback(

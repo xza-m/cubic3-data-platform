@@ -17,6 +17,9 @@ const manyTables = Array.from({ length: 55 }, (_, index) => {
   }
 })
 
+const longColumnType =
+  'array<struct<`level_tag`:string,`level_student_cnt`:bigint,`level_student_rate`:double>>'
+
 test.beforeEach(async ({ page }) => {
   await prepareV2Page(page)
   await installApiCatchAll(page)
@@ -53,6 +56,7 @@ test.beforeEach(async ({ page }) => {
       columns: [
         { name: 'id', type: 'int', nullable: false, comment: '主键' },
         { name: 'title', type: 'varchar', nullable: true, comment: '标题' },
+        { name: 'level_distribution_arr', type: longColumnType, nullable: true, comment: '层级分布' },
       ],
       fetched_at: '2026-04-21T10:00:00+08:00',
     }),
@@ -80,7 +84,7 @@ test('P16 连接详情渲染 @p16', async ({ page }) => {
 
 test('P16 连接结构 表列表支持分页 @p16', async ({ page }) => {
   await gotoV2(page, '/data-center/connections/1')
-  await page.getByRole('button', { name: '结构' }).click()
+  await page.getByRole('tab', { name: '结构' }).click()
 
   await expect(page.getByText('表（teaching）')).toBeVisible()
   await expect(page.getByText('public.table_001')).toBeVisible()
@@ -100,11 +104,19 @@ test('P16 连接结构 表列表支持分页 @p16', async ({ page }) => {
   await page.getByText('public.table_055').click()
   await expect(page.getByText('字段（public.table_055）')).toBeVisible()
   await expect(page.getByText('title')).toBeVisible()
+
+  const typeText = page.getByText(longColumnType, { exact: true }).first()
+  await expect(typeText).toBeVisible()
+  await expect.poll(() => typeText.evaluate((el) => el.scrollWidth > el.clientWidth)).toBeTruthy()
+  await expect(page.getByRole('tooltip')).toHaveCount(0)
+
+  await typeText.hover()
+  await expect(page.getByRole('tooltip')).toContainText(longColumnType)
 })
 
 test('P16 连接结构 行数未知时不展示伪 0 @p16', async ({ page }) => {
   await gotoV2(page, '/data-center/connections/1')
-  await page.getByRole('button', { name: '结构' }).click()
+  await page.getByRole('tab', { name: '结构' }).click()
 
   await page.getByText('public.table_001').click()
 
