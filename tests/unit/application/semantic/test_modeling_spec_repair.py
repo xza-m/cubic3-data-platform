@@ -150,13 +150,14 @@ def test_repair_placeholder_ref_normalized_to_default():
     assert _first_ref(repaired) == "fct_kpi.total_count"
 
 
-def test_repair_renames_cube_for_real_measure():
-    """B1 改名规整：ref 'old_cube.avg_rate'（度量真实存在、cube 已改名）→ 当前 cube 名 + avg_rate。"""
-    raw = _measure_ref_spec(_BASE_MEASURES, [{"ref": "old_cube.avg_rate", "role": "primary"}])
+def test_repair_preserves_external_cube_ref_even_with_same_measure_name():
+    """#2：ref 'sales_cube.avg_rate' 指向另一个真实 cube，即便当前 cube 也有同名 avg_rate，
+    repair 也不得把前缀静默改成当前 cube（否则跨 cube 改错绑定 + 绕过治理门）。原样保留交校验。"""
+    raw = _measure_ref_spec(_BASE_MEASURES, [{"ref": "sales_cube.avg_rate", "role": "primary"}])
 
     repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
 
-    assert _first_ref(repaired) == "fct_kpi.avg_rate"
+    assert _first_ref(repaired) == "sales_cube.avg_rate"
 
 
 def test_repair_preserves_explicit_non_additive_with_real_measure():
@@ -174,21 +175,128 @@ def test_repair_preserves_explicit_non_additive_with_real_measure():
     assert metric["additivity"] == "non_additive"
 
 
-def test_repair_measure_refs_unit_preserves_real_and_typo_refs():
-    """单元级：_repair_measure_refs 对真实度量与 typo 都保留 ref（规整 cube 名），
-    只把占位符默认到 valid；typo 不再被静默改回默认度量（交给 ValidationMatrix 拦）。"""
+def test_repair_keeps_current_cube_real_measure_ref_unchanged():
+    """#2 反例守护：ref 前缀就是当前 cube + 真实度量 → 行为不变（保留）。"""
+    raw = _measure_ref_spec(_BASE_MEASURES, [{"ref": "fct_kpi.avg_rate", "role": "primary"}])
+
+    repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
+
+    assert _first_ref(repaired) == "fct_kpi.avg_rate"
+
+
+def test_repair_keeps_human_set_pending_binding_status():
+    """#4：human_led 显式 binding_status='pending' → repair 不得改成 approved，
+    validate 出 binding_lifecycle_not_approved 治理门。"""
+    raw = _measure_ref_spec(
+        _BASE_MEASURES,
+        [{"ref": "fct_kpi.total_count", "role": "primary"}],
+        grain="biz_date",
+        time_dimension="biz_date",
+        additivity="additive",
+        binding_status="pending",
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="总量", source_mode="human_led")
+
+    metric = repaired["ontology"]["metrics"][0]
+    assert metric["binding_status"] == "pending"
+    matrix = ValidationMatrixBuilder().build(repaired, {"status": "ready", "issues": []})
+    assert any(b["code"] == "binding_lifecycle_not_approved" for b in matrix["blockers"])
+
+
+def test_repair_defaults_unset_binding_status_to_approved():
+    """#4 守 happy path：未设 binding_status → 仍默认 approved（骨架/onboard 升的指标不受影响）。"""
+    raw = _measure_ref_spec(
+        {"total_count": _BASE_MEASURES["total_count"]},
+        [{"ref": "fct_kpi.total_count", "role": "primary"}],
+        grain="biz_date",
+        time_dimension="biz_date",
+        additivity="additive",
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="总量", source_mode="agent_led")
+
+    assert repaired["ontology"]["metrics"][0]["binding_status"] == "approved"
+
+
+def test_repair_defaults_additivity_to_non_additive_for_non_additive_measure():
+    """#3：metric 绑非可加度量（avg_rate）且未设 additivity → repair 默认 non_additive，
+    无 metric_additivity_mismatch，validate 不死锁。"""
+    raw = _measure_ref_spec(
+        _BASE_MEASURES,
+        [{"ref": "fct_kpi.avg_rate", "role": "primary"}],
+        grain="biz_date",
+        time_dimension="biz_date",
+        binding_status="approved",
+        # 故意缺 additivity → 走 repair 默认逻辑
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
+
+    metric = repaired["ontology"]["metrics"][0]
+    assert metric["additivity"] == "non_additive"
+    matrix = ValidationMatrixBuilder().build(repaired, {"status": "ready", "issues": []})
+    codes = {b["code"] for b in matrix["blockers"]}
+    assert "metric_additivity_mismatch" not in codes
+    assert "metric_additivity_missing" not in codes
+
+
+def test_repair_defaults_additivity_to_additive_for_additive_measure():
+    """#3 反例守护：metric 绑可加度量（total_count, non_additive=False）未设 additivity → 默认 additive。"""
+    raw = _measure_ref_spec(
+        {"total_count": _BASE_MEASURES["total_count"]},
+        [{"ref": "fct_kpi.total_count", "role": "primary"}],
+        grain="biz_date",
+        time_dimension="biz_date",
+        binding_status="approved",
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="总量", source_mode="human_led")
+
+    assert repaired["ontology"]["metrics"][0]["additivity"] == "additive"
+
+
+def test_repair_non_additive_default_is_idempotent_across_repeated_repairs():
+    """#3 幂等：非可加度量 metric 反复 repair → additivity 稳定 non_additive，无 mismatch 死锁。"""
+    raw = _measure_ref_spec(
+        _BASE_MEASURES,
+        [{"ref": "fct_kpi.avg_rate", "role": "primary"}],
+        grain="biz_date",
+        time_dimension="biz_date",
+        binding_status="approved",
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
+    for _ in range(3):
+        repaired = repair_modeling_spec(repaired, user_goal="平均比率", source_mode="human_led")
+
+    metric = repaired["ontology"]["metrics"][0]
+    assert metric["additivity"] == "non_additive"
+    matrix = ValidationMatrixBuilder().build(repaired, {"status": "ready", "issues": []})
+    assert not any(b["code"] == "metric_additivity_mismatch" for b in matrix["blockers"])
+
+
+def test_repair_measure_refs_unit_scopes_to_current_cube_only():
+    """单元级：_repair_measure_refs 只规整/校验当前 cube 的 ref。
+    - 当前 cube 的真实度量：放行。
+    - 当前 cube 的 typo（不存在度量）：保留 ref，不蒙混成默认度量（交给 ValidationMatrix 拦）。
+    - 外部 cube 引用（前缀≠当前 cube）：原样保留，repair 无权改前缀（#2）。
+    - 占位符：默认到 valid。"""
     known = {"total_count": {}, "avg_rate": {}}
-    # 真实度量：放行 + 规整 cube 名
-    out = _repair_measure_refs([{"ref": "old.avg_rate"}], "fct_kpi", "total_count", known)
+    # 当前 cube 的真实度量：放行（前缀已是当前 cube）
+    out = _repair_measure_refs([{"ref": "fct_kpi.avg_rate"}], "fct_kpi", "total_count", known)
     assert out[0]["ref"] == "fct_kpi.avg_rate"
-    # typo（不存在度量）：保留 ref（规整 cube 名），不再蒙混成 total_count
+    # 当前 cube 的 typo（不存在度量）：保留 ref，不再蒙混成 total_count
     out2 = _repair_measure_refs([{"ref": "fct_kpi.bogus"}], "fct_kpi", "total_count", known)
     assert out2[0]["ref"] == "fct_kpi.bogus"
+    # 外部 cube 引用（前缀≠当前 cube，即便度量同名也不改前缀）：原样保留
+    out3 = _repair_measure_refs([{"ref": "old.avg_rate"}], "fct_kpi", "total_count", known)
+    assert out3[0]["ref"] == "old.avg_rate"
     # 占位符仍默认到 valid
-    out3 = _repair_measure_refs([{"ref": "candidate cube.measure"}], "fct_kpi", "total_count", known)
-    assert out3[0]["ref"] == "fct_kpi.total_count"
-    out4 = _repair_measure_refs([{"ref": "cube.measure"}], "fct_kpi", "total_count", known)
+    out4 = _repair_measure_refs([{"ref": "candidate cube.measure"}], "fct_kpi", "total_count", known)
     assert out4[0]["ref"] == "fct_kpi.total_count"
+    out5 = _repair_measure_refs([{"ref": "cube.measure"}], "fct_kpi", "total_count", known)
+    assert out5[0]["ref"] == "fct_kpi.total_count"
 
 
 def test_repair_promotes_partition_ds_into_time_dimension_and_clears_metric_blocker():

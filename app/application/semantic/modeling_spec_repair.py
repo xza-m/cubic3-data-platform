@@ -13,7 +13,11 @@ from app.application.semantic.source_candidate_scoring import (
     SourceCandidateScoringConfig,
     SourceCandidateScoringRule,
 )
-from app.domain.ontology.entities import measure_ref_strings, normalize_cube_bindings
+from app.domain.ontology.entities import (
+    measure_ref_strings,
+    normalize_cube_bindings,
+    primary_measure_ref,
+)
 from app.domain.semantic.copilot_state import is_reviewable_spec
 
 
@@ -94,7 +98,9 @@ def repair_modeling_spec(
         metric["measure_refs"] = _repair_measure_refs(
             metric.get("measure_refs"), cube_name, measure_name, cube.get("measures") or {}
         )
-        metric["binding_status"] = "approved"
+        # 只在未设时默认 approved：骨架/onboard 升的指标本就未设 → 仍得 approved（happy path 不变）；
+        # human 显式设的 pending/proposed 必须保留，否则 binding_lifecycle_not_approved 治理门永不触发（#4）。
+        metric["binding_status"] = metric.get("binding_status") or "approved"
         metric["grain"] = metric.get("grain") or grain
         if time_dimension:
             metric["time_dimension"] = metric.get("time_dimension") or time_dimension
@@ -105,7 +111,15 @@ def repair_modeling_spec(
             metric["additivity"] = "non_additive"
             metric["semantic_formula"] = metric.get("semantic_formula") or ratio_info.semantic_formula
         else:
-            metric["additivity"] = metric.get("additivity") or "additive"
+            # 未设 additivity 时按所绑 primary measure 的 non_additive 默认：绑非可加度量（如不可拆 avg）
+            # → 默认 non_additive，避免默认成 additive 触发 metric_additivity_mismatch → blocked →
+            # 每次 repair 重填 additive 的永久死锁（#3）。可加 / ratio(non_additive=False) → additive。
+            default_additivity = (
+                "non_additive"
+                if _primary_measure_non_additive(metric, cube_name, cube.get("measures") or {})
+                else "additive"
+            )
+            metric["additivity"] = metric.get("additivity") or default_additivity
         metric.setdefault("status", "draft")
     ontology["metrics"] = metrics
 
@@ -188,6 +202,28 @@ def _primary_ratio_info(
         if ref_cube == cube_name and ref_measure in ratio_by_measure:
             return ratio_by_measure[ref_measure]
     return None
+
+
+def _primary_measure_non_additive(
+    metric: Dict[str, Any],
+    cube_name: str,
+    cube_measures: Dict[str, Any],
+) -> bool:
+    """判断 metric 的 primary measure_ref 所绑当前 cube 度量是否 non_additive。
+
+    用于在未显式声明 additivity 时给出方向正确的默认值（#3）。仅认当前 cube 的真实度量；
+    外部 cube ref / typo / 缺失一律返回 False（默认 additive 的保守方向，typo 留给 ValidationMatrix 拦）。
+    """
+    if not isinstance(cube_measures, dict) or not cube_measures:
+        return False
+    ref = primary_measure_ref(metric.get("measure_refs"))
+    if not ref or "." not in ref:
+        return False
+    ref_cube, ref_measure = ref.split(".", 1)
+    if ref_cube != cube_name:
+        return False
+    payload = cube_measures.get(ref_measure)
+    return isinstance(payload, dict) and payload.get("non_additive") is True
 
 
 def _ensure_dimensions(cube: Dict[str, Any], user_goal: str) -> Dict[str, Dict[str, Any]]:
@@ -358,11 +394,16 @@ def _repair_measure_refs(
         parsed_cube, parsed_measure = ref_text.split(".", 1)
         if parsed_cube in {"candidate cube", "candidate", "cube"}:
             repaired.append(valid)
+        elif parsed_cube != cube_name:
+            # 外部 cube 引用（parsed_cube 是另一个真实 cube）：repair 只认当前 cube 的 measures，
+            # 无权把跨 cube ref 改绑到当前 cube（同名度量也不行，否则静默改错绑定 / 绕过治理门）。
+            # 原样保留，交 ValidationMatrix / binding 处理。
+            repaired.append(ref_text)
         elif parsed_measure in known:
             repaired.append(f"{cube_name}.{parsed_measure}")
         else:
-            # 非占位符、度量不在 cube.measures（typo / 绑错度量）：保留 ref（规整 cube 名）交给
-            # ValidationMatrix 拦截，不再静默改回默认度量蒙混过关（L2 数据正确性）。
+            # 当前 cube、非占位符、度量不在 cube.measures（typo / 绑错度量）：保留 ref（规整 cube 名）
+            # 交给 ValidationMatrix 拦截，不再静默改回默认度量蒙混过关（L2 数据正确性）。
             repaired.append(f"{cube_name}.{parsed_measure}")
     deduped = list(dict.fromkeys(repaired)) or [valid]
     return [{"ref": ref, "role": "primary" if index == 0 else "equivalent"} for index, ref in enumerate(deduped)]

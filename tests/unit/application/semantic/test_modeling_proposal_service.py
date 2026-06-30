@@ -643,6 +643,33 @@ def test_validate_blocks_typo_measure_ref_end_to_end(source_mode):
         service.approve(created["id"])
 
 
+def test_validate_blocks_human_set_pending_binding_status_end_to_end():
+    """#4 端到端：human_led metric 显式 binding_status='pending' → repair 不得改 approved，
+    service.validate 必须因 binding_lifecycle_not_approved blocked，approve raise。"""
+
+    class _PendingBindingBuilder(_MinimalSpecBuilder):
+        def __init__(self):
+            super().__init__()
+            spec = _minimal_human_spec()
+            spec["ontology"]["metrics"][0]["binding_status"] = "pending"
+            self.spec = spec
+
+    service = _service(builder=_PendingBindingBuilder())
+    created = service.create_proposal(
+        {"source_mode": "human_led", "table": "fct_kpi", "business_subject": "指标"}
+    )
+    service.draft(created["id"])
+    result = service.validate(created["id"])
+
+    assert result["status"] == "blocked"
+    blocker_codes = {b["code"] for b in result["validation_matrix"]["blockers"]}
+    assert "binding_lifecycle_not_approved" in blocker_codes
+    # 显式 pending 仍在（未被 repair 抹成 approved）
+    assert result["spec"]["ontology"]["metrics"][0]["binding_status"] == "pending"
+    with pytest.raises(ValueError, match="validated"):
+        service.approve(created["id"])
+
+
 def _service_at_applied():
     """把一个 proposal 推到 applied 态，返回 (service, proposal_id)。"""
     service = _service()
@@ -869,7 +896,9 @@ def test_validate_repairs_agent_led_student_comment_runtime_contract_before_bloc
     metric.pop("grain")
     metric.pop("time_dimension")
     metric.pop("additivity")
-    metric["binding_status"] = "proposed"
+    # #4：binding_status 留未设 → repair 默认 approved（agent_led 骨架/onboard 升的指标正常流）。
+    # 不再人为设 proposed 后期望被 repair 抹成 approved（那是被 #4 修正的过度改写）。
+    metric.pop("binding_status", None)
     service = _service(builder)
 
     proposal = service.create_proposal({"source_mode": "agent_led", "user_question": "最近7天学生评论数按学校汇总"})
@@ -881,6 +910,7 @@ def test_validate_repairs_agent_led_student_comment_runtime_contract_before_bloc
     assert repaired_metric["grain"] == "school_id,comment_time"
     assert repaired_metric["time_dimension"] == "comment_time"
     assert repaired_metric["additivity"] == "additive"
+    # 未设 → repair 默认 approved（happy path 不变）
     assert repaired_metric["binding_status"] == "approved"
 
 
