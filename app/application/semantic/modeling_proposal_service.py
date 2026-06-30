@@ -164,12 +164,13 @@ class ModelingProposalService:
         else:
             spec_result = self._builder.create_spec_draft(payload)
         spec = spec_result.get("spec") or {}
-        if proposal.source_mode == "agent_led":
-            spec = repair_modeling_spec(
-                spec,
-                user_goal=str(proposal.intent.get("user_question") or payload.get("user_question") or ""),
-                source_mode=proposal.source_mode,
-            )
+        # 确定性机械补全（grain/time_dim/policy/binding_status/sensitivity/measure_ref）
+        # 与「谁建模」正交，两种 source_mode 都需要；仍透传 source_mode 以保留 evidence_pack 差异。
+        spec = repair_modeling_spec(
+            spec,
+            user_goal=str(proposal.intent.get("user_question") or payload.get("user_question") or ""),
+            source_mode=proposal.source_mode,
+        )
         proposal.spec = spec
         proposal.coverage_result = self._coverage_from_spec(spec)
         if proposal.coverage_result.get("decision") == "covered":
@@ -197,12 +198,12 @@ class ModelingProposalService:
         proposal = self._require(proposal_id)
         if not proposal.spec:
             raise ValueError("Proposal must be drafted before validate")
-        if proposal.source_mode == "agent_led":
-            proposal.spec = repair_modeling_spec(
-                proposal.spec,
-                user_goal=str(proposal.intent.get("user_question") or ""),
-                source_mode=proposal.source_mode,
-            )
+        # 机械补全与 source_mode 正交：两种 mode 都在 validate 前修复，避免 human_led 缺机械字段死锁。
+        proposal.spec = repair_modeling_spec(
+            proposal.spec,
+            user_goal=str(proposal.intent.get("user_question") or ""),
+            source_mode=proposal.source_mode,
+        )
         validation = self._builder.validate(proposal.spec)
         proposal.validation_matrix = self._validation_matrix(proposal.spec, validation)
         proposal.coverage_result = self._coverage_from_spec(proposal.spec, validation)
@@ -988,12 +989,12 @@ class ModelingProposalService:
                     next_spec[key] = self._deep_merge(current, value)
                 else:
                     next_spec[key] = deepcopy(value)
-        if proposal.source_mode == "agent_led":
-            next_spec = repair_modeling_spec(
-                next_spec,
-                user_goal=str(proposal.intent.get("user_question") or ""),
-                source_mode=proposal.source_mode,
-            )
+        # 机械补全与 source_mode 正交：update_spec 后两种 mode 都补全，保证 human_led 也能补缺字段恢复。
+        next_spec = repair_modeling_spec(
+            next_spec,
+            user_goal=str(proposal.intent.get("user_question") or ""),
+            source_mode=proposal.source_mode,
+        )
         return next_spec
 
     def _spec_update_keys(self, payload: Dict[str, Any]) -> List[str]:

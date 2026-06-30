@@ -86,7 +86,9 @@ def repair_modeling_spec(
         metric.setdefault("name", _metric_name(object_name, measure_name))
         metric.setdefault("title", _metric_title(subject, measure_name))
         metric.setdefault("object_name", object_name)
-        metric["measure_refs"] = _repair_measure_refs(metric.get("measure_refs"), cube_name, measure_name)
+        metric["measure_refs"] = _repair_measure_refs(
+            metric.get("measure_refs"), cube_name, measure_name, cube.get("measures") or {}
+        )
         metric["binding_status"] = "approved"
         metric["grain"] = metric.get("grain") or grain
         if time_dimension:
@@ -281,9 +283,15 @@ def _default_entity_key(cube: Dict[str, Any]) -> Optional[str]:
     return next(iter(dimensions), None)
 
 
-def _repair_measure_refs(value: Any, cube_name: str, measure_name: str) -> list[dict[str, Any]]:
+def _repair_measure_refs(
+    value: Any,
+    cube_name: str,
+    measure_name: str,
+    known_measures: Optional[dict] = None,
+) -> list[dict[str, Any]]:
     refs = measure_ref_strings(value if isinstance(value, list) else [])
     valid = f"{cube_name}.{measure_name}"
+    known = {str(m) for m in (known_measures or {})}
     if not refs:
         return [{"ref": valid, "role": "primary"}]
     repaired: list[str] = []
@@ -294,10 +302,10 @@ def _repair_measure_refs(value: Any, cube_name: str, measure_name: str) -> list[
         parsed_cube, parsed_measure = ref_text.split(".", 1)
         if parsed_cube in {"candidate cube", "candidate", "cube"}:
             repaired.append(valid)
-        elif parsed_measure != measure_name:
-            repaired.append(valid)
-        else:
+        elif parsed_measure in known:
             repaired.append(f"{cube_name}.{parsed_measure}")
+        else:
+            repaired.append(valid)
     deduped = list(dict.fromkeys(repaired)) or [valid]
     return [{"ref": ref, "role": "primary" if index == 0 else "equivalent"} for index, ref in enumerate(deduped)]
 

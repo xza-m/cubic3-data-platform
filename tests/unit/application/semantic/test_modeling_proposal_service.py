@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.application.semantic.modeling_proposal_service import ModelingProposalService
+from app.application.semantic.modeling_validation_matrix import ValidationMatrixBuilder
 from app.application.semantic.publish_readiness_checker import PublishReadinessChecker
 from app.domain.semantic.modeling_proposal import ModelingProposal
 
@@ -428,6 +429,187 @@ def test_draft_uses_embedded_spec_skips_create_spec_draft_for_copilot_business_q
     assert drafted["spec"]["spec_version"] == "v1"
 
 
+def _minimal_human_spec():
+    """human_led 工作台典型产物：缺 grain/time_dimension/additivity/binding_status 的最小 spec。
+
+    用中性 subject/table 避免命中 repair 的 canonical 整块替换规则。
+    """
+    return {
+        "spec_version": "v1",
+        "source": {"source_kind": "physical_table", "table": "fct_kpi"},
+        "business": {"subject": "指标", "sensitivity_level": "restricted"},
+        "cube": {
+            "name": "fct_kpi",
+            "table": "fct_kpi",
+            "default_time_dimension": "biz_date",
+            "dimensions": {
+                "biz_date": {"title": "日期", "type": "time", "sql": "`biz_date`"},
+                "id": {"title": "ID", "type": "string", "sql": "`id`", "primary_key": True},
+            },
+            "measures": {
+                "total_count": {
+                    "title": "总数",
+                    "type": "count",
+                    "sql": "COUNT(`id`)",
+                    "certified": True,
+                    "non_additive": False,
+                }
+            },
+        },
+        "ontology": {
+            "object": {
+                "name": "kpi_object",
+                "cube_bindings": [{"cube": "fct_kpi", "role": "primary", "entity_key": "id"}],
+            },
+            "metrics": [
+                {
+                    "name": "kpi_total_count",
+                    "measure_refs": ["fct_kpi.total_count"],
+                    # 故意缺：grain / time_dimension / additivity / binding_status
+                }
+            ],
+        },
+    }
+
+
+class _MinimalSpecBuilder:
+    """返回缺机械字段的最小 spec；validate 永远 ready，让 blocker 完全由 ValidationMatrixBuilder 机械规则决定。"""
+
+    def __init__(self):
+        self.spec = _minimal_human_spec()
+        self.calls = []
+
+    def create_spec_draft(self, payload):
+        self.calls.append(("spec_draft", payload))
+        return {"spec": deepcopy(self.spec), "next_actions": {"default_publish_target": "cube_and_ontology"}}
+
+    def draft_from_spec(self, spec):
+        self.calls.append(("draft_from_spec", spec))
+        return {
+            "cube": deepcopy(spec["cube"]),
+            "ontology": deepcopy(spec["ontology"]),
+            "published": False,
+            "diff": {"source": "user_confirmed_spec", "has_user_editable_spec": True},
+        }
+
+    def validate(self, spec):
+        self.calls.append(("validate", spec))
+        return {"status": "ready", "issues": [], "checks": {"metric_binding": "passed"}}
+
+    def apply(self, spec):
+        self.calls.append(("apply", spec))
+        return {"published": False, "assets": {"cube": {"name": spec["cube"]["name"]}}, "spec": spec}
+
+    def publish(self, spec, publish_targets=None):
+        self.calls.append(("publish", spec, publish_targets))
+        return {"publish_targets": publish_targets or {"cube": True, "ontology": False}}
+
+
+def test_human_led_missing_mechanical_fields_validates_and_approves():
+    """B3：human_led 缺机械字段的最小 spec，draft+validate 后应被 repair 补全为 validated（非 blocked），approve 不 raise。"""
+    service = _service(builder=_MinimalSpecBuilder())
+    created = service.create_proposal(
+        {
+            "source_mode": "human_led",
+            "source_kind": "physical_table",
+            "table": "fct_kpi",
+            "business_subject": "指标",
+        }
+    )
+    assert created["source_mode"] == "human_led"
+
+    drafted = service.draft(created["id"])
+    assert drafted["status"] == "drafted"
+    # repair 已在 draft 阶段补全机械字段
+    metric = drafted["spec"]["ontology"]["metrics"][0]
+    assert metric["grain"]
+    assert metric["additivity"]
+    assert metric["binding_status"] in {"approved", "active"}
+
+    validated = service.validate(created["id"])
+    assert validated["status"] == "validated"
+    assert validated["validation_matrix"]["blockers"] == []
+
+    approved = service.approve(created["id"], {"approved_by": "semantic_owner"})
+    assert approved["status"] == "approved"
+
+
+def test_human_led_preserves_explicit_complete_spec():
+    """B3：human_led 已含完整显式机械值的 spec → repair 后原样保留（不被默认值覆盖）。"""
+
+    class _CompleteSpecBuilder(_MinimalSpecBuilder):
+        def __init__(self):
+            super().__init__()
+            spec = _minimal_human_spec()
+            spec["ontology"]["metrics"][0].update(
+                {
+                    "grain": "biz_date",
+                    "time_dimension": "biz_date",
+                    "additivity": "non_additive",
+                    "binding_status": "approved",
+                }
+            )
+            self.spec = spec
+
+    service = _service(builder=_CompleteSpecBuilder())
+    created = service.create_proposal(
+        {"source_mode": "human_led", "table": "fct_kpi", "business_subject": "指标"}
+    )
+    drafted = service.draft(created["id"])
+    metric = drafted["spec"]["ontology"]["metrics"][0]
+    assert metric["grain"] == "biz_date"
+    assert metric["time_dimension"] == "biz_date"
+    assert metric["additivity"] == "non_additive"  # 显式值未被默认 additive 覆盖
+
+
+def test_human_led_blocked_then_update_spec_recovers_full_chain():
+    """B3：human_led blocked → update_spec 补字段 → validate → approve → apply → publish 全链路通。"""
+
+    class _BlockingBuilder(_MinimalSpecBuilder):
+        """draft 产出携带直拼 SQL 的 metric → generated_sql_bypasses_cube blocker（repair 不会删），update_spec 去掉后可恢复。"""
+
+        def __init__(self):
+            super().__init__()
+            spec = _minimal_human_spec()
+            # metric 携带直拼 SQL → ValidationMatrixBuilder 产 generated_sql_bypasses_cube blocker
+            spec["ontology"]["metrics"][0]["sql"] = "SELECT count(*) FROM fct_kpi"
+            self.spec = spec
+
+    service = _service(builder=_BlockingBuilder())
+    created = service.create_proposal(
+        {"source_mode": "human_led", "table": "fct_kpi", "business_subject": "指标"}
+    )
+    service.draft(created["id"])
+    blocked = service.validate(created["id"])
+    # repair 不会删除直拼 SQL，仍 blocked → 真实死锁场景
+    assert blocked["status"] == "blocked"
+    with pytest.raises(ValueError, match="validated"):
+        service.approve(created["id"])
+
+    # update_spec 用不含 sql 的 metric 整体替换该指标恢复（_deep_merge 对 list 整体替换）
+    service.update_spec(
+        created["id"],
+        {
+            "actor": "semantic_owner",
+            "ontology": {
+                "metrics": [
+                    {
+                        "name": "kpi_total_count",
+                        "measure_refs": ["fct_kpi.total_count"],
+                    }
+                ]
+            },
+        },
+    )
+    revalidated = service.validate(created["id"])
+    assert revalidated["status"] == "validated"
+    service.approve(created["id"], {"approved_by": "semantic_owner"})
+    applied = service.apply(created["id"])
+    assert applied["status"] == "applied"
+    published = service.publish(created["id"], publish_targets={"cube": True, "ontology": False})
+    assert published["status"] == "published"
+
+
 def test_gap_view_projects_proposal_into_business_first_view_model():
     service = _service()
 
@@ -509,48 +691,47 @@ def test_gap_view_projects_blockers_into_repair_patch_plan_when_assets_are_missi
     assert {item["title"] for item in view["patch_plan"]} >= {"补充语义模型名称", "补充指标计算口径"}
 
 
-def test_validate_blocks_when_metric_binding_is_missing():
-    builder = _Builder()
-    builder.spec["ontology"]["metrics"][0]["measure_refs"] = ["student_comments.missing_count"]
-    service = _service(builder)
+def test_validation_matrix_blocks_when_metric_binding_missing_measure():
+    """B3 后：缺陷 spec 的拦截契约改由 ValidationMatrixBuilder 直接守（service.validate 现两 mode 都先 repair 自愈）。
 
-    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
-    service.draft(proposal["id"])
-    result = service.validate(proposal["id"])
+    measure_ref 缺失 → builder.validate 报 metric_binding failed → 归一为 blocker。
+    """
+    spec = _spec()
+    spec["ontology"]["metrics"][0]["measure_refs"] = ["student_comments.missing_count"]
+    # 模拟 builder 语义校验对未解析 measure_ref 的 error issue
+    validation = {
+        "status": "blocked",
+        "issues": [{"severity": "error", "path": "metric.measure_refs", "message": "无法解析 Measure 引用"}],
+    }
 
-    assert result["status"] == "blocked"
-    assert result["coverage_result"]["binding_coverage"] == "missing"
-    assert any(issue["severity"] == "error" for issue in result["validation_matrix"]["blockers"])
+    matrix = ValidationMatrixBuilder().build(spec, validation)
 
-
-def test_validate_blocks_when_binding_is_not_approved_for_runtime():
-    builder = _Builder()
-    builder.spec["ontology"]["metrics"][0]["binding_status"] = "proposed"
-    service = _service(builder)
-
-    proposal = service.create_proposal({"source_mode": "human_led", "user_question": "最近7天评论数"})
-    service.draft(proposal["id"])
-    result = service.validate(proposal["id"])
-
-    assert result["status"] == "blocked"
-    assert result["coverage_result"]["binding_status"] == "proposed"
-    assert "binding_not_approved" in result["runtime_consumption_result"]["reasons"]
-    assert any(issue["code"] == "binding_lifecycle_not_approved" for issue in result["validation_matrix"]["blockers"])
+    assert any(issue["severity"] == "error" for issue in matrix["blockers"])
 
 
-def test_validate_blocks_metric_without_grain_time_dimension_or_additivity():
-    builder = _Builder()
-    metric = builder.spec["ontology"]["metrics"][0]
+def test_validation_matrix_and_readiness_block_when_binding_not_approved():
+    """B3 后：binding 未 approved 的运行时拦截契约由 ValidationMatrixBuilder + PublishReadinessChecker 直接守。"""
+    spec = _spec()
+    spec["ontology"]["metrics"][0]["binding_status"] = "proposed"
+
+    matrix = ValidationMatrixBuilder().build(spec, {"status": "ready", "issues": []})
+    assert any(issue["code"] == "binding_lifecycle_not_approved" for issue in matrix["blockers"])
+
+    runtime = PublishReadinessChecker().evaluate(spec, {"status": "ready", "issues": []})
+    assert "binding_not_approved" in runtime["reasons"]
+
+
+def test_validation_matrix_blocks_metric_without_grain_time_dimension_or_additivity():
+    """B3 后：缺 grain/time_dim/additivity 的机械缺陷拦截契约由 ValidationMatrixBuilder 直接守。"""
+    spec = _spec()
+    metric = spec["ontology"]["metrics"][0]
     metric.pop("grain")
     metric.pop("time_dimension")
     metric.pop("additivity")
-    service = _service(builder)
 
-    proposal = service.create_proposal({"source_mode": "human_led", "table": "dwd_student_comment_events"})
-    service.draft(proposal["id"])
-    result = service.validate(proposal["id"])
+    matrix = ValidationMatrixBuilder().build(spec, {"status": "ready", "issues": []})
 
-    blocker_codes = {issue["code"] for issue in result["validation_matrix"]["blockers"]}
+    blocker_codes = {issue["code"] for issue in matrix["blockers"]}
     assert {"metric_grain_missing", "metric_time_dimension_missing", "metric_additivity_missing"} <= blocker_codes
 
 

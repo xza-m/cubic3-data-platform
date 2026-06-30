@@ -1,6 +1,147 @@
 """建模 spec 自修复的确定性单测：分区 ds 端到端补全 + 评论 canonical 路径正交。"""
-from app.application.semantic.modeling_spec_repair import repair_modeling_spec
+from app.application.semantic.modeling_spec_repair import (
+    _repair_measure_refs,
+    repair_modeling_spec,
+)
 from app.application.semantic.modeling_validation_matrix import ValidationMatrixBuilder
+from app.domain.ontology.entities import measure_ref_strings
+
+
+def _measure_ref_spec(measures: dict, metric_measure_refs: list, **metric_overrides):
+    """构造带显式 measures 与 metric.measure_refs 的最小 spec，专测 measure_ref 自修复。"""
+    metric = {
+        "name": "kpi_metric",
+        "title": "KPI",
+        "object_name": "kpi_object",
+        "measure_refs": metric_measure_refs,
+    }
+    metric.update(metric_overrides)
+    return {
+        "spec_version": "v1",
+        "source": {"table": "fct_kpi"},
+        "business": {"subject": "指标"},
+        "cube": {
+            "name": "fct_kpi",
+            "table": "fct_kpi",
+            "dimensions": {
+                "biz_date": {"title": "日期", "type": "time", "sql": "`biz_date`"},
+                "id": {"title": "ID", "type": "string", "sql": "`id`", "primary_key": True},
+            },
+            "measures": measures,
+        },
+        "ontology": {
+            "object": {"name": "kpi_object"},
+            "metrics": [metric],
+        },
+    }
+
+
+_BASE_MEASURES = {
+    "total_count": {
+        "title": "总数",
+        "type": "count",
+        "sql": "COUNT(`id`)",
+        "certified": True,
+        "non_additive": False,
+    },
+    "avg_rate": {
+        "title": "平均比率",
+        "type": "avg",
+        "sql": "AVG(`rate`)",
+        "certified": True,
+        "non_additive": True,
+    },
+}
+
+
+def _first_ref(repaired):
+    return measure_ref_strings(repaired["ontology"]["metrics"][0]["measure_refs"])[0]
+
+
+def test_repair_keeps_real_non_default_measure_ref():
+    """B1：metric 绑真实存在的 avg_rate（非默认度量）→ repair 后必须保留，不被改回 total_count。"""
+    raw = _measure_ref_spec(_BASE_MEASURES, [{"ref": "fct_kpi.avg_rate", "role": "primary"}])
+
+    repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
+
+    assert _first_ref(repaired) == "fct_kpi.avg_rate"
+
+
+def test_repair_falls_back_when_measure_absent():
+    """B1：ref 指向 cube.measures 中不存在的度量（foo）→ 回退默认 total_count。"""
+    raw = _measure_ref_spec(_BASE_MEASURES, [{"ref": "fct_kpi.foo", "role": "primary"}])
+
+    repaired = repair_modeling_spec(raw, user_goal="未知指标", source_mode="human_led")
+
+    assert _first_ref(repaired) == "fct_kpi.total_count"
+
+
+def test_repair_skeleton_default_ref_stays_total_count_and_no_blockers():
+    """B1 守 happy path：骨架默认 ref → repair 后仍 total_count，且 ValidationMatrix blockers=0。"""
+    raw = _measure_ref_spec(
+        {"total_count": _BASE_MEASURES["total_count"]},
+        [{"ref": "fct_kpi.total_count", "role": "primary"}],
+        grain="biz_date",
+        time_dimension="biz_date",
+        additivity="additive",
+        binding_status="approved",
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="总量", source_mode="agent_led")
+
+    assert _first_ref(repaired) == "fct_kpi.total_count"
+    matrix = ValidationMatrixBuilder().build(repaired, {})
+    assert matrix["blockers"] == []
+
+
+def test_repair_placeholder_ref_normalized_to_default():
+    """B1 守占位：字面 'candidate cube.measure' → 规整为默认 {cube}.total_count。"""
+    raw = _measure_ref_spec(
+        {"total_count": _BASE_MEASURES["total_count"]},
+        [{"ref": "candidate cube.measure", "role": "primary"}],
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="占位", source_mode="agent_led")
+
+    assert _first_ref(repaired) == "fct_kpi.total_count"
+
+
+def test_repair_renames_cube_for_real_measure():
+    """B1 改名规整：ref 'old_cube.avg_rate'（度量真实存在、cube 已改名）→ 当前 cube 名 + avg_rate。"""
+    raw = _measure_ref_spec(_BASE_MEASURES, [{"ref": "old_cube.avg_rate", "role": "primary"}])
+
+    repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
+
+    assert _first_ref(repaired) == "fct_kpi.avg_rate"
+
+
+def test_repair_preserves_explicit_non_additive_with_real_measure():
+    """B1 数据一致性：显式 additivity=non_additive + 绑真实 avg_rate → 两者都保留。"""
+    raw = _measure_ref_spec(
+        _BASE_MEASURES,
+        [{"ref": "fct_kpi.avg_rate", "role": "primary"}],
+        additivity="non_additive",
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
+
+    metric = repaired["ontology"]["metrics"][0]
+    assert measure_ref_strings(metric["measure_refs"])[0] == "fct_kpi.avg_rate"
+    assert metric["additivity"] == "non_additive"
+
+
+def test_repair_measure_refs_unit_known_vs_unknown():
+    """B1 单元级：直接验证 _repair_measure_refs 的 known_measures 判据。"""
+    known = {"total_count": {}, "avg_rate": {}}
+    # 真实度量放行 + 规整 cube 名
+    out = _repair_measure_refs([{"ref": "old.avg_rate"}], "fct_kpi", "total_count", known)
+    assert out[0]["ref"] == "fct_kpi.avg_rate"
+    # 不存在度量回退默认
+    out2 = _repair_measure_refs([{"ref": "fct_kpi.bogus"}], "fct_kpi", "total_count", known)
+    assert out2[0]["ref"] == "fct_kpi.total_count"
+    # 不传 known_measures（旧调用方）→ 任何非默认都回退默认（向后兼容旧严格行为）
+    out3 = _repair_measure_refs([{"ref": "fct_kpi.avg_rate"}], "fct_kpi", "total_count")
+    assert out3[0]["ref"] == "fct_kpi.total_count"
 
 
 def test_repair_promotes_partition_ds_into_time_dimension_and_clears_metric_blocker():
