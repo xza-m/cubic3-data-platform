@@ -67,13 +67,57 @@ def test_repair_keeps_real_non_default_measure_ref():
     assert _first_ref(repaired) == "fct_kpi.avg_rate"
 
 
-def test_repair_falls_back_when_measure_absent():
-    """B1：ref 指向 cube.measures 中不存在的度量（foo）→ 回退默认 total_count。"""
+def test_repair_preserves_unknown_measure_ref_for_validation_to_block():
+    """typo 缺口：ref 指向不存在度量（foo）→ repair 不再静默改回 total_count，
+    而是保留 ref（规整 cube 名）交给 ValidationMatrix 拦成 metric_measure_ref_unknown。"""
     raw = _measure_ref_spec(_BASE_MEASURES, [{"ref": "fct_kpi.foo", "role": "primary"}])
 
     repaired = repair_modeling_spec(raw, user_goal="未知指标", source_mode="human_led")
 
-    assert _first_ref(repaired) == "fct_kpi.total_count"
+    # repair 保留 typo ref（不再蒙混成 total_count）
+    assert _first_ref(repaired) == "fct_kpi.foo"
+    # ValidationMatrix 把它拦成 blocker
+    matrix = ValidationMatrixBuilder().build(repaired, {"status": "ready", "issues": []})
+    assert any(b["code"] == "metric_measure_ref_unknown" for b in matrix["blockers"])
+
+
+def test_validation_matrix_blocks_additivity_mismatch_for_non_additive_measure():
+    """additivity 一致性：metric 声明 additive 但绑定度量 non_additive（avg_rate）→ ValidationMatrix 拦成 metric_additivity_mismatch。"""
+    raw = _measure_ref_spec(
+        _BASE_MEASURES,
+        [{"ref": "fct_kpi.avg_rate", "role": "primary"}],
+        additivity="additive",  # 危险方向：non_additive 度量被标 additive
+        grain="biz_date",
+        time_dimension="biz_date",
+        binding_status="approved",
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
+    # repair 尊重显式 additivity（additive 不被覆盖），ref 保留 avg_rate
+    assert _first_ref(repaired) == "fct_kpi.avg_rate"
+    assert repaired["ontology"]["metrics"][0]["additivity"] == "additive"
+
+    matrix = ValidationMatrixBuilder().build(repaired, {"status": "ready", "issues": []})
+    assert any(b["code"] == "metric_additivity_mismatch" for b in matrix["blockers"])
+
+
+def test_validation_matrix_allows_non_additive_metric_on_non_additive_measure():
+    """守一致性正例：non_additive 度量被正确标 non_additive → 不产 additivity mismatch blocker。"""
+    raw = _measure_ref_spec(
+        _BASE_MEASURES,
+        [{"ref": "fct_kpi.avg_rate", "role": "primary"}],
+        additivity="non_additive",
+        grain="biz_date",
+        time_dimension="biz_date",
+        binding_status="approved",
+    )
+
+    repaired = repair_modeling_spec(raw, user_goal="平均比率", source_mode="human_led")
+    matrix = ValidationMatrixBuilder().build(repaired, {"status": "ready", "issues": []})
+
+    codes = {b["code"] for b in matrix["blockers"]}
+    assert "metric_additivity_mismatch" not in codes
+    assert "metric_measure_ref_unknown" not in codes
 
 
 def test_repair_skeleton_default_ref_stays_total_count_and_no_blockers():
@@ -130,18 +174,21 @@ def test_repair_preserves_explicit_non_additive_with_real_measure():
     assert metric["additivity"] == "non_additive"
 
 
-def test_repair_measure_refs_unit_known_vs_unknown():
-    """B1 单元级：直接验证 _repair_measure_refs 的 known_measures 判据。"""
+def test_repair_measure_refs_unit_preserves_real_and_typo_refs():
+    """单元级：_repair_measure_refs 对真实度量与 typo 都保留 ref（规整 cube 名），
+    只把占位符默认到 valid；typo 不再被静默改回默认度量（交给 ValidationMatrix 拦）。"""
     known = {"total_count": {}, "avg_rate": {}}
-    # 真实度量放行 + 规整 cube 名
+    # 真实度量：放行 + 规整 cube 名
     out = _repair_measure_refs([{"ref": "old.avg_rate"}], "fct_kpi", "total_count", known)
     assert out[0]["ref"] == "fct_kpi.avg_rate"
-    # 不存在度量回退默认
+    # typo（不存在度量）：保留 ref（规整 cube 名），不再蒙混成 total_count
     out2 = _repair_measure_refs([{"ref": "fct_kpi.bogus"}], "fct_kpi", "total_count", known)
-    assert out2[0]["ref"] == "fct_kpi.total_count"
-    # 不传 known_measures（旧调用方）→ 任何非默认都回退默认（向后兼容旧严格行为）
-    out3 = _repair_measure_refs([{"ref": "fct_kpi.avg_rate"}], "fct_kpi", "total_count")
+    assert out2[0]["ref"] == "fct_kpi.bogus"
+    # 占位符仍默认到 valid
+    out3 = _repair_measure_refs([{"ref": "candidate cube.measure"}], "fct_kpi", "total_count", known)
     assert out3[0]["ref"] == "fct_kpi.total_count"
+    out4 = _repair_measure_refs([{"ref": "cube.measure"}], "fct_kpi", "total_count", known)
+    assert out4[0]["ref"] == "fct_kpi.total_count"
 
 
 def test_repair_promotes_partition_ds_into_time_dimension_and_clears_metric_blocker():

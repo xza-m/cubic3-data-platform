@@ -305,7 +305,9 @@ def _repair_measure_refs(
         elif parsed_measure in known:
             repaired.append(f"{cube_name}.{parsed_measure}")
         else:
-            repaired.append(valid)
+            # 非占位符、度量不在 cube.measures（typo / 绑错度量）：保留 ref（规整 cube 名）交给
+            # ValidationMatrix 拦截，不再静默改回默认度量蒙混过关（L2 数据正确性）。
+            repaired.append(f"{cube_name}.{parsed_measure}")
     deduped = list(dict.fromkeys(repaired)) or [valid]
     return [{"ref": ref, "role": "primary" if index == 0 else "equivalent"} for index, ref in enumerate(deduped)]
 

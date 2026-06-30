@@ -29,6 +29,8 @@ class ValidationMatrixBuilder:
         blockers: List[Dict[str, Any]] = []
         cube = spec.get("cube") or {}
         cube_dimensions = cube.get("dimensions") or {}
+        cube_name = str(cube.get("name") or cube.get("table") or "")
+        cube_measures = cube.get("measures") if isinstance(cube.get("measures"), dict) else {}
         active_bindings = spec.get("active_bindings") or {}
         for metric in (spec.get("ontology") or {}).get("metrics") or []:
             metric_name = metric.get("name") or "(unknown)"
@@ -39,7 +41,8 @@ class ValidationMatrixBuilder:
                 blockers.append(self._blocker("metric_time_dimension_missing", f"BusinessMetric {metric_name} 缺少默认 time dimension", f"ontology.metrics.{metric_name}.time_dimension"))
             elif time_dimension not in cube_dimensions:
                 blockers.append(self._blocker("metric_time_dimension_missing", f"BusinessMetric {metric_name} 的 time dimension 未映射到 Cube dimension", f"ontology.metrics.{metric_name}.time_dimension"))
-            if not metric.get("additivity"):
+            additivity = metric.get("additivity")
+            if not additivity:
                 blockers.append(self._blocker("metric_additivity_missing", f"BusinessMetric {metric_name} 缺少可加性声明", f"ontology.metrics.{metric_name}.additivity"))
             if metric.get("sql") or metric.get("execution_sql"):
                 blockers.append(self._blocker("generated_sql_bypasses_cube", f"BusinessMetric {metric_name} 不允许携带直拼 SQL", f"ontology.metrics.{metric_name}.sql"))
@@ -47,6 +50,48 @@ class ValidationMatrixBuilder:
             refs = measure_ref_strings(metric.get("measure_refs"))
             if active_ref and refs and active_ref not in refs:
                 blockers.append(self._blocker("active_binding_conflict", f"BusinessMetric {metric_name} 与已有 active binding 冲突", f"ontology.metrics.{metric_name}.measure_refs"))
+            blockers.extend(self._measure_ref_integrity_blockers(metric_name, refs, additivity, cube_name, cube_measures))
+        return blockers
+
+    def _measure_ref_integrity_blockers(
+        self,
+        metric_name: str,
+        refs: List[str],
+        additivity: Any,
+        cube_name: str,
+        cube_measures: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """校验 measure_ref 指向度量的真实存在性 + additivity 与度量可加性一致性。
+
+        repair 不再静默把 typo ref 改回默认度量，故这里必须把 typo / 危险可加性方向拦成 blocker。
+        ref 前缀 cube 名与当前 cube 不一致（多 cube 场景，非本平台单 cube 主线）时跳过，避免误伤。
+        """
+        blockers: List[Dict[str, Any]] = []
+        path = f"ontology.metrics.{metric_name}.measure_refs"
+        for ref in refs:
+            if "." not in ref:
+                continue
+            parsed_cube, parsed_measure = ref.split(".", 1)
+            if cube_name and parsed_cube != cube_name:
+                continue
+            if not cube_measures:
+                continue
+            measure_payload = cube_measures.get(parsed_measure)
+            if measure_payload is None:
+                blockers.append(self._blocker(
+                    "metric_measure_ref_unknown",
+                    f"BusinessMetric {metric_name} 绑定的度量 {ref} 不存在于 Cube measures",
+                    path,
+                ))
+                continue
+            # additive 度量被声明 non_additive 属保守方向，不拦；non_additive 度量被标 additive
+            # 会把比率/均值跨维 SUM，是危险方向，拦成 blocker。
+            if isinstance(measure_payload, dict) and measure_payload.get("non_additive") is True and additivity == "additive":
+                blockers.append(self._blocker(
+                    "metric_additivity_mismatch",
+                    f"BusinessMetric {metric_name} 声明 additive，但绑定度量 {ref} 为 non_additive（不可跨维相加）",
+                    path,
+                ))
         return blockers
 
     def _binding_blockers(self, spec: Dict[str, Any]) -> List[Dict[str, Any]]:

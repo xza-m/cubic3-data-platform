@@ -610,6 +610,39 @@ def test_human_led_blocked_then_update_spec_recovers_full_chain():
     assert published["status"] == "published"
 
 
+@pytest.mark.parametrize("source_mode", ["human_led", "agent_led"])
+def test_validate_blocks_typo_measure_ref_end_to_end(source_mode):
+    """typo 缺口端到端：spec 带指向不存在度量的 ref → service.validate 必须 blocked。
+
+    验证 repair 不再把 typo 静默改回 total_count（否则校验前就看不到了），ValidationMatrix 拦住。
+    """
+
+    class _TypoRefBuilder(_MinimalSpecBuilder):
+        def __init__(self):
+            super().__init__()
+            spec = _minimal_human_spec()
+            # typo：度量名拼错，不存在于 cube.measures
+            spec["ontology"]["metrics"][0]["measure_refs"] = ["fct_kpi.totl_count"]
+            self.spec = spec
+
+    service = _service(builder=_TypoRefBuilder())
+    created = service.create_proposal(
+        {"source_mode": source_mode, "table": "fct_kpi", "business_subject": "指标"}
+    )
+    service.draft(created["id"])
+    result = service.validate(created["id"])
+
+    assert result["status"] == "blocked"
+    blocker_codes = {b["code"] for b in result["validation_matrix"]["blockers"]}
+    assert "metric_measure_ref_unknown" in blocker_codes
+    # typo ref 仍可见（未被 repair 蒙混成 total_count）
+    from app.domain.ontology.entities import measure_ref_strings as _mrs
+
+    assert _mrs(result["spec"]["ontology"]["metrics"][0]["measure_refs"]) == ["fct_kpi.totl_count"]
+    with pytest.raises(ValueError, match="validated"):
+        service.approve(created["id"])
+
+
 def test_gap_view_projects_proposal_into_business_first_view_model():
     service = _service()
 
