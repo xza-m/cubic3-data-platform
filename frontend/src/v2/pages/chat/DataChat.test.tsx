@@ -1,7 +1,23 @@
 // Phase 5 可信标注：DataChat 来源徽标与语义 trace 展示
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ToastProvider } from '@v2/components/ui/Toast'
 import DataChat from './DataChat'
+
+function renderChat() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: 0 } } })
+  return render(
+    <QueryClientProvider client={qc}>
+      <ToastProvider>
+        <MemoryRouter>
+          <DataChat />
+        </MemoryRouter>
+      </ToastProvider>
+    </QueryClientProvider>,
+  )
+}
 
 const appShellMocks = vi.hoisted(() => ({
   setBreadcrumbs: vi.fn(),
@@ -122,7 +138,7 @@ vi.mock('@v2/hooks/conversations', () => ({
 
 describe('DataChat 来源徽标', () => {
   it('上下文面板不展示接口契约或前端实现说明', () => {
-    render(<DataChat />)
+    renderChat()
 
     const calls = appShellMocks.setContextPanel.mock.calls
     const payload = calls[calls.length - 1]?.[0]
@@ -135,14 +151,14 @@ describe('DataChat 来源徽标', () => {
   })
 
   it('assistant 消息按 source 展示徽标：语义层 / 直连 LLM-未验证', () => {
-    render(<DataChat />)
+    renderChat()
 
     expect(screen.getByText('语义层')).toBeInTheDocument()
     expect(screen.getByText('直连 LLM · 未验证')).toBeInTheDocument()
   })
 
   it('展示业务化的语义执行摘要，不直出 route_type 或 SQL', () => {
-    render(<DataChat />)
+    renderChat()
 
     const trace = screen.getByTestId('semantic-plan-trace')
     expect(trace.textContent).toContain('Cube 指标匹配')
@@ -154,7 +170,7 @@ describe('DataChat 来源徽标', () => {
   })
 
   it('渲染 query_result 数据表格（问数结果不再只显示一句话）', () => {
-    render(<DataChat />)
+    renderChat()
 
     expect(screen.getByText('region')).toBeInTheDocument()
     expect(screen.getByText('gmv')).toBeInTheDocument()
