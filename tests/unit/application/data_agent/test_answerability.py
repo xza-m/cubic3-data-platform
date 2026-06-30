@@ -6,9 +6,11 @@ from app.application.data_agent.answerability import (
     NEED_CLARIFY,
     OUT_OF_COVERAGE,
     OUT_OF_SCOPE,
+    UNSUPPORTED_AGGREGATION,
     AnswerabilityVerdict,
     assess_from_intent,
     classify_answerability,
+    non_additive_aggregation_verdict,
 )
 from app.application.semantic_router.intent_understanding import IntentExtraction, add_candidates
 
@@ -148,3 +150,27 @@ class TestRealQuestionScenarios:
         v = assess_from_intent(intent, asset_vocab=_asset_vocab("答题总数", "答题正确率"), published_dimensions=PUBLISHED_DIMS)
         assert v.state == OUT_OF_SCOPE
         assert not v.can_proceed
+
+
+class TestNonAdditiveAggregationVerdict:
+    """非可加指标按维度聚合的诚实反馈工厂（router 注入用）。"""
+
+    def test_state_is_unsupported_aggregation(self):
+        v = non_additive_aggregation_verdict("平均答题时长")
+        assert v.state == UNSUPPORTED_AGGREGATION
+        assert v.state != ANSWERABLE
+        assert not v.can_proceed
+
+    def test_message_is_actionable_chinese(self):
+        v = non_additive_aggregation_verdict("平均答题时长")
+        # 带指标名 + 非可加说明 + 可操作引导，且无英文编译串
+        assert "平均答题时长" in v.message
+        assert "非可加" in v.message
+        assert ("加性指标" in v.message) or ("加权口径" in v.message)
+        assert "non_additive" not in v.message
+        assert "QueryDSL" not in v.message
+
+    def test_message_without_label_is_generic_but_actionable(self):
+        v = non_additive_aggregation_verdict()
+        assert "该指标" in v.message
+        assert "非可加" in v.message

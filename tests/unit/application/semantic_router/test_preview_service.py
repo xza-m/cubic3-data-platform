@@ -1239,3 +1239,85 @@ def test_router_covers_blocked_reason_paths_for_action_and_object(tmp_path):
     blocked_object = service.route(question="查看对象术语趋势")
     assert blocked_object["route_type"] == "blocked"
     assert "私有" in blocked_object["reason"]
+
+
+def test_router_non_additive_metric_grouping_gives_honest_unsupported_aggregation(tmp_path):
+    """非可加指标按维度聚合：compiler 守卫挡下（blocked），router 协调消除 answerable+blocked 矛盾。
+
+    断言：answerability 不再是 answerable（降级 unsupported_aggregation），reason 是中文 actionable、
+    不冒泡英文编译串；route_type 维持 blocked；聚合护栏（compiler 守卫）保留不动。
+    """
+    cube_repo = YamlCubeRepository(str(tmp_path / "cubes"))
+    # 非可加 measure（平均类）+ 分组维度 → 触发 compiler 的 non_additive 守卫
+    cube_repo.save(
+        CubeDefinition(
+            name="lessons",
+            title="课程答题",
+            table="dws.lesson_answer_stats",
+            source_id=1,
+            source_database="dw",
+            dimensions={
+                "school": DimensionDef(title="学校", type="string", sql="{CUBE}.school"),
+            },
+            measures={
+                "avg_duration": MeasureDef(
+                    title="平均答题时长", type="avg", sql="{CUBE}.duration", non_additive=True
+                ),
+            },
+        )
+    )
+    object_repo = YamlBusinessObjectRepository(str(tmp_path / "objects"))
+    metric_repo = YamlBusinessMetricRepository(str(tmp_path / "metrics"))
+    glossary_repo = YamlGlossaryRepository(str(tmp_path / "glossary"))
+    relation_repo = YamlBusinessRelationRepository(str(tmp_path / "relations"))
+    action_repo = YamlBusinessActionRepository(str(tmp_path / "actions"))
+    policy_repo = YamlPolicyMetadataRepository(str(tmp_path / "policies"))
+
+    object_repo.save(BusinessObject(name="lesson", title="课程答题"))
+    metric_repo.save(
+        BusinessMetric(
+            name="avg_answer_duration",
+            title="平均答题时长",
+            object_name="lesson",
+            semantic_formula="平均答题时长",
+            measure_refs=["lessons.avg_duration"],
+        )
+    )
+
+    compiler = ExecutionCompilerPreviewService(metric_repository=metric_repo, cube_repository=cube_repo)
+    mapper = SemanticMapperPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        cube_repository=cube_repo,
+    )
+    service = SemanticRouterPreviewService(
+        object_repository=object_repo,
+        metric_repository=metric_repo,
+        glossary_repository=glossary_repo,
+        relation_repository=relation_repo,
+        action_repository=action_repo,
+        mapper_preview_service=mapper,
+        compiler_preview_service=compiler,
+        policy_guard_service=PolicyGuardService(policy_repository=policy_repo),
+    )
+
+    route = service.route(question="各学校的平均答题时长")
+
+    # 聚合护栏保留：execution_preview 仍 blocked（compiler 守卫未被放开）
+    assert route["execution_preview"]["status"] == "blocked"
+    assert "non_additive" in route["execution_preview"]["reason"]
+    # route_type 维持 blocked（不新增枚举）
+    assert route["route_type"] == "blocked"
+    # 矛盾消除：answerability 不再 answerable
+    answerability = route["business_intent"]["answerability"]
+    assert answerability is not None
+    assert answerability["state"] == "unsupported_aggregation"
+    assert answerability["state"] != "answerable"
+    # 顶层 reason 是中文 actionable，不冒泡英文编译串
+    assert route["reason"]
+    assert "非可加" in route["reason"]
+    assert "QueryDSL 编译失败" not in route["reason"]
+    assert "non_additive" not in route["reason"]

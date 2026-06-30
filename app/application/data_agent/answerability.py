@@ -8,6 +8,11 @@
 - out_of_coverage: 数据域内但所需维度未建（如"学校"）→ 诚实告知缺口 + 降级建议
 - out_of_scope   : 根本不在治理语义层（如未发布的原始日志表）→ 拒答
 
+补充态（在编译/执行阶段才暴露，由 router 注入，非四态核心判定）：
+- unsupported_aggregation: 指标为非可加（平均/比率类），按维度分组会出 average-of-averages 错数，
+  compiler 守卫已挡（正确），但 answerability 只看维度发布、会误判 answerable。router 检出 non_additive
+  blocked 时降级到本态，消除"answerable+blocked"自相矛盾，给可解释的诚实反馈。
+
 纯逻辑、可单测、零 LLM；复用 L1（8.2）的 grounding 白名单 + _normalize。
 把"建模覆盖不足"与"智能不足"清晰分开，避免在薄数据上编叙事——业界红线级共识。
 """
@@ -26,6 +31,22 @@ ANSWERABLE = "answerable"
 NEED_CLARIFY = "need_clarify"
 OUT_OF_COVERAGE = "out_of_coverage"
 OUT_OF_SCOPE = "out_of_scope"
+UNSUPPORTED_AGGREGATION = "unsupported_aggregation"
+
+
+def non_additive_aggregation_verdict(metric_label: Optional[str] = None) -> "AnswerabilityVerdict":
+    """非可加指标按维度聚合时的诚实反馈（router 在检出 non_additive blocked 时注入）。
+
+    非可加（平均/比率类）指标跨维度直接 SUM/分组会得 average-of-averages 错数，compiler 守卫已挡。
+    这里给 actionable 中文反馈，引导改问加性指标或为该指标补加权口径，而非冒泡英文编译错误串。
+    """
+    target = f"指标「{metric_label}」" if metric_label else "该指标"
+    msg = (
+        f"{target}为非可加（平均/比率类），暂不支持按维度聚合"
+        "（按维度分组会得出 average-of-averages 错数）。"
+        "可改问加性指标（如总量/计数），或在语义中心为该指标补加权口径后再分析。"
+    )
+    return AnswerabilityVerdict(state=UNSUPPORTED_AGGREGATION, message=msg)
 
 
 @dataclass(frozen=True)

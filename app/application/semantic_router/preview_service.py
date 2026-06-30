@@ -5,7 +5,11 @@ import hashlib
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.application.data_agent.answerability import assess_from_intent
+from app.application.data_agent.answerability import (
+    ANSWERABLE,
+    assess_from_intent,
+    non_additive_aggregation_verdict,
+)
 from app.application.semantic.runtime_manifest_catalog import RuntimeSemanticCatalog
 from app.application.semantic_mapper.preview_service import SemanticMapperPreviewService
 from app.application.semantic_router.intent_understanding import add_candidates, ground_terms
@@ -357,6 +361,8 @@ class SemanticRouterPreviewService:
         policy: Dict[str, Any] | None = None
         target_flags = {"knowledge": False, "cube": False, "tool": False}
         reason: Optional[str] = None
+        # 非可加指标按维度聚合被 compiler 守卫挡下时，存其 label，供后续协调 answerability + 友好 reason。
+        non_additive_block_label: Optional[str] = None
         analysis_intent = self._extract_analysis_intent(question=question, matched_metric=matched_metric)
 
         if matched_metric is not None:
@@ -380,6 +386,15 @@ class SemanticRouterPreviewService:
                     target_flags["cube"] = True
             else:
                 reason = policy.get("reason") or execution_preview.get("reason")
+                # 非可加指标按维度聚合被 compiler 守卫挡下（聚合数学正确、不放开）：
+                # 标记以便后续把 answerability 从 answerable 降级为 unsupported_aggregation，
+                # 并用 actionable 中文替换冒泡的英文编译错误串，消除"answerable+blocked"自相矛盾。
+                if (
+                    policy.get("status") != "blocked"
+                    and execution_preview.get("status") == "blocked"
+                    and "non_additive" in str(execution_preview.get("reason") or "")
+                ):
+                    non_additive_block_label = matched_metric.title or matched_metric.name
 
         if matched_relation is not None:
             relation_projection = mapper_preview_service.preview(entity_type="relation", entity_name=matched_relation.name)
@@ -492,6 +507,23 @@ class SemanticRouterPreviewService:
             analysis_intent=analysis_intent,
         )
         projection_result = self._projection_result_from_preview(projection_preview)
+        answerability = expansion.get("answerability")
+        # 非可加指标按维度聚合：compiler 守卫已挡（blocked），但 answerability 只看维度发布会误判 answerable。
+        # 在此协调，消除"answerable+blocked"自相矛盾：把 answerability 降级为 unsupported_aggregation，
+        # 并把顶层 reason 从英文编译错误串替换为 actionable 中文。仅 non_additive 这一类做友好化，
+        # 加性指标 / 维度未 ground 等其它 blocked 情形行为不变。
+        if non_additive_block_label is not None:
+            verdict = non_additive_aggregation_verdict(non_additive_block_label)
+            # 只覆盖 None / answerable（避免抹掉 out_of_coverage 等已正确的更高优先级状态；
+            # non_additive 场景维度本已 ground，原状态本就是 answerable 或 L1 关时的 None）。
+            if not answerability or answerability.get("state") == ANSWERABLE:
+                answerability = {
+                    "state": verdict.state,
+                    "message": verdict.message,
+                    "missing_dimensions": [],
+                    "available_alternatives": [],
+                }
+            reason = verdict.message
         business_intent = {
             "route_type": route_type,
             "targets": targets,
@@ -504,7 +536,7 @@ class SemanticRouterPreviewService:
                 "candidates": expansion.get("candidates", []),
             },
             # 分析型 Data Agent 层（8.4）：可回答性门控判定，L1 关时为 None（不影响行为）。
-            "answerability": expansion.get("answerability"),
+            "answerability": answerability,
         }
 
         return {

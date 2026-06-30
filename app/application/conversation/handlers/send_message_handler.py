@@ -109,7 +109,9 @@ class SendMessageHandler:
         # → 直接诚实告知缺口，不返回可能错粒度的执行结果（避免静默答非所问）。L1 关时门控为 None，不触发（零回归）。
         answerability = ((plan_result.get("business_intent") or {}).get("answerability")) or {}
         gate_state = answerability.get("state")
-        if gate_state in ("out_of_coverage", "out_of_scope"):
+        # unsupported_aggregation（非可加指标按维度聚合）也走诚实短路：router 已把它降级并备好
+        # actionable 中文 message，这里直接告知用户，不落到可能冒泡英文编译串的 blocked 兜底。
+        if gate_state in ("out_of_coverage", "out_of_scope", "unsupported_aggregation"):
             # 可观测：status 记具体门控状态（而非笼统 unanswerable），便于聚合"哪些维度常被问但没建"。
             return self._build_unanswerable_fallback(
                 command, conversation, user_message,
