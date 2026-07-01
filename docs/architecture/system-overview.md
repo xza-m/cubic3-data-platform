@@ -34,7 +34,7 @@ graph LR
     Browser["浏览器"]
     Vite["Vite :3000"]
     Nginx["Nginx :81"]
-    Flask["Flask API :5000"]
+    Flask["Flask API :5000（容器内 expose，未映射宿主机）"]
     Redis["Redis"]
     Postgres["PostgreSQL"]
     Worker["RQ Worker"]
