@@ -143,15 +143,16 @@ python run_worker.py
 - 后端依赖交给 Docker 管理
 - 前端保留本地热更新
 
-步骤：
+步骤（务必带上 `nginx`——`backend` 容器只 `expose` 未 `ports` 映射到宿主机，
+`localhost:5000` 从宿主机不可达；`nginx` 反代到 `:81` 才是宿主机可达入口）：
 
 ```bash
-docker compose up -d backend redis postgres rq_worker
+docker compose up -d backend redis postgres rq_worker nginx
 cd frontend
-VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
+npm run dev
 ```
 
-如果你同时启动了 Nginx，也可以沿用默认代理目标 `http://localhost:81`。
+不需要显式设置 `VITE_API_PROXY_TARGET`——`vite.config.ts` 默认就是 `http://localhost:81`。
 
 ## 4. 数据库与迁移
 

@@ -199,17 +199,23 @@ docker compose up -d nginx
 
 ### 5.2 前端开发环境请求不到 API
 
-确认以下任一条件成立：
+`backend` 容器只 `expose` 未 `ports` 映射到宿主机，`localhost:5000` 从宿主机不可达
+（仅容器间可见）。确认以下条件成立：
 
-- 已启动 Nginx，Vite 代理默认指向 `http://localhost:81`
-- 或显式设置 `VITE_API_PROXY_TARGET=http://localhost:5000`
+- Docker 模式（含 Docker 后端 + 本地前端）：已启动 `nginx`，Vite 代理走默认的
+  `http://localhost:81`，不要显式覆盖成 `http://localhost:5000`
+- 纯本地开发模式（`flask --app wsgi.py run` 直接在宿主机跑，未用 Docker）：
+  后端本就绑定在宿主机 `:5000`，此时才可以设置
+  `VITE_API_PROXY_TARGET=http://localhost:5000`
 
 ### 5.3 健康检查地址不一致
 
-当前健康检查入口是：
+Docker 模式（含混合模式）健康检查走 nginx：
 
 ```bash
-curl http://localhost:5000/health
+curl http://localhost:81/health
 ```
+
+仅当后端是 `flask --app wsgi.py run` 直接跑在宿主机时，才用 `curl http://localhost:5000/health`。
 
 不是旧文档中的 `/api/v1/health`。

@@ -77,16 +77,19 @@ VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
 
 典型形态：
 
-- Docker 提供 backend / postgres / redis / worker
-- 前端本地运行并代理到 `http://localhost:5000`
+- Docker 提供 backend / postgres / redis / worker / nginx
+- 前端本地运行并代理到 `http://localhost:81`（nginx 反代；`backend` 容器只
+  `expose` 未 `ports` 映射到宿主机，`localhost:5000` 从宿主机不可达）
 
 进入可开发状态的最短配方：
 
 ```bash
-docker compose up -d backend postgres redis rq_worker
+docker compose up -d backend postgres redis rq_worker nginx
 cd frontend
-VITE_API_PROXY_TARGET=http://localhost:5000 npm run dev
+npm run dev
 ```
+
+不需要显式设置 `VITE_API_PROXY_TARGET`——`vite.config.ts` 默认就是 `http://localhost:81`。
 
 这个模式最适合验证当前数据中心基线：
 
