@@ -39,11 +39,10 @@ docker compose ps
 
 echo "7. 检查健康状态..."
 curl -f http://localhost:81/health || echo "警告: 健康检查失败（通过 nginx）"
-curl -f http://localhost:5000/health || echo "警告: 后端健康检查失败"
 
 echo ""
 echo "=== 部署完成 ==="
 echo "前端服务: http://localhost:81"
-echo "后端API: http://localhost:5000"
+echo "后端API: 通过 nginx 反向代理 http://localhost:81/api（backend 容器未映射到宿主机端口）"
 echo "查看日志: docker compose logs -f"
 echo "停止服务: docker compose down"
