@@ -233,3 +233,6 @@ frontend/scripts/i18n-coverage.report.md
 
 # Round 3 design exploration scratch (HTML/CSS/JS demos kept locally only)
 /tmp/
+
+# Playwright CLI local tool artifact (not a source file)
+/.playwright-cli/
