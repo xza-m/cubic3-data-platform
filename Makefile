@@ -153,7 +153,7 @@ help:
 	@printf '  %-26s %s\n' 'make docs-health' '文档健康检查'
 	@printf '  %-26s %s\n' 'make fact-source-guard' 'ADR-012 事实源口径守护'
 	@printf '%s\n' ''
-	@printf '%s\n' '本地闸门（GitLab CI 未就位时的替代入口）:'
+	@printf '%s\n' '本地闸门（与 GitHub Actions CI 保持一致的本地验证入口）:'
 	@printf '  %-26s %s\n' 'make local-ci' '本地等价 CI（verify-frontend 去掉 smoke/integration 的严格子集，~2 min，无需 docker）'
 	@printf '  %-26s %s\n' 'make local-smoke' '本地 E2E 冒烟：smoke-frontend 别名（Playwright e2e:smoke；需前端在 :3000 可达）'
 
@@ -517,7 +517,7 @@ docs-impact:
 	$(PYTHON) scripts/checks/doc_impact.py $(if $(VERIFY_BASE),--base-ref $(VERIFY_BASE),$(if $(VERIFY_FILES),$(VERIFY_FILES),--worktree))
 
 # -----------------------------------------------------------------------------
-# 本地闸门（GitLab CI 基建未就位时，替代 pipeline 的手动入口）
+# 本地闸门（与 GitHub Actions CI 保持一致，供本地提前验证的手动入口）
 # -----------------------------------------------------------------------------
 # local-ci:     提 MR / push 前手动跑一次，等价于 verify-frontend 去掉 smoke/integration 的子集。
 #               复用 lint/typecheck/tokens/i18n/unit-test/build 原子 target，避免与

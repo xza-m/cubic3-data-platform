@@ -72,15 +72,15 @@ docker compose up --build -d
 ### 2.3 验证服务
 
 ```bash
-curl http://localhost:5000/health
-curl http://localhost:5000/api/docs/openapi.json
+curl http://localhost:81/health
+curl http://localhost:81/api/docs/openapi.json
 ```
 
-访问入口：
+访问入口（`backend` 容器只 `expose` 未 `ports` 映射，宿主机不可直接访问 5000，需经 nginx 反代）：
 
 - 前端：`http://localhost:81`
-- 后端 API：`http://localhost:5000`
-- API 文档：`http://localhost:5000/api/docs`
+- 后端 API：`http://localhost:81/api`
+- API 文档：`http://localhost:81/api/docs`
 
 ## 3. 方式二：本地开发
 

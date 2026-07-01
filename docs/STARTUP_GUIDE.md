@@ -96,9 +96,10 @@ docker compose up --build -d
 
 ```bash
 docker compose ps
-curl http://localhost:5000/health
 curl http://localhost:81/health
 ```
+
+（`backend` 容器只 `expose` 未 `ports` 映射，宿主机不可直接 `curl localhost:5000`，需经 nginx 反代访问）
 
 ### 模式 B：纯本地开发
 

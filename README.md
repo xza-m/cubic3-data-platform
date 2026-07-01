@@ -271,12 +271,12 @@ docker compose up --build -d
 
 Docker 模式下 `backend` 与 `rq_worker` 固定连接 compose 内置 PostgreSQL，避免宿主机 `DATABASE_URL` 串到本地验证环境。
 
-3. 访问入口：
+3. 访问入口（`backend` 容器只 `expose` 未 `ports` 映射，宿主机不可直接访问 5000，需经 nginx 反代）：
 
 - 前端：`http://localhost:81`
-- 后端 API：`http://localhost:5000`
-- API 文档：`http://localhost:5000/api/docs`
-- 健康检查：`http://localhost:5000/health`
+- 后端 API：`http://localhost:81/api`
+- API 文档：`http://localhost:81/api/docs`
+- 健康检查：`http://localhost:81/health`
 - CLI：`cubic3-dp`，见 `docs/runbooks/cubic3-dp-cli.md`
 
 ### 方式二：本地开发
@@ -365,12 +365,15 @@ make verify-cli
 PYTHONPATH=cli python -m cubic3_dp_cli.main describe
 PYTHONPATH=cli python -m cubic3_dp_cli.main auth status
 
+# semctl：语义建模 CLI（in-process，容器内跑）——建 cube、发布、调试问数路由
+docker exec -e PYTHONPATH=/app cubic3-data-platform-backend python -m app.interfaces.cli --help
+
 # 可选：coverage 专项验证（不在默认闸门里）
 make coverage            # 聚合：== coverage-backend（frontend 已退役 skip）
 make coverage-backend    # 跑完整 pytest + ratchet 防倒退校验
 make coverage-report     # 生成前后端数字报告，不设阈值，仅供查看
 
-# 本地闸门（GitLab CI 基建未就位时的替代入口）
+# 本地闸门（与 GitHub Actions CI 保持一致的本地验证入口，见 .github/workflows/）
 # local-ci 是 verify-frontend 去掉 smoke/integration 的严格子集，
 # local-smoke 是 smoke-frontend 的别名 —— 两者复用同一套原子 target，
 # 避免与 verify-frontend 出现定义漂移。
@@ -378,9 +381,11 @@ make local-ci        # lint + tokens + i18n + tsc + vitest + v2 build，~1-2 min
 make local-smoke     # == smoke-frontend（Playwright v2 e2e:smoke），前端需已运行在 http://127.0.0.1:3000
 ```
 
+`semctl`（`app.interfaces.cli`）是语义层建模/发布/调试专用 CLI，一步把物理表冷启动成可发布 cube（`cube onboard` / `cube onboard-batch`）；完整命令参考见 [app/interfaces/cli/README.md](app/interfaces/cli/README.md)，日常语义建模工作流见 skill [skills/dp-semantic-builder/SKILL.md](skills/dp-semantic-builder/SKILL.md)。
+
 ### 本地 Git Hooks（pre-commit / pre-push）
 
-仓库根目录放了一套基于 `husky` 的本地闸门，用来在 GitLab CI 上线前兜底：
+仓库根目录放了一套基于 `husky` 的本地闸门，与 `.github/workflows/` 下的 GitHub Actions CI 保持一致，用于本地提前捕获问题：
 
 - `pre-commit`: 只对 staged 的 `*.{ts,tsx,css}` 跑 `lint-staged`（eslint/stylelint `--fix`），目标 `< 5s`。
 - `pre-push`: 跑 `cd frontend && npm run ci:pre-push`，等价于 `lint + vitest + v2 build`，目标 `< 90s`。
