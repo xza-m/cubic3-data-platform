@@ -1,0 +1,15 @@
+name: dws_study_task_teacher_assign_scene_window_di_total_count
+title: Dws Study Task Teacher Assign Scene Window Di总数
+object_name: dws_study_task_teacher_assign_scene_window_di
+semantic_formula: 按 Cube measure dws_study_task_teacher_assign_scene_window_di.total_count
+  计算
+description: Dws Study Task Teacher Assign Scene Window Di相关的默认业务指标。
+semantic_labels:
+- Dws Study Task Teacher Assign Scene Window Di
+- 建模助手 Agent
+measure_refs:
+- ref: dws_study_task_teacher_assign_scene_window_di.total_count
+  role: primary
+aliases:
+- Dws Study Task Teacher Assign Scene Window Di数
+status: active

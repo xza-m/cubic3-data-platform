@@ -1,0 +1,10 @@
+name: dws_study_task_teacher_assign_scene_window_di_sum_total_assign_teacher_cnt
+title: 全部布置老师数，目标业务场景内按assigner_id去重
+object_name: dws_study_task_teacher_assign_scene_window_di
+semantic_formula: 按 dws_study_task_teacher_assign_scene_window_di.sum_total_assign_teacher_cnt
+semantic_labels: []
+measure_refs:
+- ref: dws_study_task_teacher_assign_scene_window_di.sum_total_assign_teacher_cnt
+  role: primary
+aliases: []
+status: active

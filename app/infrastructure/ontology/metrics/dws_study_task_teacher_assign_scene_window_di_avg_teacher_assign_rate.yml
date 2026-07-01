@@ -1,0 +1,10 @@
+name: dws_study_task_teacher_assign_scene_window_di_avg_teacher_assign_rate
+title: 场景任务布置率，assign_teacher_cnt/total_assign_teacher_cnt
+object_name: dws_study_task_teacher_assign_scene_window_di
+semantic_formula: 按 dws_study_task_teacher_assign_scene_window_di.avg_teacher_assign_rate
+semantic_labels: []
+measure_refs:
+- ref: dws_study_task_teacher_assign_scene_window_di.avg_teacher_assign_rate
+  role: primary
+aliases: []
+status: active

@@ -1,0 +1,153 @@
+name: dws_study_task_teacher_assign_scene_window_di
+title: Dws Study Task Teacher Assign Scene Window Di
+description: 基于 dws_study_task_teacher_assign_scene_window_di 自动生成的 Cube 草稿
+table: dws_study_task_teacher_assign_scene_window_di
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: active
+partition:
+  field: ds
+  type: date
+  format: yyyyMMdd
+  max_range_days: 90
+default_filters: []
+dimensions:
+  ds:
+    title: DS
+    type: time
+    sql: '`ds`'
+    description: 由源表分区字段自动补齐的默认时间维度。
+    source_data_type: date
+    synonyms: []
+    tags: []
+    primary_key: false
+  study_type:
+    title: 学习/任务类型编码
+    type: string
+    sql: '`study_type`'
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 dimension.categorical
+    source_data_type: STRING
+    synonyms: []
+    tags: []
+    primary_key: false
+  window_end_ds:
+    title: 统计窗口结束日期，yyyyMMdd
+    type: string
+    sql: '`window_end_ds`'
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 dimension.categorical
+    source_data_type: STRING
+    synonyms: []
+    tags: []
+    primary_key: false
+  study_type_name:
+    title: 学习/任务类型名称
+    type: string
+    sql: '`study_type_name`'
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 dimension.categorical
+    source_data_type: STRING
+    synonyms: []
+    tags: []
+    primary_key: false
+  window_start_ds:
+    title: 统计窗口开始日期，yyyyMMdd
+    type: string
+    sql: '`window_start_ds`'
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 dimension.categorical
+    source_data_type: STRING
+    synonyms: []
+    tags: []
+    primary_key: false
+measures:
+  total_count:
+    title: 总数
+    type: count
+    sql: COUNT(`window_start_ds`)
+    description: 自动生成的记录总数指标
+    source_data_type: count
+    synonyms: []
+    tags: []
+    certified: true
+    non_additive: false
+  sum_window_days:
+    title: 统计窗口天数：1/7/30/90
+    type: sum
+    sql: SUM(`window_days`)
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  sum_assign_task_cnt:
+    title: 场景布置任务数，按老师+源任务去重
+    type: sum
+    sql: SUM(`assign_task_cnt`)
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  sum_student_task_cnt:
+    title: 学生任务明细行数
+    type: sum
+    sql: SUM(`student_task_cnt`)
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  sum_assign_teacher_cnt:
+    title: 场景布置老师数，按assigner_id去重
+    type: sum
+    sql: SUM(`assign_teacher_cnt`)
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  avg_teacher_assign_rate:
+    title: 场景任务布置率，assign_teacher_cnt/total_assign_teacher_cnt
+    type: avg
+    sql: AVG(`teacher_assign_rate`)
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 measure.non_additive；警告：非可加指标需要确认跨粒度聚合口径；非可加指标需要确认聚合口径；比率类指标不能按
+      sum 汇总；问题码：ratio_sum_risk，non_additive_unconfirmed
+    source_data_type: DOUBLE
+    synonyms: []
+    tags:
+    - ratio_sum_risk
+    - non_additive_unconfirmed
+    certified: false
+    format: decimal
+    non_additive: true
+  sum_assigned_student_cnt:
+    title: 被布置学生数
+    type: sum
+    sql: SUM(`assigned_student_cnt`)
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  sum_total_assign_teacher_cnt:
+    title: 全部布置老师数，目标业务场景内按assigner_id去重
+    type: sum
+    sql: SUM(`total_assign_teacher_cnt`)
+    description: 来自字段候选集 fcand_c6b917a1c459f805，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+segments: {}
+joins: {}

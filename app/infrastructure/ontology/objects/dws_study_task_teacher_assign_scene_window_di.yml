@@ -1,0 +1,10 @@
+name: dws_study_task_teacher_assign_scene_window_di
+title: Dws Study Task Teacher Assign Scene Window Di
+description: Dws Study Task Teacher Assign Scene Window Di对应的核心业务对象，由建模助手 Agent 根据事实表生成。
+aliases:
+- Dws Study Task Teacher Assign Scene Window Di
+cube_bindings:
+- cube: dws_study_task_teacher_assign_scene_window_di
+  role: primary
+  entity_key: window_start_ds
+status: active

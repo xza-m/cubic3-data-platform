@@ -1,0 +1,8 @@
+name: dws_study_task_teacher_assign_scene_window_di_total_count_policy
+target_type: metric
+target_name: dws_study_task_teacher_assign_scene_window_di_total_count
+visibility: restricted
+allowed_roles:
+- analyst
+description: 由建模助手 Agent 生成的Dws Study Task Teacher Assign Scene Window Di指标访问策略。
+status: active

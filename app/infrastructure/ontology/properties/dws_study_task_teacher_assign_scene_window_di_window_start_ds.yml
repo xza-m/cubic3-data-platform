@@ -1,0 +1,8 @@
+name: dws_study_task_teacher_assign_scene_window_di_window_start_ds
+title: 统计窗口开始日期，yyyyMMdd
+object_name: dws_study_task_teacher_assign_scene_window_di
+property_type: string
+description: 来自字段候选集 fcand_c6b917a1c459f805，角色 dimension.categorical
+aliases:
+- window_start_ds
+status: active
