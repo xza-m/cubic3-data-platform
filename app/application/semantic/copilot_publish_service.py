@@ -350,6 +350,30 @@ class CopilotPublishService(CopilotServiceBase):
                 "title": "Proposal 校验未通过",
                 "hint": "请先处理 validation_matrix 中的错误，例如时间维度、指标绑定或源表口径，再重新保存并发布。",
             }
+        if "数据源不存在" in message or "未绑定 source_id" in message:
+            return {
+                "id": "yaml_datasource_unresolved",
+                "title": "Cube 未能解析到真实数据源",
+                "hint": "请确认 spec.cube.source_id 指向的数据源仍然存在且未被禁用，再重新应用语义并发布。",
+            }
+        if "不支持的 Cube 状态" in message or "Cube 必须绑定 source_id" in message:
+            return {
+                "id": "yaml_cube_precondition_failed",
+                "title": "Cube 建模前置条件不满足",
+                "hint": "请检查 spec.cube 的 status/source_id 是否符合要求，修正后重新应用语义并发布。",
+            }
+        if "认证指标发布失败" in message:
+            return {
+                "id": "yaml_certified_measure_unlinked",
+                "title": "认证指标未关联业务指标",
+                "hint": "请先在 Ontology 里把提示中的 Measure 关联到对应 BusinessMetric，再重新应用语义并发布。",
+            }
+        if "未找到 Cube" in message:
+            return {
+                "id": "yaml_cube_missing",
+                "title": "YAML 仓储中尚未生成对应 Cube",
+                "hint": "请先重新执行一次「应用」步骤生成 Cube 定义，确认成功后再确认发布。",
+            }
         return {
             "id": "publish_failed",
             "title": "发布动作失败",
