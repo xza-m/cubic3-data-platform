@@ -324,12 +324,10 @@ def test_apply_and_publish_use_sql_registry_when_available():
     assert [call[0] for call in builder.calls].count("publish") == 1
     assert applied["drafts"]["apply_result"]["source"] == "sql_registry"
     assert applied["drafts"]["apply_result"]["registry"]["revision_id"] == "rev_1"
-    assert applied["drafts"]["apply_result"]["yaml"]["cube"]["name"] == "student_comments"
     assert published["publish_result"]["source"] == "sql_registry"
     assert published["publish_result"]["cube"]["status"] == "active"
     assert published["publish_result"]["registry"]["release_id"] == "rel_1"
     assert published["publish_result"]["registry"]["snapshot_id"] == "snap_1"
-    assert published["publish_result"]["yaml"]["publish_targets"] == {"cube": True, "ontology": True}
     assert release_service.calls[0]["gate_result"]["proposal_id"] == proposal["id"]
 
     second = service.create_proposal({"source_mode": "agent_led", "table": "dwd_student_comment_events"})
@@ -343,9 +341,24 @@ def test_apply_and_publish_use_sql_registry_when_available():
     assert asset.current_release_id == "rel_1"
 
 
-def test_apply_to_sql_registry_returns_nonempty_yaml_field_for_audit_trace():
-    """P0 回归防护：_apply_to_sql_registry 返回结构里必须携带 yaml 字段作为双轨写入证据。"""
-    builder = _Builder()
+def test_apply_to_sql_registry_uses_renamed_cube_name_from_builder_result():
+    """P0 回归防护（cube 改名分裂态）：cube_modeling_service.create_cube 在命名冲突时会把
+    cube 静默改名（`{name}_draft_{tag}`）。_apply_to_sql_registry 必须按 builder.apply 返回
+    的改名后 spec 去写 SQL registry asset_key，而不是按改名前的原始名字——否则 publish() 阶段
+    会因为 asset_key 对不上而在 registry 里建出第二条孤立资产，丢失原有 revision/release 血缘。"""
+
+    class _RenamingApplyBuilder(_Builder):
+        def apply(self, spec):
+            self.calls.append(("apply", spec))
+            renamed_spec = deepcopy(spec)
+            renamed_spec["cube"]["name"] = "student_comments_draft_a1b2"
+            return {
+                "published": False,
+                "assets": {"cube": {"name": "student_comments_draft_a1b2"}},
+                "spec": renamed_spec,
+            }
+
+    builder = _RenamingApplyBuilder()
     registry = _SqlRegistryRepository()
     release_service = _SqlReleaseService(registry)
     service = ModelingProposalService(
@@ -361,14 +374,22 @@ def test_apply_to_sql_registry_returns_nonempty_yaml_field_for_audit_trace():
     service.approve(proposal["id"], {"approved_by": "semantic_owner"})
 
     applied = service.apply(proposal["id"])
+    apply_registry = applied["drafts"]["apply_result"]["registry"]
+    assert apply_registry["asset_key"] == "student_comments_draft_a1b2"
 
-    apply_result = applied["drafts"]["apply_result"]
-    assert apply_result.get("yaml")
-    assert apply_result["yaml"]["cube"]["name"]
+    published = service.publish(proposal["id"], publish_targets={"cube": True, "ontology": True})
+    publish_registry = published["publish_result"]["registry"]
+
+    # apply 与 publish 必须落在同一个 asset 上，不能因为改名产生第二条孤立资产。
+    assert publish_registry["asset_id"] == apply_registry["asset_id"]
+    assert publish_registry["asset_key"] == "student_comments_draft_a1b2"
+    assert len(registry.assets) == 1
 
 
 def test_publish_from_sql_registry_propagates_builder_publish_failure_without_marking_published():
-    """P0 边界：YAML 侧 cube 不存在（builder.publish 抛异常）时，异常必须向上传播，proposal 不得被标记为 published。"""
+    """P0 边界：YAML 侧 cube 不存在（builder.publish 抛异常）时，异常必须向上传播，proposal 不得
+    被标记为 published；且由于 builder.publish 现在先于 SQL registry release 写入执行，失败时
+    SQL registry 侧不应该已经提交任何 release（避免"SQL 说已发布、YAML 没有"的分裂态）。"""
 
     class _FailingPublishBuilder(_Builder):
         def publish(self, spec, publish_targets=None):
@@ -396,6 +417,8 @@ def test_publish_from_sql_registry_propagates_builder_publish_failure_without_ma
 
     stored = service._repository.get(proposal["id"])
     assert stored.status != "published"
+    # builder.publish 先于 SQL registry release 写入执行并在这里失败，release 侧不应留下任何提交记录。
+    assert release_service.calls == []
 
 
 def test_confirm_source_records_action_and_is_idempotent_for_same_source():

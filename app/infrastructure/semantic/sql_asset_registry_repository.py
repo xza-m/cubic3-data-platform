@@ -29,6 +29,9 @@ from app.infrastructure.semantic.models import (
 )
 
 
+_ADVISORY_LOCK_CLASS = 314159
+
+
 class SqlAssetRegistryRepository:
     """生产 SQL Registry 仓储；不依赖 YAML adapter。"""
 
@@ -66,6 +69,17 @@ class SqlAssetRegistryRepository:
         *,
         allowed_update_fields: Optional[set[str]] = None,
     ) -> SemanticAsset:
+        """按 (namespace, asset_type, asset_key) upsert 一条资产。
+
+        并发写同一 asset_key 时，谁先提交 insert 谁赢：本次调用若在 insert 前的
+        select 之后、insert 之前输给了另一个并发写者，捕获 IntegrityError 后直接
+        采纳赢家已提交的行返回，不会用本次调用（输家）的字段值覆盖赢家的数据——
+        避免"最后写入者随意覆盖"这种未声明过的合并语义。
+
+        注意：冲突路径里的 `self.session.rollback()` 回滚的是整个共享 session，
+        不只是本次 insert 尝试；调用方不应在调用本方法前，于同一 session 上暂存
+        其他尚未提交的写入，否则那些写入会被一并回滚且不报错。
+        """
         self._lock_asset_key(asset.namespace, asset.asset_type, asset.asset_key)
         allowed = allowed_update_fields or self._DEFAULT_ASSET_UPDATE_FIELDS
         row = self._find_asset_row(asset.namespace, asset.asset_type, asset.asset_key)
@@ -79,31 +93,34 @@ class SqlAssetRegistryRepository:
                     created_at=_parse_utc(asset.created_at) or datetime.utcnow(),
                 )
                 self.session.add(row)
-                for field in allowed:
-                    if field in {"namespace", "asset_type", "asset_key", "id"}:
-                        continue
-                    if hasattr(row, field):
-                        setattr(row, field, getattr(asset, field))
-                row.updated_at = _parse_utc(asset.updated_at) or datetime.utcnow()
+                self._apply_asset_fields(row, asset, allowed)
                 self.session.commit()
                 return _asset_from_row(row)
             except IntegrityError:
-                # 并发窗口内另一个事务已抢先 insert 成功：回滚本次 insert，
-                # 重新读取当前记录，按 update 分支合并允许更新的字段后返回，
-                # 不向调用方裸抛未处理的 IntegrityError。
+                # 并发窗口内另一个事务已抢先 insert 成功：回滚本次 insert，采纳
+                # 赢家已提交的行返回，不再用本次调用（输家）的字段值覆盖它。
                 self.session.rollback()
                 row = self._find_asset_row(asset.namespace, asset.asset_type, asset.asset_key)
                 if row is None:
                     raise
+                return _asset_from_row(row)
 
+        self._apply_asset_fields(row, asset, allowed)
+        self.session.commit()
+        return _asset_from_row(row)
+
+    def _apply_asset_fields(
+        self,
+        row: SemanticAssetORM,
+        asset: SemanticAsset,
+        allowed: set[str],
+    ) -> None:
         for field in allowed:
             if field in {"namespace", "asset_type", "asset_key", "id"}:
                 continue
             if hasattr(row, field):
                 setattr(row, field, getattr(asset, field))
         row.updated_at = _parse_utc(asset.updated_at) or datetime.utcnow()
-        self.session.commit()
-        return _asset_from_row(row)
 
     def _find_asset_row(
         self,
@@ -127,14 +144,18 @@ class SqlAssetRegistryRepository:
         lock_key 前缀（``semantic_asset:``）与 release 发布锁（``semantic_release:``）
         不同，避免与 `_lock_release_namespace` 共享同一把锁导致不必要的串行化或语义混淆。
         """
+        self._advisory_lock(f"semantic_asset:{namespace}:{asset_type}:{asset_key}")
+
+    def _advisory_lock(self, lock_key: str) -> None:
+        """PostgreSQL 事务级 advisory lock；非 PostgreSQL 方言下静默跳过（如测试用 SQLite）。"""
         bind = self.session.get_bind()
         if bind is None or bind.dialect.name != "postgresql":
             return
         self.session.execute(
             text("SELECT pg_advisory_xact_lock(:lock_class, hashtext(:lock_key))"),
             {
-                "lock_class": 314159,
-                "lock_key": f"semantic_asset:{namespace}:{asset_type}:{asset_key}",
+                "lock_class": _ADVISORY_LOCK_CLASS,
+                "lock_key": lock_key,
             },
         )
 
@@ -437,16 +458,7 @@ class SqlAssetRegistryRepository:
         )
 
     def _lock_release_namespace(self, namespace: str) -> None:
-        bind = self.session.get_bind()
-        if bind is None or bind.dialect.name != "postgresql":
-            return
-        self.session.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_class, hashtext(:lock_key))"),
-            {
-                "lock_class": 314159,
-                "lock_key": f"semantic_release:{namespace}",
-            },
-        )
+        self._advisory_lock(f"semantic_release:{namespace}")
 
     def _next_release_no_locked(self, namespace: str) -> int:
         value = (

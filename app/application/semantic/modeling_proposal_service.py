@@ -325,31 +325,38 @@ class ModelingProposalService:
         return self._asset_registry_repository is not None and self._release_service is not None
 
     def _apply_to_sql_registry(self, proposal: ModelingProposal) -> Dict[str, Any]:
-        """写 SQL registry 元数据轨的同时，把 cube spec 物化进 YAML 运行时仓储轨。
+        """先把 cube spec 物化进 YAML 运行时仓储轨，再按物化后的实际结果写 SQL registry 元数据轨。
 
-        两条治理轨道（SQL registry 元数据 + YAML 运行时仓储）必须同批写入：
+        两条治理轨道（SQL registry 元数据 + YAML 运行时仓储）必须同批写入，且顺序有意义：
         SQL registry 只负责发布流程的元数据、版本和审计追踪，真正被
         SemanticDefinitionService.list_cubes() / ICubeRepository.get_cube(name)
-        读到的是 YAML 侧数据。只写 SQL registry 而不物化 YAML，会造成"发布成功
-        但问数看不到、答不了"的分裂态（P0 现象）。这里复用既有
+        读到的是 YAML 侧数据。若先写 SQL registry 再写 YAML：一旦 YAML 物化失败，
+        SQL 侧会留下无对应 YAML 产出的孤儿草稿记录；若 cube 因命名冲突被
+        cube_modeling_service.create_cube 静默改名，SQL 侧用改名前的旧名字建的资产
+        会与 YAML 侧真实生效的 cube 永久错位（发布时按新名字重新建一条孤立资产，
+        丢失原有 revision/release 血缘）——两种情形都会重新制造"发布成功但问数看
+        不到、答不了"的分裂态（P0 现象）。这里先调用既有
         SemanticModelDraftBuilder.apply(spec)（内部走 cube_modeling_service.create_cube
-        -> cube_repo.save），不重新发明构造过程。
+        -> cube_repo.save，不重新发明构造过程），再用它返回的、反映 YAML 真实状态
+        （含可能的改名结果）的 spec 去驱动 SQL registry 写入，保证两条轨道的 cube
+        名字与内容始终一致；若 builder.apply 失败，SQL registry 尚未发生任何写入。
         """
-        spec = deepcopy(proposal.spec or {})
-        asset = self._upsert_sql_registry_asset(proposal, spec, status="draft")
+        # 不在这里额外 deepcopy：self._builder.apply() 内部已对 cube/ontology/整份
+        # spec 做过深拷贝再处理，不会修改传入的原始 spec，重复拷贝纯属浪费。
+        spec = proposal.spec or {}
+        builder_result = self._builder.apply(spec)
+        applied_spec = builder_result.get("spec") or spec
+        asset = self._upsert_sql_registry_asset(proposal, applied_spec, status="draft")
         revision = self._asset_registry_repository.append_revision(
             asset.id,
-            spec,
+            applied_spec,
             proposal_id=proposal.id,
             actor="semantic_bundle_builder",
         )
-        builder_result = self._builder.apply(spec)
-        applied_spec = builder_result.get("spec") or spec
         return {
             "published": False,
             "source": "sql_registry",
             "spec": applied_spec,
-            "yaml": builder_result.get("assets"),
             "assets": {
                 "cube": {
                     "id": asset.id,
@@ -378,20 +385,27 @@ class ModelingProposalService:
         publish_targets: Optional[Dict[str, bool]],
         scope_hash: str,
     ) -> Dict[str, Any]:
-        """发布 SQL registry release 的同时，把 YAML 侧 cube 状态提升为 active。
+        """先把 YAML 侧 cube 状态提升为 active，成功后再写 SQL registry release。
 
-        两条治理轨道必须同批写入：先完成 SQL registry release 写入（治理门已在
-        validate()/approve() 阶段跑过，无需重复跑），再调用 self._builder.publish(...)
-        做 YAML 侧 activate_cube。若 builder.publish 抛出异常（例如 cube 在 YAML 侧
-        尚不存在，说明 apply 阶段未正确物化），异常正常向上抛出、不吞掉——这是刻意的
-        强一致性设计：SQL registry release 已提交但 YAML 未写成功时，应该让调用方看到
-        明确失败，而不是静默产生"数据库说已发布、YAML 说没有"的分裂态。
+        两条治理轨道必须同批写入，且顺序有意义：先调用 self._builder.publish(...)
+        做 YAML 侧 activate_cube（治理门已在 validate()/approve() 阶段跑过，无需重复
+        跑），成功后再完成 SQL registry release 写入。若顺序反过来——先提交 SQL
+        registry release 再做 YAML 侧 activate——一旦 activate_cube 失败（例如认证
+        指标未关联 BusinessMetric，见 cube_modeling_service._validate_ontology_first_activation），
+        SQL registry 会永久停留在"release 已提交/active"状态，但 YAML 侧从未真正
+        激活，重新制造本次要修的 P0 分裂态本身，只是挪到了发布这一步。调整顺序后，
+        builder.publish 失败时 SQL registry 侧尚未发生任何写入，不会残留不一致状态；
+        异常仍正常向上抛出、不吞掉。
         """
         targets = publish_targets or {"cube": True, "ontology": True}
         if targets.get("cube") is False:
             raise ValueError("SQL Registry publish requires cube target")
 
-        spec = deepcopy(proposal.spec or {})
+        self._builder.publish(proposal.spec, publish_targets=publish_targets)
+
+        # append_revision 在返回前就同步 commit，且 _upsert_sql_registry_asset/append_revision
+        # 都只读 spec、不做修改，这里不需要额外 deepcopy proposal.spec。
+        spec = proposal.spec or {}
         asset = self._upsert_sql_registry_asset(proposal, spec, status="draft")
         revision_id = self._registry_revision_id(proposal)
         revision = self._asset_registry_repository.get_revision(revision_id) if revision_id else None
@@ -451,9 +465,6 @@ class ModelingProposalService:
         if targets.get("ontology"):
             result["ontology"] = {"status": "active", "source": "sql_registry", "asset_id": active_asset.id}
             result["published"]["ontology"] = result["ontology"]
-
-        # YAML 侧 activate_cube：不吞异常，让调用方感知 SQL registry 与 YAML 不一致的分裂态。
-        result["yaml"] = self._builder.publish(proposal.spec, publish_targets=publish_targets)
         return result
 
     def _upsert_sql_registry_asset(

@@ -209,7 +209,8 @@ def test_sql_asset_registry_uses_distinct_advisory_lock_for_asset_key():
 
 def test_create_or_update_asset_handles_concurrent_insert_conflict_via_mock_session():
     """P1-1（mock session 路径）：insert 撞 unique constraint 抛 IntegrityError 时，
-    create_or_update_asset 必须捕获、回滚并重新读取当前记录做 update 合并，不得让异常裸抛给调用方。"""
+    create_or_update_asset 必须捕获、回滚并采纳赢家已提交的行返回，不得让异常裸抛给调用方，
+    也不得用本次调用（输家）的字段值覆盖赢家的数据（先提交者赢，不做"最后写入者覆盖"式合并）。"""
 
     class _Dialect:
         name = "postgresql"
@@ -297,6 +298,8 @@ def test_create_or_update_asset_handles_concurrent_insert_conflict_via_mock_sess
 
     assert result is not None
     assert result.id == existing_asset.id
+    # 先提交者赢：本次调用（输家）的 title 不得覆盖赢家已提交的值。
+    assert result.title == existing_asset.title
     assert session._insert_attempted is True
     assert session.rolled_back is True
     lock_calls = [call for call in session.execute_calls if "pg_advisory_xact_lock" in call[0]]
