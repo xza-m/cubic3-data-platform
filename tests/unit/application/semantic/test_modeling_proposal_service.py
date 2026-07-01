@@ -319,14 +319,17 @@ def test_apply_and_publish_use_sql_registry_when_available():
     applied = service.apply(proposal["id"])
     published = service.publish(proposal["id"], publish_targets={"cube": True, "ontology": True})
 
-    assert [call[0] for call in builder.calls].count("apply") == 0
-    assert [call[0] for call in builder.calls].count("publish") == 0
+    # P0：双轨写入——SQL registry 之外，builder.apply/publish（YAML 侧真实生效 cube）也必须被调用。
+    assert [call[0] for call in builder.calls].count("apply") == 1
+    assert [call[0] for call in builder.calls].count("publish") == 1
     assert applied["drafts"]["apply_result"]["source"] == "sql_registry"
     assert applied["drafts"]["apply_result"]["registry"]["revision_id"] == "rev_1"
+    assert applied["drafts"]["apply_result"]["yaml"]["cube"]["name"] == "student_comments"
     assert published["publish_result"]["source"] == "sql_registry"
     assert published["publish_result"]["cube"]["status"] == "active"
     assert published["publish_result"]["registry"]["release_id"] == "rel_1"
     assert published["publish_result"]["registry"]["snapshot_id"] == "snap_1"
+    assert published["publish_result"]["yaml"]["publish_targets"] == {"cube": True, "ontology": True}
     assert release_service.calls[0]["gate_result"]["proposal_id"] == proposal["id"]
 
     second = service.create_proposal({"source_mode": "agent_led", "table": "dwd_student_comment_events"})
@@ -338,6 +341,61 @@ def test_apply_and_publish_use_sql_registry_when_available():
     asset = registry.get_asset("default", "cube", "student_comments")
     assert asset.status == "active"
     assert asset.current_release_id == "rel_1"
+
+
+def test_apply_to_sql_registry_returns_nonempty_yaml_field_for_audit_trace():
+    """P0 回归防护：_apply_to_sql_registry 返回结构里必须携带 yaml 字段作为双轨写入证据。"""
+    builder = _Builder()
+    registry = _SqlRegistryRepository()
+    release_service = _SqlReleaseService(registry)
+    service = ModelingProposalService(
+        repository=_MemoryProposalRepository(),
+        builder=builder,
+        readiness_checker=PublishReadinessChecker(),
+        asset_registry_repository=registry,
+        release_service=release_service,
+    )
+    proposal = service.create_proposal({"source_mode": "agent_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+    service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+
+    applied = service.apply(proposal["id"])
+
+    apply_result = applied["drafts"]["apply_result"]
+    assert apply_result.get("yaml")
+    assert apply_result["yaml"]["cube"]["name"]
+
+
+def test_publish_from_sql_registry_propagates_builder_publish_failure_without_marking_published():
+    """P0 边界：YAML 侧 cube 不存在（builder.publish 抛异常）时，异常必须向上传播，proposal 不得被标记为 published。"""
+
+    class _FailingPublishBuilder(_Builder):
+        def publish(self, spec, publish_targets=None):
+            self.calls.append(("publish", spec, publish_targets))
+            raise ValueError("cube not found in yaml repository")
+
+    builder = _FailingPublishBuilder()
+    registry = _SqlRegistryRepository()
+    release_service = _SqlReleaseService(registry)
+    service = ModelingProposalService(
+        repository=_MemoryProposalRepository(),
+        builder=builder,
+        readiness_checker=PublishReadinessChecker(),
+        asset_registry_repository=registry,
+        release_service=release_service,
+    )
+    proposal = service.create_proposal({"source_mode": "agent_led", "table": "dwd_student_comment_events"})
+    service.draft(proposal["id"])
+    service.validate(proposal["id"])
+    service.approve(proposal["id"], {"approved_by": "semantic_owner"})
+    service.apply(proposal["id"])
+
+    with pytest.raises(ValueError, match="cube not found in yaml repository"):
+        service.publish(proposal["id"], publish_targets={"cube": True, "ontology": True})
+
+    stored = service._repository.get(proposal["id"])
+    assert stored.status != "published"
 
 
 def test_confirm_source_records_action_and_is_idempotent_for_same_source():

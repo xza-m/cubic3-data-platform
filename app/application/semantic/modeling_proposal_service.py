@@ -325,6 +325,16 @@ class ModelingProposalService:
         return self._asset_registry_repository is not None and self._release_service is not None
 
     def _apply_to_sql_registry(self, proposal: ModelingProposal) -> Dict[str, Any]:
+        """写 SQL registry 元数据轨的同时，把 cube spec 物化进 YAML 运行时仓储轨。
+
+        两条治理轨道（SQL registry 元数据 + YAML 运行时仓储）必须同批写入：
+        SQL registry 只负责发布流程的元数据、版本和审计追踪，真正被
+        SemanticDefinitionService.list_cubes() / ICubeRepository.get_cube(name)
+        读到的是 YAML 侧数据。只写 SQL registry 而不物化 YAML，会造成"发布成功
+        但问数看不到、答不了"的分裂态（P0 现象）。这里复用既有
+        SemanticModelDraftBuilder.apply(spec)（内部走 cube_modeling_service.create_cube
+        -> cube_repo.save），不重新发明构造过程。
+        """
         spec = deepcopy(proposal.spec or {})
         asset = self._upsert_sql_registry_asset(proposal, spec, status="draft")
         revision = self._asset_registry_repository.append_revision(
@@ -333,10 +343,13 @@ class ModelingProposalService:
             proposal_id=proposal.id,
             actor="semantic_bundle_builder",
         )
+        builder_result = self._builder.apply(spec)
+        applied_spec = builder_result.get("spec") or spec
         return {
             "published": False,
             "source": "sql_registry",
-            "spec": spec,
+            "spec": applied_spec,
+            "yaml": builder_result.get("assets"),
             "assets": {
                 "cube": {
                     "id": asset.id,
@@ -365,6 +378,15 @@ class ModelingProposalService:
         publish_targets: Optional[Dict[str, bool]],
         scope_hash: str,
     ) -> Dict[str, Any]:
+        """发布 SQL registry release 的同时，把 YAML 侧 cube 状态提升为 active。
+
+        两条治理轨道必须同批写入：先完成 SQL registry release 写入（治理门已在
+        validate()/approve() 阶段跑过，无需重复跑），再调用 self._builder.publish(...)
+        做 YAML 侧 activate_cube。若 builder.publish 抛出异常（例如 cube 在 YAML 侧
+        尚不存在，说明 apply 阶段未正确物化），异常正常向上抛出、不吞掉——这是刻意的
+        强一致性设计：SQL registry release 已提交但 YAML 未写成功时，应该让调用方看到
+        明确失败，而不是静默产生"数据库说已发布、YAML 说没有"的分裂态。
+        """
         targets = publish_targets or {"cube": True, "ontology": True}
         if targets.get("cube") is False:
             raise ValueError("SQL Registry publish requires cube target")
@@ -429,6 +451,9 @@ class ModelingProposalService:
         if targets.get("ontology"):
             result["ontology"] = {"status": "active", "source": "sql_registry", "asset_id": active_asset.id}
             result["published"]["ontology"] = result["ontology"]
+
+        # YAML 侧 activate_cube：不吞异常，让调用方感知 SQL registry 与 YAML 不一致的分裂态。
+        result["yaml"] = self._builder.publish(proposal.spec, publish_targets=publish_targets)
         return result
 
     def _upsert_sql_registry_asset(

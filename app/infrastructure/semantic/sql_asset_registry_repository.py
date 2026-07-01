@@ -66,25 +66,36 @@ class SqlAssetRegistryRepository:
         *,
         allowed_update_fields: Optional[set[str]] = None,
     ) -> SemanticAsset:
-        row = (
-            self.session.query(SemanticAssetORM)
-            .filter(
-                SemanticAssetORM.namespace == asset.namespace,
-                SemanticAssetORM.asset_type == asset.asset_type,
-                SemanticAssetORM.asset_key == asset.asset_key,
-            )
-            .first()
-        )
+        self._lock_asset_key(asset.namespace, asset.asset_type, asset.asset_key)
         allowed = allowed_update_fields or self._DEFAULT_ASSET_UPDATE_FIELDS
+        row = self._find_asset_row(asset.namespace, asset.asset_type, asset.asset_key)
         if row is None:
-            row = SemanticAssetORM(
-                id=asset.id,
-                namespace=asset.namespace,
-                asset_type=asset.asset_type,
-                asset_key=asset.asset_key,
-                created_at=_parse_utc(asset.created_at) or datetime.utcnow(),
-            )
-            self.session.add(row)
+            try:
+                row = SemanticAssetORM(
+                    id=asset.id,
+                    namespace=asset.namespace,
+                    asset_type=asset.asset_type,
+                    asset_key=asset.asset_key,
+                    created_at=_parse_utc(asset.created_at) or datetime.utcnow(),
+                )
+                self.session.add(row)
+                for field in allowed:
+                    if field in {"namespace", "asset_type", "asset_key", "id"}:
+                        continue
+                    if hasattr(row, field):
+                        setattr(row, field, getattr(asset, field))
+                row.updated_at = _parse_utc(asset.updated_at) or datetime.utcnow()
+                self.session.commit()
+                return _asset_from_row(row)
+            except IntegrityError:
+                # 并发窗口内另一个事务已抢先 insert 成功：回滚本次 insert，
+                # 重新读取当前记录，按 update 分支合并允许更新的字段后返回，
+                # 不向调用方裸抛未处理的 IntegrityError。
+                self.session.rollback()
+                row = self._find_asset_row(asset.namespace, asset.asset_type, asset.asset_key)
+                if row is None:
+                    raise
+
         for field in allowed:
             if field in {"namespace", "asset_type", "asset_key", "id"}:
                 continue
@@ -93,6 +104,39 @@ class SqlAssetRegistryRepository:
         row.updated_at = _parse_utc(asset.updated_at) or datetime.utcnow()
         self.session.commit()
         return _asset_from_row(row)
+
+    def _find_asset_row(
+        self,
+        namespace: str,
+        asset_type: str,
+        asset_key: str,
+    ) -> Optional[SemanticAssetORM]:
+        return (
+            self.session.query(SemanticAssetORM)
+            .filter(
+                SemanticAssetORM.namespace == namespace,
+                SemanticAssetORM.asset_type == asset_type,
+                SemanticAssetORM.asset_key == asset_key,
+            )
+            .first()
+        )
+
+    def _lock_asset_key(self, namespace: str, asset_type: str, asset_key: str) -> None:
+        """asset upsert 的并发保护锁。
+
+        lock_key 前缀（``semantic_asset:``）与 release 发布锁（``semantic_release:``）
+        不同，避免与 `_lock_release_namespace` 共享同一把锁导致不必要的串行化或语义混淆。
+        """
+        bind = self.session.get_bind()
+        if bind is None or bind.dialect.name != "postgresql":
+            return
+        self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_class, hashtext(:lock_key))"),
+            {
+                "lock_class": 314159,
+                "lock_key": f"semantic_asset:{namespace}:{asset_type}:{asset_key}",
+            },
+        )
 
     def append_revision(
         self,
