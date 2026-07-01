@@ -1,0 +1,147 @@
+name: dws_study_student_answer_kb_history_df
+title: Dws Study Student Answer Kb History Df
+description: 基于 dws_study_student_answer_kb_history_df 自动生成的 Cube 草稿
+table: dws_study_student_answer_kb_history_df
+source_id: 1
+source_database: df_cb_258187
+data_source: maxcompute
+status: active
+grain: student_id
+entity_key: student_id
+partition:
+  field: ds
+  type: date
+  format: yyyyMMdd
+  max_range_days: 90
+default_filters: []
+dimensions:
+  ds:
+    title: DS
+    type: time
+    sql: '`ds`'
+    description: 由源表分区字段自动补齐的默认时间维度。
+    source_data_type: date
+    synonyms: []
+    tags: []
+    primary_key: false
+  student_id:
+    title: 学生ID
+    type: string
+    sql: '`student_id`'
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 dimension.identifier
+    source_data_type: STRING
+    synonyms: []
+    tags: []
+    primary_key: true
+  question_id:
+    title: 题目ID
+    type: string
+    sql: '`question_id`'
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 dimension.identifier
+    source_data_type: STRING
+    synonyms: []
+    tags: []
+    primary_key: true
+  knowledge_id:
+    title: 知识点ID
+    type: string
+    sql: '`knowledge_id`'
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 dimension.identifier
+    source_data_type: STRING
+    synonyms: []
+    tags: []
+    primary_key: true
+  question_type:
+    title: 题目类型ID
+    type: string
+    sql: '`question_type`'
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 dimension.categorical
+    source_data_type: STRING
+    synonyms: []
+    tags: []
+    primary_key: false
+measures:
+  total_count:
+    title: 总数
+    type: count
+    sql: COUNT(`student_id`)
+    description: 自动生成的记录总数指标
+    source_data_type: count
+    synonyms: []
+    tags: []
+    certified: true
+    non_additive: false
+  sum_answer_cnt_td:
+    title: 答题次数
+    type: sum
+    sql: SUM(`answer_cnt_td`)
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  sum_answer_last_ts_td:
+    title: 最近一次答题时间
+    type: sum
+    sql: SUM(`answer_last_ts_td`)
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  sum_widget_last_ts_td:
+    title: 最近一次组件学习时间
+    type: sum
+    sql: SUM(`widget_last_ts_td`)
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  avg_answer_duration_td:
+    title: 平均答题耗时（毫秒）
+    type: avg
+    sql: AVG(`avg_answer_duration_td`)
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 measure.non_additive；警告：非可加指标需要确认跨粒度聚合口径；非可加指标需要确认聚合口径；比率类指标不能按
+      sum 汇总；问题码：ratio_sum_risk，non_additive_unconfirmed
+    source_data_type: DECIMAL(10,4)
+    synonyms: []
+    tags:
+    - ratio_sum_risk
+    - non_additive_unconfirmed
+    certified: false
+    format: decimal
+    non_additive: true
+  sum_correct_answer_cnt_td:
+    title: 正确答题数
+    type: sum
+    sql: SUM(`correct_answer_cnt_td`)
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 measure.additive
+    source_data_type: BIGINT
+    synonyms: []
+    tags: []
+    certified: false
+    format: decimal
+    non_additive: false
+  avg_correct_answer_rate_td:
+    title: 正答率
+    type: avg
+    sql: AVG(`correct_answer_rate_td`)
+    description: 来自字段候选集 fcand_d645fef174a96d13，角色 measure.non_additive；警告：非可加指标需要确认跨粒度聚合口径；非可加指标需要确认聚合口径；比率类指标不能按
+      sum 汇总；问题码：ratio_sum_risk，non_additive_unconfirmed
+    source_data_type: DECIMAL(10,4)
+    synonyms: []
+    tags:
+    - ratio_sum_risk
+    - non_additive_unconfirmed
+    certified: false
+    format: decimal
+    non_additive: true
+segments: {}
+joins: {}

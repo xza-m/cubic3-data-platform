@@ -1,0 +1,10 @@
+name: dws_study_student_answer_kb_history_df_sum_widget_last_ts_td
+title: 最近一次组件学习时间
+object_name: dws_study_student_answer_kb_history_df
+semantic_formula: 按 dws_study_student_answer_kb_history_df.sum_widget_last_ts_td
+semantic_labels: []
+measure_refs:
+- ref: dws_study_student_answer_kb_history_df.sum_widget_last_ts_td
+  role: primary
+aliases: []
+status: active

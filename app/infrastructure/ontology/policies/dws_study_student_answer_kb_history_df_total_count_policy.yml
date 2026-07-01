@@ -1,0 +1,8 @@
+name: dws_study_student_answer_kb_history_df_total_count_policy
+target_type: metric
+target_name: dws_study_student_answer_kb_history_df_total_count
+visibility: restricted
+allowed_roles:
+- analyst
+description: 由建模助手 Agent 生成的Dws Study Student Answer Kb History Df指标访问策略。
+status: active

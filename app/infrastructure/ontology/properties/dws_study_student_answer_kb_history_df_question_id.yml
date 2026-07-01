@@ -1,0 +1,8 @@
+name: dws_study_student_answer_kb_history_df_question_id
+title: 题目ID
+object_name: dws_study_student_answer_kb_history_df
+property_type: string
+description: 来自字段候选集 fcand_d645fef174a96d13，角色 dimension.identifier
+aliases:
+- question_id
+status: active

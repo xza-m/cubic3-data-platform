@@ -1,0 +1,10 @@
+name: dws_study_student_answer_kb_history_df
+title: Dws Study Student Answer Kb History Df
+description: Dws Study Student Answer Kb History Df对应的核心业务对象，由建模助手 Agent 根据事实表生成。
+aliases:
+- Dws Study Student Answer Kb History Df
+cube_bindings:
+- cube: dws_study_student_answer_kb_history_df
+  role: primary
+  entity_key: student_id
+status: active

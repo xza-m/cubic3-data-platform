@@ -1,0 +1,10 @@
+name: dws_study_student_answer_kb_history_df_sum_correct_answer_cnt_td
+title: 正确答题数
+object_name: dws_study_student_answer_kb_history_df
+semantic_formula: 按 dws_study_student_answer_kb_history_df.sum_correct_answer_cnt_td
+semantic_labels: []
+measure_refs:
+- ref: dws_study_student_answer_kb_history_df.sum_correct_answer_cnt_td
+  role: primary
+aliases: []
+status: active

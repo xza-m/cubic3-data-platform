@@ -1,0 +1,15 @@
+name: dws_study_student_answer_kb_history_df_total_count
+title: Dws Study Student Answer Kb History Df总数
+object_name: dws_study_student_answer_kb_history_df
+semantic_formula: 按 Cube measure dws_study_student_answer_kb_history_df.total_count
+  计算
+description: Dws Study Student Answer Kb History Df相关的默认业务指标。
+semantic_labels:
+- Dws Study Student Answer Kb History Df
+- 建模助手 Agent
+measure_refs:
+- ref: dws_study_student_answer_kb_history_df.total_count
+  role: primary
+aliases:
+- Dws Study Student Answer Kb History Df数
+status: active

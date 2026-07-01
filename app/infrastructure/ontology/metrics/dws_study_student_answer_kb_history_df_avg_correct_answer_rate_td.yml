@@ -1,0 +1,10 @@
+name: dws_study_student_answer_kb_history_df_avg_correct_answer_rate_td
+title: 正答率
+object_name: dws_study_student_answer_kb_history_df
+semantic_formula: 按 dws_study_student_answer_kb_history_df.avg_correct_answer_rate_td
+semantic_labels: []
+measure_refs:
+- ref: dws_study_student_answer_kb_history_df.avg_correct_answer_rate_td
+  role: primary
+aliases: []
+status: active
